@@ -50,6 +50,7 @@ from src.shared.models import (
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
+from src.shared.models.storage_scope import StorageGrant
 from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND, SystemOneConfigData
 from storage_credentials.exceptions import (
     CredentialScopeValidationError,
@@ -98,6 +99,7 @@ from tables.services.rag_registry import resolve_rag_in_collection
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
 from tables.services.secrets.declaration_validator import binned_secret_names
+from tables.services.storage_grants.flags import storage_grant_of
 from utils.graph_utils import (
     SINGLE_LOOKUP_RESOLVER,
     NodeNameResolver,
@@ -245,23 +247,36 @@ class ConverterService(metaclass=SingletonMeta):
             .values_list("storage_file__path", flat=True)
         )
 
+    def attached_storage_paths(self, graph_id: int) -> list[str]:
+        """Return the paths of the files and folders attached to a graph.
+
+        A caller converting several nodes of one graph reads this once and hands it to
+        each conversion as `attached_storage_paths`, so the number of queries does not
+        grow with the number of nodes.
+        """
+        return self._resolve_allowed_paths_for_graph(graph_id)
+
     def _resolve_storage_scope(
         self,
         graph_id: int | None,
         org_id: int | None,
-        use_storage: bool,
         extra_paths: list[str],
+        attached_storage_paths: list[str] | None = None,
     ) -> tuple[list[str] | None, str | None]:
         """Return `(storage_allowed_paths, storage_org_prefix)` for one code slot.
 
         Allowed paths are the graph's attached files followed by `extra_paths`, the
         folders the run itself may write to (`sessions/<id>/` in a real run). Both
-        are None when the slot does not use storage or there is no graph to scope
-        it by, which means no storage credentials are minted for this run.
+        are None when there is no graph to scope the slot by. Flow-node code always uses
+        storage, so its callers must pass the graph. `attached_storage_paths` are the graph's
+        attached paths when the caller has them already; they are read from the graph
+        when omitted.
         """
-        if not use_storage or graph_id is None:
+        if graph_id is None:
             return None, None
-        allowed_paths = self._resolve_allowed_paths_for_graph(graph_id) + extra_paths
+        if attached_storage_paths is None:
+            attached_storage_paths = self._resolve_allowed_paths_for_graph(graph_id)
+        allowed_paths = attached_storage_paths + extra_paths
         return allowed_paths, self.storage_prefix_for_org(org_id)
 
     @staticmethod
@@ -429,15 +444,16 @@ class ConverterService(metaclass=SingletonMeta):
                     if tool_data.python_code.storage_allowed_paths:
                         union_allowed_paths.update(tool_data.python_code.storage_allowed_paths)
 
-            if needs_storage:
-                if not union_allowed_paths:
-                    # Resolved before any mint attempt -- same class of
-                    # problem as RealtimeSurfaceService's fail-closed check,
-                    # same exception type and status code (400, not 500).
-                    raise CredentialScopeValidationError(
-                        "This agent's tools need file storage access, but no files are "
-                        "attached. Attach the required files or folders."
-                    )
+            if needs_storage and not union_allowed_paths:
+                # A realtime chat has no folder of its own, so nothing can be
+                # granted: start the chat without an account. The realtime
+                # service answers a storage tool call with a clear error.
+                logger.warning(
+                    "Realtime chat {} has storage tools but no attached files; "
+                    "starting without storage credentials",
+                    rt_agent_chat.id,
+                )
+            elif needs_storage:
                 rt_agent_chat_data.storage_credentials = (
                     session_credential_service.issue_for_realtime_chat(
                         realtime_agent_chat=rt_agent_chat,
@@ -465,8 +481,10 @@ class ConverterService(metaclass=SingletonMeta):
         storage_org_prefix: str | None = None,
         session_id: int | None = None,
         org_id: int | None = None,
+        storage_grant: StorageGrant | None = None,
     ):
         return PythonCodeData(
+            storage_grant=storage_grant,
             venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
             code=python_code.code,
             entrypoint=python_code.entrypoint,
@@ -736,11 +754,12 @@ class ConverterService(metaclass=SingletonMeta):
     def _convert_code_slot(
         self,
         python_code: PythonCode,
-        use_storage: bool,
         graph_id: int | None,
         session_id: int | None,
         extra_storage_paths: list[str] | None,
         org_id: int | None,
+        storage_grant: StorageGrant | None = None,
+        attached_storage_paths: list[str] | None = None,
     ) -> PythonCodeData:
         org_id = self._org_id_for_graph(graph_id, org_id)
         writable_paths = list(extra_storage_paths or [])
@@ -749,17 +768,18 @@ class ConverterService(metaclass=SingletonMeta):
         storage_allowed_paths, storage_org_prefix = self._resolve_storage_scope(
             graph_id=graph_id,
             org_id=org_id,
-            use_storage=use_storage,
             extra_paths=writable_paths,
+            attached_storage_paths=attached_storage_paths,
         )
 
         return self.convert_python_code_to_pydantic(
             python_code=python_code,
-            use_storage=use_storage,
+            use_storage=True,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            storage_grant=storage_grant,
         )
 
     def convert_python_node_to_pydantic(
@@ -770,6 +790,7 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
         extra_storage_paths: list[str] | None = None,
         org_id: int | None = None,
+        attached_storage_paths: list[str] | None = None,
     ) -> PythonNodeData:
         """Convert a python node into the data a run sends to the sandbox.
 
@@ -780,14 +801,17 @@ class ConverterService(metaclass=SingletonMeta):
                 session, such as a test-mode run's own folder.
             org_id: `Graph.org_id` of `graph_id` when the caller already loaded
                 the graph row; read from the graph when omitted.
+            attached_storage_paths: `attached_storage_paths(graph_id)` when the caller
+                already read it; read from the graph when omitted.
         """
         python_code_data = self._convert_code_slot(
             python_code=python_node.python_code,
-            use_storage=python_node.use_storage,
             graph_id=graph_id,
             session_id=session_id,
             extra_storage_paths=extra_storage_paths,
             org_id=org_id,
+            storage_grant=storage_grant_of(python_node),
+            attached_storage_paths=attached_storage_paths,
         )
         return PythonNodeData(
             node_name=resolver(python_node.id),
@@ -825,6 +849,7 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None = None,
         session_id: int | None = None,
         org_id: int | None = None,
+        attached_storage_paths: list[str] | None = None,
     ):
         condition_groups = [
             ClassificationConditionGroupData(
@@ -878,44 +903,28 @@ class ConverterService(metaclass=SingletonMeta):
                 llm_data=llm_data,
             )
 
-        org_id = self._org_id_for_graph(graph_id, org_id)
-
-        pre_storage_allowed_paths = None
-        pre_storage_org_prefix = None
-        if node.pre_use_storage and graph_id is not None:
-            pre_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            if session_id is not None:
-                pre_storage_allowed_paths.append(f"sessions/{session_id}/")
-            pre_storage_org_prefix = self.storage_prefix_for_org(org_id)
-
-        post_storage_allowed_paths = None
-        post_storage_org_prefix = None
-        if node.post_use_storage and graph_id is not None:
-            post_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            if session_id is not None:
-                post_storage_allowed_paths.append(f"sessions/{session_id}/")
-            post_storage_org_prefix = self.storage_prefix_for_org(org_id)
-
         pre_python_code_data = None
         if node.pre_python_code is not None:
-            pre_python_code_data = self.convert_python_code_to_pydantic(
-                node.pre_python_code,
-                use_storage=node.pre_use_storage,
-                storage_allowed_paths=pre_storage_allowed_paths,
-                storage_org_prefix=pre_storage_org_prefix,
+            pre_python_code_data = self._convert_code_slot(
+                python_code=node.pre_python_code,
+                graph_id=graph_id,
                 session_id=session_id,
+                extra_storage_paths=None,
                 org_id=org_id,
+                storage_grant=storage_grant_of(node, prefix="pre_"),
+                attached_storage_paths=attached_storage_paths,
             )
 
         post_python_code_data = None
         if node.post_python_code is not None:
-            post_python_code_data = self.convert_python_code_to_pydantic(
-                node.post_python_code,
-                use_storage=node.post_use_storage,
-                storage_allowed_paths=post_storage_allowed_paths,
-                storage_org_prefix=post_storage_org_prefix,
+            post_python_code_data = self._convert_code_slot(
+                python_code=node.post_python_code,
+                graph_id=graph_id,
                 session_id=session_id,
+                extra_storage_paths=None,
                 org_id=org_id,
+                storage_grant=storage_grant_of(node, prefix="post_"),
+                attached_storage_paths=attached_storage_paths,
             )
 
         return ClassificationDecisionTableNodeData(
@@ -964,7 +973,7 @@ class ConverterService(metaclass=SingletonMeta):
         auth: WebhookTriggerAuth | None = getattr(trigger, "auth", None)
         if not auth or auth.header_name is None:
             return None
-        secret = secret_resolver.resolve(
+        secret = secret_resolver.resolve_sealed(
             secret_id=auth.secret_id,
             org_id=trigger.org_id,
             context="WebhookTriggerAuth.secret",
@@ -983,6 +992,7 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
         extra_storage_paths: list[str] | None = None,
         org_id: int | None = None,
+        attached_storage_paths: list[str] | None = None,
     ) -> WebhookTriggerNodeData:
         """Convert a webhook trigger node into the data a run sends to the sandbox.
 
@@ -993,14 +1003,17 @@ class ConverterService(metaclass=SingletonMeta):
                 session, such as a test-mode run's own folder.
             org_id: `Graph.org_id` of `graph_id` when the caller already loaded
                 the graph row; read from the graph when omitted.
+            attached_storage_paths: `attached_storage_paths(graph_id)` when the caller
+                already read it; read from the graph when omitted.
         """
         python_code_data = self._convert_code_slot(
             python_code=webhook_trigger_node.python_code,
-            use_storage=webhook_trigger_node.use_storage,
             graph_id=graph_id,
             session_id=session_id,
             extra_storage_paths=extra_storage_paths,
             org_id=org_id,
+            storage_grant=storage_grant_of(webhook_trigger_node),
+            attached_storage_paths=attached_storage_paths,
         )
         return WebhookTriggerNodeData(
             node_name=resolver(webhook_trigger_node.id),
@@ -1141,7 +1154,7 @@ class ConverterService(metaclass=SingletonMeta):
         self, ngrok_webhook_config: NgrokWebhookConfig
     ) -> NgrokConfigData:
         auth_token = (
-            secret_resolver.resolve(
+            secret_resolver.resolve_sealed(
                 secret_id=ngrok_webhook_config.auth_token_secret_id,
                 org_id=ngrok_webhook_config.trigger.org_id,
                 context="NgrokWebhookConfig.auth_token",

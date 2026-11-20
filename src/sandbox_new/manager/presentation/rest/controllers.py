@@ -175,7 +175,9 @@ class VenvController(Controller):
                 such as a version outside its specification. Rendered as 400.
         """
         orchestrator = VenvCRUDOrchestrator(uow)
-        obj = await orchestrator.create(data.name, [lib.to_domain() for lib in data.libs])
+        obj = await orchestrator.create(
+            data.name, [lib.to_domain() for lib in data.libs], data.scope
+        )
         return schemas.VenvRetrieveSchema.from_domain(obj)
 
     @patch(
@@ -189,7 +191,9 @@ class VenvController(Controller):
             "so renaming a built venv does not rebuild it."
         ),
         response_description="The venv as stored after the change.",
-        responses=ERROR_RESPONSES_WITH_NOT_FOUND,
+        responses=error_responses(
+            not_found="No venv with this id.", conflict="The venv is the shared default."
+        ),
     )
     async def update(
         self, id: int, data: schemas.VenvUpdateSchema, uow: AbstractUnitOfWork
@@ -198,10 +202,11 @@ class VenvController(Controller):
 
         Raises:
             VenvNotFoundError: No venv with this id, rendered as 404.
+            DefaultVenvProtectedError: The venv is the shared default, rendered as 409.
         """
         orchestrator = VenvCRUDOrchestrator(uow)
         libs = None if data.libs is None else [lib.to_domain() for lib in data.libs]
-        obj = await orchestrator.update(id, data.name, libs)
+        obj = await orchestrator.update(id, data.name, libs, data.scope)
         return schemas.VenvRetrieveSchema.from_domain(obj)
 
     @delete(
@@ -213,13 +218,16 @@ class VenvController(Controller):
             "space comes back a little later."
         ),
         response_description="The venv was deleted.",
-        responses=ERROR_RESPONSES_WITH_NOT_FOUND,
+        responses=error_responses(
+            not_found="No venv with this id.", conflict="The venv is the shared default."
+        ),
     )
     async def remove(self, id: int, uow: AbstractUnitOfWork) -> None:
         """Delete a venv, leaving its directory for the housekeeping task.
 
         Raises:
             VenvNotFoundError: No venv with this id, rendered as 404.
+            DefaultVenvProtectedError: The venv is the shared default, rendered as 409.
         """
         orchestrator = VenvCRUDOrchestrator(uow)
         await orchestrator.remove(id)
@@ -243,6 +251,8 @@ class ExecutionController(Controller):
             "whose build failed produces a failed result rather than a run. All three "
             "answer 202 -- "
             "acceptance says the submission was understood, not that the code will run.\n\n"
+            "Every `secrets` value must be sealed with the transport key; one the sandbox "
+            "cannot decrypt is refused with 400 naming the secret, and nothing is run.\n\n"
             "Re-posting an `execution_id` the sandbox already knows does not run it again: "
             "it answers 202 with that execution's current status.\n\n"
             "A full sandbox answers 503 with `Retry-After` instead of accepting work it "
@@ -261,6 +271,8 @@ class ExecutionController(Controller):
             VenvNotFoundError: `venv_id` names no venv, or none is given and there is no
                 default venv. Rendered as 404.
             SandboxOverloadedError: The sandbox cannot take the job now. Rendered as 503.
+            SecretNotDecryptableError: A secret is not a transport ciphertext this
+                sandbox can open. Rendered as 400.
         """
         logger.log(
             BENCH_LEVEL,
@@ -410,7 +422,7 @@ class CustomLibraryController(Controller):
         """
         filename = PurePosixPath(data.file.filename or "").name
         library_orchestrator = CustomLibraryCRUDOrchestrator(uow)
-        obj = await library_orchestrator.create_for(filename)
+        obj = await library_orchestrator.create_for(filename, data.scope)
         try:
             wheel = await WheelCRUDOrchestrator(uow, file_storage).upload(
                 library_id=obj.id, file=data.file
@@ -423,6 +435,34 @@ class CustomLibraryController(Controller):
         # The library was created for this upload, so its one version is the whole
         # state of it; nothing is read back to work that out.
         return schemas.CustomLibraryRetrieveSchema.from_domain(obj, [wheel])
+
+    @patch(
+        path="/{id:int}",
+        summary="Move a custom library to a scope",
+        description=(
+            "Sets the scope the library's name is unique in and venvs of that scope find "
+            "it by. Only the scope can be changed; the name comes from the wheel."
+        ),
+        response_description="The library as stored after the change.",
+        responses=error_responses(
+            not_found="No custom library with this id.",
+            conflict="Another library of that scope already has this name.",
+        ),
+    )
+    async def update(
+        self, id: int, data: schemas.CustomLibraryUpdateSchema, uow: AbstractUnitOfWork
+    ) -> schemas.CustomLibraryRetrieveSchema:
+        """Move a custom library to a scope.
+
+        Raises:
+            CustomLibraryNotFoundError: No library with this id, rendered as 404.
+            CustomLibraryNameTakenError: Another library of that scope has this name,
+                rendered as 409.
+        """
+        orchestrator = CustomLibraryCRUDOrchestrator(uow)
+        await orchestrator.update(id, data.scope)
+        obj, wheels = await orchestrator.retrieve(id)
+        return schemas.CustomLibraryRetrieveSchema.from_domain(obj, wheels)
 
     @delete(
         path="/{id:int}",

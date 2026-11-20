@@ -16,6 +16,7 @@ from app.loop.agent_loop import _build_model_config
 from app.loop.context import AgentContext
 from shared.models.agent_service import AgentSpec
 from shared.models.ai_providers import LLMConfigData, LLMData
+from tests.secret_sealing import agent_cryptographer, header_marker, seal
 
 MODEL_CONFIG = {"model": "gpt-4o", "connection": {"api_key": "sk-test"}}
 
@@ -77,7 +78,7 @@ async def _never_cancelled() -> bool:
 def _model_config(provider: str, llm_config: LLMConfigData) -> dict:
     agent = AgentSpec(id=1, name="a", instructions="i", llm=LLMData(provider=provider, config=llm_config))
     context = AgentContext(agent=agent, attachments=[], correlation_id="c", is_cancelled=_never_cancelled)
-    return _build_model_config(context)
+    return _build_model_config(context, agent_cryptographer())
 
 
 async def _deployment_params(built_routers, provider: str, llm_config: LLMConfigData) -> dict:
@@ -90,8 +91,11 @@ async def _deployment_params(built_routers, provider: str, llm_config: LLMConfig
 async def test_a_bedrock_configs_connection_reaches_the_router_deployment(built_routers):
     llm_config = LLMConfigData(
         model="anthropic.claude-v2",
-        api_key="bedrock-key",
-        connection={"aws_region_name": "eu-west-1", "aws_access_key_id": "AKIA-resolved"},
+        api_key=seal("bedrock-key"),
+        connection={
+            "aws_region_name": "eu-west-1",
+            "aws_access_key_id": header_marker(seal("AKIA-resolved")),
+        },
     )
 
     assert await _deployment_params(built_routers, "bedrock", llm_config) == {
@@ -110,7 +114,7 @@ async def test_deployment_id_reaches_litellm_only_as_the_azure_model(built_route
     # litellm sends any call that carries a deployment_id to Azure.
     llm_config = LLMConfigData(
         model="gpt-4o",
-        api_key="sk-test",
+        api_key=seal("sk-test"),
         connection={"api_base": "https://example.test", "deployment_id": "my-deployment"},
     )
 

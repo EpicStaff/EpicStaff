@@ -6,6 +6,7 @@ import pandas
 from application.commands import RunSearch
 from application.orchestrators.searching.base import AbstractSearchOrchestrator
 from application.results import SearchResult
+from application.sealed_secrets import open_sealed_secrets
 from domain.enums import GraphSearchMethodEnum
 from domain.errors import GraphRagConfigNotFoundError, UnsupportedError
 from domain.models import GraphPricingConfig, SearchUsage
@@ -20,6 +21,7 @@ from graphrag.data_model import DataReader
 from graphrag_storage import create_storage
 from graphrag_storage.tables.table_provider_factory import create_table_provider
 from infrastructure.database.mappers.embedding_arguments import embedding_call_arguments
+from infrastructure.database.mappers.graph import graph_rag_cache_config
 from infrastructure.graphrag.model_access import (
     apply_request_access,
     completion_call_arguments,
@@ -113,30 +115,37 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
         ),
     }
 
-    def __init__(self, uow):
+    def __init__(self, uow, cryptographer):
         patch_graphrag_prompts()
-        super().__init__(uow)
+        super().__init__(uow, cryptographer)
 
     async def on_execute(self, command: RunSearch) -> SearchResult:
         async with self.uow:
             config = await self.uow.graph_rag_repo.get_config(command.rag_id)
             pricing = await self._get_pricing(command.rag_id)
 
+        secrets = open_sealed_secrets(command, self.cryptographer)
+        embedding_model = config.embedding_models["default_embedding_model"]
+        completion_model = config.completion_models["default_completion_model"]
+        embedding_arguments = embedding_call_arguments(command.embedding_parameters)
+        completion_arguments = completion_call_arguments(completion_model, command.llm_parameters)
         apply_request_access(
-            config.embedding_models["default_embedding_model"],
-            api_key=command.embedding_api_key,
-            extra_headers=command.embedding_extra_headers,
-            connection=command.embedding_connection,
-            call_arguments=embedding_call_arguments(command.embedding_parameters),
+            embedding_model,
+            api_key=secrets.embedding_api_key,
+            extra_headers=secrets.embedding_extra_headers,
+            connection=secrets.embedding_connection,
+            call_arguments=embedding_arguments,
         )
         apply_request_access(
-            config.completion_models["default_completion_model"],
-            api_key=command.llm_api_key,
-            extra_headers=command.llm_extra_headers,
-            connection=command.llm_connection,
-            call_arguments=completion_call_arguments(
-                config.completion_models["default_completion_model"], command.llm_parameters
-            ),
+            completion_model,
+            api_key=secrets.llm_api_key,
+            extra_headers=secrets.llm_extra_headers,
+            connection=secrets.llm_connection,
+            call_arguments=completion_arguments,
+        )
+        config.cache = graph_rag_cache_config(
+            command.rag_id,
+            [(completion_model, completion_arguments), (embedding_model, embedding_arguments)],
         )
 
         if command.search_config.method not in self._SEARCH_MAP:

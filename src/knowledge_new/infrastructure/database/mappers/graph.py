@@ -1,12 +1,18 @@
+import hashlib
+import json
+
 from domain.enums import SlotEnum
 from domain.errors import GraphRagConfigNotFoundError
 from domain.models import EmbeddingConfig, GraphPricingConfig, Rag
 from graphrag.config.models.cluster_graph_config import ClusterGraphConfig
 from graphrag.config.models.extract_graph_config import ExtractGraphConfig
 from graphrag.config.models.graph_rag_config import GraphRagConfig
+from graphrag.config.models.reporting_config import ReportingConfig
+from graphrag_cache import CacheConfig
 from graphrag_chunking.chunking_config import ChunkingConfig as GraphRagChunkingConfig
 from graphrag_input import TextDocument
 from graphrag_llm.config import ModelConfig
+from graphrag_storage import StorageConfig
 from infrastructure.database.models import EmbeddingConfig as ORMEmbeddingConfig
 from infrastructure.database.models import (
     GraphRag,
@@ -14,6 +20,7 @@ from infrastructure.database.models import (
     GraphRagIndexConfig,
     LLMConfig,
 )
+from infrastructure.graphrag.reporting import PROPAGATE_ONLY_REPORTING
 from infrastructure.graphrag.storages import create_storage_config
 from infrastructure.graphrag.vector_stores import create_vector_store_config
 
@@ -42,6 +49,40 @@ def _model_config_awaiting_request(provider: str, model: str) -> ModelConfig:
         model=model,
         api_key=_SET_BY_REQUEST,
         api_base=_SET_BY_REQUEST,
+    )
+
+
+_ANSWER_CHANGING_MODEL_FIELDS = {"model_provider", "model", "api_base", "api_version"}
+
+
+def graph_rag_cache_config(rag_id: int, models: list[tuple[ModelConfig, dict]]) -> CacheConfig:
+    """Return the cache config for a RAG whose models run with these settings.
+
+    `models` pairs each model with the settings (call arguments) a request runs it with.
+    graphrag keys a cached answer on the prompt alone, never on the model or its call
+    arguments, so the models and their settings name the cache: changing either starts a
+    new one. Cached answers are reused until one changes (graphrag never expires them).
+    `call_args` is left out: once a request is applied it also holds the connection secrets
+    and headers, and a key rotation must keep the cache.
+    """
+    settings_json = json.dumps(
+        [
+            {
+                **model.model_dump(mode="json", include=_ANSWER_CHANGING_MODEL_FIELDS),
+                "settings": settings,
+            }
+            for model, settings in models
+        ],
+        sort_keys=True,
+    )
+    # Per RAG, not per slot, so a reindex into the other slot reuses the answers. graphrag's
+    # defaults put the cache and the logs under the working directory, which is read-only.
+    return CacheConfig(
+        type="json",
+        storage=create_storage_config(
+            rag_id=rag_id,
+            subdir="cache/" + hashlib.sha256(settings_json.encode()).hexdigest()[:16],
+        ),
     )
 
 
@@ -75,22 +116,35 @@ def graph_rag_orm_to_rag(orm_rag: GraphRag) -> Rag:
     )
 
 
+def graph_rag_output_storage_config(rag_id: int, *, slot: SlotEnum) -> StorageConfig:
+    """Return the storage config where `slot`'s index run writes its output tables."""
+    return create_storage_config(rag_id=rag_id, subdir=f"{slot}/output")
+
+
 def graph_rag_orm_to_graphrag_config(orm_rag: GraphRag, *, slot: SlotEnum) -> GraphRagConfig:
     llm_config: LLMConfig = orm_rag.llm
     embedding_config: ORMEmbeddingConfig = orm_rag.embedder
     index_config: GraphRagIndexConfig = orm_rag.index_config
+    completion_model = _build_completion_model(llm_config)
+    embedding_model = _build_embedding_model(embedding_config)
     return GraphRagConfig(
-        completion_models={"default_completion_model": _build_completion_model(llm_config)},
-        embedding_models={"default_embedding_model": _build_embedding_model(embedding_config)},
+        completion_models={"default_completion_model": completion_model},
+        embedding_models={"default_embedding_model": embedding_model},
         chunking=_build_chunking_config(index_config),
         extract_graph=_build_extract_graph_config(index_config),
         cluster_graph=_build_cluster_graph_config(index_config),
         input_storage=create_storage_config(rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/input"),
-        output_storage=create_storage_config(rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/output"),
+        output_storage=graph_rag_output_storage_config(orm_rag.graph_rag_id, slot=slot),
         update_output_storage=create_storage_config(
             rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/update_output"
         ),
         vector_store=create_vector_store_config(rag_id=orm_rag.graph_rag_id, subdir=slot),
+        # Named by the models alone until a request brings their settings and endpoints:
+        # the orchestrators name it again after `apply_request_access`.
+        cache=graph_rag_cache_config(
+            orm_rag.graph_rag_id, [(completion_model, {}), (embedding_model, {})]
+        ),
+        reporting=ReportingConfig(type=PROPAGATE_ONLY_REPORTING),
     )
 
 

@@ -17,7 +17,15 @@ from pydantic import BaseModel, ValidationError
 from rbac.models import Organization
 from src.shared.models import CodeResultData
 from storage_credentials.models import TemporaryStorageAccount
-from tables.models import PythonCode, PythonCodeResult, PythonCodeTool
+from tables.models import (
+    Graph,
+    GraphStorageFile,
+    PythonCode,
+    PythonCodeResult,
+    PythonCodeTool,
+    PythonNode,
+    StorageFile,
+)
 from tables.services.redis_pubsub import RedisPubSub
 from tables.services.run_python_code_service import RunPythonCodeService
 
@@ -88,14 +96,19 @@ def _temporary_accounts(execution_id):
 
 @pytest.mark.django_db
 def test_storage_tool_run_gets_credentials_scoped_to_its_own_folder(
-    gateway, org, user, python_code, sandbox_intake
+    gateway, org, user, python_code, sandbox_intake, settings
 ):
     PythonCodeTool.objects.create(python_code=python_code, org_id=org.id, use_storage=True)
 
     execution_id, submitted = _run(python_code, org, user, sandbox_intake)
 
     (task,) = submitted
-    assert task["storage_credentials"] == {"access_key": "temp-access-1", "secret_key": "temp-secret-1"}
+    assert task["storage_credentials"] == {
+        "access_key": "temp-access-1",
+        "secret_key": "temp-secret-1",
+        "shared_actions": [],
+        "own_paths": [f"test-runs/{execution_id}/"],
+    }
     assert list(_temporary_accounts(execution_id).values_list("access_key", flat=True)) == ["temp-access-1"]
     (minted,) = gateway.created
     assert f"/org_{org.id}/test-runs/{execution_id}/*" in json.dumps(minted["policy"])
@@ -197,6 +210,26 @@ def test_an_unreachable_sandbox_revokes_the_credentials_it_minted(
     assert result.stderr == "Could not reach the code sandbox for this run."
     assert gateway.deleted == ["temp-access-1"]
     assert not _temporary_accounts(execution_id).exists()
+
+
+@pytest.mark.django_db
+def test_a_refused_storage_scope_tells_the_user_why_in_stderr(
+    gateway, org, user, python_code, sandbox_intake
+):
+    graph = Graph.objects.create(name="wildcard-folder-flow", org=org)
+    folder = StorageFile.objects.create(org=org, name="*", path="*/", item_type="folder")
+    GraphStorageFile.objects.create(graph=graph, storage_file=folder)
+    node = PythonNode.objects.create(graph=graph, python_code=python_code, storage_grant_read=True)
+
+    execution_id = RunPythonCodeService().run_target(
+        target_type="python_node", target_id=node.pk, variables={}, organization_id=org.id, user=user
+    )
+
+    result = PythonCodeResult.objects.get(execution_id=execution_id)
+    assert result.status == PythonCodeResult.Status.ERROR
+    assert "Rename '*/'" in result.stderr
+    assert sandbox_intake.bodies == []
+    assert gateway.created == []
 
 
 def _deliver_result(execution_id: str) -> None:

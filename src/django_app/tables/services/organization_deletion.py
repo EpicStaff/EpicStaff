@@ -12,8 +12,10 @@ from tables.models.knowledge_models.collection_models import (
     SourceCollection,
 )
 from tables.models.realtime_models import ConversationRecording, RealtimeAgentChat
+from tables.models.transfer_job_models import TransferJob
 from tables.services.storage_service import get_storage_backend
 from tables.services.storage_service.manager import StorageManager
+from tables.services.transfer_jobs.archive_store import TransferArchiveStore
 
 STORAGE_FILES = "storage_files"
 
@@ -100,6 +102,8 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         "tables.PythonCodeToolConfig",
         "tables.PythonCodeResult",
         "tables.StorageFile",
+        # Short-lived export/import jobs; their archives are purged after commit.
+        "tables.TransferJob",
         # The swept ConversationRecording DB row -- its audio file is already
         # counted via the "storage_files" external artifact.
         "tables.ConversationRecording",
@@ -341,8 +345,15 @@ class TablesOrganizationDeletion:
         targets["template_agents"].delete()
         targets["realtime_agent_chats"].delete()
 
+        # Transfer archives live outside the org's prefix, keyed by job: the job
+        # rows go with the cascade, so their ids are captured now.
+        transfer_job_ids = list(
+            TransferJob.objects.filter(org=organization).values_list("id", flat=True)
+        )
+
         def clean_up_external_artifacts() -> None:
             self._clean_up_external_artifacts(storage_prefix, recording_files)
+            self._clean_up_transfer_archives(transfer_job_ids)
 
         return clean_up_external_artifacts
 
@@ -362,6 +373,21 @@ class TablesOrganizationDeletion:
                 _linked_only_to(organization, "openai_config", "elevenlabs_config", "gemini_config")
             ),
         }
+
+    @staticmethod
+    def _clean_up_transfer_archives(transfer_job_ids: list) -> None:
+        """Delete the archives of the organization's transfer jobs, logging rather than raising."""
+        store = TransferArchiveStore()
+        for job_id in transfer_job_ids:
+            try:
+                store.delete_job(job_id)
+            except Exception as exc:
+                logger.error(
+                    "TablesOrganizationDeletion transfer_archive_cleanup_failed job_id={job_id} "
+                    "error={error}",
+                    job_id=job_id,
+                    error=exc,
+                )
 
     @staticmethod
     def _clean_up_external_artifacts(storage_prefix: str, recording_files: list[str]) -> None:

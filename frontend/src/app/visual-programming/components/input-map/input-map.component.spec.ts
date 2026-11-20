@@ -566,3 +566,161 @@ describe('InputMapComponent copy', () => {
         expect(placeholders()).toEqual(['Name', 'all fields']);
     });
 });
+
+// A panel's form with a stored Input List: a named row without a path, a filled row and an empty row.
+@Component({
+    imports: [ReactiveFormsModule, InputMapComponent],
+    template: `<form [formGroup]="form"><app-input-map /></form>`,
+})
+class StoredRowsHostComponent {
+    readonly form: FormGroup = new FormBuilder().group({
+        input_map: new FormArray([
+            new FormBuilder().group({ key: ['topic'], value: [''] }),
+            new FormBuilder().group({ key: ['user'], value: ['variables.user'] }),
+            new FormBuilder().group({ key: [''], value: ['variables.'] }),
+        ]),
+        test_input: new FormArray([]),
+    });
+}
+
+describe('InputMapComponent message on a named row without a variable path', () => {
+    const MESSAGE = 'Choose a variable path, or remove this row.';
+    let fixture: ComponentFixture<StoredRowsHostComponent>;
+
+    const rows = (): HTMLElement[] => Array.from(fixture.nativeElement.querySelectorAll('.input-map-item'));
+    const messages = (): (string | null)[] =>
+        rows().map((row) => row.querySelector('.missing-path-message')?.textContent?.trim() ?? null);
+    const keyInput = (row: number): HTMLInputElement => rows()[row].querySelector('input[formControlName="key"]')!;
+    const valueInput = (row: number): HTMLInputElement => rows()[row].querySelector('.value-field-wrapper input')!;
+    const type = (input: HTMLInputElement, text: string): void => {
+        input.value = text;
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    };
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowService, useValue: { startNodeInitialState: signal({}) } },
+                { provide: PythonCodeRunService, useValue: {} },
+                { provide: GraphSessionService, useValue: {} },
+                { provide: RunSessionSSEService, useValue: { status: signal(null) } },
+                { provide: SidePanelService, useValue: {} },
+            ],
+        });
+        TestBed.overrideComponent(InputMapComponent, {
+            set: { imports: [ReactiveFormsModule], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+        });
+        fixture = TestBed.createComponent(StoredRowsHostComponent);
+        fixture.detectChanges();
+    });
+
+    afterEach(() => fixture.destroy());
+
+    it('shows under a stored named row without a path, read with its path field, and under no other row', () => {
+        expect(messages()).toEqual([MESSAGE, null, null]);
+        const message = rows()[0].querySelector('.missing-path-message')!;
+        expect(valueInput(0).getAttribute('aria-describedby')).toBe(message.id);
+        expect(valueInput(1).hasAttribute('aria-describedby')).toBe(false);
+    });
+
+    it('goes once a path is typed, and stays gone when the path is cleared back to all fields', () => {
+        type(valueInput(0), '.topic');
+        expect(messages()[0]).toBeNull();
+
+        type(valueInput(0), '');
+        expect(messages()[0]).toBeNull();
+    });
+
+    it('stays while the author renames the row, and goes when the name is cleared', () => {
+        type(keyInput(0), 'subject');
+        expect(messages()[0]).toBe(MESSAGE);
+
+        type(keyInput(0), '');
+        expect(messages()[0]).toBeNull();
+    });
+
+    it('shows no message on a named row with the variables. path, which maps all fields', () => {
+        type(keyInput(2), 'company');
+
+        expect(messages()).toEqual([MESSAGE, null, null]);
+    });
+});
+
+// A panel's form whose Input List has a single named row, with the Test mode switch shown.
+@Component({
+    imports: [ReactiveFormsModule, InputMapComponent],
+    template: `<form [formGroup]="form">
+        <app-input-map
+            [showTestMode]="true"
+            [testMode]="testMode()"
+            (testModeChange)="testMode.set($event)"
+        />
+    </form>`,
+})
+class SingleRowHostComponent {
+    readonly testMode = signal(false);
+    readonly form: FormGroup = new FormBuilder().group({
+        input_map: inputListOf([['user', 'variables.user']]),
+        test_input: new FormArray([]),
+    });
+}
+
+describe('InputMapComponent removing the only row', () => {
+    let fixture: ComponentFixture<SingleRowHostComponent>;
+
+    const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
+    const rows = (): HTMLElement[] => Array.from(host().querySelectorAll('.input-map-item'));
+    const addButton = (): HTMLButtonElement => host().querySelector<HTMLButtonElement>('.add-pair-btn')!;
+    const inputMap = (): InputMapComponent =>
+        fixture.debugElement.query(By.directive(InputMapComponent)).componentInstance as InputMapComponent;
+    const removeOnlyRow = (): void => {
+        host().querySelector<HTMLButtonElement>('button[aria-label="Remove input"]')!.click();
+        fixture.detectChanges();
+    };
+    const toggleTestMode = (on: boolean): void => {
+        inputMap().onTestModeToggle(on);
+        fixture.detectChanges();
+    };
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                { provide: FlowService, useValue: { startNodeInitialState: signal({}) } },
+                { provide: PythonCodeRunService, useValue: {} },
+                { provide: GraphSessionService, useValue: {} },
+                { provide: RunSessionSSEService, useValue: { status: signal(null) } },
+                { provide: SidePanelService, useValue: { triggerAutosave: () => undefined } },
+            ],
+        });
+        // Test mode binds tooltips to its buttons; only the rows matter here.
+        TestBed.overrideComponent(InputMapComponent, {
+            set: { imports: [ReactiveFormsModule], schemas: [NO_ERRORS_SCHEMA] },
+        });
+        fixture = TestBed.createComponent(SingleRowHostComponent);
+        fixture.detectChanges();
+    });
+
+    afterEach(() => fixture.destroy());
+
+    it('leaves no rows, only Add Input, which takes the focus', async () => {
+        removeOnlyRow();
+        await fixture.whenStable();
+
+        expect(rows()).toEqual([]);
+        expect(fixture.componentInstance.form.value.input_map).toEqual([]);
+        expect(document.activeElement).toBe(addButton());
+    });
+
+    // Leaving Test mode removes the Input List row whose test row is gone.
+    it('brings no row back when Test mode is left, the row removed in Test mode', () => {
+        toggleTestMode(true);
+        removeOnlyRow();
+
+        toggleTestMode(false);
+
+        expect(rows()).toEqual([]);
+        expect(fixture.componentInstance.form.value.input_map).toEqual([]);
+        expect(addButton()).not.toBeNull();
+    });
+});

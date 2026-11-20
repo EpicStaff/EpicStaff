@@ -22,7 +22,7 @@
 <br />
   <a href="https://www.epicstaff.ai">Website</a> •
   <a href="https://github.com/EpicStaff/EpicStaff/wiki">Wiki</a> •
-  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-quick-setup">Quick Setup</a> •
   <a href="#key-features">Key Features</a> •
   <a href="https://github.com/EpicStaff/EpicStaff/issues">Report Bug</a>
 </div>
@@ -66,7 +66,7 @@ EpicStaff is built to close that gap: a platform where operations teams own the 
 
 ---
 
-## ⚡ Quick Start
+## ⚡ Quick Setup
 
 Deploy self-hosted AI agents wherever you want to run them. EpicStaff runs in any environment you control — your laptop, your servers, your cloud.
 Follow these two steps to get the application running.
@@ -136,7 +136,7 @@ EpicStaff can be configured and launched using alternative setup methods:
 
 ## 🔄 Updating
 
-An install from the Quick Start runs images it built from source. To move it to a newer
+An install from the Quick Setup runs images it built from source. To move it to a newer
 release, check out that release and run its published images instead. Pick the version from
 the [Releases](https://github.com/EpicStaff/EpicStaff/releases) page:
 
@@ -219,7 +219,7 @@ git clone -b vX.Y.Z https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff
 cp /path/to/downloaded/docker-compose.yaml src/docker-compose.yaml
 ```
 
-Prepare a production `src/.env` with `envtool.py --setup` as described under the Quick Start, create the volumes and network as in the Quick Start block for your OS, and finish with `docker compose up` instead of `docker compose up --build`. Nothing is built: each `ghcr.io/epicstaff/*` service is pulled by the digest pinned in the file, and the image checks above apply to exactly what runs.
+Prepare a production `src/.env` with `envtool.py --setup` as described under the Quick Setup, create the volumes and network as in the Quick Setup block for your OS, and finish with `docker compose up` instead of `docker compose up --build`. Nothing is built: each `ghcr.io/epicstaff/*` service is pulled by the digest pinned in the file, and the image checks above apply to exactly what runs.
 
 Each container keeps at most 50 MB of logs (five rotated 10 MB files, set by `x-bounded-logs` in `src/docker-compose.yaml`); older lines are dropped. To keep a longer history, raise `max-size` / `max-file` there or ship the logs to your own collector.
 

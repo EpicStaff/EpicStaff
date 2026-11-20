@@ -72,8 +72,9 @@ class BinResource:
         global_names: The name is unique across all organizations (a webhook
             path), so a restore checks every org's live rows.
         before_restore: Frees unique values other than the name that a restore
-            would collide on (a Twilio phone number). Called with the root and
-            its batch, inside the restore's transaction.
+            would collide on, or must not bring back unproven (a Twilio phone
+            number). Called with the root and its batch, inside the restore's
+            transaction.
         after_restore: Reconnects what the restore can't bring back by itself
             (a webhook trigger's Telegram bots). Called with the restored root
             once the restore has committed.
@@ -118,7 +119,7 @@ def bin_resources() -> dict[RecycleBinSource, BinResource]:
     from tables.models.python_models import PythonCodeTool
     from tables.services.recycle_bin.purge_hooks import delete_flow_sessions
     from tables.services.recycle_bin.restore_hooks import (
-        drop_taken_phone_number,
+        drop_unavailable_phone_number,
         register_telegram_bots,
     )
 
@@ -147,7 +148,7 @@ def bin_resources() -> dict[RecycleBinSource, BinResource]:
             "org",
             ResourceType.VOICE,
             unique_names=False,
-            before_restore=drop_taken_phone_number,
+            before_restore=drop_unavailable_phone_number,
         ),
         RecycleBinSource.WEBHOOK_TRIGGER: BinResource(
             WebhookTrigger,

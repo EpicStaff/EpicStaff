@@ -14,6 +14,7 @@ from tables.services.llm_clients import get_llm_client
 from tables.services.secrets import secret_resolver, secret_service
 from tables.services.secrets.exceptions import SecretMarkerNotReferenceableError
 
+from tests.sealed_values import open_sealed_headers
 from tests.ai_models_tests.factories import (
     make_connection_field,
     make_model,
@@ -353,7 +354,11 @@ def test_a_marker_in_a_declared_secret_field_still_resolves(default_org):
     payload = ConverterService().convert_llm_config_data(config)
     resolved = secret_resolver.resolve_payload(payload=payload, org_id=default_org.id)
 
-    assert resolved.connection == {"aws_access_key_id": "AKIA-acme", "api_base": "https://bedrock.example"}
+    assert "AKIA-acme" not in str(resolved.connection)
+    assert open_sealed_headers(resolved.connection) == {
+        "aws_access_key_id": "AKIA-acme",
+        "api_base": "https://bedrock.example",
+    }
 
 
 @pytest.mark.parametrize(
@@ -374,7 +379,8 @@ def test_aws_iam_credentials_reach_the_litellm_call(default_org, provider, model
     payload = ConverterService().convert_llm_config_data(config)
     resolved = secret_resolver.resolve_payload(payload=payload, org_id=default_org.id)
 
-    assert resolved.connection_kwargs() == {
+    assert "wJalr-acme" not in str(resolved.connection_kwargs())
+    assert open_sealed_headers(resolved.connection_kwargs()) == {
         "aws_access_key_id": "AKIA-acme",
         "aws_secret_access_key": "wJalr-acme",
         "aws_session_token": "FwoG-acme",

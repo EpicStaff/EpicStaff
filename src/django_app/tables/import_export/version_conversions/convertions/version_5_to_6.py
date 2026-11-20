@@ -48,7 +48,10 @@ _FOLDS = (
 @VersionConverter.register(from_version=5)
 def v5_to_v6(data: dict) -> dict:
     """
-    v5 -> v6, the fold the `ai_models` data migration does to stored configs:
+    v5 -> v6:
+    - An export can be a zip archive: `export.json` plus the files it names. A v5
+      file never carries a knowledge collection, so its entries need no change.
+    The fold the `ai_models` data migration does to stored configs:
     - LLM and embedding config setting columns move into `parameters`; null ones are left out.
     - Endpoint columns move into the config's `connection`: its model row's `base_url`,
       `api_version` and deployment, else the config's own `base_url` and `api_version`.

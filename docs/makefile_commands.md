@@ -74,6 +74,19 @@ Regenerate the lock for one service only.
 make uv-lock-crew
 ```
 
+### `make uv-lock-predefined`
+
+Regenerate `src/sandbox_new/predefined-requirements.txt`: the hash-pinned third-party
+dependencies of the shared packages every sandbox venv gets (`dotdict`,
+`epicstaff_secrets`, `epicstaff_common`, `epicstaff_storage`). The sandbox manager image
+downloads exactly these, so venvs are built without the network. Run after editing the
+`dependencies` of one of those packages; `make uv-lock` runs it too. A dependency missing
+from the file fails the `sandbox_new` image build.
+
+```bash
+make uv-lock-predefined
+```
+
 ---
 
 ## Local Django Development
@@ -140,9 +153,6 @@ make django-manage CMD=shell
 
 # Create a superuser
 make django-manage CMD=createsuperuser
-
-# Collect static files
-make django-manage CMD="collectstatic --noinput"
 ```
 
 ### `make django-model-catalog` / `make django-model-catalog-check`
@@ -271,7 +281,7 @@ the machine it runs on, hyperthreads counted: 1-3 small, 4-7 medium, 8 or more l
 server itself, or pick the size under advanced settings.
 
 With an existing `src/.env`, `--setup` offers to change features (it rewrites only
-`CHAT_ENABLED`, `AUDIT_TRAIL_ENABLED`, `PLUGINS_ENABLED` and `COMPOSE_PROFILES`; turning
+`CHAT_ENABLED`, `SESSION_AUDIT_TRAIL_ENABLED`, `USER_AUDIT_TRAIL_ENABLED`, `PLUGINS_ENABLED` and `COMPOSE_PROFILES`; turning
 plugins on also fills unset plugin secrets, asks for `PLUGINS_BASE_DOMAIN` unless it is
 valid, and locally moves EpicStaff to `http://epicstaff.localhost`, the host plugins need), tune performance and limits
 (server size, the longest a code node may run, the log level of every service), add missing settings, or start

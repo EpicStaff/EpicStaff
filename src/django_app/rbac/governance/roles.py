@@ -8,6 +8,8 @@ from collections import defaultdict
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from rest_framework.exceptions import PermissionDenied
+from src.shared.models import UserAction
+from user_audit.recorder import record_user_action
 
 from rbac.access.asserts import assert_within_ceiling
 from rbac.access.effective import EffectivePermissions
@@ -75,6 +77,7 @@ class RoleManagementService(CrossOrgResourceService):
             except IntegrityError as exc:
                 raise RoleNameConflictError() from exc
             self._write_permission_rows(role=role, permissions=permissions)
+            record_user_action(action=UserAction.CREATED, org_id=org_id, target=role)
         return self._build_role_response(role_id=role.id)
 
     def update_role(self, actor, role_id, changes) -> Role:
@@ -107,6 +110,7 @@ class RoleManagementService(CrossOrgResourceService):
             if "permissions" in changes:
                 role.permissions_set.all().delete()
                 self._write_permission_rows(role=role, permissions=changes["permissions"])
+            record_user_action(action=UserAction.UPDATED, org_id=role.org_id, target=role)
         return self._build_role_response(role_id=role.id)
 
     def preview_delete(self, actor, role_id) -> dict:
@@ -153,6 +157,8 @@ class RoleManagementService(CrossOrgResourceService):
             reassigned = OrganizationUser.objects.filter(role_id=role.id).update(
                 role_id=viewer_role.id
             )
+            # Recorded before the delete: a deleted instance has no pk left to describe.
+            record_user_action(action=UserAction.DELETED, org_id=role.org_id, target=role)
             role.delete()
         return reassigned
 

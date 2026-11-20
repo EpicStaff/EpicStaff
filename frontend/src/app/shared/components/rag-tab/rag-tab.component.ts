@@ -1,4 +1,5 @@
 import { NgTemplateOutlet } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
     ChangeDetectorRef,
@@ -44,6 +45,7 @@ import { SliderWithStepperComponent } from '../slider-with-stepper/slider-with-s
 import { SuggestedValueComponent } from '../suggested-value/suggested-value.component';
 import { TextareaComponent } from '../textarea/textarea.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
+import { SuggestErrorState, suggestErrorState } from './rag-suggest-error.util';
 
 type SuggestKey = GraphSearchMethod | 'naive';
 
@@ -214,7 +216,7 @@ export class RagTabComponent implements OnInit {
     private lastNonPromptSnapshot: string | null = null;
 
     tokenLimitsLoading = signal<boolean>(false);
-    tokenLimitsError = signal<string | null>(null);
+    tokenLimitsError = signal<SuggestErrorState | null>(null);
     effectiveLlmContextWindow = signal<number | null>(null);
     // safe_token_budget is default_budget from the backend — it depends on
     // whatever max_context_tokens anchor was last submitted for THAT specific
@@ -1019,10 +1021,10 @@ export class RagTabComponent implements OnInit {
                     this.recommendedSearchMethod.set(response.recommended_search_method);
                 }
             },
-            error: () => {
+            error: (error: HttpErrorResponse) => {
                 if (token !== this.fetchToken) return;
                 this.tokenLimitsLoading.set(false);
-                this.tokenLimitsError.set("Couldn't load token limits. Check your connection and try again.");
+                this.tokenLimitsError.set(suggestErrorState(error));
                 this.lastRecommendationKey = null;
             },
         });

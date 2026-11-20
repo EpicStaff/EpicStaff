@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from rbac.models import Organization
 from src.shared.models import LLMConfigData, LLMData
 from tables.services.secrets import SecretResolutionError, secret_resolver, secret_service
+from tests.sealed_values import open_sealed, open_sealed_headers
 
 pytestmark = pytest.mark.django_db
 
@@ -45,8 +46,12 @@ def test_markers_in_a_connection_field_resolve_in_the_run_payload(acme):
 
     resolved = secret_resolver.resolve_payload(payload=payload, org_id=acme.id)
 
-    assert resolved.llm.connection == {"aws_access_key_id": "AKIA-acme", "aws_region_name": "eu-west-1"}
-    assert resolved.llm.embedder_connection == {"aws_access_key_id": "AKIA-acme"}
+    assert "AKIA-acme" not in resolved.model_dump_json()
+    assert open_sealed_headers(resolved.llm.connection) == {
+        "aws_access_key_id": "AKIA-acme",
+        "aws_region_name": "eu-west-1",
+    }
+    assert open_sealed_headers(resolved.llm.embedder_connection) == {"aws_access_key_id": "AKIA-acme"}
     # The payload the caller holds keeps its markers.
     assert payload.llm.connection["aws_access_key_id"] == "epicstaff_secret(AWS_KEY)"
 
@@ -88,10 +93,12 @@ def test_a_resolved_llm_config_hands_litellm_its_connection_and_main_secret(acme
 
     resolved = secret_resolver.resolve_payload(payload=payload, org_id=acme.id)
 
-    assert resolved.config.connection_kwargs() == {
+    # The main secret is sealed whole, the connection's markers inside their syntax.
+    arguments = resolved.config.connection_kwargs()
+    assert open_sealed(arguments.pop("aws_secret_access_key")) == "aws-secret-value"
+    assert open_sealed_headers(arguments) == {
         "aws_access_key_id": "AKIA-acme",
         "aws_region_name": "eu-west-1",
-        "aws_secret_access_key": "aws-secret-value",
     }
     assert payload.config.connection_kwargs() == {
         "aws_access_key_id": "epicstaff_secret(AWS_KEY)",

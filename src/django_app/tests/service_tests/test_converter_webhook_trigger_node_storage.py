@@ -30,16 +30,16 @@ def graph(org):
     return graph
 
 
-def _webhook_trigger_node(graph, *, use_storage):
+def _webhook_trigger_node(graph):
     python_code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
     return WebhookTriggerNode.objects.create(
-        graph=graph, node_name="webhook_entry", python_code=python_code, use_storage=use_storage
+        graph=graph, node_name="webhook_entry", python_code=python_code
     )
 
 
 @pytest.mark.django_db
 def test_real_run_appends_the_session_folder(converter, org, graph):
-    node = _webhook_trigger_node(graph, use_storage=True)
+    node = _webhook_trigger_node(graph)
 
     data = converter.convert_webhook_trigger_node_to_pydantic(
         node, graph_id=graph.pk, session_id=17
@@ -54,7 +54,7 @@ def test_real_run_appends_the_session_folder(converter, org, graph):
 
 @pytest.mark.django_db
 def test_run_without_session_appends_the_extra_folder(converter, org, graph):
-    node = _webhook_trigger_node(graph, use_storage=True)
+    node = _webhook_trigger_node(graph)
 
     data = converter.convert_webhook_trigger_node_to_pydantic(
         node, graph_id=graph.pk, extra_storage_paths=["test-runs/webhook_trigger_node-5/"]
@@ -69,25 +69,26 @@ def test_run_without_session_appends_the_extra_folder(converter, org, graph):
 
 
 @pytest.mark.django_db
-def test_node_without_storage_gets_no_storage_scope(converter, org, graph):
-    node = _webhook_trigger_node(graph, use_storage=False)
-
-    data = converter.convert_webhook_trigger_node_to_pydantic(
-        node,
-        graph_id=graph.pk,
-        session_id=17,
-        extra_storage_paths=["test-runs/webhook_trigger_node-5/"],
+def test_node_with_no_box_ticked_still_gets_storage_scope(converter, org, graph):
+    node = _webhook_trigger_node(graph)
+    assert (node.storage_grant_read, node.storage_grant_write, node.storage_grant_delete) == (
+        False,
+        False,
+        False,
     )
 
-    assert data.python_code.use_storage is False
-    assert data.python_code.storage_allowed_paths is None
-    assert data.python_code.storage_org_prefix is None
-    assert data.python_code.org_id == org.pk
+    data = converter.convert_webhook_trigger_node_to_pydantic(
+        node, graph_id=graph.pk, session_id=17
+    )
+
+    assert data.python_code.use_storage is True
+    assert data.python_code.storage_allowed_paths == ["docs/input.csv", "sessions/17/"]
+    assert data.python_code.storage_org_prefix == f"org_{org.pk}"
 
 
 @pytest.mark.django_db
-def test_storage_node_without_graph_id_gets_no_storage_scope(converter, graph):
-    node = _webhook_trigger_node(graph, use_storage=True)
+def test_node_without_graph_id_gets_no_storage_scope(converter, graph):
+    node = _webhook_trigger_node(graph)
 
     data = converter.convert_webhook_trigger_node_to_pydantic(node, session_id=17)
 
@@ -99,7 +100,7 @@ def test_storage_node_without_graph_id_gets_no_storage_scope(converter, graph):
 
 @pytest.mark.django_db
 def test_session_graph_data_gives_the_node_its_session_folder(org, graph):
-    node = _webhook_trigger_node(graph, use_storage=True)
+    node = _webhook_trigger_node(graph)
     # _build_graph_data requires a resolvable entrypoint before it will return.
     start_node = StartNode.objects.create(graph=graph, variables={})
     Edge.objects.create(graph=graph, start_node_id=start_node.id, end_node_id=node.id)

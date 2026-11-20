@@ -1,0 +1,42 @@
+// The dots after "Bot is replying": the open conversation and the conversation list's row. They light up three, two,
+// one, two, and round again, a quarter each; the unlit ones stay faintly there, so the text never shifts. Without
+// motion all three stay lit. Include it on the element around the three spans; its keyframes come with it, as
+// Angular scopes keyframes to the component.
+@mixin dots {
+    @media (prefers-reduced-motion: no-preference) {
+        span:not(:first-child) {
+            animation: 1.6s step-end infinite;
+        }
+
+        span:nth-child(2) {
+            animation-name: replying-dot-second;
+        }
+
+        span:nth-child(3) {
+            animation-name: replying-dot-third;
+        }
+    }
+
+    @at-root {
+        @keyframes replying-dot-second {
+            0% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.3;
+            }
+            75% {
+                opacity: 1;
+            }
+        }
+
+        @keyframes replying-dot-third {
+            0% {
+                opacity: 1;
+            }
+            25% {
+                opacity: 0.3;
+            }
+        }
+    }
+}

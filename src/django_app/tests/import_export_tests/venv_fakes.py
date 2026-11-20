@@ -5,10 +5,25 @@ sandbox is the external boundary these tests replace. Shared by every test that
 exports or imports an environment; the `sandbox` fixture in `conftest.py` patches it in.
 """
 
+import json
+
+import httpx
+from foundation.transport.http.errors import ClientValidationError
 from proxies.sandbox.models import SandboxVenvBinding
 
 # Both the strategy and the rollback reach the sandbox through the same service.
 SANDBOX_CLIENT = "proxies.sandbox.services.VenvService.client_class"
+
+
+def sandbox_refusal(detail: str) -> ClientValidationError:
+    """A 400 in the sandbox's error envelope, raised the way the transport raises it."""
+    body = json.dumps(
+        {
+            "type": "client_error",
+            "errors": [{"code": "value_error", "detail": detail, "attr": "libs.0"}],
+        }
+    )
+    return ClientValidationError(body, response=httpx.Response(400, text=body))
 
 
 class FakeSandbox:
@@ -18,6 +33,8 @@ class FakeSandbox:
     def __init__(self, venvs: dict | None = None):
         self.venvs = dict(venvs or {})
         self.removed: list[str] = []
+        # Venv name -> what the sandbox says when it refuses to create it.
+        self.refusals: dict[str, str] = {}
         self._next_id = 9000
 
     def __call__(self, *args, **kwargs):
@@ -30,17 +47,25 @@ class FakeSandbox:
         return False
 
     def create(self, data: dict) -> dict:
+        refusal = self.refusals.get(data["name"])
+        if refusal is not None:
+            raise sandbox_refusal(refusal)
         self._next_id += 1
         venv = {
             "id": self._next_id,
             "name": data["name"],
             "libs": data["libs"],
             "status": "declared",
+            "scope": data.get("scope"),
         }
         self.venvs[self._next_id] = venv
         return venv
 
     def retrieve(self, venv_id: str) -> dict:
+        return self.venvs[int(venv_id)]
+
+    def update(self, venv_id: str, data: dict) -> dict:
+        self.venvs[int(venv_id)].update(data)
         return self.venvs[int(venv_id)]
 
     def list(self, *, ids, search=None, order=None, limit=None, offset=None) -> dict:

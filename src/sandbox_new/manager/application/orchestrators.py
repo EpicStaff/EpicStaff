@@ -13,12 +13,13 @@ from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-import settings
+from foundation.cryptographer import AbstractCryptographer, CryptographerError
 from litestar.datastructures import UploadFile
 from loguru import logger
 from packaging.utils import InvalidWheelFilename, parse_wheel_filename
 from src.shared.bench_log import BENCH_LEVEL
 
+from manager import settings
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
 from manager.application.ports import (
@@ -38,6 +39,8 @@ from manager.domain.errors import (
     CustomLibraryNotFoundError,
     CustomLibraryNotPublishedError,
     CustomLibraryStillBuildingError,
+    DefaultVenvProtectedError,
+    SecretNotDecryptableError,
     UnsupportedUploadError,
     UVBuildError,
     VenvNotFoundError,
@@ -49,6 +52,7 @@ from manager.domain.errors import (
     WheelVersionTakenError,
 )
 from manager.domain.models import (
+    DEFAULT_VENV_NAME,
     SOURCE_ARCHIVE_SUFFIXES,
     WHEEL_SUFFIX,
     CustomLibrary,
@@ -116,25 +120,54 @@ class VenvCRUDOrchestrator:
             raise VenvNotFoundError(venv_id=id)
         return venv
 
-    async def create(self, name: str, libs: List[Library]) -> Venv:
-        venv = Venv(name=name, libs=libs)
+    async def create(self, name: str, libs: List[Library], scope: str | None = None) -> Venv:
+        venv = Venv(name=name, libs=libs, scope=scope)
         async with self.uow:
             venv = await self.uow.venv_repo.create(venv)
             await self.uow.commit()
         logger.info("Declared venv {} ({}) with {} libraries", venv.id, venv.name, len(venv.libs))
         return venv
 
-    async def update(self, id: int, name: str | None, libs: List[Library] | None) -> Venv:
+    async def create_default(self) -> Venv:
+        """Declare the shared fallback venv, with no libraries of its own."""
+        venv = Venv(name=DEFAULT_VENV_NAME, is_default=True)
+        async with self.uow:
+            venv = await self.uow.venv_repo.create(venv)
+            await self.uow.commit()
+        logger.info("Declared the default venv {}", venv.id)
+        return venv
+
+    async def update(
+        self,
+        id: int,
+        name: str | None,
+        libs: List[Library] | None,
+        scope: str | None = None,
+    ) -> Venv:
+        """Rename the venv, replace its libraries, move it to a scope, or any of these.
+
+        A new scope changes where its custom libraries are looked up, not what was
+        built, so it alone does not send the venv back to be built.
+
+        Raises:
+            VenvNotFoundError: No venv with this id.
+            DefaultVenvProtectedError: The venv is the shared default.
+        """
         async with self.uow:
             venv = await self.uow.venv_repo.retrieve(id=id)
             if venv is None:
                 raise VenvNotFoundError(venv_id=id)
+            if venv.is_default:
+                raise DefaultVenvProtectedError(venv_id=id)
 
             if name is not None and venv.name != name:
                 venv.rename(name)
 
             if libs is not None:
                 venv.set_libs(libs)
+
+            if scope is not None:
+                venv.set_scope(scope)
 
             venv = await self.uow.venv_repo.update(venv)
             await self.uow.commit()
@@ -143,10 +176,18 @@ class VenvCRUDOrchestrator:
         return venv
 
     async def remove(self, id: int):
+        """Delete the venv.
+
+        Raises:
+            VenvNotFoundError: No venv with this id.
+            DefaultVenvProtectedError: The venv is the shared default.
+        """
         async with self.uow:
             venv = await self.uow.venv_repo.retrieve(id=id)
             if venv is None:
                 raise VenvNotFoundError(venv_id=id)
+            if venv.is_default:
+                raise DefaultVenvProtectedError(venv_id=id)
             await self.uow.venv_repo.remove(venv)
             await self.uow.commit()
         logger.info("Removed venv {}", id)
@@ -218,7 +259,7 @@ class VenvBuildOrchestrator:
 
         async with self.uow:
             libraries = await self.uow.custom_library_repo.list_by_names(
-                [entry.name for entry in entries]
+                venv.scope, [entry.name for entry in entries]
             )
             wheels = await self.uow.wheel_repo.list_by_library_ids(
                 [library.id for library in libraries]
@@ -286,7 +327,11 @@ class VenvBuildOrchestrator:
         # Mandatory shared packages (dotdict, epicstaff_secrets, ...) go into every venv
         # -- freshly built or reused -- so existing venvs also pick them up on the next
         # build. They are intentionally kept out of venv.libs.
-        await self.uv_provider.install_local(venv_path, *settings.PREDEFINED_VENV_PACKAGES)
+        await self.uv_provider.install_local(
+            venv_path,
+            *settings.PREDEFINED_VENV_PACKAGES,
+            wheelhouse=settings.PREDEFINED_WHEELHOUSE_DIR,
+        )
 
         venv.apply_resolved_versions(resolved_versions)
         return venv
@@ -326,7 +371,12 @@ class JobOrchestrator:
     worker queue is stamped with the moment it was queued; the worker fails it instead
     of running it once it has waited longer than the queue timeout.
 
+    Secrets arrive sealed for transport and are opened here, before the job exists, so
+    everything downstream (holding, the worker queue, the code wrapper and the output
+    scrubber) only ever sees plaintext.
+
     Args:
+        cryptographer: Opens the transport-sealed secret values.
         clock: Monotonic clock for hold deadlines, which never leave this process.
         wall_clock: Clock for `Job.queued_at`, which crosses to the worker and so must
             mean the same thing in another process.
@@ -341,6 +391,7 @@ class JobOrchestrator:
         registry: ExecutionRegistry,
         intake_gate: IntakeGate,
         *,
+        cryptographer: AbstractCryptographer,
         hold_timeout: float,
         clock: Callable[[], float] = time.monotonic,
         wall_clock: Callable[[], float] = time.time,
@@ -351,6 +402,7 @@ class JobOrchestrator:
         self.failure_sink = failure_sink
         self.registry = registry
         self.intake_gate = intake_gate
+        self.cryptographer = cryptographer
         self.hold_timeout = hold_timeout
         self.clock = clock
         self.wall_clock = wall_clock
@@ -388,6 +440,8 @@ class JobOrchestrator:
             VenvNotFoundError: `venv_id` names no venv, or there is no default venv.
             SandboxOverloadedError: The sandbox cannot take the job now, or the first
                 submission of this id is still being admitted.
+            SecretNotDecryptableError: A secret value is not a transport ciphertext
+                this sandbox can open.
         """
         self.intake_gate.check_not_in_progress(execution_id)
 
@@ -395,6 +449,8 @@ class JobOrchestrator:
         if known_status is not None:
             logger.info("Execution {} is already known; not enqueued again", execution_id)
             return known_status
+
+        secrets = self._open_secrets(execution_id, secrets)
 
         # Reserved before the first await, so a concurrent re-POST sees the id as known.
         self.registry.reserve(execution_id)
@@ -498,6 +554,22 @@ class JobOrchestrator:
             logger.error("Failed to dispatch job {}: {}", job.execution_id, type(error).__name__)
             await self._fail(job, _DISPATCH_FAILED_MESSAGE, not_run_reason="dispatch_failed")
 
+    def _open_secrets(self, execution_id: str, secrets: dict[str, Any]) -> dict[str, str]:
+        opened: dict[str, str] = {}
+        for name, sealed in secrets.items():
+            try:
+                # The wire contract allows any JSON value; only a string can be a ciphertext.
+                if not isinstance(sealed, str):
+                    raise CryptographerError
+                opened[name] = self.cryptographer.decrypt(sealed)
+            except CryptographerError:
+                # The name only: the value, sealed or not, stays out of logs and answers.
+                logger.warning(
+                    "Execution {} rejected: secret {} could not be decrypted", execution_id, name
+                )
+                raise SecretNotDecryptableError(name=name) from None
+        return opened
+
     async def _fail(self, job: Job, message: str, *, not_run_reason: NotRunReason) -> None:
         await self.failure_sink.fail(
             job.execution_id,
@@ -559,26 +631,26 @@ class CustomLibraryCRUDOrchestrator:
             obj = await self._retrieve(id)
             return obj, await self.uow.wheel_repo.list(id)
 
-    async def create(self, name: str | None) -> CustomLibrary:
+    async def create(self, name: str | None, scope: str | None = None) -> CustomLibrary:
         """Create a library, named or not.
 
         Raises:
-            CustomLibraryNameTakenError: Some library already has this name.
+            CustomLibraryNameTakenError: Some library of this scope already has this name.
         """
-        obj = CustomLibrary(name=name)
+        obj = CustomLibrary(name=name, scope=scope)
         async with self.uow:
             # Against `obj.name`, not `name`: the domain canonicalizes on construction,
             # and it is the canonical spelling that has to be unique. An unnamed library
             # never clashes with anything -- the partial unique index does not even
             # look at a null name -- so there is nothing to check for one.
             if obj.name is not None:
-                await self._reject_taken_name(obj.name)
+                await self._reject_taken_name(obj.scope, obj.name)
             obj = await self.uow.custom_library_repo.create(obj)
             await self.uow.commit()
         logger.info("Created custom library {} ({})", obj.id, obj.name or "unnamed")
         return obj
 
-    async def create_for(self, filename: str) -> CustomLibrary:
+    async def create_for(self, filename: str, scope: str | None = None) -> CustomLibrary:
         """Create a library for an upload: a wheel names it at once, no name ever
         typed; a source archive's distribution is not known until it builds, so it
         starts unnamed and a later build names it.
@@ -589,12 +661,30 @@ class CustomLibraryCRUDOrchestrator:
             CustomLibraryNameTakenError: A wheel's name is already another library's.
         """
         if not filename.lower().endswith(WHEEL_SUFFIX):
-            return await self.create(None)
+            return await self.create(None, scope)
         try:
             name, _, _, _ = parse_wheel_filename(filename)
         except InvalidWheelFilename as error:
             raise UnsupportedUploadError(str(error)) from error
-        return await self.create(str(name))
+        return await self.create(str(name), scope)
+
+    async def update(self, id: int, scope: str) -> CustomLibrary:
+        """Move the library to a scope.
+
+        Raises:
+            CustomLibraryNotFoundError: No library with this id.
+            CustomLibraryNameTakenError: Another library of that scope has this name.
+        """
+        async with self.uow:
+            obj = await self._retrieve(id)
+            if obj.scope != scope:
+                if obj.name is not None:
+                    await self._reject_taken_name(scope, obj.name)
+                obj.set_scope(scope)
+                obj = await self.uow.custom_library_repo.update(obj)
+                await self.uow.commit()
+                logger.info("Moved custom library {} to scope {}", id, scope)
+        return obj
 
     async def remove(self, id: int):
         """Mark the library and every wheel of it deleted.
@@ -608,7 +698,7 @@ class CustomLibraryCRUDOrchestrator:
 
             # Refused rather than cascaded: a venv naming a library that is gone would
             # fail on its next build, and its author never asked for that.
-            users = await self.uow.venv_repo.list_using_custom_library(obj.name)
+            users = await self.uow.venv_repo.list_using_custom_library(obj.scope, obj.name)
             if users:
                 raise CustomLibraryInUseError(custom_library_id=id, venv_count=len(users))
 
@@ -632,16 +722,17 @@ class CustomLibraryCRUDOrchestrator:
             raise CustomLibraryNotFoundError(custom_library_id=id)
         return obj
 
-    async def _reject_taken_name(self, name: str):
-        """Refuse a canonical name another library already answers to.
+    async def _reject_taken_name(self, scope: str | None, name: str):
+        """Refuse a canonical name another library of this scope already answers to.
 
         The partial unique index is what actually enforces this; the lookup is here so
         that the ordinary case is a 409 naming the library rather than a failed write.
 
         Raises:
-            CustomLibraryNameTakenError: Some other library already has this name.
+            CustomLibraryNameTakenError: Some other library of this scope already has
+                this name.
         """
-        if await self.uow.custom_library_repo.retrieve_by_name(name) is not None:
+        if await self.uow.custom_library_repo.retrieve_by_name(scope, name) is not None:
             raise CustomLibraryNameTakenError(name=name)
 
 
@@ -802,7 +893,10 @@ class WheelCRUDOrchestrator:
         """
         if library.name is None:
             library.assign_name(name)
-            if await self.uow.custom_library_repo.retrieve_by_name(library.name) is not None:
+            if (
+                await self.uow.custom_library_repo.retrieve_by_name(library.scope, library.name)
+                is not None
+            ):
                 raise CustomLibraryNameTakenError(name=library.name)
             await self.uow.custom_library_repo.update(library)
             return
@@ -876,7 +970,9 @@ class WheelCRUDOrchestrator:
         library = await self._retrieve_library(library_id)
         users = [
             venv
-            for venv in await self.uow.venv_repo.list_using_custom_library(library.name)
+            for venv in await self.uow.venv_repo.list_using_custom_library(
+                library.scope, library.name
+            )
             if venv.pins_custom_library(library.name, obj.version)
         ]
         if users:
@@ -985,7 +1081,9 @@ class WheelBuildOrchestrator:
                 if library.name is None:
                     library.assign_name(name)
                     if (
-                        await self.uow.custom_library_repo.retrieve_by_name(library.name)
+                        await self.uow.custom_library_repo.retrieve_by_name(
+                            library.scope, library.name
+                        )
                         is not None
                     ):
                         raise CustomLibraryNameTakenError(name=library.name)

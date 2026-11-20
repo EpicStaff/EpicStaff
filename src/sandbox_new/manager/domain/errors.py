@@ -7,9 +7,11 @@ __all__ = [
     "CustomLibraryNotFoundError",
     "CustomLibraryNotPublishedError",
     "CustomLibraryStillBuildingError",
+    "DefaultVenvProtectedError",
     "ExecutionNotFoundError",
     "NotFoundError",
     "SandboxOverloadedError",
+    "SecretNotDecryptableError",
     "UVBuildError",
     "UVDependencyResolutionError",
     "UVPackageNotFoundError",
@@ -92,6 +94,14 @@ class CustomLibraryNameTakenError(ConflictError):
     default_message: str = "CustomLibrary(name='{name}') already exists."
 
 
+class DefaultVenvProtectedError(ConflictError):
+    """The shared fallback venv is built by the sandbox itself and changed by no one."""
+
+    default_message: str = (
+        "Venv(id={venv_id}) is the default venv and cannot be changed or removed."
+    )
+
+
 class WheelVersionTakenError(ConflictError):
     default_message: str = (
         "CustomLibrary(id={custom_library_id}) already has version '{version}'. "
@@ -136,6 +146,15 @@ class WheelNameMismatchError(BadRequestError):
         "CustomLibrary(id={custom_library_id}) is '{library_name}', but this is a "
         "distribution named '{wheel_name}'."
     )
+
+
+class SecretNotDecryptableError(BadRequestError):
+    """A submitted secret is not a value this sandbox's transport key opens.
+
+    Names the secret only: its value, sealed or not, never goes into the message.
+    """
+
+    default_message: str = "Secret '{name}' could not be decrypted; the job was not run."
 
 
 class UVBuildError(BaseError):

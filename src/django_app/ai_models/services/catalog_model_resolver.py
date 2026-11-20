@@ -2,7 +2,9 @@
 
 from django.db.models import Q
 from src.shared.litellm_model_names import litellm_lookup_name
+from src.shared.models import UserAction
 from tables.models.user import User
+from user_audit.recorder import record_user_action
 
 from ai_models.domain.specs import ModelKind
 from ai_models.models import EmbeddingModel, LLMModel, Provider
@@ -138,12 +140,14 @@ class CatalogModelResolver:
             return model
         provider_field = _PROVIDER_FIELDS[type(model)]
         # get_or_create: a concurrent save may have added the same row since `resolve`.
-        saved, _ = type(model).objects.get_or_create(
+        saved, created = type(model).objects.get_or_create(
             org_id=model.org_id,
             name=model.name,
             **{provider_field: getattr(model, provider_field)},
             defaults={"is_custom": True, "predefined": False, "created_by": model.created_by},
         )
+        if created:
+            record_user_action(action=UserAction.CREATED, org_id=saved.org_id, target=saved)
         return saved
 
     def _is_same_model(

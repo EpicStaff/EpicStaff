@@ -92,6 +92,7 @@ export * from './status-badge/status-badge.component';
 export * from './stepper/step-config.interface';
 export * from './stepper/stepper.component';
 export * from './stop-button/stop-button.component';
+export * from './string-list/string-list.component';
 export * from './suggested-value/suggested-value.component';
 export * from './tab-button/tab-button.component';
 export * from './table';

@@ -16,6 +16,17 @@ REDIS_PORT = env.int("REDIS_PORT")
 REDIS_USER = env.str("REDIS_USER")
 REDIS_PASSWORD = env.str("REDIS_PASSWORD")
 
+# Opens the secret values django_app seals for transport; crew needs them where it calls
+# an LLM itself (Classification Decision Table prompts).
+SECRETS_TRANSPORT_KEY = env.secret("SECRETS_TRANSPORT_KEY")
+# Decrypt-only keys kept after SECRETS_TRANSPORT_KEY was replaced; `none` or empty means none.
+SECRETS_TRANSPORT_PREVIOUS_KEYS = [
+    key for key in env.list("SECRETS_TRANSPORT_PREVIOUS_KEYS") or [] if key
+]
+# HKDF info the transport key is derived with: a wire contract with django_app, the producer.
+# Read from the environment, which compose shares with every service.
+SECRETS_TRANSPORT_HKDF_INFO = env.str("SECRETS_TRANSPORT_HKDF_INFO")
+
 LLM_HEADERS = env.str("CREW_LLM_HEADERS")
 REMEMBERED_OUTPUTS_TTL = env.time("CREW_REMEMBERED_OUTPUTS_TTL")
 
@@ -48,8 +59,10 @@ GRAPH_MESSAGE_STREAM_MAXLEN = env.int(
 DEFAULT_RAG_SEARCH_TIMEOUT = env.time("DEFAULT_RAG_SEARCH_TIMEOUT")
 NAIVE_RAG_SEARCH_TIMEOUT = env.time("NAIVE_RAG_SEARCH_TIMEOUT")
 GRAPH_RAG_SEARCH_TIMEOUT = env.time("GRAPH_RAG_SEARCH_TIMEOUT")
+KNOWLEDGE_HOST = env.str("KNOWLEDGE_HOST")
+KNOWLEDGE_PORT = env.int("KNOWLEDGE_PORT")
 
-AUDIT_TRAIL_ENABLED = env.bool("AUDIT_TRAIL_ENABLED")
+SESSION_AUDIT_TRAIL_ENABLED = env.bool("SESSION_AUDIT_TRAIL_ENABLED")
 AUDITOR_URL = env.str("AUDITOR_URL")
 AUDITOR_INGEST_API_KEY = env.str("AUDITOR_INGEST_API_KEY")
 

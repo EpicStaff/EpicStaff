@@ -82,8 +82,6 @@ const OPTION_LABELS: Record<string, Record<string, string>> = {
     context_length_exceeded_behavior: { error: 'Fail the request', truncate: 'Shorten the answer' },
 };
 const MODEL_SEARCH_DEBOUNCE_MS = 300;
-const DUPLICATE_EMBEDDING_NAME_MESSAGE =
-    'An embedding configuration with this name already exists. Please choose a different name.';
 
 /**
  * Creates or edits an LLM or embedding config: provider, then model, then the model's Connection and Settings, both
@@ -344,10 +342,6 @@ export class ModelConfigDialogComponent implements OnInit {
         const value = this.form.getRawValue();
         const customName = value.custom_name.trim();
         this.errorMessage.set(null);
-        if (!this.isLlm && this.isDuplicateEmbeddingName(customName)) {
-            this.toast.error(DUPLICATE_EMBEDDING_NAME_MESSAGE);
-            return;
-        }
 
         const reference = this.modelReference(value.provider!, value.model_name!);
         const fields = {
@@ -559,13 +553,6 @@ export class ModelConfigDialogComponent implements OnInit {
                 return deepEqual(before[name], after[name]);
             })
         );
-    }
-
-    private isDuplicateEmbeddingName(name: string): boolean {
-        const normalized = name.toLowerCase();
-        return this.embeddingConfigStorage
-            .configs()
-            .some((config) => config.custom_name.toLowerCase() === normalized && config.id !== this.configId);
     }
 }
 

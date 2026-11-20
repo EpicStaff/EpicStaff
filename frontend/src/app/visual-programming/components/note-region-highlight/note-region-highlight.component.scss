@@ -21,7 +21,7 @@
 .region-handle {
     position: absolute;
     pointer-events: all;
-    background: var(--region-color, #d9d9d9);
+    background-color: var(--region-color, #d9d9d9);
     border-radius: 2px;
     z-index: 1;
 

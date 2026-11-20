@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, forwardRef, input, model, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
 
@@ -25,6 +25,10 @@ export class CheckboxComponent implements ControlValueAccessor {
     ariaLabel = input<string | null>(null);
 
     changed = output<boolean>();
+
+    /** Disabled by the form control the box is bound to (`control.disable()`). */
+    private readonly disabledByForm = signal(false);
+    protected readonly isDisabled = computed(() => this.disabled() || this.disabledByForm());
 
     private onChange: (value: boolean) => void = () => {};
     private onTouched = () => {};
@@ -54,6 +58,6 @@ export class CheckboxComponent implements ControlValueAccessor {
     }
 
     setDisabledState(isDisabled: boolean): void {
-        void isDisabled;
+        this.disabledByForm.set(isDisabled);
     }
 }

@@ -2,8 +2,8 @@ from django.db.models import Q
 from rest_framework.exceptions import NotFound
 from rest_framework.permissions import IsAuthenticated
 
-from rbac.access.gates import IsSuperadmin
-from rbac.access.org_context import OrgContextService
+from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
+from rbac.access.org_context import OrgContextService, cache_active_org_id
 from rbac.authorship import resolve_author
 from rbac.exceptions import BuiltInModelImmutableError
 
@@ -23,8 +23,9 @@ class OrgScopedResolverMixin:
 
     def get_active_org_id(self) -> int:
         if not hasattr(self.request, "_rbac_active_org_id"):
-            self.request._rbac_active_org_id = self._org_context.resolve(
-                request=self.request, view_kwargs=self.kwargs
+            cache_active_org_id(
+                self.request,
+                self._org_context.resolve(request=self.request, view_kwargs=self.kwargs),
             )
         return self.request._rbac_active_org_id
 
@@ -189,19 +190,22 @@ class OrgScopedServiceViewSetMixin(OrgScopedResolverMixin):
 
 
 class SuperadminWriteMixin:
-    """Global-readable, superadmin-writable resources (registry / catalog /
-    defaults).
+    """Global-readable resources writable only from a superadmin session
+    (registry / catalog).
 
-    Reads (safe actions) require only IsAuthenticated; writes
-    (create/update/partial_update/destroy + any custom action listed in
-    `superadmin_write_actions`) additionally require IsSuperadmin. Does NOT
-    org-scope — these rows are global. Pairs with the project default
-    permission_classes = [IsAuthenticated].
+    Reads (safe actions) require only IsAuthenticated, so API keys and plugin
+    service accounts may read. Writes (create/update/partial_update/destroy +
+    any custom action listed in `superadmin_write_actions`) are session-only
+    (JWT) and require IsSuperadmin: a global row reaches every organization,
+    so neither the system key nor a superadmin's own org-bound key may change
+    it. DenyApiKeyAuth runs before IsSuperadmin so a key gets the "use a
+    session" message rather than a superadmin 403. Does NOT org-scope — these
+    rows are global.
     """
 
     superadmin_write_actions = frozenset({"create", "update", "partial_update", "destroy"})
 
     def get_permissions(self):
         if getattr(self, "action", None) in self.superadmin_write_actions:
-            return [IsAuthenticated(), IsSuperadmin()]
+            return [IsAuthenticated(), DenyApiKeyAuth(), IsSuperadmin()]
         return [IsAuthenticated()]

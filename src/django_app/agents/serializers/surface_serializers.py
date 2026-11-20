@@ -54,6 +54,7 @@ from tables.models.python_models import PythonCodeTool
 from tables.validators.finite_number_validator import validate_finite_number
 from tables.validators.search_config_validator import validate_proportion_sum
 
+from agents.models.agent_models import SurfacePlace
 from agents.models.surface_models import (
     StorageAccess,
     Surface,
@@ -554,3 +555,30 @@ class SurfaceCombineRequestSerializer(serializers.Serializer):
             raise serializers.ValidationError("Duplicate surface ids are not allowed.")
 
         return value
+
+
+class SurfaceUsageAgentSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    place = serializers.ChoiceField(choices=SurfacePlace.choices)
+
+
+class SurfaceUsageNodeSerializer(serializers.Serializer):
+    id = serializers.IntegerField(help_text="Primary key of the task or agent node.")
+    node_name = serializers.CharField()
+    node_type = serializers.ChoiceField(choices=["task", "agent"])
+    agent_id = serializers.IntegerField(allow_null=True)
+    agent_name = serializers.CharField(allow_null=True)
+
+
+class SurfaceUsageFlowSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    nodes = SurfaceUsageNodeSerializer(many=True)
+
+
+class SurfaceUsageSerializer(serializers.Serializer):
+    agents = SurfaceUsageAgentSerializer(many=True)
+    flows = SurfaceUsageFlowSerializer(many=True)
+    hidden_agent_count = serializers.IntegerField()
+    hidden_flow_count = serializers.IntegerField()

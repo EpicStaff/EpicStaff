@@ -1,0 +1,83 @@
+@if (label()) {
+    <app-tooltip
+        [tooltipText]="tooltipText()"
+        [label]="label()"
+    />
+}
+
+<div class="string-list">
+    <div
+        class="string-list__rows"
+        role="group"
+        [attr.aria-label]="label() || null"
+        [attr.aria-describedby]="isOverLimit() && maxItemsText() ? limitErrorId : null"
+    >
+        @for (row of rows(); track row.id; let index = $index) {
+            @let error = shownRowErrors()[index];
+            <div class="string-list__row">
+                <input
+                    #rowInput
+                    class="string-list__input"
+                    type="text"
+                    autocomplete="off"
+                    [class.string-list__input--error]="error"
+                    [placeholder]="placeholder()"
+                    [attr.aria-label]="rowAriaLabel(index)"
+                    [attr.aria-invalid]="error ? true : null"
+                    [attr.aria-describedby]="error ? rowErrorId(row.id) : null"
+                    [value]="row.value"
+                    [disabled]="isDisabled()"
+                    (input)="updateRow(row.id, rowInput.value)"
+                    (beforeinput)="onBeforeInput($event, row.id, rowInput)"
+                    (paste)="onPaste($event, row.id, rowInput)"
+                    (keydown.enter)="onEnter($event, row.id)"
+                    (focus)="onFocus(row.id)"
+                    (blur)="onBlur(row.id)"
+                />
+                <button
+                    type="button"
+                    class="string-list__remove-btn"
+                    matTooltip="Remove"
+                    matTooltipPosition="above"
+                    [attr.aria-label]="removeAriaLabel(index)"
+                    [disabled]="isDisabled()"
+                    (click)="removeRow(row.id)"
+                >
+                    <i class="ti ti-x"></i>
+                </button>
+            </div>
+            @if (error) {
+                <div
+                    class="string-list__error"
+                    [id]="rowErrorId(row.id)"
+                >
+                    {{ error }}
+                </div>
+            }
+        }
+    </div>
+    @if (isOverLimit() && maxItemsText()) {
+        <div
+            class="string-list__error"
+            [id]="limitErrorId"
+        >
+            {{ maxItemsText() }}
+        </div>
+    }
+    <!-- A disabled button gets no pointer events: the wrapper carries the reason. -->
+    <span
+        class="string-list__add-host"
+        [matTooltip]="maxItemsText()"
+        [matTooltipDisabled]="!isAtLimit() || isDisabled()"
+    >
+        <button
+            #addButton
+            type="button"
+            class="string-list__add-btn"
+            [disabled]="isDisabled() || isAtLimit()"
+            (click)="addRow()"
+        >
+            {{ addButtonText() }}
+        </button>
+    </span>
+</div>

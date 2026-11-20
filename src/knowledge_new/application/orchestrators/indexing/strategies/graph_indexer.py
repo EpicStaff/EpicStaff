@@ -3,6 +3,7 @@ from dataclasses import asdict
 import pandas
 from application.commands import RunIndex
 from application.orchestrators.indexing.base import AbstractIndexOrchestrator
+from application.sealed_secrets import open_sealed_secrets
 from common.utils import utcnow
 from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
 from domain.errors import (
@@ -18,6 +19,7 @@ from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
 from graphrag_storage import create_storage
 from infrastructure.database.mappers.embedding_arguments import embedding_call_arguments
+from infrastructure.database.mappers.graph import graph_rag_cache_config
 from infrastructure.graphrag.model_access import (
     apply_request_access,
     completion_call_arguments,
@@ -49,22 +51,29 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             else:
                 is_update_run = True
 
+        secrets = open_sealed_secrets(command, self.cryptographer)
         config = await self._get_config_under_uow(rag.id, target_slot)
+        embedding_model = config.embedding_models["default_embedding_model"]
+        completion_model = config.completion_models["default_completion_model"]
+        embedding_arguments = embedding_call_arguments(command.embedding_parameters)
+        completion_arguments = completion_call_arguments(completion_model, command.llm_parameters)
         apply_request_access(
-            config.embedding_models["default_embedding_model"],
-            api_key=command.embedding_api_key,
-            extra_headers=command.embedding_extra_headers,
-            connection=command.embedding_connection,
-            call_arguments=embedding_call_arguments(command.embedding_parameters),
+            embedding_model,
+            api_key=secrets.embedding_api_key,
+            extra_headers=secrets.embedding_extra_headers,
+            connection=secrets.embedding_connection,
+            call_arguments=embedding_arguments,
         )
         apply_request_access(
-            config.completion_models["default_completion_model"],
-            api_key=command.llm_api_key,
-            extra_headers=command.llm_extra_headers,
-            connection=command.llm_connection,
-            call_arguments=completion_call_arguments(
-                config.completion_models["default_completion_model"], command.llm_parameters
-            ),
+            completion_model,
+            api_key=secrets.llm_api_key,
+            extra_headers=secrets.llm_extra_headers,
+            connection=secrets.llm_connection,
+            call_arguments=completion_arguments,
+        )
+        config.cache = graph_rag_cache_config(
+            rag.id,
+            [(completion_model, completion_arguments), (embedding_model, embedding_arguments)],
         )
 
         rag.mark_as_processing(command.document_ids)

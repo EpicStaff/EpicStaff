@@ -140,8 +140,10 @@ def check_system_one_config_write(actor: SecretActor | None, instance, data: dic
 def check_twilio_channel_write(actor: SecretActor | None, instance, data: dict) -> None:
     """Gate a change of a TwilioChannel's auth-token secret.
 
-    The channel has no destination field: the stored token is only used to verify
-    the signature of Twilio's inbound requests, never sent anywhere.
+    The channel has no destination field: the stored token verifies the signature of
+    Twilio's inbound requests and is sent only to Twilio's API (webhook setup and the
+    phone-number ownership check, also run when another channel claims its number or
+    when it is restored), whose host is a constant.
     """
     _check_secret_reference(actor, instance, data, attribute="auth_token_secret")
 

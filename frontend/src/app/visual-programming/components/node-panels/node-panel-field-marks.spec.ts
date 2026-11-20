@@ -151,12 +151,18 @@ interface FieldCase {
 
 const NAME_CHANGE = fieldChange('node_name', 'Old name', 'New name');
 const OUTPUT_PATH_CHANGE = fieldChange('output_variable_path', 'variables.old', null);
+const STORAGE_GRANTS_CHANGE = fieldChange(
+    'storage_grants',
+    { read: true, write: true, delete: false },
+    { read: true, write: true, delete: true }
+);
 
 const FIELD_CASES: FieldCase[] = [
     ...[FILE_EXTRACTOR, AUDIO, SUBFLOW, KNOWLEDGE].flatMap((panel): FieldCase[] => [
         { panel, change: NAME_CHANGE, marked: 'node_name', tooltip: '[Old] name' },
         { panel, change: OUTPUT_PATH_CHANGE, marked: 'output_variable_path', tooltip: '[variables.old]' },
     ]),
+    { panel: WEBHOOK, change: STORAGE_GRANTS_CHANGE, marked: 'storage_grants', tooltip: '[Read, Write]' },
     { panel: SUBFLOW, change: fieldChange('subgraph', 12, 99), marked: 'selectedFlowId', tooltip: '[Refunds]' },
     // A flow the list does not hold (deleted, or the flow itself) shows by id, as the missing-reference notes do.
     { panel: SUBFLOW, change: fieldChange('subgraph', 41, 99), marked: 'selectedFlowId', tooltip: '[flow #41]' },
@@ -172,12 +178,6 @@ const FIELD_CASES: FieldCase[] = [
         change: fieldChange('python_code.execution_timeout', 90, 120),
         marked: 'app-execution-timeout-field',
         tooltip: '[00:01:30]',
-    },
-    {
-        panel: WEBHOOK,
-        change: fieldChange('use_storage', true, false),
-        marked: 'app-node-storage-section',
-        tooltip: '[on]',
     },
     {
         panel: WEBHOOK,

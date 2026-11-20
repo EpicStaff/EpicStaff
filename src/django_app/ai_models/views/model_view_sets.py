@@ -160,11 +160,11 @@ class LLMConfigReadWriteViewSet(
 
 class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
     # No rbac_resource_type: Provider is a global catalog (no org column).
-    # SuperadminWriteMixin gates writes to superadmin (seeded via the
-    # upload_models command) and provides the permission classes:
-    # [IsAuthenticated()] for reads, [IsAuthenticated(), IsSuperadmin()]
-    # for writes. Reads are intentionally global-readable — the frontend
-    # lists providers here (LLMProvidersService.getProviders).
+    # SuperadminWriteMixin gates writes to a superadmin's session (rows are
+    # seeded via the upload_models command; no API key may write them) and
+    # provides the permission classes. Reads are intentionally
+    # global-readable — the frontend lists providers here
+    # (LLMProvidersService.getProviders).
     queryset = Provider.objects.all()
     serializer_class = ProviderSerializer
     filter_backends = [DjangoFilterBackend]

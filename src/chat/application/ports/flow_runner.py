@@ -13,6 +13,7 @@ class CallerCredentials:
     """The operator's own credentials, so Django applies that user's permissions and org scoping."""
 
     org_id: int
+    user_id: int
     bearer_token: str = field(repr=False)
 
 

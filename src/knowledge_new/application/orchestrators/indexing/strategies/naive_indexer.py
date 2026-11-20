@@ -3,6 +3,7 @@ from typing import cast
 from application.commands import RunIndex
 from application.orchestrators.indexing.base import AbstractIndexOrchestrator
 from application.ports import AbstractEmbedder
+from application.sealed_secrets import open_sealed_secrets
 from common.utils import utcnow
 from domain.enums import DocumentStatusEnum, IndexStatusEnum
 from domain.errors import (
@@ -27,7 +28,9 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
     async def on_execute(self, command: RunIndex) -> None:
         async with self.uow:
             rag = await self._get_rag_under_uow(command.rag_id)
-            embedder = await self._get_embedder_under_uow(rag.id, command)
+            # After the RAG is loaded, so a secret that fails to decrypt fails the RAG.
+            secrets = open_sealed_secrets(command, self.cryptographer)
+            embedder = await self._get_embedder_under_uow(rag.id, secrets)
             documents = await self._get_documents_under_uow(rag.id, command.document_ids)
 
         rag.mark_as_processing(command.document_ids)

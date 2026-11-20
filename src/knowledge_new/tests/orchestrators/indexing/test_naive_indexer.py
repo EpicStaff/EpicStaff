@@ -11,7 +11,12 @@ from domain.enums import (
     EmbedderProviderEnum,
     IndexStatusEnum,
 )
-from domain.errors import DocumentNotFoundError, EmbeddingConfigNotFoundError, RagNotFoundError
+from domain.errors import (
+    DocumentNotFoundError,
+    EmbeddingConfigNotFoundError,
+    RagNotFoundError,
+    SecretDecryptError,
+)
 from domain.models import (
     ChunkingConfig,
     Document,
@@ -22,6 +27,8 @@ from domain.models import (
 )
 from domain.usage import IndexingRunUsage
 from infrastructure.naive.embedders.strategies import litellm_embedder
+from loguru import logger
+from tests.orchestrators.conftest import CRYPTOGRAPHER, seal, sealed_marker
 
 VECTOR = [0.1, 0.2]
 DEFAULT_EMBEDDING_CONFIG = EmbeddingConfig(
@@ -146,7 +153,9 @@ def _broken_json_document(doc_id: int) -> Document:
         name="doc.json",
         content=b"{not valid",
         status=DocumentStatusEnum.NEW,
-        config=ChunkingConfig(chunk_strategy=ChunkStrategyEnum.JSON, chunk_size=50, chunk_overlap=0),
+        config=ChunkingConfig(
+            chunk_strategy=ChunkStrategyEnum.JSON, chunk_size=50, chunk_overlap=0
+        ),
     )
 
 
@@ -156,14 +165,16 @@ def _new_rag(**overrides) -> Rag:
     )
 
 
-async def _index(repo: FakeNaiveRagRepo, *document_ids: int, **request_fields):
+async def _index(repo: FakeNaiveRagRepo, *document_ids: int, **command_fields):
     request = RunIndex(
-        rag_id=1,
-        document_ids=frozenset(document_ids),
-        embedding_api_key="sk-test",
-        **request_fields,
+        **{
+            "rag_id": 1,
+            "document_ids": frozenset(document_ids),
+            "embedding_api_key": seal("sk-test"),
+            **command_fields,
+        }
     )
-    await NaiveIndexOrchestrator(FakeUoW(repo)).execute(request)
+    await NaiveIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(request)
 
 
 def _indexed(*texts: str) -> list[IndexedChunk]:
@@ -254,7 +265,8 @@ async def test_cancelled_run_marks_rag_cancelled_and_restores_the_document(
         ),
     )
 
-    await _index(repo, 7)
+    with pytest.raises(asyncio.CancelledError):
+        await _index(repo, 7)
 
     assert repo.rag_status_log == expected_rag_log
     assert repo.doc_status_log == expected_doc_log
@@ -313,9 +325,7 @@ async def test_one_failing_document_does_not_stop_the_others(embedding_api):
 async def test_unusable_rag_is_marked_failed_and_the_error_raised(
     embedding_api, embedding_config, documents, expected_error
 ):
-    repo = FakeNaiveRagRepo(
-        documents=documents, rag=_new_rag(), embedding_config=embedding_config
-    )
+    repo = FakeNaiveRagRepo(documents=documents, rag=_new_rag(), embedding_config=embedding_config)
 
     with pytest.raises(expected_error):
         await _index(repo, 7)
@@ -378,8 +388,15 @@ async def test_rag_status_accounts_for_documents_outside_the_run(
     [
         ([], {}, IndexStatusEnum.COMPLETED),
         (
-            [Document(id=1, name="old.txt", content=b"x", status=DocumentStatusEnum.OUTDATED,
-                      config=PARAGRAPH_CONFIG)],
+            [
+                Document(
+                    id=1,
+                    name="old.txt",
+                    content=b"x",
+                    status=DocumentStatusEnum.OUTDATED,
+                    config=PARAGRAPH_CONFIG,
+                )
+            ],
             {"doc_1": "source_changed"},
             IndexStatusEnum.OUTDATED,
         ),
@@ -425,6 +442,56 @@ async def test_request_settings_and_connection_reach_the_embedding_provider(
     assert request["dimensions"] == 256
 
 
+async def test_sealed_header_markers_reach_the_embedding_provider_decrypted(
+    embedding_api, monkeypatch
+):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
+
+    await _index(
+        repo,
+        7,
+        embedding_extra_headers={"Authorization": f"Bearer {sealed_marker('gateway-token')}"},
+    )
+
+    assert embedding_api.await_args.kwargs["extra_headers"] == {
+        "Authorization": "Bearer gateway-token"
+    }
+
+
+@pytest.mark.parametrize(
+    ("field", "command_fields"),
+    [
+        ("embedding_api_key", {"embedding_api_key": "sk-never-sealed"}),
+        (
+            "embedding_extra_headers",
+            {"embedding_extra_headers": {"X-Key": "epicstaff_secret(sk-never-sealed)"}},
+        ),
+    ],
+    ids=["api-key", "header-marker"],
+)
+async def test_secret_that_cannot_be_decrypted_fails_the_rag_without_its_value(
+    embedding_api, field, command_fields
+):
+    rag = _new_rag()
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=rag)
+    logged: list[str] = []
+    # diagnose=False as in the service's own sink, which keeps frame values out of tracebacks.
+    sink_id = logger.add(logged.append, level="DEBUG", diagnose=False)
+    try:
+        with pytest.raises(SecretDecryptError):
+            await _index(repo, 7, **command_fields)
+    finally:
+        logger.remove(sink_id)
+
+    assert embedding_api.await_count == 0
+    assert rag.status == IndexStatusEnum.FAILED
+    assert field in rag.error_message
+    assert "sk-never-sealed" not in rag.error_message
+    assert logged
+    assert "sk-never-sealed" not in "".join(logged)
+
+
 async def test_run_records_embedding_tokens_and_priced_cost(embedding_api, monkeypatch):
     embedding_api.return_value = _provider_response(prompt_tokens=10)
     monkeypatch.setattr(naive_indexer, "embedding_cost", lambda model, tokens: tokens * 1e-7)
@@ -452,7 +519,10 @@ async def test_run_records_null_cost_for_unpriced_embedding_model(embedding_api)
 
 
 async def test_run_records_tokens_consumed_before_a_chunk_fails(embedding_api):
-    embedding_api.side_effect = [_provider_response(prompt_tokens=10), RuntimeError("provider down")]
+    embedding_api.side_effect = [
+        _provider_response(prompt_tokens=10),
+        RuntimeError("provider down"),
+    ]
     repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
 
     await _index(repo, 7)
@@ -474,7 +544,8 @@ async def test_cancelled_run_records_tokens_consumed_so_far(embedding_api):
     embedding_api.side_effect = [_provider_response(prompt_tokens=10), asyncio.CancelledError()]
     repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
 
-    await _index(repo, 7)
+    with pytest.raises(asyncio.CancelledError):
+        await _index(repo, 7)
 
     (run,) = repo.usage_runs
     assert run.embedding_tokens == 10

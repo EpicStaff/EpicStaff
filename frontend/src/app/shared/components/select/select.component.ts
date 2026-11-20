@@ -300,7 +300,7 @@ export class SelectComponent implements ControlValueAccessor {
             this.overlayRef = undefined!;
         }
 
-        const panelWidth = Math.max(originElement.offsetWidth || 0, minWidth);
+        const triggerWidth = originElement.offsetWidth || 0;
 
         this.overlayRef = this.overlay.create({
             positionStrategy,
@@ -308,8 +308,8 @@ export class SelectComponent implements ControlValueAccessor {
             hasBackdrop: true,
             backdropClass: 'transparent-backdrop',
             panelClass: this.panelClass() || undefined,
-            minWidth: panelWidth,
-            width: panelWidth,
+            minWidth: triggerWidth,
+            maxWidth: Math.max(triggerWidth, minWidth),
         });
 
         this.overlayRef

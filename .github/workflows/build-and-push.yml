@@ -45,7 +45,7 @@ concurrency:
 jobs:
   resolve:
     name: Resolve ref/tag and generate matrix
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       ref: ${{ steps.r.outputs.ref }}
       tag: ${{ steps.r.outputs.tag }}
@@ -146,7 +146,7 @@ jobs:
     name: Build & push ${{ matrix.service }}
     needs: resolve
     if: ${{ contains(needs.resolve.outputs.matrix, '"service"') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -253,7 +253,7 @@ jobs:
   aggregate-digests:
     name: Aggregate image digests
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Download all digest artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0

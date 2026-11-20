@@ -16,11 +16,13 @@ from ai_models.domain.specs import ModelKind
 from ai_models.repository import CatalogRepository
 from ai_models.services.config_validation import ConfigValidationService
 from tables.services.quickstart_service import QuickstartService
+from tables.services.secrets import secret_service
 from tests.ai_models_tests.builtin_models import seed_builtin_models
 from tests.ai_models_tests.factories import make_runtime_catalog
 from tests.rbac_cross_org_fixtures import acme  # noqa: F401
 
 from tests.fixtures import *
+from tests.rbac_cross_org_fixtures import beta  # noqa: F401
 
 QUICKSTART_TAG = "quickstart:latest"
 
@@ -334,6 +336,66 @@ def test_post_quickstart_unique_name_on_second_run(
 
     assert response.status_code == status.HTTP_200_OK, response.content
     assert response.data["config_name"] == "quickstart_openai_1"
+
+
+@pytest.mark.django_db
+def test_post_quickstart_name_ignores_configs_of_another_org(
+    auth_client, quickstart_url, openai_provider_seeded, beta
+):
+    LLMConfig.objects.create(custom_name="quickstart_openai_5", org=beta)
+
+    response = auth_client.post(
+        quickstart_url, {"provider": "openai", "api_key": "sk-test"}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.data["config_name"] == "quickstart_openai"
+
+
+@pytest.mark.django_db
+def test_post_quickstart_skips_name_whose_secret_outlived_its_configs(
+    auth_client, quickstart_url, openai_provider_seeded, default_org
+):
+    secret_service.create(
+        text="sk-old", org_id=default_org.id, name="quickstart-openai-api-key"
+    )
+
+    response = auth_client.post(
+        quickstart_url, {"provider": "openai", "api_key": "sk-test"}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.data["config_name"] == "quickstart_openai_1"
+
+
+@pytest.mark.django_db
+def test_post_quickstart_ignores_overlong_numeric_suffix(
+    auth_client, quickstart_url, openai_provider_seeded, default_org
+):
+    LLMConfig.objects.create(custom_name="quickstart_openai_" + "9" * 120, org=default_org)
+
+    response = auth_client.post(
+        quickstart_url, {"provider": "openai", "api_key": "sk-test"}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert response.data["config_name"] == "quickstart_openai_1"
+
+
+@pytest.mark.django_db
+def test_post_quickstart_skips_a_generated_name_with_a_long_suffix(
+    auth_client, quickstart_url, openai_provider_seeded, default_org
+):
+    LLMConfig.objects.create(custom_name="quickstart_openai_999999999", org=default_org)
+    payload = {"provider": "openai", "api_key": "sk-test"}
+
+    first = auth_client.post(quickstart_url, payload, format="json")
+    second = auth_client.post(quickstart_url, payload, format="json")
+
+    assert first.status_code == status.HTTP_200_OK, first.content
+    assert second.status_code == status.HTTP_200_OK, second.content
+    assert first.data["config_name"] == "quickstart_openai_1000000000"
+    assert second.data["config_name"] == "quickstart_openai_1000000001"
 
 
 @pytest.mark.django_db

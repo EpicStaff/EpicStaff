@@ -11,14 +11,18 @@ from ai_models.models import (
 from ai_models.services.catalog_model_resolver import CatalogModelResolver
 from ai_models.services.config_validation import ConfigValidationService
 from django.db import transaction
+from django.forms.models import model_to_dict
 from loguru import logger
 from rbac.authorship import record_last_edits, resolve_author
+from src.shared.models import UserAction
 from src.shared.system_one.constants import OPENAI_DECISIONS_MODELS, OPENAI_PROVIDER
 from tables.models.llm_models import SystemOneConfig
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
 from tables.models.secret_models import Secret
 from tables.models.user import User
 from tables.services.secrets import secret_service
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
 from utils.singleton_meta import SingletonMeta
 
 QUICKSTART_UNEXPECTED_ERROR_MESSAGE = "Quickstart failed. Please try again or contact support."
@@ -82,6 +86,9 @@ class QuickstartService(metaclass=SingletonMeta):
         the bundle) or `secret` (reuse — nothing is created) is expected; the
         serializer enforces that. A `user` that is not a real user leaves the rows unauthored.
 
+        Records a `created` user action for every row the run created, in the request's
+        context; a reused Secret is not one of them. Outside a request nothing is recorded.
+
         A failure returns `{"success": False, "error": <message>, "unexpected": <bool>}`.
         A `QuickstartError` carries its own user-facing message (`unexpected` is False);
         any other exception is logged with its traceback and reported only as
@@ -94,7 +101,7 @@ class QuickstartService(metaclass=SingletonMeta):
                     f"Unsupported provider: {provider}. Supported providers: {supported}"
                 )
 
-            config_name = self._generate_unique_quickstart_config_name(provider)
+            config_name = self._generate_unique_quickstart_config_name(provider, org_id=org_id)
             author = resolve_author(user)
             with transaction.atomic():
                 # One Secret backs the whole bundle. Resolved before any config
@@ -148,6 +155,15 @@ class QuickstartService(metaclass=SingletonMeta):
                 record_last_edits(
                     [llm_config, embedding_config, *realtime_configs, *system_one_configs], user
                 )
+                created_secrets = [] if secret else [bundle_secret]
+                for created in [
+                    *created_secrets,
+                    llm_config,
+                    embedding_config,
+                    *realtime_configs,
+                    *system_one_configs,
+                ]:
+                    record_user_action(action=UserAction.CREATED, org_id=org_id, target=created)
 
             logger.success(f"Quickstart configuration: {config_name} created successfully!")
             return {
@@ -224,11 +240,15 @@ class QuickstartService(metaclass=SingletonMeta):
         """
         Applies the given quickstart config to the organization's DefaultModels row.
         Sets all relevant FKs based on what configs exist for that config_name.
+
+        Records an `updated` user action on the row when this changed it; an apply that
+        changed nothing records nothing, not even the request's fallback record.
         """
         llm = LLMConfig.objects.filter(custom_name=config_name, org_id=org_id).first()
         embedding = EmbeddingConfig.objects.filter(custom_name=config_name, org_id=org_id).first()
 
         dm = DefaultModels.load_for_org(org_id)
+        defaults_before = model_to_dict(dm)
         if llm:
             dm.agent_llm_config = llm
             dm.agent_fcm_llm_config = llm
@@ -236,7 +256,12 @@ class QuickstartService(metaclass=SingletonMeta):
             dm.memory_llm_config = llm
         if embedding:
             dm.memory_embedding_config = embedding
+        changed = model_to_dict(dm) != defaults_before
         dm.save()
+        if changed:
+            record_user_action(action=UserAction.UPDATED, org_id=org_id, target=dm)
+        else:
+            mark_request_handled()
         return dm
 
     def is_synced(self, last_config: dict, *, org_id: int) -> bool:
@@ -388,7 +413,7 @@ class QuickstartService(metaclass=SingletonMeta):
             created_by=author,
         )
 
-    def _generate_unique_quickstart_config_name(self, provider: str) -> str:
+    def _generate_unique_quickstart_config_name(self, provider: str, *, org_id: int) -> str:
         """
         Generate unique quickstart configuration name
 
@@ -397,15 +422,12 @@ class QuickstartService(metaclass=SingletonMeta):
         - If no configs exist: return quickstart_{provider}
         - If configs exist: return quickstart_{provider}_{next_number}
 
-        Args:
-            provider: Provider name
-
-        Returns:
-            str: Unique configuration name
+        Numbering is per org, like the configs' unique-name constraints, so another
+        org's configs never shift this org's numbers.
         """
         base_name = f"quickstart_{provider}"
 
-        existing_names = self._get_existing_config_names(base_name)
+        existing_names = self._get_taken_config_names(base_name, org_id=org_id)
 
         if not existing_names:
             return base_name
@@ -416,6 +438,9 @@ class QuickstartService(metaclass=SingletonMeta):
                 max_number = max(max_number, 0)
             elif name.startswith(f"{base_name}_"):
                 suffix = name[len(f"{base_name}_") :]
+                # A huge number would push the bundle Secret name past its max_length.
+                if len(suffix) > 9:
+                    continue
                 try:
                     number = int(suffix)
                     max_number = max(max_number, number)
@@ -423,25 +448,43 @@ class QuickstartService(metaclass=SingletonMeta):
                     # Skip non-numeric suffixes
                     continue
 
-        if max_number == 0 and base_name in existing_names:
-            return f"{base_name}_1"
-        else:
-            return f"{base_name}_{max_number + 1}"
+        # The max skips long suffixes, so max + 1 can be one of those names.
+        number = max_number + 1
+        while f"{base_name}_{number}" in existing_names:
+            number += 1
+        return f"{base_name}_{number}"
 
-    def _get_existing_config_names(self, base_name: str) -> set[str]:
-        """Get all existing configuration names that start with base_name"""
+    def _get_taken_config_names(self, base_name: str, *, org_id: int) -> set[str]:
+        """Return the org's names starting with base_name that a new bundle can't reuse.
+
+        Besides config names, this includes the bundle names of the org's active
+        quickstart Secrets: deleting a bundle's configs keeps its Secret, and
+        creating a Secret with the same name again would break its unique constraint.
+        """
         existing_names = set()
 
         config_models = [
             LLMConfig,
             EmbeddingConfig,
             SystemOneConfig,
+            OpenAIRealtimeConfig,
+            GeminiRealtimeConfig,
         ]
 
         for model in config_models:
-            names = model.objects.filter(custom_name__startswith=base_name).values_list(
-                "custom_name", flat=True
-            )
+            names = model.objects.filter(
+                org_id=org_id, custom_name__startswith=base_name
+            ).values_list("custom_name", flat=True)
             existing_names.update(names)
+
+        secret_suffix = self._bundle_secret_name(bundle_name="")
+        secret_names = Secret.objects.filter(
+            org_id=org_id,
+            name__startswith=base_name.replace("_", "-"),
+            name__endswith=secret_suffix,
+        ).values_list("name", flat=True)
+        existing_names.update(
+            name.removesuffix(secret_suffix).replace("-", "_") for name in secret_names
+        )
 
         return existing_names

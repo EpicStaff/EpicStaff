@@ -7,6 +7,7 @@ import { withPermission } from '../../../core/http/permission-context';
 import { ApiGetRequest } from '../../../core/models/api-request.model';
 import { ConfigService } from '../../../services/config';
 import { CombinedSurface, CreateSurfaceRequest, PartialUpdateSurfaceRequest, Surface } from '../models/surface.model';
+import { SurfaceUsage, SurfaceUsageDto, toSurfaceUsage } from '../models/surface-usage.model';
 
 @Injectable({ providedIn: 'root' })
 export class SurfacesApiService {
@@ -36,6 +37,12 @@ export class SurfacesApiService {
 
     getById(id: number): Observable<Surface> {
         return this.http.get<Surface>(`${this.baseUrl}${id}/`, { headers: this.httpHeaders });
+    }
+
+    getUsage(id: number): Observable<SurfaceUsage> {
+        return this.http
+            .get<SurfaceUsageDto>(`${this.baseUrl}${id}/usage/`, { headers: this.httpHeaders })
+            .pipe(map(toSurfaceUsage));
     }
 
     create(body: CreateSurfaceRequest): Observable<Surface> {

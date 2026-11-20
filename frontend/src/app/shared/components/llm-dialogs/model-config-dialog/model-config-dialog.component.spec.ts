@@ -702,5 +702,29 @@ describe('ModelConfigDialogComponent', () => {
                 })
             );
         });
+
+        it('shows a duplicate name from the server in the banner, not in a toast', () => {
+            const rendered = render({ kind: 'embedding', configId: 5 }, [PROD_KEY]);
+            answer(rendered, '/api/ai-models/providers/', [OPENAI], { kind: 'embedding' });
+            answer(rendered, '/api/embedding-configs/5/', STORED_EMBEDDING);
+            answer(rendered, '/api/ai-models/models/', [], { provider: 'openai' });
+            answer(rendered, '/api/ai-models/schemas/', EMBEDDING_SCHEMAS, { model: 'embed-large' });
+
+            saveButton(rendered.fixture).click();
+            rendered.http
+                .expectOne('/api/embedding-configs/5/')
+                .flush(
+                    {
+                        status_code: 400,
+                        code: 'invalid',
+                        message: 'custom_name: An embedding config with this name already exists.',
+                    },
+                    { status: 400, statusText: 'Bad Request' }
+                );
+            rendered.fixture.detectChanges();
+
+            expect(banner(rendered.fixture)).toBe('Custom name: An embedding config with this name already exists.');
+            expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
+        });
     });
 });

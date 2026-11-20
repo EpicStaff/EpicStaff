@@ -28,7 +28,7 @@ shared_suites := tools models audit dotdict epicstaff_storage communication
 shared_test_targets := $(addprefix shared-tests-,$(shared_suites))
 
 .PHONY: help \
-        uv-lock \
+        uv-lock uv-lock-predefined \
         uv-sync \
         django-makemigrations django-migrate django-manage django-tests \
         django-model-catalog django-model-catalog-check \
@@ -74,11 +74,18 @@ endif
 # rule below from ever matching it -- every uv-lock-<service> silently turns
 # into a no-op ("Nothing to be done"). None of these names correspond to real
 # files on disk, so they always rebuild anyway without needing .PHONY.
-uv-lock: $(uv_lock_targets)
+uv-lock: $(uv_lock_targets) uv-lock-predefined
 
 uv-lock-%:
 	@echo "--- Locking src/$* ---"
 	@uv lock --project src/$*
+
+# Pins, with hashes, the third-party dependencies of the shared packages every
+# sandbox venv gets; Dockerfile.manager downloads exactly these into the image.
+# Run from src/ so the command uv writes into the file's header can be rerun as is.
+uv-lock-predefined:
+	@echo "--- Locking src/sandbox_new/predefined-requirements.txt ---"
+	@cd src && uv pip compile --quiet --no-config --universal --python-version 3.12 --generate-hashes shared/dotdict/pyproject.toml shared/epicstaff_secrets/pyproject.toml shared/epicstaff_common/pyproject.toml shared/epicstaff_storage/pyproject.toml -o sandbox_new/predefined-requirements.txt
 
 # --no-install-project keeps this target in lockstep with the Docker builders.
 # The svc guard is a make function (not shell `test`) so it also works under

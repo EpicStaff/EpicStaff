@@ -2,6 +2,7 @@
 written, and the name routing that sends a file to it. The tar header bounds it
 relies on are covered by test_archive_readers."""
 
+import re
 import tarfile
 import zipfile
 from io import BytesIO
@@ -220,6 +221,19 @@ class TestInspectAccepts:
 def test_inspect_rejects(raw, filename, match):
     with pytest.raises(ValueError, match=match):
         _inspect(raw, filename)
+
+
+@pytest.mark.parametrize("pack", [zip_bytes, _tar], ids=["zip", "tar"])
+@pytest.mark.parametrize(
+    "member_name",
+    # each is stored as "...run.exe" once the name is normalized
+    ["run.exe/.", "run.exe\\.", "dir/run.exe/."],
+)
+def test_inspect_rejects_an_executable_whose_extension_appears_only_after_normalizing(
+    pack, member_name
+):
+    with pytest.raises(ValueError, match="contains executable files: " + re.escape(member_name)):
+        _inspect(pack({member_name: b"MZ"}))
 
 
 @pytest.mark.parametrize("member_type", [tarfile.FIFOTYPE, tarfile.CHRTYPE, tarfile.BLKTYPE, b"Z"])

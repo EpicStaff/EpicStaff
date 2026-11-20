@@ -36,6 +36,7 @@ class TablesConfig(AppConfig):
             mcp_tools,
             python_tools,
             session,
+            source_collection,
             surface,
             tags,
             venv,
@@ -61,8 +62,10 @@ class TablesConfig(AppConfig):
         )
         from tables.services.converter_service import ConverterService
         from tables.services.organization_deletion import TablesOrganizationDeletion
+        from tables.services.organization_run_admission import ActiveOrganizationRunCheck
         from tables.services.realtime_service import RealtimeService
         from tables.services.redis_service import RedisService
+        from tables.services.run_admission import register_run_admission_check
         from tables.services.run_python_code_service import RunPythonCodeService
         from tables.services.schedule_trigger_service import ScheduleTriggerService
         from tables.services.session_manager_service import SessionManagerService
@@ -92,6 +95,8 @@ class TablesConfig(AppConfig):
         ScheduleTriggerService(session_manager_service=session_manager_service)
 
         register_participant(TablesOrganizationDeletion())
+        # tables comes before plugins in INSTALLED_APPS, so this check runs before the plugin guard.
+        register_run_admission_check(ActiveOrganizationRunCheck())
         register_snapshot_scrubber(VersionSnapshotAuthorshipScrubber())
 
         # Register strategies for import/export entities
@@ -140,3 +145,4 @@ class TablesConfig(AppConfig):
         entity_registry.register(agent_node.AgentNodeStrategy())
         entity_registry.register(task_node.TaskNodeStrategy())
         entity_registry.register(knowledge_node.KnowledgeNodeStrategy())
+        entity_registry.register(source_collection.SourceCollectionStrategy())

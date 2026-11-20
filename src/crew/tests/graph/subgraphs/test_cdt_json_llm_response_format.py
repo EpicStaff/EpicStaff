@@ -26,6 +26,7 @@ from src.shared.models.graph_nodes import (
     ClassificationDecisionTableNodeData,
     PromptConfigData,
 )
+from tests.secrets_cryptographer import TEST_SECRETS_CRYPTOGRAPHER
 
 
 OUTPUT_SCHEMA = {
@@ -54,6 +55,7 @@ async def run_prompt(llm: LLMData, output_schema) -> dict:
         node_data=node_data,
         graph_builder=StateGraph(State),
         stop_event=StopEvent(),
+        secrets_cryptographer=TEST_SECRETS_CRYPTOGRAPHER,
         redis_service=MagicMock(aadd_graph_message=AsyncMock()),
     ).build()
     state = {
@@ -194,8 +196,14 @@ async def test_connection_arguments_and_the_main_secret_are_sent_to_the_provider
         provider="bedrock",
         config=LLMConfigData(
             model="anthropic.claude-v2",
-            api_key="bedrock-key",
-            connection={"aws_region_name": "eu-west-1", "api_base": "https://gateway.example"},
+            api_key=TEST_SECRETS_CRYPTOGRAPHER.encrypt("bedrock-key"),
+            connection={
+                "aws_region_name": "eu-west-1",
+                "api_base": "https://gateway.example",
+                "aws_secret_access_key": (
+                    f"epicstaff_secret({TEST_SECRETS_CRYPTOGRAPHER.encrypt('aws-secret')})"
+                ),
+            },
         ),
     )
 
@@ -203,9 +211,11 @@ async def test_connection_arguments_and_the_main_secret_are_sent_to_the_provider
 
     call_kwargs = mock_completion.call_args.kwargs
     assert call_kwargs["model"] == "bedrock/anthropic.claude-v2"
-    assert {key: call_kwargs.get(key) for key in ("aws_region_name", "api_base", "api_key")} == {
+    connection_keys = ("aws_region_name", "api_base", "aws_secret_access_key", "api_key")
+    assert {key: call_kwargs.get(key) for key in connection_keys} == {
         "aws_region_name": "eu-west-1",
         "api_base": "https://gateway.example",
+        "aws_secret_access_key": "aws-secret",
         "api_key": "bedrock-key",
     }
 

@@ -1,4 +1,5 @@
 import { SelectItem } from '@shared/components';
+import { SidebarWidthOptions } from '@shared/services';
 
 import { RagName, RagTypeLevel } from '../enums/rag';
 import { Rag, RagStatus, RagType } from '../models/base-rag.model';
@@ -16,6 +17,60 @@ export const MAX_DOCUMENT_SIZE = 20 * 1024 * 1024; // 20 MB
 /** Longest "Guidance for Agents" (collection description) the backend accepts — keep in sync with
  * COLLECTION_DESCRIPTION_MAX_LENGTH in src/django_app/tables/serializers/knowledge_serializers.py. */
 export const COLLECTION_DESCRIPTION_MAX_LENGTH = 2000;
+
+/** Longest search term the graph visualization and data-table endpoints accept; longer terms are rejected with 400. */
+export const GRAPH_SEARCH_MAX_LENGTH = 200;
+
+/** Pause after the last keystroke before a graph search (visualization or data table) hits the backend. */
+export const GRAPH_SEARCH_DEBOUNCE_MS = 300;
+
+/** Error code the backend sends with a 409 for a graph that has never been indexed. */
+export const GRAPH_NOT_INDEXED_ERROR_CODE = 'graph_not_indexed';
+
+/** Shown in place of graph data while the graph exists but has never been indexed. */
+export const GRAPH_NOT_INDEXED_MESSAGE = 'No index data — run indexing first';
+
+/** Entities the visualization requests before the user touches the slider; matches the backend default (no upper cap). */
+export const GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES = 200;
+
+/** Fewest entities the visualization endpoint accepts; lower values are rejected with 400. */
+export const GRAPH_VISUALIZATION_MIN_ENTITIES = 1;
+
+/** Kept as 'graph-viz-sidebar' so widths users already saved still apply. */
+export const GRAPH_VISUALIZATION_SIDEBAR_WIDTH_KEY = 'graph-viz-sidebar';
+export const GRAPH_VISUALIZATION_SIDEBAR_WIDTH_OPTIONS = {
+    defaultWidth: 220,
+    minWidth: 160,
+    maxWidth: 400,
+} as const satisfies SidebarWidthOptions;
+
+/** Kept as 'graph-viz-detail' so widths users already saved still apply. */
+export const GRAPH_VISUALIZATION_DETAIL_PANEL_WIDTH_KEY = 'graph-viz-detail';
+export const GRAPH_VISUALIZATION_DETAIL_PANEL_WIDTH_OPTIONS = {
+    defaultWidth: 320,
+    minWidth: 240,
+    maxWidth: 600,
+} as const satisfies SidebarWidthOptions;
+
+/** Rows per data-table page before the user picks another size; matches the backend default. */
+export const GRAPH_TABLE_DEFAULT_PAGE_SIZE = 10;
+
+/** Page sizes offered for the data tables; the backend caps page_size at 100, so none may exceed it. */
+export const GRAPH_TABLE_PAGE_SIZE_OPTIONS: readonly number[] = [10, 25, 50, 100];
+
+/** Sidebar icon per graph data table, keyed by the table name the backend returns. */
+export const GRAPH_TABLE_ICONS: Record<string, string> = {
+    entities: 'graph-entities',
+    relationships: 'graph-relationships',
+    communities: 'graph-communities',
+    documents: 'graph-documents',
+    text_units: 'graph-text-units',
+    community_reports: 'graph-community-reports',
+    covariates: 'graph-covariates',
+};
+
+/** Icon for a table the backend returns that has no entry in GRAPH_TABLE_ICONS. */
+export const GRAPH_TABLE_FALLBACK_ICON = 'database';
 
 export const RAG_TYPE_CONFIG: Record<RagType, { name: string; icon: string }> = {
     naive: { name: 'Naive RAG', icon: 'mouse' },
