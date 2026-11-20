@@ -210,6 +210,7 @@ export class ModelConfigDialogComponent implements OnInit {
         this.secretsStorage.selectItems(this.pickedSecretIds())
     );
     protected readonly optionLabels = OPTION_LABELS;
+    protected readonly connectionPlaceholders = { base_url: 'e.g. https://api.example.com/v1' };
     protected readonly TOKEN_PRICE_HINT = TOKEN_PRICE_HINT;
     protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
 

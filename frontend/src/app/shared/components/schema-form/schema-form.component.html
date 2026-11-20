@@ -16,6 +16,7 @@
                     [error]="fieldErrors()[field.name] ?? ''"
                     [fieldId]="fieldId(field.name)"
                     [optionLabels]="optionLabels()[field.name] ?? {}"
+                    [placeholder]="placeholders()[field.name] ?? ''"
                 />
                 @if (field.resettable && !isDefault(field)) {
                     <app-activate-button

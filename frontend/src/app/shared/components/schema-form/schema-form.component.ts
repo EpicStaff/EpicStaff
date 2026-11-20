@@ -48,6 +48,8 @@ export class SchemaFormComponent {
     readonly path = input('');
     /** Display names of a select's options, by property and raw value; an option without one shows its raw value. */
     readonly optionLabels = input<Readonly<Partial<Record<string, Readonly<Record<string, string>>>>>>({});
+    /** A text field's placeholder, by property, e.g. a sample value. */
+    readonly placeholders = input<Readonly<Partial<Record<string, string>>>>({});
     readonly valueChange = output<Record<string, unknown>>();
 
     protected readonly groups = computed<SchemaFormGroup[]>(() => groupFields(this.schema()));

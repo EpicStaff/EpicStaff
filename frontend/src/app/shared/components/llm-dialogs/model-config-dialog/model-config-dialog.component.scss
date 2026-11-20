@@ -70,16 +70,15 @@
         line-height: var(--text-body-medium-line-height);
     }
 
-    // 20px from the note to the first field, as between the body's edge and it.
-    &__review {
-        margin-bottom: 20px;
-    }
-
     // A sentence with the list of reasons or changes under it.
-    &__review,
     &__changes {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    // The changes' sentence after the review reasons starts a block of its own.
+    &__note-heading:not(:first-child) {
+        margin-top: 8px;
     }
 
     &__change-list {

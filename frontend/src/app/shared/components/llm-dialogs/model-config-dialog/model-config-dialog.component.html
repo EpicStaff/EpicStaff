@@ -24,18 +24,6 @@
             class="dialog__body"
             [formGroup]="form"
         >
-            @if (needsReview()) {
-                <app-warning-note class="dialog__review">
-                    <span>This configuration needs review.</span>
-                    @if (reviewReasons().length > 0) {
-                        <ul class="dialog__change-list">
-                            @for (reason of reviewReasons(); track $index) {
-                                <li>{{ reason }}</li>
-                            }
-                        </ul>
-                    }
-                </app-warning-note>
-            }
             <section class="dialog__section">
                 <div>
                     <app-custom-input
@@ -119,6 +107,7 @@
                             [schema]="current.connection"
                             [value]="connection()"
                             [errors]="fieldErrors()"
+                            [placeholders]="connectionPlaceholders"
                             (valueChange)="onConnectionChange($event)"
                         />
                     }
@@ -146,7 +135,7 @@
                     />
                 </section>
 
-                @if (hasSettings() || changes().length > 0) {
+                @if (hasSettings() || changes().length > 0 || needsReview()) {
                     <section class="dialog__section">
                         <div class="dialog__section-header">
                             <h3 class="dialog__section-title">Settings</h3>
@@ -160,21 +149,34 @@
                                 </app-button>
                             }
                         </div>
-                        @if (changes().length > 0) {
+                        <!-- One note: why the config needs review, then what fitting it to the model changed. -->
+                        @if (needsReview() || changes().length > 0) {
                             <app-warning-note
                                 class="dialog__changes"
                                 role="status"
                             >
-                                <span>{{
-                                    changesFromStored()
-                                        ? 'The stored configuration was changed to fit the model:'
-                                        : 'Changed for the new model:'
-                                }}</span>
-                                <ul class="dialog__change-list">
-                                    @for (change of changes(); track change.name) {
-                                        <li>{{ change.text }}</li>
+                                @if (needsReview()) {
+                                    <span class="dialog__note-heading">This configuration needs review.</span>
+                                    @if (reviewReasons().length > 0) {
+                                        <ul class="dialog__change-list">
+                                            @for (reason of reviewReasons(); track $index) {
+                                                <li>{{ reason }}</li>
+                                            }
+                                        </ul>
                                     }
-                                </ul>
+                                }
+                                @if (changes().length > 0) {
+                                    <span class="dialog__note-heading">{{
+                                        changesFromStored()
+                                            ? 'The stored configuration was changed to fit the model:'
+                                            : 'Changed for the new model:'
+                                    }}</span>
+                                    <ul class="dialog__change-list">
+                                        @for (change of changes(); track change.name) {
+                                            <li>{{ change.text }}</li>
+                                        }
+                                    </ul>
+                                }
                             </app-warning-note>
                         }
                         @if (hasSettings()) {
@@ -205,6 +207,7 @@
                                 label="Input price (USD / 1M tokens)"
                                 [min]="0"
                                 [allowDecimal]="true"
+                                [alwaysShowSteps]="true"
                                 [tooltipText]="TOKEN_PRICE_HINT"
                             />
                             <app-validation-errors [control]="form.controls.pricing.controls.input_price_per_million" />
@@ -216,6 +219,7 @@
                                 label="Output price (USD / 1M tokens)"
                                 [min]="0"
                                 [allowDecimal]="true"
+                                [alwaysShowSteps]="true"
                                 [tooltipText]="TOKEN_PRICE_HINT"
                             />
                             <app-validation-errors

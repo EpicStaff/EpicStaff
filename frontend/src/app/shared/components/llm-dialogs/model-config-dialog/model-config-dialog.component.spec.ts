@@ -452,15 +452,15 @@ describe('ModelConfigDialogComponent', () => {
                 review_reasons: ['The model left the catalog.'],
             });
 
-            expect(element(rendered.fixture).querySelector('.dialog__review')!.textContent).toContain(
-                'The model left the catalog.'
-            );
+            const note = element(rendered.fixture).querySelector('.dialog__changes')!.textContent;
+            expect(note).toContain('This configuration needs review.');
+            expect(note).toContain('The model left the catalog.');
         });
 
         it('shows no review note for a config that needs none', () => {
             const rendered = renderEdit();
 
-            expect(element(rendered.fixture).querySelector('.dialog__review')).toBeNull();
+            expect(element(rendered.fixture).textContent).not.toContain('needs review');
         });
 
         it('closes with an error instead of leaving an empty form when the config cannot be loaded', () => {
