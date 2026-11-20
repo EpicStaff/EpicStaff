@@ -3,8 +3,8 @@ import json
 import httpx
 import pytest
 
-from clients.errors import ClientTimeoutError
 from clients.knowledge import KnowledgeClient
+from foundation.transport.http import ClientNotFoundError, ClientTimeoutError
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models import NaiveSearchConfig
 
@@ -124,3 +124,13 @@ async def test_read_timeout_raises_client_timeout_error():
 
     with pytest.raises(ClientTimeoutError):
         await _search(_client(handler))
+
+
+async def test_error_status_raises_the_typed_client_error_with_the_response():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"code": "not_found", "detail": "RAG 2 not found"})
+
+    with pytest.raises(ClientNotFoundError) as raised:
+        await _search(_client(handler))
+
+    assert raised.value.response.status_code == 404

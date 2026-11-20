@@ -3,7 +3,7 @@ from typing import Any, ClassVar, Optional
 
 import settings
 from clients import KnowledgeClient
-from clients.errors import ClientTimeoutError
+from foundation.transport.http import ClientTimeoutError
 from langgraph.types import StreamWriter
 from loguru import logger
 from models.graph_models import GraphMessage

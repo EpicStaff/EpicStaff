@@ -3,7 +3,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from foundation.transport.http import ClientTimeoutError
 from services.graph.events import StopEvent
+from services.graph.exceptions import KnowledgeSearchError
 from services.graph.nodes.knowledge_node import KnowledgeNode
 from services.knowledge_search_service import KnowledgeSearchService
 from src.shared.flow_templates import RefusedPlaceholderError
@@ -284,3 +286,14 @@ def test_refused_query_placeholder_fails_before_any_search():
         )
 
     assert service.searches == []
+
+
+def test_search_timeout_fails_the_node_with_a_knowledge_search_error():
+    class TimingOutKnowledgeClient(FakeKnowledgeClient):
+        async def search_with_usage(self, **kwargs):
+            raise ClientTimeoutError
+
+    node = make_node(make_service(TimingOutKnowledgeClient()))
+
+    with pytest.raises(KnowledgeSearchError, match="Knowledge search timeout for naive:2"):
+        asyncio.run(node.execute(state={}, writer=MagicMock(), execution_order=1, input_={}))
