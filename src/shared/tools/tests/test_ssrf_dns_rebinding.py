@@ -88,6 +88,8 @@ REQUEST_STEPS = {
     "crewai_scrape_element_from_website_tool": _scraper_get,
     "crewai_jina_scraper_website_tool": _scraper_get,
     "crewai_website_search_tool": _scraper_get,
+    "crewai_txt_search_tool_tool": _scraper_get,
+    "crewai_xml_search_tool": _scraper_get,
 }
 
 
