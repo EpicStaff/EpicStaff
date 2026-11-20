@@ -1,4 +1,4 @@
-﻿import { ResourceCode } from '@shared/models';
+﻿import { ActionCode, ResourceCode } from '@shared/models';
 
 export type ExplorerSectionId = 'agents' | 'storage' | 'surfaces' | 'knowledge';
 
@@ -36,6 +36,20 @@ export const EXPLORER_SECTIONS: ExplorerSectionDef[] = [
     },
     { id: 'storage', headerLabel: 'Storage', filterLabel: 'Storage', resourceCode: ResourceCode.Files },
 ];
+
+/**
+ * The sections the user may read, with the always-shown one locked: Agents, or Shared Surfaces for a user
+ * who cannot read agents, so the explorer is never empty.
+ */
+export function permittedExplorerSections(
+    can: (resource: ResourceCode, action: ActionCode) => boolean
+): ExplorerSectionDef[] {
+    const lockedId: ExplorerSectionId = can(ResourceCode.Agents, ActionCode.Read) ? 'agents' : 'surfaces';
+    return EXPLORER_SECTIONS.filter((section) => can(section.resourceCode, ActionCode.Read)).map((section) => ({
+        ...section,
+        locked: section.id === lockedId,
+    }));
+}
 
 export interface GroupAssignTarget {
     kind: 'agent' | 'surface';

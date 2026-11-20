@@ -103,6 +103,7 @@ describe('agentsSectionMenuItems', () => {
 
 const AGENT_CREATE = `${ResourceCode.Agents}:${ActionCode.Create}`;
 const SURFACE_CREATE = `${ResourceCode.Surfaces}:${ActionCode.Create}`;
+const SURFACE_READ = `${ResourceCode.Surfaces}:${ActionCode.Read}`;
 const AGENT_READ = `${ResourceCode.Agents}:${ActionCode.Read}`;
 
 /** A user holding exactly the given `resource:action` permissions. */
@@ -156,5 +157,77 @@ describe('isTreeNodeMenuItemAllowed', () => {
             'Duplicate',
             'View Details',
         ]);
+    });
+});
+
+describe('New group menu item gating', () => {
+    const SURFACE_UPDATE = `${ResourceCode.Surfaces}:${ActionCode.Update}`;
+    const surfaceRow: ExplorerMenuSubject = { kind: 'surface', surfaceId: 10, label: 'CRM access', groupId: null };
+    const agentRow: ExplorerMenuSubject = { kind: 'agent', agentId: 5, label: 'Closer', children: [], groupId: null };
+
+    /** What the explorer shows: the items the user is allowed to pick. */
+    const shown = (subject: ExplorerMenuSubject, granted: string[]): string[] => {
+        const user = userWith(...granted);
+        return outline(groupMenuItems(subject, GROUPS).filter((item) => user.can(item.resource, item.action)));
+    };
+
+    it.each<[string, ExplorerMenuSubject, string[], string[]]>([
+        [
+            'a surfaces-only user on a surface row: Move to group, no New group…',
+            surfaceRow,
+            [SURFACE_UPDATE],
+            ['Move to group > Sales, Support'],
+        ],
+        [
+            'a user with Agents:Create on a surface row: New group… too',
+            surfaceRow,
+            [SURFACE_UPDATE, AGENT_CREATE],
+            ['Move to group > Sales, Support', 'New group…'],
+        ],
+        ['Surfaces:Create alone does not offer New group…', surfaceRow, [SURFACE_CREATE], []],
+        ['an agent row without Agents:Create: no New group…', agentRow, [AGENT_READ], []],
+    ])('%s', (_description, subject, granted, expected) => {
+        expect(shown(subject, granted)).toEqual(expected);
+    });
+
+    it('offers the Agents section header New group only with Agents:Create', () => {
+        const header: ExplorerMenuSubject = { kind: 'section-header', section: 'agents' };
+
+        expect(shown(header, [AGENT_READ])).toEqual(['Collapse all', 'Expand all']);
+        expect(shown(header, [AGENT_CREATE])).toEqual(['New group']);
+    });
+
+    describe('the Shared Surfaces section header', () => {
+        const header: ExplorerMenuSubject = { kind: 'section-header', section: 'surfaces' };
+
+        it.each<[string, string[], string[]]>([
+            ['Surfaces:Read alone: only Collapse all and Expand all', [SURFACE_READ], ['Collapse all', 'Expand all']],
+            ['Agents:Create alone: only New group', [AGENT_CREATE], ['New group']],
+            [
+                'both: New group, Collapse all, Expand all',
+                [AGENT_CREATE, SURFACE_READ],
+                ['New group', 'Collapse all', 'Expand all'],
+            ],
+            ['Agents:Read does not offer Collapse all or Expand all', [AGENT_READ], []],
+            ['Surfaces:Create does not offer anything', [SURFACE_CREATE], []],
+        ])('with %s', (_description, granted, expected) => {
+            expect(shown(header, granted)).toEqual(expected);
+        });
+
+        it('offers no export or import item', () => {
+            const user = userWith(AGENT_CREATE, SURFACE_READ, `${ResourceCode.Agents}:${ActionCode.Export}`);
+
+            expect(
+                outline(groupMenuItems(header, GROUPS).filter((item) => user.can(item.resource, item.action)))
+            ).not.toContain('Export…');
+        });
+
+        it('hides Collapse all and Expand all while there are no groups, like the Agents header', () => {
+            const user = userWith(AGENT_CREATE, SURFACE_READ);
+
+            expect(outline(groupMenuItems(header, []).filter((item) => user.can(item.resource, item.action)))).toEqual([
+                'New group',
+            ]);
+        });
     });
 });

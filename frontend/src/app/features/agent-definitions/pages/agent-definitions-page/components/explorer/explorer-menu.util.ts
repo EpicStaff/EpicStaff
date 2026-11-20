@@ -75,18 +75,20 @@ export function groupMenuItems(subject: ExplorerMenuSubject, groups: LabelDto[])
                     action: ActionCode.Create,
                 },
             ];
+            // Collapsing only changes what the section shows, so it needs read access to that section's items.
+            const sectionResource = subject.section === 'agents' ? ResourceCode.Agents : ResourceCode.Surfaces;
             if (groups.length > 0) {
                 items.push(
                     {
                         id: GROUP_MENU_ACTION.collapseAll,
                         label: 'Collapse all',
-                        resource: ResourceCode.Agents,
+                        resource: sectionResource,
                         action: ActionCode.Read,
                     },
                     {
                         id: GROUP_MENU_ACTION.expandAll,
                         label: 'Expand all',
-                        resource: ResourceCode.Agents,
+                        resource: sectionResource,
                         action: ActionCode.Read,
                     }
                 );

@@ -2936,6 +2936,8 @@ class ToolLabelViewSet(BaseLabelViewSet):
 class AgentLabelViewSet(BaseLabelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.AGENTS
+    # Shared surfaces are grouped under these labels, so surface readers need to read them.
+    rbac_alternative_resource_types = {Permission.READ: (ResourceType.SURFACES,)}
     label_scope = Label.Scope.AGENT
     queryset = Label.objects.filter(scope=Label.Scope.AGENT)
 
