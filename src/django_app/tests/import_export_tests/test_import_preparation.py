@@ -425,7 +425,7 @@ class TestToolEntries:
                     _python_tool(),
                     legacy_python_tool,
                     _python_tool(id=70, name=5, description=5, use_storage="yes"),
-                    _python_code(code=5, entrypoint=5),
+                    _python_code(code=5),
                 ],
                 EntityType.MCP_TOOL: [
                     _mcp_tool(),
@@ -449,6 +449,8 @@ class TestToolEntries:
             _python_code(code=None),
             _python_code(venv="not-an-int"),
             _python_code(global_kwargs=None),
+            _python_code(entrypoint=5),
+            _python_code(entrypoint="obj.method"),
             "not an object",
         ],
     )
