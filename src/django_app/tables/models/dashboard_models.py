@@ -1,4 +1,23 @@
+from django.contrib.postgres.fields import ArrayField
 from django.db import models
+
+DURATION_BUCKET_UPPER_SECONDS = (
+    1,
+    5,
+    15,
+    30,
+    60,
+    120,
+    300,
+    900,
+    1800,
+    3600,
+    10800,
+    21600,
+    43200,
+    86400,
+)
+DURATION_BUCKET_COUNT = len(DURATION_BUCKET_UPPER_SECONDS) + 1
 
 
 class DashboardReport(models.Model):
@@ -87,5 +106,50 @@ class DashboardKnowledgeUsage(models.Model):
             models.UniqueConstraint(
                 fields=["org", "rag_type"],
                 name="unique_dashboard_knowledge_usage_per_rag_type",
+            ),
+        ]
+
+
+class DashboardSessionDailyStat(models.Model):
+    org = models.ForeignKey(
+        "rbac.Organization",
+        on_delete=models.CASCADE,
+        related_name="dashboard_session_daily_stats",
+    )
+    day = models.DateField()
+    graph_id = models.BigIntegerField()
+    graph_name = models.CharField(max_length=255)
+    status = models.CharField(max_length=32)
+    trigger_type = models.CharField(max_length=32)
+    source_kind = models.CharField(max_length=32)
+    source_ref = models.CharField(max_length=64, blank=True, default="")
+    source_name = models.CharField(max_length=256, blank=True, default="")
+    is_test = models.BooleanField(default=False)
+
+    session_count = models.PositiveIntegerField(default=0)
+    duration_seconds_sum = models.PositiveBigIntegerField(default=0)
+    duration_histogram = ArrayField(models.PositiveIntegerField(), size=DURATION_BUCKET_COUNT)
+    prompt_tokens = models.PositiveBigIntegerField(default=0)
+    completion_tokens = models.PositiveBigIntegerField(default=0)
+    cached_prompt_tokens = models.PositiveBigIntegerField(default=0)
+    total_tokens = models.PositiveBigIntegerField(default=0)
+    successful_requests = models.PositiveBigIntegerField(default=0)
+    cost_usd = models.DecimalField(max_digits=18, decimal_places=6, default=0)
+    unknown_cost_count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "org",
+                    "day",
+                    "graph_id",
+                    "status",
+                    "trigger_type",
+                    "source_kind",
+                    "source_ref",
+                    "is_test",
+                ],
+                name="unique_dashboard_session_daily_stat",
             ),
         ]
