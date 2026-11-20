@@ -75,10 +75,10 @@
                     <button
                         type="button"
                         class="detail-header__used-by"
-                        [matTooltip]="'Used by ' + selectedSurfaceUsageCount()"
+                        [matTooltip]="selectedSurfaceUsageFailed() ? 'Could not load usage' : ''"
                         (click)="onOpenUsage()"
                     >
-                        Used by {{ selectedSurfaceUsageCount() }}
+                        Used by {{ selectedSurfaceUsageCount() ?? (selectedSurfaceUsageFailed() ? '?' : '…') }}
                         <app-svg-icon
                             icon="arrow-up-right"
                             size="12px"
@@ -239,6 +239,7 @@
                             (duplicateSurface)="store.duplicateSurface($event)"
                             (makeAgentSpecificCopy)="onMakeAgentSpecificCopyForSelected($event)"
                             (openSurfaceSource)="store.openSharedSurfaceSource($event)"
+                            (openSurfaceUsage)="onOpenSurfaceUsage($event)"
                             (renameSurface)="store.updateSurface($event.id, { name: $event.name })"
                             (surfaceChange)="store.updateSurface($event.id, $event.patch)"
                             (viewSummary)="onViewSummary($event)"
