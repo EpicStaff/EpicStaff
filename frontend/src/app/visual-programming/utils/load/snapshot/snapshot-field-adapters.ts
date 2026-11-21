@@ -130,8 +130,8 @@ export function toLiveSearchConfigs(node: SnapshotKnowledgeNode): AgentSearchCon
  *
  * Mirrors backend `ScheduleTriggerValidator.render_to_representation` and
  * `format_utc_to_local_naive_iso` (src/django_app/tables/validators/schedule_trigger_validator.py)
- * and must stay in sync with them. Unlike the live API, `next_run_date_time` is always null: a
- * preview never runs.
+ * and must stay in sync with them. Unlike the live API, `next_run_date_time` and `missed_run_at` are
+ * always null: a preview never runs.
  */
 export function buildScheduleBlock(node: SnapshotScheduleTriggerNode): GetScheduleBlock {
     const timeZone = node.timezone || 'UTC';
@@ -140,6 +140,7 @@ export function buildScheduleBlock(node: SnapshotScheduleTriggerNode): GetSchedu
         timezone: timeZone,
         start_date_time: toLocalNaiveIso(node.start_date_time, timeZone),
         next_run_date_time: null,
+        missed_run_at: null,
         interval:
             node.run_mode === 'once'
                 ? null

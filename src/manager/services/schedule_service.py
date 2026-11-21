@@ -1,15 +1,18 @@
 import asyncio
 import contextlib
 import json
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import UTC, datetime, tzinfo
+from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import settings
-from apscheduler.events import EVENT_JOB_REMOVED
+from apscheduler.events import EVENT_JOB_MISSED, EVENT_JOB_REMOVED
 from apscheduler.executors.asyncio import AsyncIOExecutor
 from apscheduler.jobstores.base import JobLookupError
 from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.base import BaseTrigger
 from helpers.logger import logger
 from pydantic import ValidationError
 from repositories.schedule_trigger_repository import ScheduleTriggerNodeRepository
@@ -27,11 +30,29 @@ class ScheduleSyncError(Exception):
     """The active schedule nodes could not be read from the DB."""
 
 
+@dataclass(frozen=True)
+class PendingScheduleSignal:
+    """A signal to Django, republished until the DB shows Django applied it."""
+
+    action: Literal["missed", "deactivate"]
+    scheduled_at: datetime | None = None
+
+    def to_message(self, node_id: int) -> dict:
+        message = {"action": self.action, "node_id": node_id}
+        if self.scheduled_at is not None:
+            message["scheduled_at"] = self.scheduled_at.isoformat()
+        return message
+
+
+DEACTIVATE_SIGNAL = PendingScheduleSignal(action="deactivate")
+
+
 class ScheduleService:
     """APScheduler-based scheduler.
 
     Fired schedules do not call Django via HTTP — they publish a Redis signal
-    on schedule_channel; Django's RedisPubSub routes it to ScheduleTriggerService.
+    on schedule_channel ('run_session', 'deactivate' or 'missed'); Django's
+    RedisPubSub routes it to ScheduleTriggerService.
     """
 
     def __init__(self, redis_service: RedisService):
@@ -49,10 +70,20 @@ class ScheduleService:
             timezone=self.tz,
         )
         self.scheduler.add_listener(self._on_job_removed, EVENT_JOB_REMOVED)
+        self.scheduler.add_listener(self._on_job_missed, EVENT_JOB_MISSED)
 
         self.schedule_nodes: dict[int, str] = {}
         self._manual_removals: set[str] = set()
+        # job_id -> node_id of once-mode jobs: EVENT_JOB_MISSED carries only the
+        # job id, and the job is already removed by then.
+        self._once_jobs: dict[str, int] = {}
+        # node_id -> signal not yet applied by Django. Pub/sub drops messages while
+        # Django is not subscribed (e.g. still starting), so they are republished.
+        self._pending_signals: dict[int, PendingScheduleSignal] = {}
+        # Nodes whose first republish was logged at INFO; later ones go to DEBUG.
+        self._pending_signal_republish_logged: set[int] = set()
         self.listener_task: asyncio.Task | None = None
+        self.pending_signal_retry_task: asyncio.Task | None = None
 
     async def start(self):
         """Subscribe to the Redis channel, load active schedules, start APScheduler.
@@ -64,6 +95,9 @@ class ScheduleService:
         await self.load_schedules_from_django()
         self.scheduler.start()
         self.listener_task = asyncio.create_task(self._start_redis_listener(initial_pubsub))
+        self.pending_signal_retry_task = asyncio.create_task(
+            self._retry_pending_signals_until_acknowledged()
+        )
 
     async def _subscribe(self):
         pubsub = self.redis_service.aioredis_client.pubsub()
@@ -113,22 +147,32 @@ class ScheduleService:
                 await asyncio.sleep(settings.SYNC_RETRY_DELAY)
 
     async def add_schedule(self, node: ScheduleTriggerNodePayload):
-        """Register (or replace) an APScheduler job for a schedule node."""
+        """Register (or replace) an APScheduler job; switch off a schedule with no fire time left."""
         node_id = node.id
         node_tz = self._resolve_tz(node.timezone)
         trigger = build_trigger(node, node_tz)
 
         if trigger is None:
+            self._drop_pending_signal(node_id)
             logger.warning(f"[ScheduleService] Could not build trigger for node {node_id}")
             return
+
+        if not self._has_run_left(trigger, node_tz):
+            await self._switch_off_ended_schedule(node)
+            return
+
+        # A create or update from Django replaces the schedule a pending signal was about.
+        self._drop_pending_signal(node_id)
 
         job_id = f"schedule_{node_id}"
         self.schedule_nodes[node_id] = job_id
 
         if node.run_mode == "once":
             self._manual_removals.add(job_id)
+            self._once_jobs[job_id] = node_id
         else:
             self._manual_removals.discard(job_id)
+            self._once_jobs.pop(job_id, None)
 
         try:
             self.scheduler.add_job(
@@ -147,17 +191,49 @@ class ScheduleService:
         except Exception:
             logger.exception(f"[ScheduleService] Error registering Job for node {node_id}")
             self._manual_removals.discard(job_id)
+            self._once_jobs.pop(job_id, None)
             # Reconcile reads "tracked but no job" as "once-node already fired", so a
             # node whose job was never registered must not stay tracked.
             if self.scheduler.get_job(job_id) is None:
                 self.schedule_nodes.pop(node_id, None)
+
+    async def _switch_off_ended_schedule(self, node: ScheduleTriggerNodePayload):
+        """Remove the job of a schedule with no fire time left and ask Django to switch it off.
+
+        APScheduler stores an already exhausted trigger as a paused job without any
+        event, so the node would otherwise stay active forever.
+        """
+        node_id = node.id
+        self._remove_job(node_id, reason="no fire time left before its end")
+        if self._pending_signals.get(node_id) == DEACTIVATE_SIGNAL:
+            logger.debug(
+                "[ScheduleService] Node {} has no fire time left before its end; "
+                "'deactivate' already pending",
+                node_id,
+            )
+            return
+
+        logger.warning(
+            "[ScheduleService] Schedule of node {} has no fire time left before its end "
+            "(end_type={}, end_date_time={}), e.g. the end passed while the Manager was "
+            "down. Switching the schedule off.",
+            node_id,
+            node.end_type,
+            node.end_date_time.isoformat() if node.end_date_time else None,
+        )
+        self._set_pending_signal(node_id, DEACTIVATE_SIGNAL)
+        await self._publish_signal(node_id, DEACTIVATE_SIGNAL)
+
+    @staticmethod
+    def _has_run_left(trigger: BaseTrigger, node_tz: tzinfo) -> bool:
+        return trigger.get_next_fire_time(None, datetime.now(node_tz)) is not None
 
     def _on_job_removed(self, event):
         """APScheduler EVENT_JOB_REMOVED handler.
 
         Manual removals (remove_schedule, once-mode auto-remove) are pre-marked
         in _manual_removals and skipped. Other auto-removals (end_date reached
-        on repeat triggers) publish 'deactivate' so Django flips is_active.
+        on repeat triggers) publish 'deactivate', kept pending until applied.
         """
         job_id = event.job_id
 
@@ -181,31 +257,134 @@ class ScheduleService:
             f"[ScheduleService] Job {job_id} auto-removed by APScheduler "
             f"(end_date reached). Publishing 'deactivate' for node {node_id}."
         )
-        asyncio.create_task(self._publish_deactivate(node_id))  # noqa: RUF006
+        self._set_pending_signal(node_id, DEACTIVATE_SIGNAL)
+        asyncio.create_task(self._publish_signal(node_id, DEACTIVATE_SIGNAL))  # noqa: RUF006
 
-    async def _publish_deactivate(self, node_id: int):
-        """Publish a 'deactivate' signal so Django flips is_active=False."""
+    def _on_job_missed(self, event):
+        """APScheduler EVENT_JOB_MISSED handler: report a misfired once-mode run as 'missed'.
+
+        Missed ticks of repeat schedules are ignored. The node stays in
+        schedule_nodes so _needs_reschedule treats it as fired until Django
+        switches it off.
+        """
+        node_id = self._once_jobs.pop(event.job_id, None)
+        if node_id is None:
+            return
+
+        scheduled_at = event.scheduled_run_time.astimezone(UTC)
+        logger.warning(
+            "[ScheduleService] Run of once-mode node {} scheduled at {} was missed (not "
+            "started within the misfire grace time, e.g. the scheduler was down); "
+            "switching the schedule off.",
+            node_id,
+            scheduled_at.isoformat(),
+        )
+        signal = PendingScheduleSignal(action="missed", scheduled_at=scheduled_at)
+        self._set_pending_signal(node_id, signal)
+        asyncio.create_task(self._publish_signal(node_id, signal))  # noqa: RUF006
+
+    async def _retry_pending_signals_until_acknowledged(self):
+        """Republish pending signals until the DB shows Django applied them.
+
+        PUBLISH's receiver count is no acknowledgement: the Manager itself is
+        subscribed to schedule_channel.
+        """
+        while True:
+            await asyncio.sleep(settings.SCHEDULE_SIGNAL_REPUBLISH_INTERVAL_SECONDS)
+            if not self._pending_signals:
+                continue
+            try:
+                await self._republish_unacknowledged_signals()
+            except Exception:
+                logger.exception("[ScheduleService] Retrying pending schedule signals failed")
+
+    async def _republish_unacknowledged_signals(self):
+        pending = dict(self._pending_signals)
+        active_nodes = await self.repository.get_all_active_schedule_nodes()
+        if active_nodes is None:
+            logger.warning(
+                "[ScheduleService] Could not read schedule nodes to check {} pending "
+                "signal(s); retrying on the next tick",
+                len(pending),
+            )
+            return
+
+        active_nodes_by_id = {node.id: node for node in active_nodes}
+        for node_id, signal in pending.items():
+            # Acknowledged or superseded while this tick awaited.
+            if self._pending_signals.get(node_id) != signal:
+                continue
+            if self._is_signal_acknowledged(active_nodes_by_id.get(node_id), signal):
+                self._drop_pending_signal(node_id)
+                continue
+            log_level = "DEBUG" if node_id in self._pending_signal_republish_logged else "INFO"
+            self._pending_signal_republish_logged.add(node_id)
+            logger.log(
+                log_level,
+                "[ScheduleService] Django has not applied the signal for node {} "
+                "(scheduled_at={}) yet; republishing '{}'",
+                node_id,
+                signal.scheduled_at.isoformat() if signal.scheduled_at else None,
+                signal.action,
+            )
+            await self._publish_signal(node_id, signal)
+
+    def _is_signal_acknowledged(
+        self, node: ScheduleTriggerNodePayload | None, signal: PendingScheduleSignal
+    ) -> bool:
+        """True when the DB node (None: inactive or deleted) no longer needs the signal."""
+        if node is None:
+            return True
+        if signal.action == "missed":
+            return not self._is_once_run_at(node, signal.scheduled_at)
+        node_tz = self._resolve_tz(node.timezone)
+        trigger = build_trigger(node, node_tz)
+        return trigger is None or self._has_run_left(trigger, node_tz)
+
+    def _set_pending_signal(self, node_id: int, signal: PendingScheduleSignal):
+        self._pending_signals[node_id] = signal
+        self._pending_signal_republish_logged.discard(node_id)
+
+    def _drop_pending_signal(self, node_id: int):
+        self._pending_signals.pop(node_id, None)
+        self._pending_signal_republish_logged.discard(node_id)
+
+    def _is_once_run_at(self, node: ScheduleTriggerNodePayload, scheduled_at: datetime) -> bool:
+        return (
+            node.run_mode == "once"
+            and node.start_date_time is not None
+            and self._as_utc(node.start_date_time) == scheduled_at
+        )
+
+    async def _publish_signal(self, node_id: int, signal: PendingScheduleSignal):
+        """Publish the signal for Django; a failed publish is only logged."""
         try:
             await self.redis_service.async_publish(
-                settings.SCHEDULE_CHANNEL,
-                {"action": "deactivate", "node_id": node_id},
+                settings.SCHEDULE_CHANNEL, signal.to_message(node_id)
             )
         except Exception:
-            logger.exception(f"[ScheduleService] Error publishing 'deactivate' for node {node_id}")
+            logger.exception(
+                "[ScheduleService] Error publishing '{}' for node {}", signal.action, node_id
+            )
 
     async def remove_schedule(self, node_id: int):
         """Remove the APScheduler job for a node (idempotent if already gone)."""
+        # Django switched the node off or deleted it, which acknowledges a pending signal.
+        self._drop_pending_signal(node_id)
+        self._remove_job(node_id, reason="deactivate/delete signal from Django")
+
+    def _remove_job(self, node_id: int, reason: str):
+        """Stop tracking the node and remove its job, without publishing 'deactivate'."""
         job_id = self.schedule_nodes.pop(node_id, None)
         if not job_id:
             logger.debug(f"[ScheduleService] No tracked job for node {node_id} (already removed)")
             return
 
+        self._once_jobs.pop(job_id, None)
         self._manual_removals.add(job_id)
         try:
             self.scheduler.remove_job(job_id)
-            logger.info(
-                f"[ScheduleService] Job {job_id} removed (deactivate/delete signal from Django)"
-            )
+            logger.info("[ScheduleService] Job {} removed ({})", job_id, reason)
         except JobLookupError:
             logger.debug(f"[ScheduleService] Job {job_id} was already removed by APScheduler")
             self._manual_removals.discard(job_id)
@@ -334,12 +513,16 @@ class ScheduleService:
         changed_nodes = [node for node in active_nodes if self._needs_reschedule(node)]
         for node in changed_nodes:
             await self.add_schedule(node)
+        # Nodes with no fire time left or an invalid trigger get no job.
+        registered_count = sum(1 for node in changed_nodes if node.id in self.schedule_nodes)
 
         logger.info(
-            "[ScheduleService] Reconciled with DB: {} active, {} removed, {} added or replaced",
+            "[ScheduleService] Reconciled with DB: {} active, {} removed, {} added or "
+            "replaced, {} not registered",
             len(active_nodes),
             len(removed_node_ids),
-            len(changed_nodes),
+            registered_count,
+            len(changed_nodes) - registered_count,
         )
 
     def _needs_reschedule(self, node: ScheduleTriggerNodePayload) -> bool:
@@ -369,10 +552,13 @@ class ScheduleService:
     def _once_start_has_passed(self, node: ScheduleTriggerNodePayload) -> bool:
         if node.start_date_time is None:
             return False
-        start = node.start_date_time
-        if start.tzinfo is None:
-            start = start.replace(tzinfo=UTC)
-        return start <= datetime.now(UTC)
+        return self._as_utc(node.start_date_time) <= datetime.now(UTC)
+
+    @staticmethod
+    def _as_utc(moment: datetime) -> datetime:
+        if moment.tzinfo is None:
+            return moment.replace(tzinfo=UTC)
+        return moment.astimezone(UTC)
 
     async def _handle_message(self, raw: bytes | str):
         """Validate one Redis message and dispatch on the inner action."""
@@ -386,7 +572,7 @@ class ScheduleService:
             envelope = ScheduleTriggerNodeUpdateMessage.model_validate(parsed)
         except ValidationError:
             # Channel also carries non-node_update payloads (run_session,
-            # deactivate). These don't match the envelope schema and are
+            # deactivate, missed). These don't match the envelope schema and are
             # consumed by Django, not us — skip silently.
             return
 

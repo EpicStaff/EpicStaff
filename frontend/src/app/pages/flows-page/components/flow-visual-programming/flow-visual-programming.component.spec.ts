@@ -2709,11 +2709,16 @@ describe('FlowVisualProgrammingComponent', () => {
                     isActive: false,
                     nextRunDateTime: '2026-10-14T09:00:00',
                     currentRuns: savedSchedule.current_runs + 1,
+                    // A run-once start missed while the scheduler was down: the backend switched the schedule off.
+                    missedRunAt: '2026-10-13T09:00:00',
                 });
             });
 
             it('is not an unsaved change', () => {
-                expect(nodeOfType<ScheduleTriggerNodeModel>(NodeType.SCHEDULE_TRIGGER).data.isActive).toBe(false);
+                const schedule = nodeOfType<ScheduleTriggerNodeModel>(NodeType.SCHEDULE_TRIGGER);
+                expect(schedule.data.isActive).toBe(false);
+                expect(schedule.data.missedRunAt).toBe('2026-10-13T09:00:00');
+                expect(component.hasUnsavedChangesSignal()).toBe(false);
                 expect(header().saveStatus() === 'unsaved').toBe(false);
             });
 

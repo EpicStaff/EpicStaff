@@ -3,6 +3,7 @@ import json
 import os
 import time
 from collections import defaultdict
+from datetime import datetime
 
 import redis
 from django.conf import settings
@@ -523,8 +524,8 @@ class RedisPubSub:
         Channel direction rules:
           - 'node_update' is Django → Manager; we see the echo of our own
             post_save publish and skip it silently here.
-          - 'run_session' and 'deactivate' are Manager → Django and are the
-            only actions consumed on this side.
+          - 'run_session', 'deactivate' and 'missed' are Manager → Django and
+            are the only actions consumed on this side.
 
         Supported actions:
           - 'run_session' → start a session via ScheduleTriggerService
@@ -532,10 +533,13 @@ class RedisPubSub:
           - 'deactivate'  → set is_active=False (published by Manager after a
             once-mode fire or when APScheduler auto-removes a job, e.g. when
             end_date is reached)
+          - 'missed'      → set is_active=False and record missed_run_at
+            (a once-mode run was missed while Manager was down)
 
         Input:
             message["data"] — JSON string:
             {"action": "run_session"|"deactivate", "node_id": <int>}
+            {"action": "missed", "node_id": <int>, "scheduled_at": <ISO 8601 UTC>}
         """
         try:
             logger.debug("[SchedulePubSub] Received: {}", message)
@@ -554,6 +558,8 @@ class RedisPubSub:
                 self._handle_schedule_run_session(node_id)
             elif action == "deactivate":
                 self._handle_schedule_deactivate(node_id)
+            elif action == "missed":
+                self._handle_schedule_missed(node_id, data.get("scheduled_at"))
             else:
                 logger.warning(f"[SchedulePubSub] Unknown action: {action}")
         except Exception as e:
@@ -584,6 +590,27 @@ class RedisPubSub:
             ScheduleTriggerService().deactivate_node(node_id)
         except Exception as e:
             logger.error(f"[SchedulePubSub] Error deactivating node {node_id}: {e}")
+
+    def _handle_schedule_missed(self, node_id: int, raw_scheduled_at):
+        try:
+            scheduled_at = datetime.fromisoformat(raw_scheduled_at)
+        except (TypeError, ValueError):
+            logger.warning(
+                f"[SchedulePubSub] Invalid scheduled_at {raw_scheduled_at!r} "
+                f"in 'missed' for node {node_id}"
+            )
+            return
+        if scheduled_at.tzinfo is None:
+            logger.warning(
+                f"[SchedulePubSub] scheduled_at {raw_scheduled_at!r} in 'missed' "
+                f"for node {node_id} has no timezone"
+            )
+            return
+        try:
+            close_old_connections()
+            ScheduleTriggerService().mark_missed(node_id, scheduled_at)
+        except Exception as e:
+            logger.error(f"[SchedulePubSub] Error marking missed run for node {node_id}: {e}")
 
 
 def _timed(label: str, handler: callable, log_every_duration: bool = False) -> callable:
