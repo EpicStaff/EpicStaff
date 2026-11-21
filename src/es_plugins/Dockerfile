@@ -12,7 +12,7 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 # taken before upgrades. From the official image's bookworm build: the node's base is bookworm, so
 # they find the same glibc (plugins_db runs the trixie build of the same release, which needs a
 # newer one). This digest moves together with plugins_db's image in docker-compose.yaml.
-FROM postgres:17.11-bookworm@sha256:858bb5e98eed02eb8cafbcdc007f9a65d1b613972028944a8ec2133ccaf80d27 AS postgres-client
+FROM postgres:18.4-bookworm@sha256:882236b897e39051d2368c5ccc6cda944904723506b2dfc97f2a8f5bc9afa382 AS postgres-client
 RUN mkdir -p /opt/postgresql-client/17/bin /opt/postgresql-client/17/lib \
     && cp /usr/lib/postgresql/17/bin/pg_dump /usr/lib/postgresql/17/bin/pg_restore /opt/postgresql-client/17/bin/ \
     && cp -L "$(ldd /usr/lib/postgresql/17/bin/pg_dump | awk '$1 == "libpq.so.5" { print $3 }')" \
