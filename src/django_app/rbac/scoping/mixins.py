@@ -20,6 +20,11 @@ class OrgScopedResolverMixin:
     """
 
     _org_context = OrgContextService()
+    # Read by the OpenAPI schema. Declared here so an action that never reads the active
+    # org can opt out with `@action(uses_organization_context=False)`: DRF accepts only
+    # action kwargs naming an existing class attribute. This True shadows a False on any
+    # base listed after this mixin, so a view opts out on itself, not through such a base.
+    uses_organization_context = True
 
     def get_active_org_id(self) -> int:
         if not hasattr(self.request, "_rbac_active_org_id"):

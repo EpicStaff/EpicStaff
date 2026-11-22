@@ -34,6 +34,7 @@ class PluginOrgRemovedJobListView(generics.ListAPIView):
 
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
     serializer_class = OrgRemovedJobSerializer
     pagination_class = CrossOrgAdminPagination
 
@@ -58,6 +59,7 @@ class PluginOrgRemovedJobListView(generics.ListAPIView):
 class OrgRemovedJobActionView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
 
 class OrgRemovedJobRetryView(OrgRemovedJobActionView):

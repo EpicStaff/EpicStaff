@@ -1598,6 +1598,7 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
         methods=["post"],
         url_path="end",
         permission_classes=[IsSystemApiKeyAuthenticated],
+        uses_organization_context=False,
     )
     @not_a_user_change
     def end(self, request):
@@ -1743,6 +1744,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
         methods=["get"],
         url_path="lookup-by-token",
         permission_classes=[IsSystemApiKeyAuthenticated],
+        uses_organization_context=False,
     )
     def lookup_by_token(self, request):
         """Resolve a channel by its unique `token`, unscoped by org.

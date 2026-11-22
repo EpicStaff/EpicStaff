@@ -1,7 +1,7 @@
 from django_app.settings import env
 
 REST_FRAMEWORK = {
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "DEFAULT_SCHEMA_CLASS": "django_app.spectacular_schema.OrganizationContextAutoSchema",
     "DEFAULT_PAGINATION_CLASS": "utils.pagination.DefaultLimitOffsetPagination",
     "PAGE_SIZE": 50,
     "DEFAULT_FILTER_BACKENDS": [

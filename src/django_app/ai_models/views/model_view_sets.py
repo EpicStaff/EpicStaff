@@ -165,6 +165,7 @@ class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
     # provides the permission classes. Reads are intentionally
     # global-readable — the frontend lists providers here
     # (LLMProvidersService.getProviders).
+    uses_organization_context = False
     queryset = Provider.objects.all()
     serializer_class = ProviderSerializer
     filter_backends = [DjangoFilterBackend]
