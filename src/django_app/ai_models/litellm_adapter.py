@@ -13,6 +13,7 @@ from importlib.metadata import version
 from unittest import mock
 
 import litellm
+from litellm.litellm_core_utils.get_model_cost_map import get_model_cost_map_source_info
 from litellm.types.utils import LlmProviders
 from litellm.utils import ProviderConfigManager
 from src.shared.litellm_model_names import litellm_lookup_name
@@ -61,6 +62,19 @@ class LiteLLMAdapter:
 
     def version(self) -> str:
         return version("litellm")
+
+    def uses_bundled_model_map(self) -> bool:
+        """True when LiteLLM loaded the model map bundled with this release because
+        LITELLM_LOCAL_MODEL_COST_MAP told it to, not one fetched from upstream.
+
+        Asked of LiteLLM rather than read from the environment: LiteLLM reads the flag
+        once at import and takes only "true", so a value any other parser accepts
+        (e.g. "1") would still leave it fetching.
+        """
+        return _ask(
+            "say where its model map came from",
+            lambda: bool(get_model_cost_map_source_info()["is_env_forced"]),
+        )
 
     def model_entries(self, kind: ModelKind) -> Iterator[ModelSpec]:
         """Yield every LiteLLM model of `kind`, with `parameter_names` left empty.

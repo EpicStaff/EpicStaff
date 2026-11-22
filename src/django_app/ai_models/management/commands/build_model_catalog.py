@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from typing import NoReturn
 
@@ -59,7 +58,8 @@ class Command(BaseCommand):
     def handle(self, *args, check: bool, **options):
         # The catalog must be reproducible from the pinned LiteLLM release, so its model
         # map must be the one bundled with it, never one fetched from upstream.
-        if os.environ.get("LITELLM_LOCAL_MODEL_COST_MAP", "").lower() != "true":
+        adapter = LiteLLMAdapter()
+        if not adapter.uses_bundled_model_map():
             raise CommandError(
                 "Set LITELLM_LOCAL_MODEL_COST_MAP=True: without it LiteLLM fetches its "
                 "model map from GitHub, and the catalog would not match the pinned release."
@@ -71,7 +71,6 @@ class Command(BaseCommand):
             )
 
         registry = ParameterRegistry.load(REGISTRY_PATH)
-        adapter = LiteLLMAdapter()
         strategies = [
             LLMParameterDiscoveryStrategy(adapter, registry),
             EmbeddingParameterDiscoveryStrategy(adapter, registry),
