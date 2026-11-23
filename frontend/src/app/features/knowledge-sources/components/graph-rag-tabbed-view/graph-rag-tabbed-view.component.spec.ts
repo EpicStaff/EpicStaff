@@ -7,6 +7,7 @@ import { ConfigService } from '../../../../services/config';
 import { IndexingUsage } from '../../models/base-rag.model';
 import { CreateCollectionDtoResponse } from '../../models/collection.model';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
+import { GraphRagLinkPairsStore } from '../../services/graph-rag-link-pairs.service';
 import { GraphRagTabbedViewComponent } from './graph-rag-tabbed-view.component';
 
 const API_URL = 'http://api.test/api/';
@@ -61,6 +62,7 @@ describe('GraphRagTabbedViewComponent', () => {
         if (indexingUsage) {
             TestBed.inject(CollectionsStorageService).updateOrCreateCollectionInCache(buildCollection(indexingUsage));
         }
+        TestBed.inject(GraphRagLinkPairsStore).resetForTesting();
         fixture = TestBed.createComponent(TestHostComponent);
         httpMock = TestBed.inject(HttpTestingController);
         fixture.detectChanges();
@@ -101,7 +103,8 @@ describe('GraphRagTabbedViewComponent', () => {
         expect(query('app-graph-rag-data-tables')).not.toBeNull();
         expect(query('app-graph-rag-visualization')).toBeNull();
         expect(query('.projected')).toBeNull();
-        // The data tables start loading their summary for this RAG as soon as they render.
+        // The data tables start loading their summary and the link-pairs matrix as soon as they render.
         httpMock.expectOne(`${API_URL}graph-rag/${RAG_ID}/table-summary/`);
+        httpMock.expectOne(`${API_URL}graph-rag/table-link-pairs/`);
     });
 });

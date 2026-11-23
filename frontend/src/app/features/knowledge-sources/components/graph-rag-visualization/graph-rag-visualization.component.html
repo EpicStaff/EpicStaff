@@ -211,17 +211,25 @@
                             @if (selectedNode(); as node) {
                                 <div class="visualization__detail-header">
                                     <span class="visualization__detail-title">{{ node.title }}</span>
-                                    <app-button
-                                        type="ghost"
-                                        mod="small"
-                                        (click)="closeDetailPanel()"
-                                        [ariaLabel]="'Close detail panel'"
-                                    >
-                                        <app-svg-icon
-                                            icon="x"
-                                            size="1rem"
-                                        />
-                                    </app-button>
+                                    <div class="visualization__detail-actions">
+                                        @if (openInTargetsForNode().length > 0) {
+                                            <app-graph-rag-open-in-picker
+                                                [allowedTargets]="openInTargetsForNode()"
+                                                (picked)="onOpenInNode($event)"
+                                            />
+                                        }
+                                        <app-button
+                                            type="ghost"
+                                            mod="small"
+                                            (click)="closeDetailPanel()"
+                                            [ariaLabel]="'Close detail panel'"
+                                        >
+                                            <app-svg-icon
+                                                icon="x"
+                                                size="1rem"
+                                            />
+                                        </app-button>
+                                    </div>
                                 </div>
                                 <div class="visualization__detail-body">
                                     @if (node.type) {
@@ -307,17 +315,25 @@
                             @if (selectedEdge(); as edge) {
                                 <div class="visualization__detail-header">
                                     <span class="visualization__detail-title">Relationship</span>
-                                    <app-button
-                                        type="ghost"
-                                        mod="small"
-                                        (click)="closeDetailPanel()"
-                                        [ariaLabel]="'Close detail panel'"
-                                    >
-                                        <app-svg-icon
-                                            icon="x"
-                                            size="1rem"
-                                        />
-                                    </app-button>
+                                    <div class="visualization__detail-actions">
+                                        @if (openInTargetsForEdge().length > 0) {
+                                            <app-graph-rag-open-in-picker
+                                                [allowedTargets]="openInTargetsForEdge()"
+                                                (picked)="onOpenInEdge($event)"
+                                            />
+                                        }
+                                        <app-button
+                                            type="ghost"
+                                            mod="small"
+                                            (click)="closeDetailPanel()"
+                                            [ariaLabel]="'Close detail panel'"
+                                        >
+                                            <app-svg-icon
+                                                icon="x"
+                                                size="1rem"
+                                            />
+                                        </app-button>
+                                    </div>
                                 </div>
                                 <div class="visualization__detail-body">
                                     @if (selectedEdgeNodes(); as nodes) {

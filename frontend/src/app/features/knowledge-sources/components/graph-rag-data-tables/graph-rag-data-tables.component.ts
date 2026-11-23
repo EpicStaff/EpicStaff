@@ -9,7 +9,7 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { EMPTY, forkJoin, of, Subject } from 'rxjs';
+import { EMPTY, forkJoin, Subject } from 'rxjs';
 import { catchError, debounceTime, switchMap, tap } from 'rxjs/operators';
 
 import {
@@ -26,6 +26,7 @@ import { GraphTableData, GraphTableSummaryItem } from '../../models/graph-visual
 import { DocumentsApiService } from '../../services/documents-api.service';
 import { GraphRagService } from '../../services/graph-rag.service';
 import { GraphRagDocumentsStorageService } from '../../services/graph-rag-documents-storage.service';
+import { GraphRagLinkPairsStore } from '../../services/graph-rag-link-pairs.service';
 import { GraphRagGridTableComponent } from '../graph-rag-grid-table/graph-rag-grid-table.component';
 import { GraphGridActionEvent, GraphGridColumnDef } from '../graph-rag-grid-table/graph-rag-grid-table.model';
 import {
@@ -38,16 +39,22 @@ import {
     GraphRagLinkedToPickerComponent,
     LinkedToSelection,
 } from '../graph-rag-linked-to-picker/graph-rag-linked-to-picker.component';
-import {
-    LINKED_TO_LABEL_BY_TYPE,
-    LINKED_TO_TARGET_TYPES,
-    LinkedToTargetType,
-} from '../graph-rag-linked-to-picker/linked-to-targets';
-
-const LINKED_TO_TARGET_TYPE_SET = new Set<string>(LINKED_TO_TARGET_TYPES);
+import { LINKED_TO_LABEL_BY_TYPE, LinkedToTargetType } from '../graph-rag-linked-to-picker/linked-to-targets';
 
 /** `not-indexed`: the backend answered 409 `graph_not_indexed` — the graph exists but has not been indexed yet. */
 type ViewState = 'loading' | 'ready' | 'empty' | 'not-indexed' | 'error';
+
+/**
+ * Payload set by the parent tabbed view when the user picks an "Open in" target in the visualization
+ * detail panel. It is consumed once: after the summary resolves the picked subject table is opened
+ * and its linked-to filter is primed, then the flag flips so re-entering the tab (with pendingOpenIn
+ * still set upstream) does not re-apply the same filter.
+ */
+export interface GraphRagPendingOpenIn {
+    subject: LinkedToTargetType;
+    linkedToType: LinkedToTargetType;
+    linkedToId: string;
+}
 
 @Component({
     selector: 'app-graph-rag-data-tables',
@@ -67,6 +74,7 @@ type ViewState = 'loading' | 'ready' | 'empty' | 'not-indexed' | 'error';
 export class GraphRagDataTablesComponent implements OnInit {
     // 1. Inputs
     readonly ragId = input.required<number>();
+    readonly pendingOpenIn = input<GraphRagPendingOpenIn | null>(null);
 
     // 3. Signals & Computed
     readonly tables = signal<GraphTableSummaryItem[]>([]);
@@ -91,22 +99,12 @@ export class GraphRagDataTablesComponent implements OnInit {
     readonly errorMessage = signal('');
     readonly summaryLoaded = signal(false);
     /**
-     * Allowed linked-to pairs: each subject table maps to the sorted list of target tables the
-     * backend accepts for it. Fetched once on init; the backend caches the response for an hour.
-     */
-    readonly allowedPairs = signal<Record<string, string[]>>({});
-    /**
      * Allowed target tables for the currently active subject table — passed to the picker. The
-     * backend response is `Record<string, string[]>`, so we narrow it to the `LinkedToTargetType`
-     * union on the way out by dropping any unknown names. A drift between frontend and backend
-     * table lists then only hides a tab instead of leaking an untyped string into the picker.
+     * link-pairs store owns the matrix and narrows it to the `LinkedToTargetType` union.
      */
-    readonly allowedTargetsForActive = computed<readonly LinkedToTargetType[]>(() => {
-        const name = this.activeTable()?.name;
-        if (!name) return [];
-        const raw = this.allowedPairs()[name] ?? [];
-        return raw.filter((value): value is LinkedToTargetType => LINKED_TO_TARGET_TYPE_SET.has(value));
-    });
+    readonly allowedTargetsForActive = computed<readonly LinkedToTargetType[]>(() =>
+        this.linkPairsStore.targetsForSubject(this.activeTable()?.name ?? '')
+    );
 
     /** The term as sent to the backend and highlighted in the cells; the field itself keeps what the user typed. */
     readonly trimmedSearchTerm = computed(() => this.searchTerm().trim());
@@ -175,10 +173,13 @@ export class GraphRagDataTablesComponent implements OnInit {
     private readonly graphRagService = inject(GraphRagService);
     private readonly documentsApiService = inject(DocumentsApiService);
     private readonly documentsStorage = inject(GraphRagDocumentsStorageService);
+    private readonly linkPairsStore = inject(GraphRagLinkPairsStore);
     private readonly destroyRef = inject(DestroyRef);
     private readonly searchSubject = new Subject<string>();
     private readonly loadSubject = new Subject<void>();
     private readonly previewSubject = new Subject<number>();
+    /** Guards single-shot consumption: `pendingOpenIn` is applied at most once per mount. */
+    private pendingOpenInConsumed = false;
 
     // 8. Lifecycle hooks
     ngOnInit(): void {
@@ -289,31 +290,36 @@ export class GraphRagDataTablesComponent implements OnInit {
 
     private loadTableSummary(): void {
         // The summary drives the view; the link-pairs matrix only decides which linked-to tabs show.
-        // Running them in parallel saves a round-trip; a link-pairs failure must not block the view —
-        // the picker simply has no allowed targets and is hidden.
+        // Running them in parallel saves a round-trip; the store swallows link-pairs failures to {},
+        // so the picker simply has no allowed targets and is hidden.
         forkJoin({
             summary: this.graphRagService.getTableSummary(this.ragId()),
-            pairs: this.graphRagService
-                .getTableLinkPairs()
-                // No allowed pairs → picker stays hidden; the rest of the view works.
-                .pipe(catchError(() => of<Record<string, string[]>>({}))),
+            pairs: this.linkPairsStore.ensureLoaded(),
         })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: ({ summary, pairs }) => {
+                next: ({ summary }) => {
                     this.summaryLoaded.set(true);
-                    this.allowedPairs.set(pairs);
                     this.tables.set(summary);
-                    const firstWithData = summary.find((item) => item.count > 0);
-                    if (firstWithData) {
-                        this.activeTable.set(firstWithData);
-                        this.loadTableData();
-                    } else if (summary.length > 0) {
-                        this.activeTable.set(summary[0]);
-                        this.loadTableData();
-                    } else {
+                    if (summary.length === 0) {
                         this.viewState.set('empty');
+                        return;
                     }
+                    const pending = this.pendingOpenIn();
+                    if (pending && !this.pendingOpenInConsumed) {
+                        this.pendingOpenInConsumed = true;
+                        const targetTable = summary.find((item) => item.name === pending.subject);
+                        if (targetTable) {
+                            this.activeTable.set(targetTable);
+                            this.linkedToType.set(pending.linkedToType);
+                            this.linkedToId.set(pending.linkedToId);
+                            this.loadTableData();
+                            return;
+                        }
+                    }
+                    const firstWithData = summary.find((item) => item.count > 0);
+                    this.activeTable.set(firstWithData ?? summary[0]);
+                    this.loadTableData();
                 },
                 error: (error: HttpErrorResponse) => this.handleLoadError(error, 'Failed to load table summary'),
             });

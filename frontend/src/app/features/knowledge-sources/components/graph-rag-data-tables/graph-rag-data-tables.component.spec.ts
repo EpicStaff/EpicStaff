@@ -3,7 +3,7 @@
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { Component } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 
@@ -11,8 +11,9 @@ import { ConfigService } from '../../../../services/config';
 import { GraphRagDocument } from '../../models/graph-rag-document.model';
 import { GraphTableData, GraphTableSummaryItem } from '../../models/graph-visualization.model';
 import { GraphRagDocumentsStorageService } from '../../services/graph-rag-documents-storage.service';
+import { GraphRagLinkPairsStore } from '../../services/graph-rag-link-pairs.service';
 import { GRAPH_ACTION_VIEW_COMMUNITY } from '../graph-rag-grid-table/graph-rag-table-columns';
-import { GraphRagDataTablesComponent } from './graph-rag-data-tables.component';
+import { GraphRagDataTablesComponent, GraphRagPendingOpenIn } from './graph-rag-data-tables.component';
 
 const API_URL = 'http://api.test/api/';
 const RAG_ID = 42;
@@ -74,11 +75,15 @@ class ResizeObserverStub {
 }
 
 @Component({
-    template: `<app-graph-rag-data-tables [ragId]="ragId" />`,
+    template: `<app-graph-rag-data-tables
+        [ragId]="ragId"
+        [pendingOpenIn]="pendingOpenIn()"
+    />`,
     imports: [GraphRagDataTablesComponent],
 })
 class TestHostComponent {
     ragId = RAG_ID;
+    pendingOpenIn = signal<GraphRagPendingOpenIn | null>(null);
 }
 
 describe('GraphRagDataTablesComponent', () => {
@@ -175,6 +180,10 @@ describe('GraphRagDataTablesComponent', () => {
                 { provide: ConfigService, useValue: { apiUrl: API_URL } },
             ],
         }).compileComponents();
+
+        // The link-pairs store is providedIn: root and caches per session; reset so each test
+        // starts with an empty cache and re-issues the request on init.
+        TestBed.inject(GraphRagLinkPairsStore).resetForTesting();
 
         fixture = TestBed.createComponent(TestHostComponent);
         httpMock = TestBed.inject(HttpTestingController);
@@ -559,6 +568,27 @@ describe('GraphRagDataTablesComponent', () => {
 
             expect(host.querySelector('app-graph-rag-linked-to-picker')).toBeNull();
             expect(gridRows().length).toBe(2);
+        });
+
+        it('primes the picked subject table and linked-to filter from pendingOpenIn after the summary loads', () => {
+            // The fixture was already created in beforeEach with pendingOpenIn=null; set it before
+            // flushing the in-flight summary request so the forkJoin callback sees it.
+            fixture.componentInstance.pendingOpenIn.set({
+                subject: 'communities',
+                linkedToType: 'entities',
+                linkedToId: 'ent-42',
+            });
+            fixture.detectChanges();
+
+            httpMock.expectOne(SUMMARY_URL).flush(summaryWithCommunities());
+            httpMock.expectOne(LINK_PAIRS_URL).flush(DEFAULT_LINK_PAIRS);
+            httpMock
+                .expectOne(tableUrl('communities', 'page=1&page_size=10&linked_to_type=entities&linked_to_id=ent-42'))
+                .flush(buildTableData());
+            fixture.detectChanges();
+
+            expect(activeCardLabel()).toBe('Communities');
+            expect(text()).toContain('Linked to Entities ent-42');
         });
 
         it('clears both jump and linked-to filters when another sidebar table is selected', () => {

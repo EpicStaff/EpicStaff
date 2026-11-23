@@ -269,6 +269,13 @@
         white-space: nowrap;
     }
 
+    &__detail-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
     &__detail-body {
         padding: 16px;
         display: flex;

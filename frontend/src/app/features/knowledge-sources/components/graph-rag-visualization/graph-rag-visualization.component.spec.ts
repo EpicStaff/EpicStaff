@@ -10,12 +10,14 @@ import { By } from '@angular/platform-browser';
 
 import { ConfigService } from '../../../../services/config';
 import { GraphVisualizationData } from '../../models/graph-visualization.model';
+import { GraphRagLinkPairsStore } from '../../services/graph-rag-link-pairs.service';
 import { GraphRagVisualizationComponent } from './graph-rag-visualization.component';
 import { GraphSceneService } from './graph-scene.service';
 
 const API_URL = 'http://api.test/api/';
 const VISUALIZATION_URL = `${API_URL}graph-rag/42/visualization/`;
 const INITIAL_REQUEST_URL = `${VISUALIZATION_URL}?max_entities=200`;
+const LINK_PAIRS_URL = `${API_URL}graph-rag/table-link-pairs/`;
 
 // jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
 class ResizeObserverStub {
@@ -177,9 +179,16 @@ describe('GraphRagVisualizationComponent', () => {
             })
             .compileComponents();
 
+        // The link-pairs store caches per session; reset so each test starts with an empty cache.
+        TestBed.inject(GraphRagLinkPairsStore).resetForTesting();
+
         fixture = TestBed.createComponent(TestHostComponent);
         httpMock = TestBed.inject(HttpTestingController);
         fixture.detectChanges();
+
+        // The visualization primes the link-pairs cache on init; flush it so the tests only have
+        // to reason about the visualization request itself.
+        httpMock.expectOne(LINK_PAIRS_URL).flush({});
     });
 
     afterEach(() => {
