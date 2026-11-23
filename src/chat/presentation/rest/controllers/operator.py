@@ -249,10 +249,12 @@ class OperatorController(Controller):
         cursor: str | None = None,
     ) -> schemas.ConversationPageOutput:
         if mode is not None and (section != InboxSection.HUMAN or mode == Mode.BOT):
-            raise ValidationException("`mode` filters the human section: awaiting_human or human.")
+            message = "`mode` filters the human section: awaiting_human or human."
+            raise ValidationException(message, extra=[{"message": message, "key": "mode"}])
         if section == InboxSection.HUMAN and (mine or q is not None):
+            message = "`mine` and `q` apply to waiting, in_progress, bot, test and closed."
             raise ValidationException(
-                "`mine` and `q` apply to waiting, in_progress, bot, test and closed."
+                message, extra=[{"message": message, "key": "mine" if mine else "q"}]
             )
         if section == InboxSection.TEST and not operator.allows_any(DESK_BUILDER_ACTIONS):
             raise ForbiddenError("chats:create or chats:update is required.")

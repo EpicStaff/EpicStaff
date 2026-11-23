@@ -61,12 +61,18 @@ EpicStaff's nginx cannot reach `CHAT_UPSTREAM_URL`. Its log names the cause.
   - "upstream SSL certificate verify error": the upstream's certificate does not chain to a
     public CA, or the chain is incomplete.
 
+## Error answers
+
+Every error answer is `{type, errors: [{code, detail, attr, context}]}`. The code in the
+tables below is `errors[0].code`; a field the error names is in `attr`, and its other data
+(a cap's `max`, `retry_after`, a `close_reason`) in `context`.
+
 ## Operator API (EpicStaff UI chat pages) errors
 
 | Status / code | Cause |
 |---|---|
 | 401 `invalid_token` | Django's `/api/auth/introspect/` says the JWT is not active (expired or revoked). Sign in again. |
-| 400 | No numeric `X-Organization-Id` header. |
+| 400 `validation_error` | No numeric `X-Organization-Id` header. |
 | 404 on every call | The user is not a member of that organization (introspection `org_ids`), or `/api/permissions/me/` answered 403/404. Cross-org access is reported as 404 on purpose. |
 | 403 `forbidden`, "chats:… is required" | The user's role lacks that `chats` action, or `/api/permissions/me/` answered 401. Role changes take up to `CHAT_IDENTITY_CACHE_TTL` to apply. The `chats` resource exists in EpicStaff only with `CHAT_ENABLED=true`. |
 | 503 `upstream_unavailable` | Django was unreachable, timed out (`CHAT_DJANGO_TIMEOUT`), or answered an unexpected status. A wrong `DJANGO_API_KEY` shows up here, because introspection is a system-key call. The chat log names the path and status. |
@@ -75,8 +81,8 @@ EpicStaff's nginx cannot reach `CHAT_UPSTREAM_URL`. Its log names the cause.
 
 | Status / code | Cause |
 |---|---|
-| 400 `validation_error`, `errors[0].key` `action` or `chat_extra_data` | The object is larger than `CHAT_ACTION_MAX_BYTES` / `CHAT_EXTRA_DATA_MAX_BYTES` as compact JSON. The widget reads both limits from the conversation state. |
-| 413 without a JSON body | A `/chat/` request body over 1 MiB, refused by nginx or by the service. A TLS terminator in front of EpicStaff may have a lower limit of its own. |
+| 400 `validation_error`, `errors[0].attr` `action` or `chat_extra_data` | The object is larger than `CHAT_ACTION_MAX_BYTES` / `CHAT_EXTRA_DATA_MAX_BYTES` as compact JSON. The widget reads both limits from the conversation state. |
+| 413 | A `/chat/` request body over 1 MiB. Refused by nginx, the answer has no JSON body; refused by the service, it has the error body above. A TLS terminator in front of EpicStaff may have a lower limit of its own. |
 
 ## Replies never arrive
 

@@ -13,10 +13,15 @@ from infrastructure.callback_verifier import (
     verify,
 )
 from litestar import Controller, Request, post, status_codes
-from litestar.exceptions import ClientException
+from litestar.exceptions import ValidationException
 
 from presentation.rest.guards import internal_api_key_guard
 from presentation.rest.schemas import internal as schemas
+
+
+def _refused(message: str) -> ValidationException:
+    """A 400 refusal of the callback; `extra` keeps chat's `validation_error` code."""
+    return ValidationException(message, extra=[{"message": message}])
 
 
 class InternalController(Controller):
@@ -44,7 +49,7 @@ class InternalController(Controller):
         """
         raw_session_id = request.headers.get(SESSION_ID_HEADER)
         if not raw_session_id or not (raw_session_id.isascii() and raw_session_id.isdigit()):
-            raise ClientException(f"{SESSION_ID_HEADER} header is required.")
+            raise _refused(f"{SESSION_ID_HEADER} header is required.")
         session_id = int(raw_session_id)
         body = await request.body()
         receipt = await conversations.receipt(run_id)
@@ -64,15 +69,15 @@ class InternalController(Controller):
         try:
             payload = json.loads(body)
         except ValueError as error:
-            raise ClientException("Body is not JSON.") from error
+            raise _refused("Body is not JSON.") from error
         if (
             not isinstance(payload, dict)
             or payload.get("session_id") != session_id
             or not isinstance(payload.get("status"), str)
         ):
-            raise ClientException("Body does not describe the session named in the header.")
+            raise _refused("Body does not describe the session named in the header.")
         if payload["status"] not in TERMINAL_RUN_STATUSES:
-            raise ClientException(f"status must be one of {sorted(TERMINAL_RUN_STATUSES)}.")
+            raise _refused(f"status must be one of {sorted(TERMINAL_RUN_STATUSES)}.")
         outcome = await conversations.apply_run_result(
             run_id,
             session_id,

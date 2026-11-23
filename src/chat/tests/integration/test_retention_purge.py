@@ -16,6 +16,7 @@ from infrastructure.database.models import (
 )
 from infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
 from sqlalchemy import func, select
+from tests.errors import first_error
 from tests.factories import make_binding, make_closed, make_conversation
 
 PURGE = "/chat/internal/v1/retention/purge"
@@ -218,7 +219,7 @@ async def test_purge_rejects_missing_or_wrong_key(client, uow_factory, session_f
     response = await client.post(PURGE, json=_body(), headers=headers)
 
     assert response.status_code == 401
-    assert response.json()["code"] == "invalid_internal_key"
+    assert first_error(response)["code"] == "invalid_internal_key"
     assert await _remaining_ids(session_factory) == {old.id}
 
 
@@ -251,7 +252,7 @@ async def test_purge_rejects_an_invalid_body(client, uow_factory, session_factor
     response = await client.post(PURGE, json=body, headers=key_headers)
 
     assert response.status_code == 400
-    assert response.json()["code"] == "validation_error"
+    assert first_error(response)["code"] == "validation_error"
     assert await _remaining_ids(session_factory) == {old.id}
 
 
@@ -263,7 +264,7 @@ async def test_purge_rejects_a_cutoff_in_the_future(client, uow_factory, session
     response = await client.post(PURGE, json=_body(older_than=soon), headers=key_headers)
 
     assert response.status_code == 400
-    assert response.json()["code"] == "validation_error"
+    assert first_error(response)["code"] == "validation_error"
     assert await _remaining_ids(session_factory) == {just_closed.id}
 
 

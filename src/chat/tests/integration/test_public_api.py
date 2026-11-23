@@ -13,8 +13,10 @@ from domain.enums import IdentityMode, Mode, Role, RunState, Stream
 from domain.models import Message
 from infrastructure.database.models import ConversationRow, VisitorTokenRow
 from litestar.testing import AsyncTestClient
+from loguru import logger
 from main import create_app
 from sqlalchemy import func, select, update
+from tests.errors import error_items, first_error
 from tests.factories import make_binding
 from tests.infrastructure.test_django_client import CHAT_FLOW
 from tests.integration.test_callback_endpoint import CALLBACKS, _payload, _signed
@@ -85,20 +87,20 @@ async def test_public_messages_carry_no_author_only_the_name_visitors_may_see(cl
 
 async def test_create_errors(client, binding):
     unknown = await client.post("/chat/public/v1/conversations", json={"public_key": "nope"}, headers={"Origin": ORIGIN})
-    assert (unknown.status_code, unknown.json()["code"]) == (404, "not_found")
+    assert (unknown.status_code, first_error(unknown)["code"]) == (404, "not_found")
     origin = await client.post("/chat/public/v1/conversations", json={"public_key": binding.public_key}, headers={"Origin": "https://evil.example"})
-    assert (origin.status_code, origin.json()["code"]) == (403, "origin_not_allowed")
+    assert (origin.status_code, first_error(origin)["code"]) == (403, "origin_not_allowed")
     missing = await client.post("/chat/public/v1/conversations", json={}, headers={"Origin": ORIGIN})
-    assert missing.status_code == 400 and missing.json()["code"] == "validation_error"
+    assert missing.status_code == 400 and first_error(missing)["code"] == "validation_error"
 
 
 async def test_token_and_id_mismatch(client, binding):
     conversation_a, headers_a = await _create(client, binding)
     conversation_b, _ = await _create(client, binding)
     foreign = await client.get(f"/chat/public/v1/conversations/{conversation_b}", headers=headers_a)
-    assert (foreign.status_code, foreign.json()["code"]) == (404, "not_found")
+    assert (foreign.status_code, first_error(foreign)["code"]) == (404, "not_found")
     bad = await client.get(f"/chat/public/v1/conversations/{conversation_a}", headers={"Authorization": "Bearer nope"})
-    assert (bad.status_code, bad.json()["code"]) == (401, "invalid_token")
+    assert (bad.status_code, first_error(bad)["code"]) == (401, "invalid_token")
     none = await client.get(f"/chat/public/v1/conversations/{conversation_a}")
     assert none.status_code == 401
 
@@ -110,7 +112,7 @@ async def test_send_message_and_page(client, binding, django):
     state = await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=headers)
     assert state.json()["state"] == "processing"
     again = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "more"}, headers=headers)
-    assert (again.status_code, again.json()["code"]) == (409, "run_in_progress")
+    assert (again.status_code, first_error(again)["code"]) == (409, "run_in_progress")
     page = await client.get(f"/chat/public/v1/conversations/{conversation_id}/messages?limit=50", headers=headers)
     assert page.status_code == 200
     assert [m["role"] for m in page.json()] == ["user"] and set(page.json()[0]) == MESSAGE_KEYS
@@ -119,7 +121,7 @@ async def test_send_message_and_page(client, binding, django):
 async def test_message_errors(client, binding):
     conversation_id, headers = await _create(client, binding)
     too_long = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "x" * 21}, headers=headers)
-    assert (too_long.status_code, too_long.json()["code"]) == (413, "message_too_long")
+    assert (too_long.status_code, first_error(too_long)["code"]) == (413, "message_too_long")
     bad_origin = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "x"}, headers={**headers, "Origin": "https://evil.example"})
     assert bad_origin.status_code == 403
 
@@ -132,7 +134,7 @@ async def test_rate_limit_carries_retry_after(client, uow_factory, django):
         await uow.commit()
     conversation_id, headers = await _create(client, binding)
     limited = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "x"}, headers=headers)
-    assert limited.status_code == 429 and limited.json()["code"] == "rate_limited" and limited.json()["retry_after"] >= 1
+    assert limited.status_code == 429 and first_error(limited)["code"] == "rate_limited" and first_error(limited)["context"]["retry_after"] >= 1
 
 
 async def test_inactive_binding_is_410(client, binding, uow_factory):
@@ -143,7 +145,7 @@ async def test_inactive_binding_is_410(client, binding, uow_factory):
         await uow.bindings.update(stored)
         await uow.commit()
     response = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "x"}, headers=headers)
-    assert (response.status_code, response.json()["code"]) == (410, "binding_inactive")
+    assert (response.status_code, first_error(response)["code"]) == (410, "binding_inactive")
 
 
 async def test_cors_preflight_is_answered(client, binding):
@@ -170,10 +172,10 @@ async def test_signed_identity_codes_and_resume(client, uow_factory, django):
     headers = {"Origin": ORIGIN}
     claims = {"sub": "u1", "exp": int(time.time()) + 600}
     missing = await client.post(url, json={"public_key": binding.public_key}, headers=headers)
-    assert (missing.status_code, missing.json()["code"]) == (401, "invalid_identity")
+    assert (missing.status_code, first_error(missing)["code"]) == (401, "invalid_identity")
     forged = jwt.encode(claims, "other-secret", algorithm="HS256")
     wrong = await client.post(url, json={"public_key": binding.public_key, "identity_token": forged}, headers=headers)
-    assert (wrong.status_code, wrong.json()["code"]) == (401, "invalid_identity")
+    assert (wrong.status_code, first_error(wrong)["code"]) == (401, "invalid_identity")
     valid = {"public_key": binding.public_key, "identity_token": jwt.encode(claims, "id-secret", algorithm="HS256")}
     first = await client.post(url, json=valid, headers=headers)
     second = await client.post(url, json=valid, headers=headers)
@@ -189,15 +191,15 @@ async def test_broken_binding_is_503(client, binding, uow_factory):
         await uow.bindings.update(stored)
         await uow.commit()
     response = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "x"}, headers=headers)
-    assert (response.status_code, response.json()["code"]) == (503, "binding_broken")
-    assert "gone" not in response.json()["message"].split()  # the default text, never the stored reason
+    assert (response.status_code, first_error(response)["code"]) == (503, "binding_broken")
+    assert "gone" not in first_error(response)["detail"].split()  # the default text, never the stored reason
 
 
 async def test_flow_failure_is_503_and_releases_the_slot(client, binding, django):
     conversation_id, headers = await _create(client, binding)
     django.run_session_response = (500, {"error": "boom"})
     response = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "x"}, headers=headers)
-    assert (response.status_code, response.json()["code"]) == (503, "flow_unavailable")
+    assert (response.status_code, first_error(response)["code"]) == (503, "flow_unavailable")
     state = await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=headers)
     assert state.json()["state"] == "idle"
 
@@ -211,20 +213,20 @@ async def test_per_ip_message_limit(settings, binding, django, redis_client):
         sent = await limited_client.post(f"/chat/public/v1/conversations/{first_id}/messages", json={"content": "a"}, headers=first_headers)
         assert sent.status_code == 202
         limited = await limited_client.post(f"/chat/public/v1/conversations/{second_id}/messages", json={"content": "b"}, headers=second_headers)
-        assert (limited.status_code, limited.json()["code"]) == (429, "rate_limited")
+        assert (limited.status_code, first_error(limited)["code"]) == (429, "rate_limited")
 
 
 @pytest.mark.parametrize("query", ["limit=0", "limit=101", "before=junk"])
 async def test_paging_validation_is_400(client, binding, query):
     conversation_id, headers = await _create(client, binding)
     response = await client.get(f"/chat/public/v1/conversations/{conversation_id}/messages?{query}", headers=headers)
-    assert response.status_code == 400 and response.json()["code"] == "validation_error"
+    assert response.status_code == 400 and first_error(response)["code"] == "validation_error"
 
 
 async def test_oversized_message_is_413_from_the_binding_limit(client, binding):
     conversation_id, headers = await _create(client, binding)
     response = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "x" * 100_001}, headers=headers)
-    assert (response.status_code, response.json()["code"]) == (413, "message_too_long")
+    assert (response.status_code, first_error(response)["code"]) == (413, "message_too_long")
 
 
 async def test_unexpected_error_is_logged_and_500(client, binding, monkeypatch):
@@ -234,8 +236,15 @@ async def test_unexpected_error_is_logged_and_500(client, binding, monkeypatch):
         raise RuntimeError("boom")
 
     monkeypatch.setattr(ConversationOrchestrator, "resolve", explode)
-    response = await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=headers)
-    assert response.status_code == 500 and response.json() == {"code": "internal_error", "message": "Internal error."}
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="ERROR")
+    try:
+        response = await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=headers)
+    finally:
+        logger.remove(sink_id)
+    assert response.status_code == 500
+    assert response.json() == {"type": "server_error", "errors": [{"code": "unknown", "detail": "Internal server error.", "attr": None, "context": None}]}
+    assert any("boom" in record for record in records)  # the cause reaches the log, never the caller
 
 
 # ---- visitor token idle expiry and reads on an inactive binding --------------------------------
@@ -294,7 +303,7 @@ async def test_reads_on_an_inactive_binding_are_410(client, binding, uow_factory
         await client.get(f"{base}/messages", headers=headers),
         await client.post(f"{base}/stream-ticket", headers=headers),
     ):
-        assert (response.status_code, response.json()["code"]) == (410, "binding_inactive")
+        assert (response.status_code, first_error(response)["code"]) == (410, "binding_inactive")
 
 
 # ---- action replies and chat_extra_data --------------------------------------------------------
@@ -339,7 +348,7 @@ async def test_an_action_reply_round_trips_to_messages_stream_and_flow(client, b
 async def test_an_invalid_send_is_400_and_stores_nothing(client, binding, django, uow_factory, body):
     conversation_id, headers = await _create(client, binding)
     response = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json=body, headers=headers)
-    assert (response.status_code, response.json()["code"]) == (400, "validation_error")
+    assert (response.status_code, first_error(response)["code"]) == (400, "validation_error")
     assert (await client.get(f"/chat/public/v1/conversations/{conversation_id}/messages", headers=headers)).json() == []
     stored = await _stored_conversation(uow_factory, conversation_id)
     assert (stored.turns, stored.chat_extra_data) == (0, None)
@@ -355,7 +364,7 @@ async def _stored_conversation(uow_factory, conversation_id):
 async def test_an_invalid_create_is_400_and_creates_nothing(client, binding, session_factory, extra_data):
     body = {"public_key": binding.public_key, "chat_extra_data": extra_data}
     response = await client.post("/chat/public/v1/conversations", json=body, headers={"Origin": ORIGIN})
-    assert (response.status_code, response.json()["code"]) == (400, "validation_error")
+    assert (response.status_code, first_error(response)["code"]) == (400, "validation_error")
     async with session_factory() as session:
         assert await session.scalar(select(func.count()).select_from(ConversationRow)) == 0
 
@@ -363,7 +372,7 @@ async def test_an_invalid_create_is_400_and_creates_nothing(client, binding, ses
 async def test_blank_content_without_an_action_is_413(client, binding):
     conversation_id, headers = await _create(client, binding)
     response = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "  "}, headers=headers)
-    assert (response.status_code, response.json()["code"]) == (413, "message_too_long")
+    assert (response.status_code, first_error(response)["code"]) == (413, "message_too_long")
 
 
 async def test_action_replies_count_for_the_message_rate_and_turns(client, uow_factory, django):
@@ -374,7 +383,7 @@ async def test_action_replies_count_for_the_message_rate_and_turns(client, uow_f
     await _apply_reply(client, uow_factory, conversation_id)
     assert (await _stored_conversation(uow_factory, conversation_id)).turns == 1
     limited = await client.post(url, json={"action": {"id": "b"}}, headers=headers)
-    assert (limited.status_code, limited.json()["code"]) == (429, "rate_limited")
+    assert (limited.status_code, first_error(limited)["code"]) == (429, "rate_limited")
 
 
 async def test_chat_extra_data_from_create_reaches_the_flow_and_a_send_replaces_it(client, binding, django, uow_factory):
@@ -404,7 +413,7 @@ async def test_a_sub_longer_than_the_subject_column_is_an_invalid_identity(clien
     signed = await _add_binding(uow_factory, django, identity_mode=IdentityMode.SIGNED, identity_secret="id-secret")
     identity = jwt.encode({"sub": "x" * 256, "exp": int(time.time()) + 600}, "id-secret", algorithm="HS256")
     response = await client.post("/chat/public/v1/conversations", json={"public_key": signed.public_key, "identity_token": identity}, headers={"Origin": ORIGIN})
-    assert (response.status_code, response.json()["code"]) == (401, "invalid_identity")
+    assert (response.status_code, first_error(response)["code"]) == (401, "invalid_identity")
 
 
 async def test_another_conversations_token_cannot_send_an_action_or_extra_data(client, binding, django, uow_factory):
@@ -413,9 +422,9 @@ async def test_another_conversations_token_cannot_send_an_action_or_extra_data(c
     url = f"/chat/public/v1/conversations/{conversation_b}/messages"
     body = {"action": {"id": "x"}, "chat_extra_data": {"hijack": True}}
     foreign = await client.post(url, json=body, headers=headers_a)
-    assert (foreign.status_code, foreign.json()["code"]) == (404, "not_found")
+    assert (foreign.status_code, first_error(foreign)["code"]) == (404, "not_found")
     unknown = await client.post(url, json=body, headers={**headers_a, "Authorization": "Bearer nope"})
-    assert (unknown.status_code, unknown.json()["code"]) == (401, "invalid_token")
+    assert (unknown.status_code, first_error(unknown)["code"]) == (401, "invalid_token")
     stored = await _stored_conversation(uow_factory, conversation_b)
     assert (stored.chat_extra_data, stored.last_message_at) == (None, None)
     assert not _run_variables(django)
@@ -460,8 +469,8 @@ async def test_an_object_over_the_deployments_limit_is_400_naming_it_and_one_at_
     conversation_id, headers = await _create(client, binding)
     url = f"/chat/public/v1/conversations/{conversation_id}/messages"
     refused = await client.post(url, json=body, headers=headers)
-    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
-    assert refused.json()["errors"] == [{"message": f"Must be at most {limit} bytes as compact JSON; got {limit + 1}.", "key": key}]
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "validation_error")
+    assert error_items(refused) == [{"code": "validation_error", "detail": f"Must be at most {limit} bytes as compact JSON; got {limit + 1}.", "attr": key, "context": None}]
     assert not _run_variables(django)
     # Ten times what the old fixed 2 KB action cap allowed, and still within the deployment's limit.
     accepted = await client.post(url, json={"content": "hi", key: _padded(limit)}, headers=headers)
@@ -478,7 +487,7 @@ async def test_nul_is_400_and_leaves_the_conversation_usable(client, binding, dj
     conversation_id, headers = await _create(client, binding)
     url = f"/chat/public/v1/conversations/{conversation_id}/messages"
     refused = await client.post(url, json=body, headers=headers)
-    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "validation_error")
     # Nothing was claimed: the next message runs instead of answering 409.
     assert (await client.post(url, json={"content": "hello"}, headers=headers)).status_code == 202
 
@@ -487,7 +496,7 @@ async def test_json_nested_beyond_the_decoder_limit_is_400(client, binding):
     conversation_id, headers = await _create(client, binding)
     body = '{"content":"x","chat_extra_data":' + '{"a":' * 10_000 + "1" + "}" * 10_000 + "}"
     response = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", content=body, headers={**headers, "Content-Type": "application/json"})
-    assert (response.status_code, response.json()["code"]) == (400, "validation_error")
+    assert (response.status_code, first_error(response)["code"]) == (400, "validation_error")
 
 
 # ---- the visitor ends the conversation ("Start a new chat") ----------------------------------------
@@ -515,7 +524,7 @@ async def test_a_message_after_the_end_is_409_and_the_history_stays_readable(cli
     await client.post(f"{url}/end", headers=headers)
     refused = await client.post(f"{url}/messages", json={"content": "anyone?"}, headers=headers)
     assert refused.status_code == 409
-    assert refused.json() == {"code": "conversation_closed", "message": refused.json()["message"], "close_reason": "ended"} and refused.json()["message"]
+    assert error_items(refused) == [{"code": "conversation_closed", "detail": first_error(refused)["detail"], "attr": None, "context": {"close_reason": "ended"}}] and first_error(refused)["detail"]
     # The visitor token outlives the close: history, state and the stream stay open to it.
     assert [m["content"] for m in (await client.get(f"{url}/messages", headers=headers)).json()] == ["hello"]
     assert (await client.post(f"{url}/stream-ticket", headers=headers)).status_code == 201
@@ -538,7 +547,7 @@ async def test_ending_needs_the_conversations_token_and_an_allowed_origin_on_a_l
         await uow.commit()
     refusals["a paused desk"] = (await client.post(url, headers=headers), 410, "binding_inactive")
     for name, (response, status, code) in refusals.items():
-        assert (response.status_code, response.json()["code"]) == (status, code), name
+        assert (response.status_code, first_error(response)["code"]) == (status, code), name
     async with uow_factory() as uow:
         assert (await uow.conversations.get(UUID(conversation_id))).is_open
 
@@ -613,6 +622,6 @@ async def test_stop_needs_the_conversations_token_and_an_allowed_origin(client, 
         "another origin": (await client.post(url, headers={**headers, "Origin": "https://evil.example"}), 403, "origin_not_allowed"),
     }
     for name, (response, status, code) in refusals.items():
-        assert (response.status_code, response.json()["code"]) == (status, code), name
+        assert (response.status_code, first_error(response)["code"]) == (status, code), name
     assert django.stopped == []
     assert (await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=headers)).json()["state"] == "processing"

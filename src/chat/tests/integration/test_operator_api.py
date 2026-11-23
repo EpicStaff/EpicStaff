@@ -20,6 +20,7 @@ from presentation.rest.controllers.operator import PAGE_SIZE
 from application.orchestrators.budgets import NEW_DESK_RULES
 from presentation.rest.schemas.operator import ConversationOutput
 from sqlalchemy import func, select
+from tests.errors import error_items, first_error
 from tests.factories import make_binding, make_closed, make_conversation
 from tests.infrastructure.test_django_client import CHAT_FLOW
 
@@ -66,7 +67,7 @@ async def test_auth_failures(client, people):
     assert (await client.get(f"{BASE}/bindings", headers={"Authorization": "Bearer admin"})).status_code == 400
     assert (await client.get(f"{BASE}/bindings", headers=h("agent", org=2))).status_code == 404
     forbidden = await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("agent"))
-    assert (forbidden.status_code, forbidden.json()["code"]) == (403, "forbidden")
+    assert (forbidden.status_code, first_error(forbidden)["code"]) == (403, "forbidden")
     assert (await client.get(f"{BASE}/bindings", headers=h("viewer"))).status_code == 403
 
 
@@ -98,8 +99,8 @@ async def test_create_reads_the_graph_with_the_callers_token_and_org(client, peo
 
 async def test_create_without_flows_read_is_forbidden_and_stores_nothing(client, people):
     refused = await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("binder"))
-    assert (refused.status_code, refused.json()["code"]) == (403, "flow_forbidden")
-    assert "flows:read" in refused.json()["message"]
+    assert (refused.status_code, first_error(refused)["code"]) == (403, "flow_forbidden")
+    assert "flows:read" in first_error(refused)["detail"]
     assert (await client.get(f"{BASE}/bindings", headers=h("binder"))).json() == []
 
 
@@ -107,7 +108,7 @@ async def test_create_answers_the_same_for_another_orgs_graph_and_a_missing_one(
     foreign = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "graph_id": 6}, headers=h("admin"))
     missing = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "graph_id": 999}, headers=h("admin"))
     assert foreign.status_code == missing.status_code == 400
-    assert foreign.json() == missing.json() == {"code": "unknown_flow", "message": "The flow does not exist in this organization."}
+    assert foreign.json() == missing.json() == {"type": "client_error", "errors": [{"code": "unknown_flow", "detail": "The flow does not exist in this organization.", "attr": None, "context": None}]}
     assert (await client.get(f"{BASE}/bindings", headers=h("admin"))).json() == []
 
 
@@ -115,7 +116,7 @@ async def test_patch_to_a_new_graph_without_flows_read_is_forbidden_and_stores_n
     django.graphs[8] = {**CHAT_FLOW}
     binding = (await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("admin"))).json()
     refused = await client.patch(f"{BASE}/bindings/{binding['id']}", json={"graph_id": 8, "name": "Moved"}, headers=h("binder"))
-    assert (refused.status_code, refused.json()["code"]) == (403, "flow_forbidden")
+    assert (refused.status_code, first_error(refused)["code"]) == (403, "flow_forbidden")
     stored = (await client.get(f"{BASE}/bindings/{binding['id']}", headers=h("admin"))).json()
     assert (stored["graph_id"], stored["name"]) == (5, "Support")
     (_, patch_read) = _graph_reads(django)
@@ -125,7 +126,7 @@ async def test_patch_to_a_new_graph_without_flows_read_is_forbidden_and_stores_n
 async def test_patch_to_another_orgs_graph_is_unknown_flow_and_stores_nothing(client, people):
     binding = (await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("admin"))).json()
     refused = await client.patch(f"{BASE}/bindings/{binding['id']}", json={"graph_id": 6}, headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "unknown_flow")
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "unknown_flow")
     assert (await client.get(f"{BASE}/bindings/{binding['id']}", headers=h("admin"))).json()["graph_id"] == 5
 
 
@@ -141,7 +142,7 @@ async def test_create_checks_contract_and_hides_secret_on_get(client, people):
     asked_active = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "graph_id": 7, "is_active": True}, headers=h("admin"))
     assert asked_active.status_code == 201 and asked_active.json()["is_active"] is False and len(asked_active.json()["contract_errors"]) == 3
     unknown = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "graph_id": 6}, headers=h("admin"))
-    assert (unknown.status_code, unknown.json()["code"]) == (400, "unknown_flow")
+    assert (unknown.status_code, first_error(unknown)["code"]) == (400, "unknown_flow")
 
 
 async def test_update_rotate_snippet(client, people, settings):
@@ -205,7 +206,7 @@ async def test_rotate_key_revokes_that_bindings_visitor_tokens_only(client, peop
     kept_url, kept = await _visitor(client, second["public_key"])
     assert (await client.post(f"{BASE}/bindings/{first['id']}/rotate-key", headers=h("admin"))).status_code == 200
     refused = await client.get(revoked_url, headers=revoked)
-    assert (refused.status_code, refused.json()["code"]) == (401, "invalid_token")
+    assert (refused.status_code, first_error(refused)["code"]) == (401, "invalid_token")
     assert (await client.get(kept_url, headers=kept)).status_code == 200
 
 
@@ -219,7 +220,7 @@ async def test_switching_identity_mode_revokes_that_bindings_visitor_tokens_only
     switched = await client.patch(f"{BASE}/bindings/{first['id']}", json={"identity_mode": "signed"}, headers=h("admin"))
     assert switched.status_code == 200
     refused = await client.get(revoked_url, headers=revoked)
-    assert (refused.status_code, refused.json()["code"]) == (401, "invalid_token")
+    assert (refused.status_code, first_error(refused)["code"]) == (401, "invalid_token")
     assert (await client.get(kept_url, headers=kept)).status_code == 200
 
 
@@ -287,7 +288,7 @@ async def test_only_desk_builders_get_the_snippet_and_start_list_and_rejoin_test
         await client.get(f"{BASE}/conversations?section=test", headers=h("agent")),
         await client.post(f"{BASE}/conversations/{conversation_id}/visitor-token", headers=h("agent")),
     ):
-        assert (refused.status_code, refused.json()["code"]) == (403, "forbidden")
+        assert (refused.status_code, first_error(refused)["code"]) == (403, "forbidden")
     assert (await client.get(f"{BASE}/conversations?section=bot", headers=h("agent"))).status_code == 200
 
 
@@ -311,9 +312,9 @@ async def test_claim_stops_run_release_and_reply(client, people, django, uow_fac
     assert {"mode": "human", "state": "idle", "bot_display_name": "Support", "operator_display_name": "Support", "status": "open", "close_reason": None, "closed_at": None}.items() <= state.items()
 
     other = await client.post(f"{BASE}/conversations/{conversation_id}/claim", json={}, headers=h("admin"))
-    assert (other.status_code, other.json()["code"]) == (409, "claimed_by_other")
+    assert (other.status_code, first_error(other)["code"]) == (409, "claimed_by_other")
     not_assigned = await client.post(f"{BASE}/conversations/{conversation_id}/messages", json={"content": "mine"}, headers=h("admin"))
-    assert (not_assigned.status_code, not_assigned.json()["code"]) == (409, "not_assigned")
+    assert (not_assigned.status_code, first_error(not_assigned)["code"]) == (409, "not_assigned")
     forced = await client.post(f"{BASE}/conversations/{conversation_id}/claim", json={"force": True}, headers=h("admin"))
     assert forced.status_code == 200 and forced.json()["assigned_operator_id"] == 1
     assert await _stored_handoff_at(uow_factory, conversation_id) == taken_over_at
@@ -536,7 +537,7 @@ async def test_mode_filter_pages_one_mode_of_the_human_section_in_its_order(clie
 @pytest.mark.parametrize("query", ["section=bot&mode=human", "section=bot&mode=awaiting_human", "section=test&mode=awaiting_human", "section=test&mode=human", "section=human&mode=bot", "section=human&mode=nope", "section=tests"])
 async def test_mode_filter_is_refused_outside_the_human_modes(client, people, query):
     refused = await client.get(f"{BASE}/conversations?{query}", headers=h("agent"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "validation_error")
 
 
 async def test_binding_filter_pages_each_section(client, people, uow_factory):
@@ -582,7 +583,7 @@ async def test_well_formed_cursor_is_accepted(client, people, section):
 async def test_malformed_cursor_is_rejected(client, people, cursor):
     response = await client.get(f"{BASE}/conversations?section=bot&cursor={cursor}", headers=h("agent"))
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_cursor" and response.json()["message"]
+    assert first_error(response)["code"] == "invalid_cursor" and first_error(response)["detail"]
 
 
 @pytest.mark.parametrize("section", ["bot", "test"])
@@ -690,7 +691,7 @@ async def test_saving_a_binding_whose_flow_was_deleted_marks_it_broken_and_pause
 async def test_moving_a_binding_to_a_missing_flow_is_refused_and_stores_nothing(client, people):
     binding = await _active_binding(client)
     refused = await client.patch(f"{BASE}/bindings/{binding['id']}", json={"graph_id": 999, "name": "Moved"}, headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "unknown_flow")
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "unknown_flow")
     stored = (await client.get(f"{BASE}/bindings/{binding['id']}", headers=h("admin"))).json()
     assert (stored["graph_id"], stored["name"], stored["is_active"]) == (5, "Support", True)
 
@@ -723,7 +724,7 @@ async def test_pause_stops_the_widget_but_not_test_conversations(client, people)
     paused = await client.post(f"{BASE}/bindings/{binding['id']}/pause", headers=h("admin"))
     assert paused.status_code == 200 and paused.json()["is_active"] is False
     refused = await client.post(f"{visitor_url}/messages", json={"content": "hi"}, headers=visitor)
-    assert (refused.status_code, refused.json()["code"]) == (410, "binding_inactive")
+    assert (refused.status_code, first_error(refused)["code"]) == (410, "binding_inactive")
     sent = await client.post(f"/chat/public/v1/conversations/{test['conversation']['id']}/messages", json={"content": "hi"}, headers={"Authorization": f"Bearer {test['visitor_token']}"})
     assert sent.status_code == 202
     again = await client.post(f"{BASE}/bindings/{binding['id']}/pause", headers=h("admin"))
@@ -748,10 +749,10 @@ async def test_resume_with_a_failing_flow_stores_fresh_errors_and_stays_paused(c
     await client.post(f"{BASE}/bindings/{binding['id']}/pause", headers=h("admin"))
     django.graphs[5] = django.graphs[7]
     refused = await client.post(f"{BASE}/bindings/{binding['id']}/resume", headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "contract_failed") and len(refused.json()["contract_errors"]) == 3
-    assert refused.json()["contract_missing"] == GRAPH_7_MISSING
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "contract_failed") and len(first_error(refused)["context"]["contract_errors"]) == 3
+    assert first_error(refused)["context"]["contract_missing"] == GRAPH_7_MISSING
     stored = (await client.get(f"{BASE}/bindings/{binding['id']}", headers=h("admin"))).json()
-    assert stored["is_active"] is False and stored["contract_errors"] == refused.json()["contract_errors"]
+    assert stored["is_active"] is False and stored["contract_errors"] == first_error(refused)["context"]["contract_errors"]
 
 
 async def test_resume_with_a_deleted_flow_stores_the_broken_reason_and_stays_paused(client, people, django):
@@ -759,7 +760,7 @@ async def test_resume_with_a_deleted_flow_stores_the_broken_reason_and_stays_pau
     await client.post(f"{BASE}/bindings/{binding['id']}/pause", headers=h("admin"))
     django.graphs.pop(5)
     refused = await client.post(f"{BASE}/bindings/{binding['id']}/resume", headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "unknown_flow")
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "unknown_flow")
     stored = (await client.get(f"{BASE}/bindings/{binding['id']}", headers=h("admin"))).json()
     assert stored["is_active"] is False and stored["broken_reason"] == "The flow does not exist in this organization."
 
@@ -784,7 +785,7 @@ async def test_saving_or_resuming_without_flows_read_is_forbidden_and_stores_not
         await client.patch(f"{BASE}/bindings/{binding['id']}", json={"name": "Renamed"}, headers=h("binder")),
         await client.post(f"{BASE}/bindings/{binding['id']}/resume", headers=h("binder")),
     ):
-        assert (refused.status_code, refused.json()["code"]) == (403, "flow_forbidden")
+        assert (refused.status_code, first_error(refused)["code"]) == (403, "flow_forbidden")
     stored = (await client.get(f"{BASE}/bindings/{binding['id']}", headers=h("admin"))).json()
     assert (stored["name"], stored["is_active"], stored["contract_errors"], stored["broken_reason"]) == ("Support", False, binding["contract_errors"], None)
 
@@ -810,7 +811,7 @@ async def test_contract_read_refuses_another_orgs_missing_or_invalid_graph(clien
 
 async def test_contract_read_of_another_orgs_graph_is_unknown_flow(client, people):
     refused = await client.get(f"{BASE}/bindings/contract?graph_id=6", headers=h("admin"))
-    assert refused.json() == {"code": "unknown_flow", "message": "The flow does not exist in this organization."}
+    assert refused.json() == {"type": "client_error", "errors": [{"code": "unknown_flow", "detail": "The flow does not exist in this organization.", "attr": None, "context": None}]}
 
 
 async def test_contract_read_needs_membership_and_chats_read(client, people, django):
@@ -833,7 +834,7 @@ async def test_display_names_default_to_the_binding_name_and_support(client, peo
 @pytest.mark.parametrize("value", ["x" * 65, "   ", ""])
 async def test_create_refuses_a_too_long_or_blank_display_name(client, people, field, value):
     refused = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, field: value}, headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "validation_error")
     assert (await client.get(f"{BASE}/bindings", headers=h("admin"))).json() == []
 
 
@@ -845,7 +846,7 @@ async def test_create_with_null_display_names_takes_the_defaults(client, people)
 
 async def test_the_binding_name_is_stripped_and_a_blank_one_refused(client, people):
     blank = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "name": "   "}, headers=h("admin"))
-    assert (blank.status_code, blank.json()["code"]) == (400, "validation_error")
+    assert (blank.status_code, first_error(blank)["code"]) == (400, "validation_error")
     created = (await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "name": "  Sales  "}, headers=h("admin"))).json()
     assert (created["name"], created["bot_display_name"]) == ("Sales", "Sales")
     blank_patch = await client.patch(f"{BASE}/bindings/{created['id']}", json={"name": "   "}, headers=h("admin"))
@@ -879,7 +880,7 @@ async def test_create_accepts_a_budget_at_the_cap_and_rejects_one_above(client, 
     assert at_cap.status_code == 201 and at_cap.json()[name] == cap
     above = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, name: cap + 1}, headers=h("admin"))
     assert above.status_code == 400
-    assert above.json() == {"code": "budget_above_cap", "message": f"`{name}` cannot exceed {cap} on this deployment.", "field": name, "max": cap}
+    assert error_items(above) == [{"code": "budget_above_cap", "detail": f"`{name}` cannot exceed {cap} on this deployment.", "attr": name, "context": {"max": cap}}]
     assert len((await client.get(f"{BASE}/bindings", headers=h("admin"))).json()) == 1
 
 
@@ -887,14 +888,14 @@ async def test_create_accepts_a_budget_at_the_cap_and_rejects_one_above(client, 
 @pytest.mark.parametrize("value", [None, 0])
 async def test_create_rejects_a_null_or_zero_budget(client, people, name, value):
     refused = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, name: value}, headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "validation_error")
 
 
 @pytest.mark.parametrize("name", BUDGETS)
 async def test_patch_rejects_a_null_budget_and_keeps_the_stored_one(client, people, name):
     binding = (await client.post(f"{BASE}/bindings", json={**NEW_BINDING, name: 500}, headers=h("admin"))).json()
     refused = await client.patch(f"{BASE}/bindings/{binding['id']}", json={name: None}, headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error") and name in refused.json()["message"]
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "validation_error") and first_error(refused)["attr"] == name
     assert (await client.get(f"{BASE}/bindings/{binding['id']}", headers=h("admin"))).json()[name] == 500
 
 
@@ -903,7 +904,7 @@ async def test_patch_above_the_cap_is_rejected_and_stores_nothing(client, people
     cap = _caps(settings)[name]
     binding = (await client.post(f"{BASE}/bindings", json={**NEW_BINDING, name: 500}, headers=h("admin"))).json()
     above = await client.patch(f"{BASE}/bindings/{binding['id']}", json={"name": "Renamed", name: cap + 1}, headers=h("admin"))
-    assert (above.status_code, above.json()["code"], above.json()["max"]) == (400, "budget_above_cap", cap)
+    assert (above.status_code, first_error(above)["code"], first_error(above)["attr"], first_error(above)["context"]) == (400, "budget_above_cap", name, {"max": cap})
     stored = (await client.get(f"{BASE}/bindings/{binding['id']}", headers=h("admin"))).json()
     assert (stored[name], stored["name"]) == (500, "Support")
     at_cap = await client.patch(f"{BASE}/bindings/{binding['id']}", json={name: cap}, headers=h("admin"))
@@ -991,7 +992,7 @@ async def test_read_without_use_sees_the_conversation_but_cannot_take_it_over(cl
 
     refused = await getattr(client, method)(url, headers=h("watcher"), **kwargs)
 
-    assert (refused.status_code, refused.json()["code"]) == (403, "forbidden")
+    assert (refused.status_code, first_error(refused)["code"]) == (403, "forbidden")
 
 
 # ---- action replies in the operator view -------------------------------------------------------
@@ -1025,7 +1026,7 @@ async def test_an_operator_reply_with_nul_is_400_and_stores_nothing(client, peop
     conversation_id = test["conversation"]["id"]
     assert (await client.post(f"{BASE}/conversations/{conversation_id}/claim", json={}, headers=h("agent"))).status_code == 200
     refused = await client.post(f"{BASE}/conversations/{conversation_id}/messages", json={"content": "hi\x00"}, headers=h("agent"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "validation_error")
     assert (await client.get(f"{BASE}/conversations/{conversation_id}/messages", headers=h("agent"))).json() == []
 
 
@@ -1046,7 +1047,7 @@ async def test_a_test_conversation_gets_a_new_visitor_token_that_works_only_for_
     sent = await client.post(f"{public}/{conversation_id}/messages", json={"content": "hello again"}, headers=visitor)
     assert sent.status_code == 202
     foreign = await client.get(f"{public}/{second['conversation']['id']}", headers=visitor)
-    assert (foreign.status_code, foreign.json()["code"]) == (404, "not_found")
+    assert (foreign.status_code, first_error(foreign)["code"]) == (404, "not_found")
     # The token the operator already held keeps working.
     assert (await client.get(f"{public}/{conversation_id}", headers={"Authorization": f"Bearer {first['visitor_token']}"})).status_code == 200
 
@@ -1055,7 +1056,7 @@ async def test_a_real_visitors_conversation_never_gets_a_token(client, people, s
     binding = await _active_binding(client)
     created = (await client.post("/chat/public/v1/conversations", json={"public_key": binding["public_key"]}, headers={"Origin": ORIGIN})).json()
     refused = await client.post(f"{BASE}/conversations/{created['conversation_id']}/visitor-token", headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "not_a_test_conversation")
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "not_a_test_conversation")
     async with session_factory() as session:
         tokens = await session.scalar(select(func.count()).select_from(VisitorTokenRow).where(VisitorTokenRow.conversation_id == UUID(created["conversation_id"])))
     assert tokens == 1  # only the visitor's own
@@ -1432,16 +1433,17 @@ async def test_search_and_mine_never_reach_another_org(client, people, uow_facto
     assert (await _walk(client, "section=in_progress&q=6"))[0] == []  # org one sees nothing of org two
 
 
-@pytest.mark.parametrize("query, code", [
-    ("section=human&mine=true", "validation_error"),
-    ("section=human&q=ada", "validation_error"),
-    ("section=bot&order=random", "validation_error"),
-    ("section=waiting&q=" + "a" * 101, "invalid_search"),
-    ("section=waiting&q=ada%00", "invalid_search"),
+@pytest.mark.parametrize("query, code, attr", [
+    ("section=human&mine=true", "validation_error", "mine"),
+    ("section=human&q=ada", "validation_error", "q"),
+    ("section=bot&order=random", "validation_error", "order"),
+    ("section=waiting&q=" + "a" * 101, "invalid_search", None),
+    ("section=waiting&q=ada%00", "invalid_search", None),
 ])
-async def test_new_list_parameters_are_validated(client, people, query, code):
+async def test_new_list_parameters_are_validated(client, people, query, code, attr):
     refused = await client.get(f"{BASE}/conversations?{query}", headers=h("agent"))
-    assert (refused.status_code, refused.json()["code"]) == (400, code)
+    error = first_error(refused)
+    assert (refused.status_code, error["code"], error["attr"]) == (400, code, attr)
 
 
 async def test_a_blank_search_lists_the_section(client, people, uow_factory):
@@ -1496,7 +1498,7 @@ async def test_an_alias_another_operator_holds_on_the_desk_is_taken_in_any_case(
     binding, other = await _live_bindings(client)
     assert (await client.put(_my_alias(binding["id"]), json={"alias": "Mike"}, headers=h("agent"))).status_code == 200
     taken = await client.put(_my_alias(binding["id"]), json={"alias": "MIKE"}, headers=h("admin"))
-    assert (taken.status_code, taken.json()["code"]) == (409, "alias_taken")
+    assert (taken.status_code, first_error(taken)["code"]) == (409, "alias_taken")
     assert (await client.put(_my_alias(other["id"]), json={"alias": "Mike"}, headers=h("admin"))).status_code == 200  # another desk
     own = await client.put(_my_alias(binding["id"]), json={"alias": "MIKE"}, headers=h("agent"))  # one's own, new case
     assert (own.status_code, own.json()["alias"]) == (200, "MIKE")
@@ -1505,7 +1507,7 @@ async def test_an_alias_another_operator_holds_on_the_desk_is_taken_in_any_case(
 async def test_the_desks_bot_name_is_reserved(client, people):
     binding = (await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "bot_display_name": "Ava"}, headers=h("admin"))).json()
     reserved = await client.put(_my_alias(binding["id"]), json={"alias": "aVA"}, headers=h("agent"))
-    assert (reserved.status_code, reserved.json()["code"]) == (409, "alias_reserved")
+    assert (reserved.status_code, first_error(reserved)["code"]) == (409, "alias_reserved")
     assert (await client.get(f"{BASE}/bindings/my-aliases", headers=h("agent"))).json() == []
 
 
@@ -1513,7 +1515,7 @@ async def test_the_desks_bot_name_is_reserved(client, people):
 async def test_an_invalid_alias_is_400_and_stores_nothing(client, people, body):
     binding = await _active_binding(client)
     refused = await client.put(_my_alias(binding["id"]), json=body, headers=h("agent"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error") and refused.json()["errors"]
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "validation_error")
     assert (await client.get(f"{BASE}/bindings/my-aliases", headers=h("agent"))).json() == []
 
 
@@ -1561,7 +1563,7 @@ async def test_each_reply_keeps_the_name_it_was_sent_with(client, people, uow_fa
 @pytest.mark.parametrize("value", ["\u202eekiM", "Team\u200b", "Te\tam"], ids=["bidi override", "zero width space", "tab"])
 async def test_the_desks_names_follow_the_same_rules_as_an_alias(client, people, field, value):
     refused = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, field: value}, headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "validation_error")
     binding = await _active_binding(client)
     patched = await client.patch(f"{BASE}/bindings/{binding['id']}", json={field: value}, headers=h("admin"))
     assert patched.status_code == 400
@@ -1571,7 +1573,7 @@ async def test_the_desks_names_follow_the_same_rules_as_an_alias(client, people,
 
 async def test_a_desk_name_that_cannot_be_the_bots_name_needs_one_given(client, people):
     refused = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "name": "Sales\u202e"}, headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error") and "bot_display_name" in refused.json()["message"]
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "validation_error") and "bot_display_name" in first_error(refused)["detail"]
     created = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "name": "Sales\u202e", "bot_display_name": "Sales"}, headers=h("admin"))
     assert created.status_code == 201 and created.json()["bot_display_name"] == "Sales"
 
@@ -1580,8 +1582,8 @@ async def test_a_desks_bot_cannot_take_a_name_an_operator_uses_there(client, peo
     binding, other = await _live_bindings(client)
     assert (await client.put(_my_alias(binding["id"]), json={"alias": "Mike"}, headers=h("agent"))).status_code == 200
     refused = await client.patch(f"{BASE}/bindings/{binding['id']}", json={"bot_display_name": "mIKE", "name": "Renamed"}, headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"], refused.json()["field"]) == (409, "bot_name_taken", "bot_display_name")
-    assert refused.json()["message"]
+    assert (refused.status_code, first_error(refused)["code"], first_error(refused)["attr"], first_error(refused)["context"]) == (409, "bot_name_taken", "bot_display_name", None)
+    assert first_error(refused)["detail"]
     stored = (await client.get(f"{BASE}/bindings/{binding['id']}", headers=h("admin"))).json()
     assert (stored["bot_display_name"], stored["name"]) == ("Support", "Support")  # nothing of the refused save was kept
     renamed = await client.patch(f"{BASE}/bindings/{binding['id']}", json={"bot_display_name": "Ava"}, headers=h("admin"))
@@ -1657,19 +1659,21 @@ SHARP_S, DOTTED_CAPITAL_I = chr(0xDF), chr(0x130)
 async def test_alias_and_bot_name_clash_by_the_same_rule_in_both_directions(client, people, bot, alias, same):
     named_bot = (await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "bot_display_name": bot}, headers=h("admin"))).json()
     claimed = await client.put(_my_alias(named_bot["id"]), json={"alias": alias}, headers=h("agent"))
-    assert (claimed.status_code, claimed.json().get("code")) == ((409, "alias_reserved") if same else (200, None))
+    claimed_code = first_error(claimed)["code"] if claimed.status_code >= 400 else None
+    assert (claimed.status_code, claimed_code) == ((409, "alias_reserved") if same else (200, None))
     aliased = await _active_binding(client)
     assert (await client.put(_my_alias(aliased["id"]), json={"alias": alias}, headers=h("agent"))).status_code == 200
     renamed = await client.patch(f"{BASE}/bindings/{aliased['id']}", json={"bot_display_name": bot}, headers=h("admin"))
-    assert (renamed.status_code, renamed.json().get("code")) == ((409, "bot_name_taken") if same else (200, None))
+    renamed_code = first_error(renamed)["code"] if renamed.status_code >= 400 else None
+    assert (renamed.status_code, renamed_code) == ((409, "bot_name_taken") if same else (200, None))
 
 
 async def test_an_alias_cannot_copy_the_bots_name_with_an_invisible_character(client, people):
     binding = (await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "bot_display_name": "Ava"}, headers=h("admin"))).json()
     filler = await client.put(_my_alias(binding["id"]), json={"alias": "Ava" + chr(0x3164)}, headers=h("agent"))
-    assert (filler.status_code, filler.json()["code"]) == (400, "validation_error")
+    assert (filler.status_code, first_error(filler)["code"]) == (400, "validation_error")
     joined = await client.put(_my_alias(binding["id"]), json={"alias": "Ava" + chr(0x200D)}, headers=h("agent"))
-    assert (joined.status_code, joined.json()["code"]) == (409, "alias_reserved")
+    assert (joined.status_code, first_error(joined)["code"]) == (409, "alias_reserved")
     technologist = chr(0x1F469) + chr(0x200D) + chr(0x1F4BB) + " " + chr(0x2764) + chr(0xFE0F)
     kept = await client.put(_my_alias(binding["id"]), json={"alias": technologist}, headers=h("agent"))
     assert (kept.status_code, kept.json()["alias"]) == (200, technologist)
@@ -1719,7 +1723,7 @@ async def test_closing_one_another_operator_holds_takes_force_and_keeps_the_hold
     theirs, mine = _held(binding, 2, now), _held(binding, 1, now)
     await _seed(uow_factory, binding, [theirs, mine])
     refused = await client.post(_close(theirs.id), json={}, headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (409, "claimed_by_other")
+    assert (refused.status_code, first_error(refused)["code"]) == (409, "claimed_by_other")
     assert (await client.get(f"{BASE}/conversations/{theirs.id}", headers=h("admin"))).json()["status"] == "open"
     forced = (await client.post(_close(theirs.id), json={"force": True}, headers=h("admin"))).json()
     assert (forced["status"], forced["closed_by_user_id"], forced["assigned_operator_id"], forced["mode"]) == ("closed", 1, 2, "human")
@@ -1735,7 +1739,7 @@ async def test_closing_takes_chats_use_while_reading_one_conversation_takes_chat
     conversation = make_conversation(binding, mode="awaiting_human", last_message_at=utcnow())
     await _seed(uow_factory, binding, [conversation])
     refused = await client.post(_close(conversation.id), json={}, headers=h("reader"))
-    assert (refused.status_code, refused.json()["code"]) == (403, "forbidden")
+    assert (refused.status_code, first_error(refused)["code"]) == (403, "forbidden")
     assert (await client.get(f"{BASE}/conversations/{conversation.id}", headers=h("reader"))).status_code == 200
 
 
@@ -1744,7 +1748,7 @@ async def test_closing_and_reading_another_orgs_conversation_is_404_and_leaves_i
     conversation = make_conversation(beta, mode="awaiting_human", last_message_at=utcnow())
     await _seed(uow_factory, beta, [conversation])
     for response in (await client.post(_close(conversation.id), json={"force": True}, headers=h("agent")), await client.get(f"{BASE}/conversations/{conversation.id}", headers=h("admin", org=1))):
-        assert (response.status_code, response.json()["code"]) == (404, "not_found")
+        assert (response.status_code, first_error(response)["code"]) == (404, "not_found")
     assert (await client.get(f"{BASE}/conversations/{conversation.id}", headers=h("admin", org=2))).json()["status"] == "open"
     assert await _inbox(uow_factory, conversation.id, "conversation.closed") == []
 
@@ -1756,7 +1760,7 @@ async def test_taking_releasing_or_replying_to_a_closed_conversation_is_409(clie
     await _seed(uow_factory, binding, [closed])
     body = {"content": "hi"} if action == "messages" else {}
     refused = await client.post(f"{BASE}/conversations/{closed.id}/{action}", json=body, headers=h("agent"))
-    assert (refused.status_code, refused.json()["code"], refused.json()["close_reason"]) == (409, "conversation_closed", "ended")
+    assert (refused.status_code, first_error(refused)["code"], first_error(refused)["context"]) == (409, "conversation_closed", {"close_reason": "ended"})
     async with uow_factory() as uow:
         assert await uow.conversations.get(closed.id) == closed
         assert await uow.messages.page(closed.id, None, 10) == []
@@ -1824,12 +1828,12 @@ async def test_a_duration_above_the_deployments_cap_is_refused_on_create_and_pat
     cap = {"response_time_seconds": settings.CHAT_RESPONSE_TIME_MAX, "close_after_seconds": settings.CHAT_CLOSE_AFTER_MAX}[name]
     above = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, name: cap + 1}, headers=h("admin"))
     assert above.status_code == 400
-    assert above.json() == {"code": "duration_above_cap", "message": f"`{name}` cannot exceed {cap} seconds on this deployment.", "field": name, "max": cap}
+    assert error_items(above) == [{"code": "duration_above_cap", "detail": f"`{name}` cannot exceed {cap} seconds on this deployment.", "attr": name, "context": {"max": cap}}]
     assert (await client.get(f"{BASE}/bindings", headers=h("admin"))).json() == []
     at_cap = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, name: cap}, headers=h("admin"))
     assert at_cap.status_code == 201 and at_cap.json()[name] == cap
     refused = await client.patch(f"{BASE}/bindings/{at_cap.json()['id']}", json={name: cap + 1, "name": "Renamed"}, headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"], refused.json()["field"], refused.json()["max"]) == (400, "duration_above_cap", name, cap)
+    assert (refused.status_code, first_error(refused)["code"], first_error(refused)["attr"], first_error(refused)["context"]) == (400, "duration_above_cap", name, {"max": cap})
     stored = (await client.get(f"{BASE}/bindings/{at_cap.json()['id']}", headers=h("admin"))).json()
     assert (stored[name], stored["name"]) == (cap, "Support")
 
@@ -1841,7 +1845,7 @@ async def test_a_duration_above_the_deployments_cap_is_refused_on_create_and_pat
 ], ids=["response time under a minute", "close after zero", "null response time", "null close after", "unknown style", "unknown action", "notice too long", "notice with NUL", "null style", "null action", "null notice"])
 async def test_an_invalid_rule_is_400_on_create_and_patch_and_stores_nothing(client, people, rule):
     refused = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, **rule}, headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "validation_error")
     binding = (await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("admin"))).json()
     assert (await client.patch(f"{BASE}/bindings/{binding['id']}", json=rule, headers=h("admin"))).status_code == 400
     stored = (await client.get(f"{BASE}/bindings/{binding['id']}", headers=h("admin"))).json()
@@ -1852,7 +1856,7 @@ async def test_an_invalid_rule_is_400_on_create_and_patch_and_stores_nothing(cli
 async def test_patch_refuses_a_null_rule(client, people, name):
     binding = (await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("admin"))).json()
     refused = await client.patch(f"{BASE}/bindings/{binding['id']}", json={name: None}, headers=h("admin"))
-    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error") and name in refused.json()["message"]
+    assert (refused.status_code, first_error(refused)["code"]) == (400, "validation_error") and first_error(refused)["attr"] == name
 
 
 # ---- user-action audit trail ---------------------------------------------------------------------

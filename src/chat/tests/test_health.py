@@ -1,4 +1,5 @@
 from litestar.status_codes import HTTP_200_OK
+from tests.errors import first_error
 
 
 async def test_health(client):
@@ -16,5 +17,5 @@ async def test_http_error_is_not_logged_as_error(client):
         response = await client.post("/chat/health")
     finally:
         logger.remove(sink_id)
-    assert response.status_code == 405 and response.json()["code"] == "http_error"
+    assert response.status_code == 405 and first_error(response)["code"] == "method_not_allowed"
     assert records == []
