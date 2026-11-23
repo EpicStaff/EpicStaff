@@ -1,5 +1,5 @@
 from django.core.files.storage import default_storage
-from django.db.models import Count, Q, QuerySet
+from django.db.models import Q, QuerySet
 from loguru import logger
 from rbac.governance.delete_collector import ModelCount
 from rbac.governance.organization_deletion import OrganizationDeletionCounts, PostCommitCleanup
@@ -13,6 +13,7 @@ from tables.models.knowledge_models.collection_models import (
 )
 from tables.models.realtime_models import ConversationRecording, RealtimeAgentChat
 from tables.models.transfer_job_models import TransferJob
+from tables.services.knowledge_services.document_content_storage import DocumentContentStorage
 from tables.services.storage_service import get_storage_backend
 from tables.services.storage_service.manager import StorageManager
 from tables.services.transfer_jobs.archive_store import TransferArchiveStore
@@ -310,7 +311,7 @@ class TablesOrganizationDeletion:
         )
 
     def sweep(self, organization: Organization) -> PostCommitCleanup:
-        """Hard-delete the organization's knowledge collections, their now-unreferenced content and its deprecated linked rows, returning the storage purge to run after commit."""
+        """Hard-delete the organization's knowledge collections, their now-unreferenced content and its deprecated linked rows, returning the storage purge (stored document files included) to run after commit."""
         targets = self._sweep_querysets(organization)
         # Captured now: the Collector delete that follows clears organization.pk.
         storage_prefix = StorageManager.organization_prefix(organization.pk)
@@ -336,10 +337,7 @@ class TablesOrganizationDeletion:
         # deleted organization must not leave its knowledge content behind.
         targets["collections"].delete()
 
-        if content_ids:
-            DocumentContent.objects.filter(id__in=content_ids).annotate(
-                ref_count=Count("metadata_records")
-            ).filter(ref_count=0).delete()
+        unreferenced_object_keys = DocumentContentStorage.delete_unreferenced_rows(content_ids)
 
         targets["tasks"].delete()
         targets["template_agents"].delete()
@@ -353,6 +351,7 @@ class TablesOrganizationDeletion:
 
         def clean_up_external_artifacts() -> None:
             self._clean_up_external_artifacts(storage_prefix, recording_files)
+            DocumentContentStorage.delete(unreferenced_object_keys)
             self._clean_up_transfer_archives(transfer_job_ids)
 
         return clean_up_external_artifacts

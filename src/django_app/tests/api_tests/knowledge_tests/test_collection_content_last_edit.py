@@ -27,6 +27,7 @@ from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.storage_service.manager import StorageManager
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
+from tests.knowledge_content import stored_document_content
 
 PREVIOUS_EDIT_AT = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
 LAST_EDIT_UPSERT_PREFIX = 'INSERT INTO "rbac_resourcelastedit"'
@@ -74,7 +75,7 @@ def _collection(org, editor, name="Edited collection") -> SourceCollection:
 def _document(collection, file_name="notes.txt") -> DocumentMetadata:
     return DocumentMetadata.objects.create(
         source_collection=collection,
-        document_content=DocumentContent.objects.create(content=b"text"),
+        document_content=stored_document_content(b"text"),
         file_name=file_name,
         file_type="txt",
         file_size=4,

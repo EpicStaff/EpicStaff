@@ -6,12 +6,13 @@ from rest_framework import status
 
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.knowledge_content import stored_document_content
 
 
 def _document(collection, **fields) -> DocumentMetadata:
     return DocumentMetadata.objects.create(
         source_collection=collection,
-        document_content=DocumentContent.objects.create(content=b"text"),
+        document_content=stored_document_content(b"text"),
         file_name="notes.txt",
         file_type="txt",
         file_size=4,

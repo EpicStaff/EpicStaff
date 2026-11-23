@@ -18,6 +18,7 @@ from tables.models.knowledge_models import (
     NaiveRagDocumentConfig,
     SourceCollection,
 )
+from tests.knowledge_content import stored_document_content
 
 pytestmark = pytest.mark.django_db
 
@@ -42,7 +43,7 @@ def foreign_config(default_org, test_embedding_config):
     )
     document = DocumentMetadata.objects.create(
         source_collection=collection,
-        document_content=DocumentContent.objects.create(content=b"Another doc content"),
+        document_content=stored_document_content(b"Another doc content"),
         file_name="another_doc.pdf",
         file_type="pdf",
         file_size=1024,

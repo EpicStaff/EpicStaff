@@ -12,6 +12,7 @@ from tables.models.knowledge_models import (
     NaiveRagDocumentConfig,
     NaiveRagEmbedding,
 )
+from tests.knowledge_content import stored_document_content
 
 COMPLETED_CONFIG = NaiveRagDocumentConfig.NaiveRagDocumentStatus.COMPLETED
 
@@ -22,7 +23,7 @@ def bin_row(row) -> None:
 
 
 def make_document(collection, name: str, content: bytes | None) -> DocumentMetadata:
-    stored = DocumentContent.objects.create(content=content) if content is not None else None
+    stored = stored_document_content(content) if content is not None else None
     return DocumentMetadata.objects.create(
         source_collection=collection,
         document_content=stored,

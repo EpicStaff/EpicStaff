@@ -11,6 +11,7 @@ from tables.models.knowledge_models import (
     NaiveRagDocumentConfig,
 )
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.knowledge_content import stored_document_content
 
 URL = "/api/process-rag-indexing/estimate/"
 
@@ -192,7 +193,7 @@ def _naive_rag_with_config(org, file_type="pdf", **config_fields):
     rag = NaiveRag.objects.get(naive_rag_id=rag_id)
     document = DocumentMetadata.objects.create(
         source_collection=rag.base_rag_type.source_collection,
-        document_content=DocumentContent.objects.create(content=b"text"),
+        document_content=stored_document_content(b"text"),
         file_name=f"doc.{file_type}",
         file_type=file_type,
         file_size=4,
@@ -330,7 +331,7 @@ def test_estimate_names_the_invalid_document_when_only_one_override_is_invalid(
         naive_rag=rag,
         document=DocumentMetadata.objects.create(
             source_collection=rag.base_rag_type.source_collection,
-            document_content=DocumentContent.objects.create(content=b"text"),
+            document_content=stored_document_content(b"text"),
             file_name="other.pdf",
             file_type="pdf",
             file_size=4,

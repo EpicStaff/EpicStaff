@@ -10,6 +10,7 @@ from rest_framework import status
 
 from tables.models import DocumentMetadata
 from tables.models.knowledge_models import SourceCollection
+from tests.knowledge_content import stored_document_content
 
 MISSING = 99999
 
@@ -245,8 +246,8 @@ class TestCollectionSoftDelete:
         other_collection = SourceCollection.objects.get(
             collection_id=self._create_collection(auth_client, "Keeps Shared")["collection_id"]
         )
-        own_content = DocumentContent.objects.create(content=b"only mine")
-        shared_content = DocumentContent.objects.create(content=b"shared")
+        own_content = stored_document_content(b"only mine")
+        shared_content = stored_document_content(b"shared")
         own_document = DocumentMetadata.objects.create(
             source_collection=collection, document_content=own_content,
             file_name="own.txt", file_type="txt", file_size=9,
@@ -305,7 +306,7 @@ class TestCollectionSoftDelete:
         collection_id = collection["collection_id"]
         source_collection = SourceCollection.objects.get(collection_id=collection_id)
 
-        content = DocumentContent.objects.create(content=b"keep me")
+        content = stored_document_content(b"keep me")
         document = DocumentMetadata.objects.create(
             source_collection=source_collection,
             document_content=content,
@@ -350,7 +351,7 @@ class TestCollectionBulkDeleteSoftDelete:
         first_collection = SourceCollection.objects.get(
             collection_id=first["collection_id"]
         )
-        content = DocumentContent.objects.create(content=b"bulk keep me")
+        content = stored_document_content(b"bulk keep me")
         document = DocumentMetadata.objects.create(
             source_collection=first_collection,
             document_content=content,

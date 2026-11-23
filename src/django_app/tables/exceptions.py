@@ -468,6 +468,18 @@ class DocumentNotFoundException(DocumentUploadException):
         super().__init__(f"Document with id {document_id} not found")
 
 
+class DocumentContentMissingException(CustomAPIExeption):
+    """A document's content is gone from object storage although its database row remains.
+
+    404 rather than 500: the row points at an object someone removed (a cleaned bucket, a
+    database restored without its bucket), which no retry fixes.
+    """
+
+    status_code = 404
+    default_detail = "The content of this document is missing from storage."
+    default_code = "document_content_missing"
+
+
 class InvalidCollectionIdException(DocumentUploadException):
     """Raised when collection_id parameter is invalid."""
 

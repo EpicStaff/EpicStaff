@@ -22,6 +22,7 @@ from tables.services.knowledge_services.storage_document_import_service import (
 from tables.services.storage_service.manager import StorageManager
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
+from tests.knowledge_content import stored_document_content, stored_document_bytes
 
 pytestmark = pytest.mark.django_db
 
@@ -125,7 +126,7 @@ def _index_only(org, path: str, size: int | None) -> StorageFile:
 def _existing_document(collection, file_name: str, content: bytes) -> DocumentMetadata:
     return DocumentMetadata.objects.create(
         source_collection=collection,
-        document_content=DocumentContent.objects.create(content=content),
+        document_content=stored_document_content(content),
         file_name=file_name,
         file_type=file_name.rsplit(".", 1)[-1],
         file_size=len(content),
@@ -157,7 +158,7 @@ class TestImportFiles:
         assert documents["readme.md"].file_type == "md"
         assert documents["readme.md"].file_size == len(b"# Readme")
         assert documents["readme.md"].source_collection_id == collection.collection_id
-        assert bytes(documents["notes.txt"].document_content.content) == b"plain notes"
+        assert stored_document_bytes(documents["notes.txt"]) == b"plain notes"
 
     def test_expands_folders_to_nested_files_only(
         self, import_service, storage_manager, acme, collection

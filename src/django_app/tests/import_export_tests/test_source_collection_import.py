@@ -45,6 +45,7 @@ from tests.import_export_tests.knowledge_builders import (
     make_naive_rag,
 )
 from tests.knowledge_service_fake import FakeKnowledgeService
+from tests.knowledge_content import stored_document_bytes
 
 NEW_CONFIG = NaiveRagDocumentConfig.NaiveRagDocumentStatus.NEW
 GRAPH_TAR = b"graph index tar" * 1000
@@ -154,7 +155,7 @@ def test_naive_collection_arrives_in_the_other_org_with_its_chunks_and_vectors(
         "HR docs",
     )
     contents = {
-        document.file_name: (bytes(document.document_content.content), document.file_size)
+        document.file_name: (stored_document_bytes(document), document.file_size)
         for document in imported.documents.all()
     }
     assert contents == {"policy.txt": (b"\x00policy\xffbytes", 13), "notes.txt": (b"notes", 5)}
@@ -376,7 +377,9 @@ def _assert_nothing_written(target_org):
 
 
 @pytest.mark.django_db
-def test_vectors_of_different_lengths_in_one_rag_are_refused(collection, target_org, archive_of):
+def test_vectors_of_different_lengths_in_one_rag_are_refused(
+    collection, target_org, archive_of, knowledge_bucket
+):
     naive_rag = make_naive_rag(collection)
     for name, vector in (("a.txt", [1.0, 0.0, 0.0]), ("b.txt", [1.0, 0.0])):
         config = make_config(
@@ -389,6 +392,8 @@ def test_vectors_of_different_lengths_in_one_rag_are_refused(collection, target_
 
     assert raised.value.detail["code"] == "invalid_archive"
     _assert_nothing_written(target_org)
+    # The documents' files were written before the chunks failed; the rollback removed them.
+    assert not [key for key in knowledge_bucket.files if key.startswith(f"documents/org_{target_org.pk}/")]
 
 
 @pytest.mark.django_db

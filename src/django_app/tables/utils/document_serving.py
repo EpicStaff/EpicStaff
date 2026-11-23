@@ -5,14 +5,20 @@ import zipfile
 from django.http import HttpResponse
 from tables.constants.knowledge_constants import PREVIEW_CONTENT_TYPES
 from tables.models import DocumentMetadata
+from tables.services.knowledge_services.document_content_storage import DocumentContentStorage
 
 
 def document_bytes(document: DocumentMetadata) -> bytes:
-    """Return the binary payload of a document, or empty bytes if absent."""
+    """Return the document's stored bytes, or empty bytes for a document without content.
+
+    Raises:
+        DocumentContentMissingException: The row points at a file that is gone from storage.
+        StorageUnavailable: Object storage could not be reached.
+    """
     content = document.document_content
-    if content is None or content.content is None:
+    if content is None:
         return b""
-    return bytes(content.content)
+    return DocumentContentStorage.read(content.object_key)
 
 
 def file_response(

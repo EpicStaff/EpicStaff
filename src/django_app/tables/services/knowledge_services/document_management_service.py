@@ -20,6 +20,7 @@ from tables.exceptions import (
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection
 from tables.models.knowledge_models import GraphRagDocument, NaiveRag
 from tables.services.knowledge_services.collection_last_edit import record_collection_edits
+from tables.services.knowledge_services.document_content_storage import DocumentContentStorage
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.validators.file_upload_validator import FileValidator
@@ -189,66 +190,14 @@ class DocumentManagementService:
         )
 
     @staticmethod
-    def create_document_content(uploaded_file: UploadedFile) -> DocumentContent:
-        """
-        Create DocumentContent record with binary file content.
-
-        Args:
-            document_metadata: DocumentMetadata instance
-            uploaded_file: Django UploadedFile object
-
-        Returns:
-            DocumentContent: Created document content instance
-        """
-        # Read file content as bytes
-        file_content = uploaded_file.read()
-
-        return DocumentContent.objects.create(content=file_content)
-
-    @staticmethod
-    @transaction.atomic
-    def upload_file(collection_id: int, uploaded_file: UploadedFile) -> DocumentMetadata:
-        """
-        Upload a single file to a collection.
-
-        Args:
-            collection_id: ID of the source collection
-            uploaded_file: Django UploadedFile object
-
-        Returns:
-            DocumentMetadata: Created document metadata instance
+    def create_document_content(uploaded_file: UploadedFile, *, org_id: int) -> DocumentContent:
+        """Store the file's bytes in object storage and create the row pointing at them.
 
         Raises:
-            CollectionNotFoundException: If collection not found
-            FileSizeExceededException: If file size exceeds limit
-            InvalidFileTypeException: If file type is not allowed
+            StorageUnavailable: Object storage could not be reached.
         """
-        # Validate file
-        validated_data = DocumentManagementService.validate_file(uploaded_file)
-
-        # Get collection
-        collection = DocumentManagementService.get_collection(collection_id)
-
-        # Create content
-        document_content = DocumentManagementService.create_document_content(
-            uploaded_file=uploaded_file
-        )
-
-        # Create metadata
-        document_metadata = DocumentManagementService.create_document_metadata(
-            collection=collection,
-            document_content=document_content,
-            file_name=validated_data["file_name"],
-            file_type=validated_data["file_type"],
-            file_size=validated_data["file_size"],
-        )
-
-        logger.info(
-            f"Successfully uploaded file '{validated_data['file_name']}' "
-            f"to collection {collection_id}"
-        )
-
-        return document_metadata
+        object_key = DocumentContentStorage.write(org_id, uploaded_file.read())
+        return DocumentContent.objects.create(object_key=object_key)
 
     @staticmethod
     @transaction.atomic
@@ -283,14 +232,16 @@ class DocumentManagementService:
         collection.save(update_fields=["status", "updated_at"])
 
         created_documents = []
+        # Object storage is outside this transaction: on failure the files written so far
+        # are deleted here, or they would outlive the rows the rollback removes.
+        written_object_keys: list[str] = []
 
         try:
             for validated_file in validated_files:
-                # Create content
                 document_content = DocumentManagementService.create_document_content(
-                    uploaded_file=validated_file["uploaded_file"],
+                    validated_file["uploaded_file"], org_id=collection.org_id
                 )
-                # Create metadata
+                written_object_keys.append(document_content.object_key)
                 document_metadata = DocumentManagementService.create_document_metadata(
                     collection=collection,
                     document_content=document_content,
@@ -308,6 +259,7 @@ class DocumentManagementService:
 
         except Exception as e:
             logger.error(f"Error uploading files to collection {collection_id}: {e!s}")
+            DocumentContentStorage.delete(written_object_keys)
             raise
 
         # Collection status will be updated automatically by DocumentMetadata.save()
@@ -433,9 +385,11 @@ class DocumentManagementService:
         for rag, indexed_deleted in affected_graph_rags.values():
             GraphRagService.sync_status_after_document_removal(rag, indexed_deleted)
 
-        if content and not content.metadata_records.exists():
-            content.delete()
-            logger.info(f"Deleted dangling content for document '{file_name}'")
+        if content is not None:
+            dangling_object_keys = DocumentContentStorage.delete_unreferenced_rows([content.pk])
+            DocumentContentStorage.delete_on_commit(dangling_object_keys)
+            if dangling_object_keys:
+                logger.info(f"Deleted dangling content for document '{file_name}'")
 
         logger.info(f"Successfully deleted document '{file_name}' (ID: {document_id})")
         record_collection_edits([collection_id], user)
@@ -535,17 +489,10 @@ class DocumentManagementService:
         for rag, indexed_deleted in affected_graph_rags.values():
             GraphRagService.sync_status_after_document_removal(rag, indexed_deleted)
 
-        # Delete dangling content
-        dangling_content = (
-            DocumentContent.objects.filter(id__in=content_ids)
-            .annotate(ref_count=models.Count("metadata_records"))
-            .filter(ref_count=0)
-        )
-
-        dangling_count = dangling_content.count()
-        if dangling_count > 0:
-            dangling_content.delete()
-            logger.info(f"Deleted {dangling_count} dangling content records")
+        dangling_object_keys = DocumentContentStorage.delete_unreferenced_rows(content_ids)
+        DocumentContentStorage.delete_on_commit(dangling_object_keys)
+        if dangling_object_keys:
+            logger.info(f"Deleted {len(dangling_object_keys)} dangling content records")
 
         logger.info(f"Successfully deleted {deleted_count} documents: {found_ids}")
 
@@ -587,7 +534,7 @@ class DocumentManagementService:
         org_id: int,
     ) -> list[DocumentMetadata]:
         """
-        Fetch an organization's documents by ID with their binary content,
+        Fetch an organization's documents by ID with their content rows,
         preserving request order.
 
         Raises:

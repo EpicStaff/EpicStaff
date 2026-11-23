@@ -24,6 +24,7 @@ from tables.models import (
 from tables.models.mcp_models import McpTool
 from tables.services.recycle_bin.registry import bin_resources
 from tables.services.secrets.secret_service import secret_service
+from tests.knowledge_content import stored_document_content
 
 FLOWS_URL = "/api/graphs/"
 PYTHON_TOOLS_URL = "/api/python-code-tool/"
@@ -94,7 +95,7 @@ def add_key_value_table_contents(table: KeyValueTable) -> None:
 def add_collection_contents(collection: SourceCollection) -> None:
     DocumentMetadata.objects.create(
         source_collection=collection,
-        document_content=DocumentContent.objects.create(content=b"inside"),
+        document_content=stored_document_content(b"inside"),
         file_name="inside.txt",
         file_type="txt",
         file_size=6,

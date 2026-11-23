@@ -29,6 +29,7 @@ from tables.constants.knowledge_constants import (
     GRAPHRAG_DEFAULT_MAX_GLEANINGS,
     GRAPHRAG_DEFAULT_MAX_CLUSTER_SIZE,
 )
+from tests.knowledge_content import stored_document_content
 
 
 # ---------------------------------------------------------------------------
@@ -52,7 +53,7 @@ def empty_collection(default_org):
 
 @pytest.fixture
 def document_content():
-    return DocumentContent.objects.create(content=b"Test file content")
+    return stored_document_content(b"Test file content")
 
 
 @pytest.fixture
@@ -70,7 +71,7 @@ def document_metadata(source_collection, document_content):
 def multiple_documents(source_collection):
     documents = []
     for i in range(3):
-        content = DocumentContent.objects.create(content=f"Test content {i}".encode())
+        content = stored_document_content(f"Test content {i}".encode())
         doc = DocumentMetadata.objects.create(
             source_collection=source_collection,
             document_content=content,

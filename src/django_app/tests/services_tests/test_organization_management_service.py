@@ -16,6 +16,7 @@ from rbac.exceptions import (
     LastOrganizationError,
     OrganizationNotFoundError,
 )
+from tests.knowledge_content import stored_document_content
 
 
 @pytest.fixture
@@ -338,8 +339,10 @@ def test_org_delete_preview_reports_custom_roles(actor, populated_org, _survivin
 
 
 @pytest.mark.django_db
-def test_org_delete_sweeps_orphaned_document_content(actor, populated_org, _surviving_org):
-    """A real org delete sweeps the org's SourceCollections so their DocumentContent rows don't survive as orphans."""
+def test_org_delete_sweeps_orphaned_document_content(
+    actor, populated_org, _surviving_org, knowledge_bucket, django_capture_on_commit_callbacks
+):
+    """A real org delete sweeps the org's SourceCollections so their DocumentContent rows and stored files don't survive as orphans."""
     from tables.models.knowledge_models.collection_models import (
         DocumentContent,
         DocumentMetadata,
@@ -347,19 +350,21 @@ def test_org_delete_sweeps_orphaned_document_content(actor, populated_org, _surv
     )
 
     collection = SourceCollection.objects.create(org=populated_org, collection_name="docs")
-    content = DocumentContent.objects.create(content=b"hello world")
+    content = stored_document_content(b"hello world")
     DocumentMetadata.objects.create(
         source_collection=collection,
         document_content=content,
         file_name="hello.txt",
     )
 
-    OrganizationManagementService().delete_organization(
-        actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
-    )
+    with django_capture_on_commit_callbacks(execute=True):
+        OrganizationManagementService().delete_organization(
+            actor=actor, org_id=populated_org.pk, verification_phrase=f"delete-{populated_org.name}"
+        )
 
     assert not SourceCollection.objects.filter(pk=collection.pk).exists()
     assert not DocumentContent.objects.filter(pk=content.pk).exists()
+    assert content.object_key not in knowledge_bucket.files
 
 
 @pytest.mark.django_db
@@ -468,7 +473,7 @@ def test_org_delete_purges_collection_content(actor, populated_org, _surviving_o
     )
 
     collection = SourceCollection.objects.create(org=populated_org, collection_name="soft-delete-docs")
-    content = DocumentContent.objects.create(content=b"hello world")
+    content = stored_document_content(b"hello world")
     DocumentMetadata.objects.create(
         source_collection=collection, document_content=content, file_name="hello.txt"
     )
@@ -491,7 +496,7 @@ def test_org_delete_sweeps_already_soft_deleted_collections(actor, populated_org
     )
 
     collection = SourceCollection.objects.create(org=populated_org, collection_name="already-gone-docs")
-    content = DocumentContent.objects.create(content=b"hello world")
+    content = stored_document_content(b"hello world")
     DocumentMetadata.objects.create(
         source_collection=collection, document_content=content, file_name="hello.txt"
     )

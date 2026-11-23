@@ -83,6 +83,7 @@ from tests.api_tests.recycle_bin_cases import (
 )
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from utils.logger import logger
+from tests.knowledge_content import stored_document_content
 
 SETTINGS_URL = "/api/recycle-bin/settings/"
 
@@ -918,7 +919,7 @@ class TestBinContents:
 
     def test_a_collection_lists_its_documents(self, acme_admin_client, acme):
         collection = SourceCollection.objects.create(org=acme, collection_name="Docs")
-        content = DocumentContent.objects.create(content=b"x")
+        content = stored_document_content(b"x")
         DocumentMetadata.objects.create(
             source_collection=collection, document_content=content, file_name="a.txt", file_type="txt", file_size=1
         )

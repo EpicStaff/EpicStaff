@@ -9,6 +9,7 @@ from rbac.governance.delete_resource_names import (
     resource_name,
 )
 from rbac.models import Organization
+from tests.knowledge_content import stored_document_content
 
 
 def _cascade_closure(root_model):
@@ -98,7 +99,7 @@ def rich_org(default_org):
     collection = SourceCollection.objects.create(
         org=default_org, collection_name="rich-org-docs"
     )
-    content = DocumentContent.objects.create(content=b"hello world")
+    content = stored_document_content(b"hello world")
     DocumentMetadata.objects.create(
         source_collection=collection, document_content=content, file_name="hello.txt"
     )
