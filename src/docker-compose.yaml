@@ -1328,13 +1328,16 @@ services:
       redis:
         condition: service_healthy
     # The port opens only after `piccolo migrations forwards all` in the
-    # entrypoint, so healthy means the schema is current and the API answers.
+    # entrypoint and after the startup build of the venvs the sandbox owns, so
+    # healthy means the schema is current, those venvs are built and the API
+    # answers. The first start downloads about 470 MB of their libraries (55s on
+    # a fast link), hence the long start period.
     healthcheck:
       test: ["CMD", "python3", "-I", "-c", "import socket; socket.create_connection(('127.0.0.1', ${SANDBOX_PORT:?}), 5).close()"]
       interval: 15s
       timeout: 5s
       retries: 20
-      start_period: 30s
+      start_period: 600s
     environment:
       <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *secrets-transport-env]
       SANDBOX_CUSTOM_LIBRARY_BUCKET: ${SANDBOX_CUSTOM_LIBRARY_BUCKET:?}
