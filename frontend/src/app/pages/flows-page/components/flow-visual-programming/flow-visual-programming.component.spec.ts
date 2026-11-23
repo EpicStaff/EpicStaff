@@ -1249,7 +1249,7 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(command).toContain('"topic": "pricing"');
             expect(command).toContain('/api/run-session/');
             expect(toast['success']).toHaveBeenCalledWith(
-                'cURL command copied to clipboard! Keep one auth header (access token or API key) and delete the other.'
+                'cURL command copied! Keep only one auth header: access token or API key.'
             );
         });
 
