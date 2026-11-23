@@ -1,4 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, OnInit, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
@@ -67,8 +68,8 @@ interface ParameterChange {
 /** What an edited config was loaded with: an unchanged model is saved by its row id. */
 interface LoadedConfig {
     modelId: number;
-    provider: string;
-    modelName: string;
+    provider: string | null;
+    modelName: string | null;
     isVisible: boolean;
     inputCostPerToken: number | null;
     outputCostPerToken: number | null;
@@ -81,6 +82,9 @@ const OPTION_LABELS: Record<string, Record<string, string>> = {
     reasoning_history: { disabled: 'Off', interleaved: 'Interleaved', preserved: 'Preserved' },
     context_length_exceeded_behavior: { error: 'Fail the request', truncate: 'Shorten the answer' },
 };
+/** Sample values for connection fields; neutral, as each provider's endpoint differs (a local Ollama is plain http). */
+const CONNECTION_PLACEHOLDERS: Record<string, string> = { base_url: 'e.g. https://your-endpoint.example.com' };
+const SCHEMA_LOAD_ERROR = "Failed to load the model's settings.";
 const MODEL_SEARCH_DEBOUNCE_MS = 300;
 
 /**
@@ -103,6 +107,7 @@ const MODEL_SEARCH_DEBOUNCE_MS = 300;
         IconButtonComponent,
         InputNumberComponent,
         KeyValueListComponent,
+        NgTemplateOutlet,
         SchemaFormComponent,
         SelectComponent,
         ValidationErrorsComponent,
@@ -212,7 +217,7 @@ export class ModelConfigDialogComponent implements OnInit {
         this.secretsStorage.selectItems(this.pickedSecretIds())
     );
     protected readonly optionLabels = OPTION_LABELS;
-    protected readonly connectionPlaceholders = { base_url: 'e.g. https://api.example.com/v1' };
+    protected readonly connectionPlaceholders = CONNECTION_PLACEHOLDERS;
     protected readonly TOKEN_PRICE_HINT = TOKEN_PRICE_HINT;
     protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
 
@@ -249,16 +254,19 @@ export class ModelConfigDialogComponent implements OnInit {
             .subscribe((models) => this.catalogModels.set(models));
         this.schemaQueries
             .pipe(
-                switchMap((query) =>
-                    (query ? this.catalog.schemas(this.kind, query.provider, query.model) : EMPTY).pipe(
+                switchMap((query) => {
+                    // A new model or provider: the last model's failed load no longer applies. Any other banner (a
+                    // refused save, the providers' failed load) stays.
+                    if (this.errorMessage() === SCHEMA_LOAD_ERROR) this.errorMessage.set(null);
+                    return (query ? this.catalog.schemas(this.kind, query.provider, query.model) : EMPTY).pipe(
                         map((schemas) => ({ schemas, initial: !!query?.initial })),
                         catchError(() => {
                             this.isSchemaLoading.set(false);
-                            this.errorMessage.set("Failed to load the model's settings.");
+                            this.errorMessage.set(SCHEMA_LOAD_ERROR);
                             return EMPTY;
                         })
-                    )
-                ),
+                    );
+                }),
                 takeUntilDestroyed()
             )
             .subscribe(({ schemas, initial }) => this.applySchemas(schemas, initial));
@@ -395,14 +403,17 @@ export class ModelConfigDialogComponent implements OnInit {
                             output_price_per_million: perTokenToPerMillion(this.loaded.outputCostPerToken),
                         },
                     });
-                    this.form.controls.model_name.enable();
                     this.parameters.set(config.parameters);
                     this.connection.set(config.connection);
                     this.needsReview.set(config.needs_review);
                     this.reviewReasons.set(config.review_reasons);
                     this.loadedProvider = provider;
                     this.isLoading.set(false);
+                    // A config whose model is gone has none to look up: the user picks one, as in a new config.
+                    if (!provider) return;
+                    this.form.controls.model_name.enable();
                     this.modelQueries.next({ provider, search: '' });
+                    if (!modelName) return;
                     this.isSchemaLoading.set(true);
                     this.schemaQueries.next({ provider, model: modelName, initial: true });
                 },
@@ -414,16 +425,16 @@ export class ModelConfigDialogComponent implements OnInit {
             });
     }
 
-    /** The config, and the catalog names of its provider and model, which it carries itself. */
-    private configWithModel(
-        configId: number
-    ): Observable<{ config: GetLlmConfigRequest | EmbeddingConfig; provider: string; modelName: string }> {
+    /** The config, and the catalog names of its provider and model, which it carries itself (null once it has none). */
+    private configWithModel(configId: number): Observable<{
+        config: GetLlmConfigRequest | EmbeddingConfig;
+        provider: string | null;
+        modelName: string | null;
+    }> {
         const config$: Observable<GetLlmConfigRequest | EmbeddingConfig> = this.isLlm
             ? this.llmConfigStorage.getConfigById(configId)
             : this.embeddingConfigStorage.getConfigById(configId);
-        return config$.pipe(
-            map((config) => ({ config, provider: config.provider ?? '', modelName: config.model_name ?? '' }))
-        );
+        return config$.pipe(map((config) => ({ config, provider: config.provider, modelName: config.model_name })));
     }
 
     private applySchemas(schemas: ModelSchemas, initial: boolean): void {

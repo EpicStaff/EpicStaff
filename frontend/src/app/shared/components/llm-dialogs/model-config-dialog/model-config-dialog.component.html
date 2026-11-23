@@ -24,6 +24,15 @@
             class="dialog__body"
             [formGroup]="form"
         >
+            <!-- No Settings to hold the review note (the model's settings failed to load, or there is no model): it leads. -->
+            @if (needsReview() && !schemas() && !isSchemaLoading()) {
+                <app-warning-note
+                    class="dialog__review"
+                    role="status"
+                >
+                    <ng-container [ngTemplateOutlet]="reviewNote" />
+                </app-warning-note>
+            }
             <section class="dialog__section">
                 <div>
                     <app-custom-input
@@ -156,14 +165,7 @@
                                 role="status"
                             >
                                 @if (needsReview()) {
-                                    <span class="dialog__note-heading">This configuration needs review.</span>
-                                    @if (reviewReasons().length > 0) {
-                                        <ul class="dialog__change-list">
-                                            @for (reason of reviewReasons(); track $index) {
-                                                <li>{{ reason }}</li>
-                                            }
-                                        </ul>
-                                    }
+                                    <ng-container [ngTemplateOutlet]="reviewNote" />
                                 }
                                 @if (changes().length > 0) {
                                     <span class="dialog__note-heading">{{
@@ -234,6 +236,17 @@
             }
         </div>
     }
+
+    <ng-template #reviewNote>
+        <span class="dialog__note-heading">This configuration needs review.</span>
+        @if (reviewReasons().length > 0) {
+            <ul class="dialog__change-list">
+                @for (reason of reviewReasons(); track $index) {
+                    <li>{{ reason }}</li>
+                }
+            </ul>
+        }
+    </ng-template>
 
     <div class="dialog__footer">
         <app-button

@@ -98,8 +98,12 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
                     this.collectionsStorage.markConfigsAsProcessing(configIds);
                     this.collectionsStorage.markRagAsProcessing(this.data.ragId);
                 },
-                error: (error: HttpErrorResponse) => {
-                    this.toast.error(extractHttpErrorMessage(error, 'Files re-indexing failed'));
+                // The chain carries any stage's error, not only an HTTP response.
+                error: (error: unknown) => {
+                    const fallback = 'Files re-indexing failed';
+                    this.toast.error(
+                        error instanceof HttpErrorResponse ? extractHttpErrorMessage(error, fallback) : fallback
+                    );
                     // If bulkDeletePending() was the stage that failed, its documents are
                     // still optimistically hidden from the table with nothing left to
                     // retry the delete. Recover the same way the "Re-include Files"

@@ -3,9 +3,6 @@
 // The reset button (28px) and the gap that keeps it off the label and the slider's value box.
 $reset-size: 28px;
 $reset-gap: 8px;
-// A label's margin to its control, and a medium stepper's height (number-stepper `md`).
-$label-gap: 8px;
-$stepper-height: 40px;
 
 :host {
     display: flex;
@@ -55,12 +52,40 @@ $stepper-height: 40px;
         transform: translateY(-50%);
     }
 
-    // A stepper takes half the width, as a lone stepper in a small dialog does. Its reset sits beside it, as high
-    // as it, so its label line keeps no room for the button.
+    // A stepper takes half the width, as a lone stepper in a small dialog does. Its reset sits beside its input row,
+    // as high as it, however many lines the label wraps to, so the label line keeps no room for the button. The
+    // stepper's parts are laid out on the field's own grid (the hosts around them step aside); an empty row is 0 high.
     &__field[data-widget='stepper'] {
-        ::ng-deep app-number-stepper {
-            display: block;
-            max-width: 50%;
+        display: grid;
+        grid-template-areas:
+            'label .'
+            'control reset'
+            'stepper-error .'
+            'field-error field-error';
+        grid-template-columns: 50% auto;
+        justify-content: start;
+        column-gap: $reset-gap;
+
+        ::ng-deep :is(app-schema-field, app-number-stepper, .number-stepper) {
+            display: contents;
+        }
+
+        ::ng-deep app-tooltip {
+            grid-area: label;
+        }
+
+        ::ng-deep .number-stepper__control {
+            grid-area: control;
+        }
+
+        ::ng-deep .number-stepper__error {
+            grid-area: stepper-error;
+        }
+
+        // The gap the schema-field host kept above it.
+        ::ng-deep .schema-field__error {
+            grid-area: field-error;
+            margin-top: 8px;
         }
 
         ::ng-deep .tooltip-label-container {
@@ -68,14 +93,14 @@ $stepper-height: 40px;
         }
 
         .schema-form__reset {
-            top: calc(var(--text-body-size) * var(--text-body-line-height) + $label-gap);
-            right: auto;
-            left: calc(50% + $reset-gap);
+            position: static;
+            grid-area: reset;
+            align-self: center;
             transform: none;
 
             ::ng-deep .activate-btn {
-                width: $stepper-height;
-                height: $stepper-height;
+                width: slider-stepper.$number-stepper-md-height;
+                height: slider-stepper.$number-stepper-md-height;
             }
         }
     }

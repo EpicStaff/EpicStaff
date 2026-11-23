@@ -199,6 +199,19 @@ function renderEdit(config: GetLlmConfigRequest = STORED_CONFIG, schemas: ModelS
     return rendered;
 }
 
+/** Opens `config` for editing while its model's settings cannot be loaded (the model left the catalog). */
+function renderEditWithoutSchemas(config: GetLlmConfigRequest): Rendered {
+    const rendered = render({ kind: 'llm', configId: config.id });
+    answer(rendered, '/api/ai-models/providers/', [OPENAI]);
+    answer(rendered, '/api/llm-configs/3/', config);
+    answer(rendered, '/api/ai-models/models/', [LARGE_MODEL, SMALL_MODEL], { provider: 'openai' });
+    rendered.http
+        .expectOne((candidate) => candidate.url === '/api/ai-models/schemas/')
+        .flush({ detail: 'Not found.' }, { status: 404, statusText: 'Not Found' });
+    rendered.fixture.detectChanges();
+    return rendered;
+}
+
 /** A new LLM config named, with OpenAI chosen and its models listed. */
 function renderCreate(secrets: Secret[] = []): Rendered {
     const rendered = render({ kind: 'llm' }, secrets);
@@ -455,6 +468,63 @@ describe('ModelConfigDialogComponent', () => {
             const note = element(rendered.fixture).querySelector('.dialog__changes')!.textContent;
             expect(note).toContain('This configuration needs review.');
             expect(note).toContain('The model left the catalog.');
+        });
+
+        it("shows why the config needs review when its model's settings cannot be loaded", () => {
+            const rendered = renderEditWithoutSchemas({
+                ...STORED_CONFIG,
+                needs_review: true,
+                review_reasons: ['The model left the catalog.'],
+            });
+
+            expect(banner(rendered.fixture)).toBe("Failed to load the model's settings.");
+            const text = element(rendered.fixture).querySelector('.dialog__body')!.textContent;
+            expect(text).toContain('This configuration needs review.');
+            expect(text).toContain('The model left the catalog.');
+        });
+
+        it("clears the failed load once another model's settings load, and keeps the review note", () => {
+            const rendered = renderEditWithoutSchemas({
+                ...STORED_CONFIG,
+                needs_review: true,
+                review_reasons: ['The model left the catalog.'],
+            });
+
+            choose(rendered.fixture, '.dialog__model', 'gpt-small');
+            answer(rendered, '/api/ai-models/schemas/', SMALL_SCHEMAS, { model: 'gpt-small' });
+
+            expect(banner(rendered.fixture)).toBe('');
+            const notes = element(rendered.fixture).querySelectorAll('app-warning-note');
+            expect(
+                Array.from(notes, (note) => note.textContent)
+                    .join(' ')
+                    .match(/needs review/g)
+            ).toHaveLength(1);
+            expect(element(rendered.fixture).querySelector('.dialog__changes')!.textContent).toContain(
+                'The model left the catalog.'
+            );
+        });
+
+        it('opens a config without a model with nothing to look up, and saves it once a model is picked', () => {
+            const rendered = render({ kind: 'llm', configId: STORED_CONFIG.id });
+            answer(rendered, '/api/ai-models/providers/', [OPENAI]);
+            answer(rendered, '/api/llm-configs/3/', { ...STORED_CONFIG, provider: null, model_name: null });
+
+            rendered.http.expectNone((candidate) => candidate.url.startsWith('/api/ai-models/models/'));
+            rendered.http.expectNone((candidate) => candidate.url.startsWith('/api/ai-models/schemas/'));
+            expect(banner(rendered.fixture)).toBe('');
+            expect(
+                element(rendered.fixture).querySelector<HTMLButtonElement>('.dialog__model .selector__btn')!.disabled
+            ).toBe(true);
+
+            choose(rendered.fixture, '.dialog__provider', 'OpenAI');
+            answer(rendered, '/api/ai-models/models/', [LARGE_MODEL], { provider: 'openai' });
+            choose(rendered.fixture, '.dialog__model', 'gpt-large');
+            answer(rendered, '/api/ai-models/schemas/', LARGE_SCHEMAS, { model: 'gpt-large' });
+
+            const body = save(rendered, '/api/llm-configs/3/', 'PUT');
+            expect(body).toEqual(expect.objectContaining({ id: 3, provider: 'openai', model_name: 'gpt-large' }));
+            expect(body).not.toHaveProperty('model');
         });
 
         it('shows no review note for a config that needs none', () => {
