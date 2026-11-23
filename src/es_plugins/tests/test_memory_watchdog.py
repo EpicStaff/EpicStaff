@@ -58,6 +58,30 @@ def test_an_old_kernel_without_rss_anon_falls_back_to_vm_rss(tmp_path):
     assert ProcessTable(tmp_path).rss_kib_by_uid([20001]) == {20001: 5000}
 
 
+def test_a_process_whose_name_is_not_utf8_is_still_read(tmp_path):
+    write_status(tmp_path, 30, 20001, 9_000)
+    (tmp_path / "30" / "status").write_bytes(
+        b"Name:\tab\xff\xfecd\nState:\tS (sleeping)\nUid:\t20001\t20001\t20001\t20001\n"
+        b"RssAnon:\t    8000 kB\nRssShmem:\t    1000 kB\n"
+    )
+    table = ProcessTable(tmp_path)
+
+    assert [entry.pid for entry in table.read()] == [30]
+    assert table.living_pids_of_uid(20001) == [30]
+    assert table.rss_kib_by_uid([20001]) == {20001: 9_000}
+
+
+def test_a_process_name_cannot_forge_a_field_of_its_status(tmp_path):
+    # An exited, unreaped process has no memory lines, so only its name could carry a VmRSS.
+    directory = tmp_path / "30"
+    directory.mkdir()
+    (directory / "status").write_bytes(
+        b"Name:\t\x1cVmRSS:\tx\nState:\tZ (zombie)\nUid:\t20001\t20001\t20001\t20001\n"
+    )
+
+    assert ProcessTable(tmp_path).rss_kib_by_uid([20001]) == {20001: 0}
+
+
 def test_a_process_that_vanishes_while_read_is_left_out(tmp_path):
     write_status(tmp_path, 30, 20001, 1_000)
     (tmp_path / "31").mkdir()
