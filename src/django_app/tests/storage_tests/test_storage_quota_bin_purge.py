@@ -570,7 +570,7 @@ class TestCopyApi:
         response = _copy(client_in_acme(member_only))
 
         assert response.status_code == 413, response.content
-        assert response.json()["code"] == "storage_quota_exceeded"
+        assert response.json()["errors"][0]["code"] == "storage_quota_exceeded"
         assert _binned_paths(acme) == {"old.txt"}
         assert _live_paths(acme) == {"a.txt"}
 
@@ -627,7 +627,7 @@ class TestCopyApi:
         response = _copy(client_in_acme(admin_acme))
 
         assert response.status_code == 413
-        assert response.json()["code"] == "storage_quota_exceeded"
+        assert response.json()["errors"][0]["code"] == "storage_quota_exceeded"
         assert _binned_paths(acme) == {"old.txt"}
 
 
@@ -678,7 +678,7 @@ class TestCrossOrgApi:
         )
 
         assert response.status_code == 403, response.content
-        assert response.json()["code"] == "permission_denied"
+        assert response.json()["errors"][0]["code"] == "permission_denied"
         assert _binned_paths(beta) == {"old.txt"}
         assert _live_paths(acme) == {"a.txt"}
 

@@ -332,7 +332,7 @@ class TestStorageBinApi:
         )
 
         assert response.status_code == 404
-        assert response.json()["code"] == "not_in_recycle_bin"
+        assert response.json()["errors"][0]["code"] == "not_in_recycle_bin"
         assert StorageFile.deleted_objects.filter(org=acme, path__startswith="docs/").count() == 2
 
     def test_a_restore_conflict_is_reported_and_the_rest_go_on(self, admin_client, real_manager, acme):
@@ -354,7 +354,7 @@ class TestStorageBinApi:
         response = admin_client.post(f"{BIN}restore/", {"ids": [theirs.pk]}, format="json")
 
         assert response.status_code == 404
-        assert response.json()["code"] == "not_in_recycle_bin"
+        assert response.json()["errors"][0]["code"] == "not_in_recycle_bin"
 
     def test_purge(self, superadmin_in_acme, real_manager, acme):
         row = _binned(real_manager, acme, "a.txt")
@@ -379,7 +379,7 @@ class TestStorageBinApi:
         response = client.post(f"{BIN}purge/", body, format="json")
 
         assert response.status_code == 403, response.content
-        assert response.json()["message"] == DenyApiKeyAuth.message
+        assert response.json()["errors"][0]["detail"] == DenyApiKeyAuth.message
         assert StorageFile.deleted_objects.filter(pk=row.pk).exists()
 
     @pytest.mark.parametrize("everything", [False, True], ids=["selected", "all"])
@@ -390,7 +390,7 @@ class TestStorageBinApi:
         response = admin_client.post(f"{BIN}purge/", body, format="json")
 
         assert response.status_code == 403, response.content
-        assert response.json()["message"] == IsSuperadmin.message
+        assert response.json()["errors"][0]["detail"] == IsSuperadmin.message
         assert StorageFile.deleted_objects.filter(pk=row.pk).exists()
 
     def test_an_org_admin_gets_the_same_403_for_another_orgs_id(self, admin_client, real_manager, beta):
@@ -400,7 +400,7 @@ class TestStorageBinApi:
         response = admin_client.post(f"{BIN}purge/", {"ids": [theirs.pk]}, format="json")
 
         assert response.status_code == 403, response.content
-        assert response.json()["message"] == IsSuperadmin.message
+        assert response.json()["errors"][0]["detail"] == IsSuperadmin.message
         assert StorageFile.deleted_objects.filter(pk=theirs.pk).exists()
 
     def test_all_empties_the_bin(self, superadmin_in_acme, real_manager, acme, beta):
@@ -514,7 +514,7 @@ class TestStorageBinApi:
         for client in (reader, restorer, deleter):
             response = client.post(f"{BIN}purge/", {"ids": [row.pk]}, format="json")
             assert response.status_code == 403
-            assert response.json()["message"] == IsSuperadmin.message
+            assert response.json()["errors"][0]["detail"] == IsSuperadmin.message
         assert deleter.post(f"{BIN}restore/", {"ids": [row.pk]}, format="json").status_code == 403
         assert restorer.post(f"{BIN}restore/", {"ids": [row.pk]}, format="json").status_code == 200
         real_manager.delete(acme.id, "a.txt", user=None)
@@ -538,7 +538,7 @@ def test_a_request_without_the_org_header_is_400(
     response = getattr(client_as(user), method)(url, {"ids": [1]}, format="json")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "org_context_required"
+    assert response.json()["errors"][0]["code"] == "org_context_required"
 
 
 class TestFailures:

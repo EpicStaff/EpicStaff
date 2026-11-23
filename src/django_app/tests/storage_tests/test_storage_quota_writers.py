@@ -119,7 +119,7 @@ class TestCopy:
             )
 
         assert response.status_code == 413
-        assert response.json()["code"] == "storage_quota_exceeded"
+        assert response.json()["errors"][0]["code"] == "storage_quota_exceeded"
         assert _row_sizes(default_org) == {"a.txt": 10}
 
     def test_copy_api_within_quota_copies_to_the_root(

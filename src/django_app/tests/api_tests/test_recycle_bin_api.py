@@ -91,7 +91,7 @@ pytestmark = pytest.mark.usefixtures("retention_seven_days")
 
 def _assert_superadmin_required(response):
     assert response.status_code == 403, response.content
-    assert response.json()["message"] == IsSuperadmin.message
+    assert response.json()["errors"][0]["detail"] == IsSuperadmin.message
 
 
 @pytest.fixture
@@ -620,7 +620,7 @@ class TestApiKeys:
 
         for response in (single, selected, everything):
             assert response.status_code == 403
-            assert response.json()["message"] == DenyApiKeyAuth.message
+            assert response.json()["errors"][0]["detail"] == DenyApiKeyAuth.message
         assert case.model.deleted_objects.filter(pk=row.pk).exists()
 
     def test_a_superadmins_api_key_cannot_purge(self, api_key_client, superadmin, acme):
@@ -633,7 +633,7 @@ class TestApiKeys:
 
         for response in (single, everything):
             assert response.status_code == 403
-            assert response.json()["message"] == DenyApiKeyAuth.message
+            assert response.json()["errors"][0]["detail"] == DenyApiKeyAuth.message
         assert Graph.deleted_objects.filter(pk=graph.pk).exists()
 
     def test_a_system_api_key_cannot_purge(self, api_key_client, acme):
@@ -646,7 +646,7 @@ class TestApiKeys:
 
         for response in (single, everything):
             assert response.status_code == 403
-            assert response.json()["message"] == DenyApiKeyAuth.message
+            assert response.json()["errors"][0]["detail"] == DenyApiKeyAuth.message
         assert Graph.deleted_objects.filter(pk=graph.pk).exists()
 
     def test_a_user_api_key_can_list_and_restore(self, api_key_client, admin_acme, acme):
