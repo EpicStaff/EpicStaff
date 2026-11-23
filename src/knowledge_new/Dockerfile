@@ -44,6 +44,13 @@ WORKDIR /app/src/knowledge
 # image.
 RUN uv sync --frozen --no-install-project --all-groups --no-group dev
 
+# pyproject.toml selects one LanceDB build per platform: lancedb-compat on x86_64 (runs on
+# CPUs without AVX2), plain lancedb everywhere else. Assert that here, where a relock that
+# let the Haswell-only wheel back in fails with a readable message instead of with
+# "Illegal instruction" on a customer's host, and import it so the wheel loads on the
+# build machine at all.
+RUN /app/.venv/bin/python -c "import platform, sys; from importlib.metadata import distributions; installed = sorted(d.metadata['Name'] for d in distributions() if d.metadata['Name'].startswith('lancedb')); expected = ['lancedb-compat' if platform.machine() == 'x86_64' else 'lancedb']; installed == expected or sys.exit(f'LanceDB build mismatch: installed {installed}, expected {expected}'); import lancedb; print('LanceDB build:', installed[0], lancedb.__version__)"
+
 # Pre-cache every tokenizer the service resolves at runtime so no customer
 # deployment fetches one on first use (see docs/backend-runtime-fetch-audit.md):
 # - tiktoken encodings o200k_base (GraphRAG's ENCODING_MODEL default) and

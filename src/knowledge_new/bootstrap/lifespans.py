@@ -1,6 +1,7 @@
 from collections import defaultdict
 from collections.abc import Callable
 from importlib import import_module
+from importlib.metadata import distributions
 from typing import Literal
 
 from infrastructure.naive.chunkers.strategies.token_chunker import load_gpt2_tokenizer
@@ -56,6 +57,26 @@ def close_process_pool():
         set_process_pool(None)
         process_pool.stop()
         process_pool.join()
+
+
+@on_startup
+def log_lancedb_build():
+    """Name the LanceDB wheel this process runs, for support tickets from old hosts.
+
+    `lancedb-compat` runs on any x86_64 CPU; plain `lancedb` needs AVX2 on x86_64.
+    Which one is installed is decided per platform in pyproject.toml and asserted in
+    the Dockerfile; this line shows it in the log of a running deployment.
+    """
+    # Diagnostic only: a failed lookup must not abort boot.
+    try:
+        builds = sorted(
+            f"{distribution.metadata['Name']} {distribution.version}"
+            for distribution in distributions()
+            if distribution.metadata["Name"].startswith("lancedb")
+        )
+        logger.info("LanceDB build: {}", ", ".join(builds) or "none")
+    except Exception as error:
+        logger.warning("LanceDB build lookup failed: {}", error)
 
 
 # The warm-up hooks below only move first-request latency to startup. The catch is

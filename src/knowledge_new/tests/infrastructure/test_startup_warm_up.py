@@ -4,6 +4,7 @@ from bootstrap import lifespans
 from infrastructure.naive.chunkers.strategies.token_chunker import load_gpt2_tokenizer
 from infrastructure.naive.chunkers.strategies import token_chunker
 from infrastructure.token_estimation import _WARM_UP_MODELS, warm_up_token_counter
+from loguru import logger
 
 
 def test_gpt2_tokenizer_is_loaded_once_and_reused():
@@ -52,3 +53,18 @@ def test_every_graphrag_module_is_imported():
     assert [call.args[0] for call in import_module.call_args_list] == list(
         lifespans._GRAPHRAG_MODULES
     )
+
+
+def test_startup_logs_the_lancedb_build():
+    messages = []
+    handler_id = logger.add(messages.append, level="INFO", format="{message}")
+    try:
+        lifespans.log_lancedb_build()
+    finally:
+        logger.remove(handler_id)
+    assert any(message.startswith("LanceDB build: lancedb") for message in messages)
+
+
+def test_failing_lancedb_build_lookup_does_not_abort_startup():
+    with patch.object(lifespans, "distributions", side_effect=RuntimeError("boom")):
+        lifespans.log_lancedb_build()
