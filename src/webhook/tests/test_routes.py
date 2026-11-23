@@ -235,25 +235,29 @@ async def test_returns_503_when_no_received_events_receives_the_event(client, tu
         (
             {"json": ["not", "an", "object"]},
             {
-                "code": "dict_type",
-                "detail": "Input should be a valid dictionary",
+                "code": "bad_request",
+                "detail": "Webhook body must be a JSON object",
                 "attr": None,
                 "context": None,
             },
         ),
         (
             {"content": b'{"update_id": ', "headers": {"Content-Type": "application/json"}},
-            {"code": "json_invalid", "detail": "JSON decode error", "attr": None, "context": None},
+            {"code": "bad_request", "detail": "Invalid JSON body", "attr": None, "context": None},
         ),
     ],
     ids=["body-not-an-object", "unparseable-body"],
 )
-async def test_invalid_body_is_a_422_without_echoing_it(
-    client, received_events, request_options, expected_error
+async def test_invalid_body_is_a_400_without_echoing_it(
+    client, tunnel_registry, received_events, request_options, expected_error
 ):
-    response = await client.post("/webhooks/any-hook", **request_options)
+    # The body is read only after the path resolves and the caller is authenticated.
+    await _register(tunnel_registry, "any-hook", auth=_auth("webhook", "secret"))
+    options = dict(request_options)
+    headers = {**options.pop("headers", {}), HEADER_BY_KIND["webhook"]: "secret"}
+    response = await client.post("/webhooks/any-hook", headers=headers, **options)
 
-    assert response.status_code == 422
+    assert response.status_code == 400
     assert response.json() == {"type": "client_error", "errors": [expected_error]}
     assert "update_id" not in response.text
     assert await received_events() == []

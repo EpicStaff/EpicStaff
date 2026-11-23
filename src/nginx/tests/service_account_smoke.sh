@@ -192,7 +192,7 @@ echo "# through the internal API listener, from $network"
 
 status=$(internal /plugin-runtime/me/)
 expect "the key authenticates through the internal listener" 200 "$status" \
-  "body['plugin']['identifier'] == '$plugin' and body['organization']['id'] == $org_id and body['on_behalf_of'] is None"
+  "body['errors'][0]['context']['plugin']['identifier'] == '$plugin' and body['organization']['id'] == $org_id and body['on_behalf_of'] is None"
 if [ "$status" != 200 ]; then
   bail_out "the key does not work through the internal listener; the other checks need it"
 fi
@@ -203,7 +203,7 @@ expect "the people endpoint answers for a member who may use the plugin" 200 "$s
 
 status=$(internal "/plugin-runtime/people/$outsider_id/")
 expect "the people endpoint answers 404 for a person who is not a member" 404 "$status" \
-  "body['code'] == 'person_not_found'"
+  "body['errors'][0]['code'] == 'person_not_found'"
 
 status=$(internal /plugin-runtime/me/ -H "X-EpicStaff-On-Behalf-Of: $person_id")
 expect "on behalf of a member who may use the plugin, me names them" 200 "$status" \
@@ -211,15 +211,15 @@ expect "on behalf of a member who may use the plugin, me names them" 200 "$statu
 
 status=$(internal /plugin-runtime/me/ -H "X-EpicStaff-On-Behalf-Of: $no_view_id")
 expect "on behalf of a member without View is refused" 403 "$status" \
-  "body['code'] == 'on_behalf_of_not_allowed'"
+  "body['errors'][0]['code'] == 'on_behalf_of_not_allowed'"
 
 status=$(internal /plugin-runtime/me/ -H "X-EpicStaff-On-Behalf-Of: not-a-person")
-expect "a malformed on-behalf-of header is refused" 400 "$status" "body['code'] == 'invalid_on_behalf_of'"
+expect "a malformed on-behalf-of header is refused" 400 "$status" "body['errors'][0]['code'] == 'invalid_on_behalf_of'"
 
 # Refused by its permission class before any lookup, so any flow id will do.
 status=$(internal /flow-assistants/1/)
 expect "a person-only endpoint (the flow assistant) refuses the key" 403 "$status" \
-  "body['code'] == 'permission_denied'"
+  "body['errors'][0]['code'] == 'permission_denied'"
 
 echo "# on EpicStaff's public address, $base_url"
 
@@ -227,7 +227,7 @@ status=$(curl -sS -o "$work_dir/body" -w '%{http_code}' --max-time 20 -H @"$work
   -H "X-Organization-Id: $org_id" -H 'Accept: application/json' \
   ${public_options[@]+"${public_options[@]}"} "$base_url/api/plugin-runtime/me/" 2> "$work_dir/curl-error" || true)
 expect "the same key is refused on EpicStaff's public address" 401 "$status" \
-  "body['code'] == 'service_account_not_authenticated'"
+  "body['errors'][0]['code'] == 'service_account_not_authenticated'"
 
 if [ "$failures" -ne 0 ]; then
   echo "FAILED: $failures check(s)"

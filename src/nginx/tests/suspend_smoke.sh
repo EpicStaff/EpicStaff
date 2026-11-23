@@ -372,7 +372,7 @@ if [ "$status" = 201 ]; then
     "$work_dir/body" 2> /dev/null || true)
 fi
 expect "the Org Admin's run is refused with 409 plugin_suspended" 409 "$status" \
-  "body['code'] == 'plugin_suspended' and body['plugin']['identifier'] == '$plugin'"
+  "body['errors'][0]['code'] == 'plugin_suspended' and body['errors'][0]['context']['plugin']['identifier'] == '$plugin'"
 
 echo "# 5. resume"
 status=$(api superadmin POST "/api/admin/plugins/$plugin/grants/$grant_id/resume/")
