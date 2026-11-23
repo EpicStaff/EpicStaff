@@ -13,6 +13,9 @@ from presentation.rest.controllers import rag as rag_controller
 from presentation.rest.controllers.rag import RagController
 from presentation.rest.error_handlers import get_error_handlers
 
+from tests.orchestrators.conftest import CRYPTOGRAPHER, seal
+from tests.orchestrators.graph_output_fakes import FakeGraphRagRepo
+
 SEARCH_PATH = "/rags/naive/1/search/"
 SEARCH_BODY = {
     "query": "what is indexed",
@@ -111,3 +114,57 @@ async def test_search_is_cancelled_and_answered_with_499_when_the_client_disconn
     assert search.cancelled
     response_start = next(m for m in sent_messages if m["type"] == "http.response.start")
     assert response_start["status"] == 499
+
+
+class _GraphRagUow(AbstractUnitOfWork):
+    def __init__(self, repo: FakeGraphRagRepo):
+        self._repo = repo
+
+    @property
+    def graph_rag_repo(self):
+        return self._repo
+
+    @property
+    def naive_rag_repo(self):
+        return None
+
+    async def commit(self): ...
+
+    async def rollback(self): ...
+
+
+@pytest.mark.parametrize(
+    ("graph_exists", "expected_status", "expected_code"),
+    [(False, 404, "not_found"), (True, 409, "graph_not_indexed")],
+    ids=["deleted-graph-rag", "never-indexed-graph-rag"],
+)
+def test_graph_search_that_cannot_run_answers_with_a_client_error_code(
+    monkeypatch, tmp_path, graph_exists, expected_status, expected_code
+):
+    """The agent tells the model whether retrying can help by these codes, not by a 500."""
+    # An existing graph RAG with an empty output directory has never been indexed.
+    repo = FakeGraphRagRepo(tmp_path if graph_exists else None)
+    monkeypatch.setattr(rag_controller, "is_graphrag_available", lambda: True)
+    app = Litestar(
+        route_handlers=[RagController],
+        signature_types=[AbstractUnitOfWork, AbstractCryptographer],
+        dependencies={
+            "uow": Provide(lambda: _GraphRagUow(repo), sync_to_thread=False),
+            "cryptographer": Provide(lambda: CRYPTOGRAPHER, sync_to_thread=False),
+        },
+        exception_handlers=get_error_handlers(),
+    )
+
+    with TestClient(app=app) as client:
+        response = client.post(
+            "/rags/graph/7/search/",
+            json={
+                "query": "what is indexed",
+                "search_config": {"rag_strategy": "graph", "method": "basic"},
+                "embedding_api_key": seal("sk-embedding"),
+                "llm_api_key": seal("sk-llm"),
+            },
+        )
+
+    assert response.status_code == expected_status
+    assert response.json()["code"] == expected_code

@@ -9,7 +9,9 @@ class Base(DeclarativeBase):
 
 
 def make_engine(url: str):
-    return create_async_engine(url, echo=False, pool_pre_ping=True)
+    # Without hide_parameters a failed statement's error quotes its bound values (message text,
+    # a desk's identity secret), and that error reaches the log.
+    return create_async_engine(url, echo=False, pool_pre_ping=True, hide_parameters=True)
 
 
 def make_session_factory(engine) -> async_sessionmaker[AsyncSession]:

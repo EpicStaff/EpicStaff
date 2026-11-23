@@ -1,7 +1,8 @@
 """Tests for GraphSearchOrchestrator.
 
 Seams, all at external boundaries:
-- FakeUoW / FakeGraphRagRepo — the database.
+- FakeUoW / FakeGraphRagRepo — the database. The RAG's output storage is a real
+  temporary directory, so the indexed-graph check reads real files.
 - `_SEARCH_MAP` entries — graphrag's searchers call an LLM; the map holds direct
   references to them, so replacing the entries is the only way to run a fake searcher.
 - `FakeDataReader` — graphrag's reader of the index tables from storage.
@@ -18,9 +19,13 @@ from application.orchestrators.searching.strategies.graph_search import (
     SearchSpecification,
 )
 from domain.enums import GraphSearchMethodEnum
-from domain.errors import SecretDecryptError, UnsupportedError
+from domain.errors import (
+    GraphNotIndexedError,
+    GraphRagConfigNotFoundError,
+    SecretDecryptError,
+    UnsupportedError,
+)
 from domain.models import EmbeddingConfig, GraphPricingConfig, SearchUsage
-from graphrag.config.models.graph_rag_config import GraphRagConfig
 from infrastructure.graphrag import usage_metrics
 from src.shared.models.knowledge_new import (
     GraphBasicSearchConfig,
@@ -29,6 +34,7 @@ from src.shared.models.knowledge_new import (
     GraphLocalSearchConfig,
 )
 from tests.orchestrators.conftest import CRYPTOGRAPHER, seal, sealed_marker
+from tests.orchestrators.graph_output_fakes import FakeGraphRagRepo, FakeUoW, write_table
 
 INDEX_TABLES = {
     name: pandas.DataFrame({"id": [index]})
@@ -37,40 +43,6 @@ INDEX_TABLES = {
     )
 }
 COVARIATES = pandas.DataFrame({"id": [99]})
-
-
-def _make_graph_rag_config() -> GraphRagConfig:
-    from graphrag_llm.config import ModelConfig
-
-    config = GraphRagConfig()
-    stub = ModelConfig(model_provider="openai", model="gpt-4o", api_key="stub-key")
-    config.embedding_models["default_embedding_model"] = stub.model_copy()
-    config.completion_models["default_completion_model"] = stub.model_copy()
-    return config
-
-
-class FakeGraphRagRepo:
-    def __init__(self, pricing_config: GraphPricingConfig | None = None):
-        self.requested_rag_ids: list[int] = []
-        self.pricing_config = pricing_config
-
-    async def get_pricing_config(self, rag_id: int) -> GraphPricingConfig | None:
-        return self.pricing_config
-
-    async def get_config(self, rag_id: int) -> GraphRagConfig:
-        self.requested_rag_ids.append(rag_id)
-        return _make_graph_rag_config()
-
-
-class FakeUoW:
-    def __init__(self, repo: FakeGraphRagRepo):
-        self.graph_rag_repo = repo
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *exc):
-        return False
 
 
 def _fake_data_reader(tables: dict[str, pandas.DataFrame]):
@@ -92,8 +64,15 @@ def _fake_data_reader(tables: dict[str, pandas.DataFrame]):
 
 
 @pytest.fixture
-def repo():
-    return FakeGraphRagRepo()
+def output_directory(tmp_path):
+    """The output storage of a graph that has been indexed."""
+    write_table(tmp_path, "entities", INDEX_TABLES["entities"])
+    return tmp_path
+
+
+@pytest.fixture
+def repo(output_directory):
+    return FakeGraphRagRepo(output_directory)
 
 
 @pytest.fixture
@@ -292,6 +271,28 @@ async def test_request_api_keys_are_used_for_the_models(orchestrator, index_tabl
     assert config.completion_models["default_completion_model"].api_key == "sk-llm"
 
 
+async def test_search_of_a_deleted_graph_rag_raises_not_found(index_tables, searcher):
+    calls = searcher(GraphSearchMethodEnum.BASIC)
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(None)), CRYPTOGRAPHER)
+
+    with pytest.raises(GraphRagConfigNotFoundError):
+        await orchestrator.execute(_request(GraphBasicSearchConfig()))
+
+    assert calls == []
+
+
+async def test_search_of_a_never_indexed_graph_raises_not_indexed(
+    tmp_path, index_tables, searcher
+):
+    calls = searcher(GraphSearchMethodEnum.BASIC)
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(tmp_path)), CRYPTOGRAPHER)
+
+    with pytest.raises(GraphNotIndexedError):
+        await orchestrator.execute(_request(GraphBasicSearchConfig()))
+
+    assert calls == []
+
+
 async def test_unsupported_method_raises_unsupported_error(orchestrator, index_tables):
     class UnknownSearchConfig:
         method = "nonexistent_method"
@@ -396,11 +397,11 @@ def _install_metered_searcher(monkeypatch, *, embedding=0, input_tokens=0, outpu
 
 
 async def test_search_reports_metered_embedding_and_llm_usage_with_custom_llm_prices(
-    monkeypatch, index_tables
+    monkeypatch, output_directory, index_tables
 ):
     _install_metered_searcher(monkeypatch, embedding=10, input_tokens=100, output_tokens=20)
     pricing = _pricing(input_cost_per_token=0.001, output_cost_per_token=0.002)
-    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(pricing)), CRYPTOGRAPHER)
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(output_directory, pricing)), CRYPTOGRAPHER)
 
     result = await orchestrator.execute(_request(GraphLocalSearchConfig()))
 
@@ -414,7 +415,9 @@ async def test_search_reports_metered_embedding_and_llm_usage_with_custom_llm_pr
     assert usage.embedding_cost_usd is not None
 
 
-async def test_search_counts_the_grounding_judge_call_in_the_usage(monkeypatch, index_tables):
+async def test_search_counts_the_grounding_judge_call_in_the_usage(
+    monkeypatch, output_directory, index_tables
+):
     _install_metered_searcher(monkeypatch, input_tokens=100, output_tokens=20)
 
     async def metered_guard(query, response, context, config, method, rag_id):
@@ -424,16 +427,18 @@ async def test_search_counts_the_grounding_judge_call_in_the_usage(monkeypatch, 
         return response
 
     monkeypatch.setattr(graph_search, "apply_grounding_guard", metered_guard)
-    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(_pricing())), CRYPTOGRAPHER)
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(output_directory, _pricing())), CRYPTOGRAPHER)
 
     result = await orchestrator.execute(_request(GraphLocalSearchConfig()))
 
     assert (result.usage.llm_input_tokens, result.usage.llm_output_tokens) == (107, 21)
 
 
-async def test_search_cost_is_unknown_for_an_unpriced_llm(monkeypatch, index_tables):
+async def test_search_cost_is_unknown_for_an_unpriced_llm(
+    monkeypatch, output_directory, index_tables
+):
     _install_metered_searcher(monkeypatch, input_tokens=5, output_tokens=5)
-    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(_pricing())), CRYPTOGRAPHER)
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(output_directory, _pricing())), CRYPTOGRAPHER)
 
     result = await orchestrator.execute(_request(GraphLocalSearchConfig()))
 
@@ -442,10 +447,10 @@ async def test_search_cost_is_unknown_for_an_unpriced_llm(monkeypatch, index_tab
 
 
 async def test_search_still_returns_tokens_when_pricing_cannot_be_resolved(
-    monkeypatch, index_tables
+    monkeypatch, output_directory, index_tables
 ):
     _install_metered_searcher(monkeypatch, embedding=3, input_tokens=5, output_tokens=2)
-    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(None)), CRYPTOGRAPHER)
+    orchestrator = GraphSearchOrchestrator(FakeUoW(FakeGraphRagRepo(output_directory, None)), CRYPTOGRAPHER)
 
     result = await orchestrator.execute(_request(GraphLocalSearchConfig()))
 

@@ -518,11 +518,12 @@ async def test_reader_loop_failure_logs_the_class_name_and_a_digest_only(explodi
     assert_masked_exception(error_line, "RuntimeError")
 
 
-async def test_reader_loop_failure_reaches_the_agent_as_an_unredacted_tool_result(
+async def test_reader_loop_failure_reaches_the_agent_without_its_cause(
     exploding_sandbox,
 ):
-    """Only the log line is redacted: the ConnectionError text still carries the cause,
-    and the executor passes it to the agent as ToolResult.content."""
+    """The executor passes the ConnectionError text to the model as ToolResult.content,
+    so it names the failure only: the cause (a Redis error quotes host and port) is
+    logged, not forwarded."""
     sandbox_client = _build_client()
     await sandbox_client.start()
     executor = PythonCodeToolExecutor(sandbox_client, _make_tool_data())
@@ -532,6 +533,4 @@ async def test_reader_loop_failure_reaches_the_agent_as_an_unredacted_tool_resul
         await sandbox_client.stop()
 
     assert tool_result.is_error is True
-    assert tool_result.content == (
-        f"SandboxClient reader loop failed: pubsub subscription broke: {READER_MARKER}"
-    )
+    assert tool_result.content == "SandboxClient result listener failed"

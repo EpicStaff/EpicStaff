@@ -25,7 +25,7 @@ from rest_framework.viewsets import ReadOnlyModelViewSet
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.knowledge_new import ChunkingConfig
 from tables.clients import KnowledgeClient
-from tables.clients.errors import ClientError, ClientResourceNotFoundError
+from tables.clients.errors import ClientResourceNotFoundError
 from tables.exceptions import (
     CollectionNotFoundException,
     DocumentConfigNotFoundException,
@@ -552,16 +552,13 @@ class ProcessNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView)
             chunk_overlap=validated["chunk_overlap"],
             extra=validated["additional_params"],
         )
-        try:
-            with KnowledgeClient(timeout=300) as client:
-                client.prechunk(
-                    strategy=RAGStrategy.NAIVE,
-                    rag_id=naive_rag_id,
-                    document_id=document_config_id,
-                    chunking_config=chunking_config,
-                )
-        except ClientError as e:
-            return Response({"error": str(e)}, status=e.status_code)
+        with KnowledgeClient(timeout=300) as client:
+            client.prechunk(
+                strategy=RAGStrategy.NAIVE,
+                rag_id=naive_rag_id,
+                document_id=document_config_id,
+                chunking_config=chunking_config,
+            )
         record_rag_change(config.naive_rag.base_rag_type.source_collection, changed=True)
 
         return Response(
@@ -591,8 +588,6 @@ class CancelNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView):
                 client.cancel(strategy=RAGStrategy.NAIVE, rag_id=naive_rag_id, operation="prechunk")
         except ClientResourceNotFoundError:
             cancelled = False  # No chunking was running.
-        except ClientError as e:
-            return Response({"error": str(e)}, status=e.status_code)
         record_rag_change(naive_rag.base_rag_type.source_collection, changed=cancelled)
         return Response(status=status.HTTP_204_NO_CONTENT)
 

@@ -4,6 +4,7 @@ from typing import Any, ClassVar
 
 import pandas
 from application.commands import RunSearch
+from application.orchestrators.graph_output import ensure_graph_indexed
 from application.orchestrators.searching.base import AbstractSearchOrchestrator
 from application.results import SearchResult
 from application.sealed_secrets import open_sealed_secrets
@@ -15,10 +16,10 @@ from graphrag.api import basic_search, drift_search, global_search, local_search
 from graphrag.config.models.basic_search_config import BasicSearchConfig
 from graphrag.config.models.drift_search_config import DRIFTSearchConfig
 from graphrag.config.models.global_search_config import GlobalSearchConfig
-from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag.config.models.local_search_config import LocalSearchConfig
 from graphrag.data_model import DataReader
-from graphrag_storage import create_storage
+from graphrag_storage import Storage, create_storage
+from graphrag_storage.tables.table_provider_config import TableProviderConfig
 from graphrag_storage.tables.table_provider_factory import create_table_provider
 from infrastructure.graphrag.model_headers import set_extra_headers
 from infrastructure.graphrag.usage_metrics import track_usage
@@ -118,6 +119,8 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
         async with self.uow:
             config = await self.uow.graph_rag_repo.get_config(command.rag_id)
             pricing = await self._get_pricing(command.rag_id)
+        if config is None:
+            raise GraphRagConfigNotFoundError(rag_id=command.rag_id)
 
         secrets = open_sealed_secrets(command, self.cryptographer)
         config.embedding_models["default_embedding_model"].api_key = secrets.embedding_api_key
@@ -143,8 +146,11 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
             specs.config_field,
             method_config,
         )
+        storage = create_storage(config.output_storage)
+        await ensure_graph_indexed(storage, command.rag_id)
         files = await self._resolve_files(
-            config=config,
+            storage=storage,
+            table_provider_config=config.table_provider,
             required_files=specs.required_files,
             optional_files=specs.optional_files,
         )
@@ -211,12 +217,12 @@ class GraphSearchOrchestrator(AbstractSearchOrchestrator):
 
     @staticmethod
     async def _resolve_files(
-        config: GraphRagConfig,
+        storage: Storage,
+        table_provider_config: TableProviderConfig,
         required_files: Iterable[str],
         optional_files: Iterable[str] | None = None,
     ) -> dict[str, pandas.DataFrame]:
-        storage = create_storage(config.output_storage)
-        table_provider = create_table_provider(config.table_provider, storage)
+        table_provider = create_table_provider(table_provider_config, storage)
         reader = DataReader(table_provider)
         files = {n: await getattr(reader, n)() for n in required_files}
         if optional_files:
