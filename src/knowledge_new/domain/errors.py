@@ -2,6 +2,8 @@ __all__ = [
     "ArtifactStorageError",
     "ChunkingError",
     "ChunksNotIndexedError",
+    "ContentStorageUnavailableError",
+    "DocumentContentMissingError",
     "DocumentNotFoundError",
     "EmbeddingConfigNotFoundError",
     "EmbeddingError",
@@ -116,3 +118,11 @@ class GraphArtifactsNotReadyError(KnowledgeError):
 
 class ArtifactStorageError(KnowledgeError):
     default_message = "Could not delete {failed_count} object(s) under '{prefix}'."
+
+
+class DocumentContentMissingError(KnowledgeError):
+    default_message = "The content of {documents} is missing from storage."
+
+
+class ContentStorageUnavailableError(KnowledgeError):
+    default_message = "Document storage could not be reached."

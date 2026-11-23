@@ -216,9 +216,9 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractNaiveR
         )
         return search_rows_to_found_chunks(result.all(), similarity_threshold)
 
-    async def get_document_content(
+    async def get_document_content_key(
         self, rag_id: int, document_id: int
-    ) -> tuple[bytes, FileExtensionEnum]:
+    ) -> tuple[str, FileExtensionEnum]:
         result = await self._session.execute(
             select(NaiveRagDocumentConfig)
             .where(
@@ -236,6 +236,5 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractNaiveR
             raise DocumentNotFoundError(rag_id=rag_id, document_id=document_id)
 
         metadata = config.document
-        content = bytes(metadata.document_content.content)
         extension = FileExtensionEnum(Path(metadata.file_name).suffix.lower())
-        return content, extension
+        return metadata.document_content.object_key, extension

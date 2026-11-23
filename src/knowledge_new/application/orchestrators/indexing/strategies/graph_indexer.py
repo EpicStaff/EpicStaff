@@ -7,17 +7,19 @@ from application.sealed_secrets import open_sealed_secrets
 from common.utils import utcnow
 from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
 from domain.errors import (
+    DocumentContentMissingError,
     DocumentNotFoundError,
     GraphRagConfigNotFoundError,
     RagNotFoundError,
     RepositoryError,
 )
-from domain.models import GraphPricingConfig, Rag
+from domain.models import GraphDocument, GraphPricingConfig, Rag
 from domain.usage import IndexingRunUsage, UsageTally
 from graphrag.api import build_index
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
 from graphrag_storage import create_storage
+from infrastructure.file_text_extractors import build_file_text_extractor
 from infrastructure.graphrag.model_headers import set_extra_headers
 from infrastructure.graphrag.storages import create_storage_config
 from infrastructure.graphrag.usage_metrics import track_usage
@@ -58,10 +60,12 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             config.completion_models["default_completion_model"], secrets.llm_extra_headers
         )
 
+        text_documents = await self._read_texts(documents)
+
         rag.mark_as_processing(command.document_ids)
         await self._update_rag(rag)
 
-        input_documents = pandas.DataFrame(data=[asdict(d) for d in documents])
+        input_documents = pandas.DataFrame(data=[asdict(d) for d in text_documents])
         input_documents["human_readable_id"] = input_documents.index
         with track_usage(config) as usage:
             self.state["usage"] = usage
@@ -178,7 +182,7 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
 
     async def _get_documents_under_uow(
         self, rag_id: int, ids: frozenset[int]
-    ) -> list[TextDocument]:
+    ) -> list[GraphDocument]:
         documents = await self.uow.graph_rag_repo.get_documents(rag_id=rag_id, ids=ids)
 
         if not documents:
@@ -196,8 +200,42 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             await self.uow.graph_rag_repo.update_rag(rag)
             await self.uow.commit()
 
-    def _has_indexed_document(self, documents: list[TextDocument]) -> bool:
-        return any(d.raw_data["status"] == DocumentStatusEnum.COMPLETED for d in documents)
+    def _has_indexed_document(self, documents: list[GraphDocument]) -> bool:
+        return any(d.status == DocumentStatusEnum.COMPLETED for d in documents)
+
+    async def _read_texts(self, documents: list[GraphDocument]) -> list[TextDocument]:
+        """Read every document's file and extract its text, as graphrag takes it.
+
+        graphrag indexes all documents in one run, so a missing file fails the whole run
+        before it starts; the error names every document whose file is missing.
+
+        Raises:
+            DocumentContentMissingError: Some documents' files are gone from storage.
+            ContentStorageUnavailableError: The storage could not be reached.
+        """
+        text_documents: list[TextDocument] = []
+        missing_names: list[str] = []
+        for document in documents:
+            try:
+                content = await self.content_reader.read(document.content_key)
+            except DocumentContentMissingError:
+                missing_names.append(document.name)
+                continue
+            text = await build_file_text_extractor(document.extension).extract(content)
+            text_documents.append(
+                TextDocument(
+                    id=str(document.id),
+                    text=text,
+                    title=document.name,
+                    creation_date=document.created_at.isoformat(),
+                    raw_data={"status": document.status},
+                )
+            )
+        if missing_names:
+            raise DocumentContentMissingError(
+                documents=", ".join(f"'{name}'" for name in missing_names)
+            )
+        return text_documents
 
     async def _update_status_of_documents(
         self,

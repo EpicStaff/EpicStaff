@@ -1,5 +1,6 @@
 import asyncio
 from unittest.mock import AsyncMock, patch
+from uuid import uuid4
 
 import pytest
 from application.commands import RunIndex
@@ -12,6 +13,7 @@ from domain.enums import (
     IndexStatusEnum,
 )
 from domain.errors import (
+    ContentStorageUnavailableError,
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
     RagNotFoundError,
@@ -28,6 +30,7 @@ from domain.models import (
 from domain.usage import IndexingRunUsage
 from infrastructure.naive.embedders.strategies import litellm_embedder
 from loguru import logger
+from tests.fakes.document_content_reader import FakeDocumentContentReader
 from tests.orchestrators.conftest import CRYPTOGRAPHER, seal, sealed_marker
 
 VECTOR = [0.1, 0.2]
@@ -133,13 +136,23 @@ PARAGRAPH_CONFIG = ChunkingConfig(
 )
 
 
-def _document(doc_id: int = 7, **overrides) -> Document:
+# Files of the documents the helpers below build, under keys unique to each call.
+_STORED_FILES: dict[str, bytes] = {}
+
+
+def _stored(content: bytes) -> str:
+    content_key = f"documents/test/{uuid4().hex}"
+    _STORED_FILES[content_key] = content
+    return content_key
+
+
+def _document(doc_id: int = 7, *, content: bytes = b"alpha\n\nbeta", **overrides) -> Document:
     """A text document whose content chunks into "alpha" and "beta"."""
     return Document(
         **{
             "id": doc_id,
             "name": "doc.txt",
-            "content": b"alpha\n\nbeta",
+            "content_key": _stored(content),
             "status": DocumentStatusEnum.NEW,
             "config": PARAGRAPH_CONFIG,
             **overrides,
@@ -151,7 +164,7 @@ def _broken_json_document(doc_id: int) -> Document:
     return Document(
         id=doc_id,
         name="doc.json",
-        content=b"{not valid",
+        content_key=_stored(b"{not valid"),
         status=DocumentStatusEnum.NEW,
         config=ChunkingConfig(
             chunk_strategy=ChunkStrategyEnum.JSON, chunk_size=50, chunk_overlap=0
@@ -165,7 +178,12 @@ def _new_rag(**overrides) -> Rag:
     )
 
 
-async def _index(repo: FakeNaiveRagRepo, *document_ids: int, **command_fields):
+async def _index(
+    repo: FakeNaiveRagRepo,
+    *document_ids: int,
+    content_reader: FakeDocumentContentReader | None = None,
+    **command_fields,
+):
     request = RunIndex(
         **{
             "rag_id": 1,
@@ -174,7 +192,9 @@ async def _index(repo: FakeNaiveRagRepo, *document_ids: int, **command_fields):
             **command_fields,
         }
     )
-    await NaiveIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(request)
+    if content_reader is None:
+        content_reader = FakeDocumentContentReader(_STORED_FILES)
+    await NaiveIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER, content_reader).execute(request)
 
 
 def _indexed(*texts: str) -> list[IndexedChunk]:
@@ -365,7 +385,7 @@ async def test_rag_status_accounts_for_documents_outside_the_run(
     other_document = Document(
         id=1,
         name="other.txt",
-        content=b"irrelevant",
+        content_key="documents/test/never-read",
         status=other_document_status,
         config=PARAGRAPH_CONFIG,
     )
@@ -392,7 +412,7 @@ async def test_rag_status_accounts_for_documents_outside_the_run(
                 Document(
                     id=1,
                     name="old.txt",
-                    content=b"x",
+                    content_key="documents/test/never-read",
                     status=DocumentStatusEnum.OUTDATED,
                     config=PARAGRAPH_CONFIG,
                 )
@@ -531,3 +551,29 @@ async def test_cancelled_run_records_tokens_consumed_so_far(embedding_api):
 
     (run,) = repo.usage_runs
     assert run.embedding_tokens == 10
+
+
+async def test_document_whose_file_is_missing_fails_alone(embedding_api):
+    missing = _document(1)
+    del _STORED_FILES[missing.content_key]
+    readable = _document(2)
+    repo = FakeNaiveRagRepo(documents=[missing, readable], rag=_new_rag())
+
+    await _index(repo, 1, 2)
+
+    assert missing.status == DocumentStatusEnum.FAILED
+    assert missing.error_message == "The content of 'doc.txt' is missing from storage."
+    assert readable.status == DocumentStatusEnum.COMPLETED
+
+
+async def test_unreachable_storage_fails_the_run_not_each_document(embedding_api):
+    document = _document(1)
+    rag = _new_rag()
+    repo = FakeNaiveRagRepo(documents=[document], rag=rag)
+
+    with pytest.raises(ContentStorageUnavailableError):
+        await _index(repo, 1, content_reader=FakeDocumentContentReader(unavailable=True))
+
+    # Put back as it was before the run, not marked failed.
+    assert document.status == DocumentStatusEnum.NEW
+    assert rag.status == IndexStatusEnum.FAILED

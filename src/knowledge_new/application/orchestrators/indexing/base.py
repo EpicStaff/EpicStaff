@@ -3,13 +3,19 @@ from typing import Never
 
 from application.commands import RunIndex
 from application.orchestrators.base import AbstractOrchestrator
-from application.ports import AbstractUnitOfWork
+from application.ports import AbstractDocumentContentReader, AbstractUnitOfWork
 from foundation.cryptographer import AbstractCryptographer
 
 
 class AbstractIndexOrchestrator(AbstractOrchestrator[RunIndex, Never], abc.ABC):
     """Abstract base for indexing a RAG's documents into searchable chunks."""
 
-    def __init__(self, uow: AbstractUnitOfWork, cryptographer: AbstractCryptographer):
+    def __init__(
+        self,
+        uow: AbstractUnitOfWork,
+        cryptographer: AbstractCryptographer,
+        content_reader: AbstractDocumentContentReader,
+    ):
         super().__init__(uow)
         self.cryptographer = cryptographer
+        self.content_reader = content_reader

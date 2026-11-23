@@ -31,7 +31,7 @@ def naive_rag_doc_config_to_document(config: NaiveRagDocumentConfig) -> Document
     document = Document(
         id=config.naive_rag_document_id,
         name=metadata.file_name,
-        content=metadata.document_content.content,
+        content_key=metadata.document_content.object_key,
         config=ChunkingConfig(
             chunk_strategy=config.chunk_strategy,
             chunk_size=config.chunk_size,

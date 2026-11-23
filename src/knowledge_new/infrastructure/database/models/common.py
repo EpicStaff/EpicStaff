@@ -7,7 +7,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    LargeBinary,
     String,
     Text,
 )
@@ -101,16 +100,12 @@ class SourceCollection(BaseModel):
 
 
 class DocumentContent(BaseModel):
-    """Raw bytes of an uploaded file.
-
-    Note:
-        Holds up to 12 MB.
-    """
+    """The stored file of a document and its copies, by its key in the knowledge bucket."""
 
     __tablename__ = "tables_documentcontent"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    content = Column(LargeBinary)
+    object_key = Column(String(512), nullable=False, unique=True)
 
     metadata_records = relationship("DocumentMetadata", back_populates="document_content")
 

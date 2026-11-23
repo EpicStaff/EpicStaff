@@ -1,5 +1,5 @@
 import pytest
-from application.ports import AbstractUnitOfWork
+from application.ports import AbstractDocumentContentReader, AbstractUnitOfWork
 from application.results import EmbeddingEstimate, IndexEstimateResult
 from domain.enums import RAGStrategy
 from domain.models import ChunkingConfig
@@ -9,6 +9,7 @@ from litestar.testing import TestClient
 from presentation.rest.controllers import rag as rag_controller
 from presentation.rest.controllers.rag import RagController
 from presentation.rest.error_handlers import get_error_handlers
+from tests.fakes.document_content_reader import FakeDocumentContentReader
 
 
 class _UnusedUow(AbstractUnitOfWork):
@@ -27,8 +28,11 @@ def client(monkeypatch):
     monkeypatch.setattr(rag_controller, "is_graphrag_available", lambda: True)
     app = Litestar(
         route_handlers=[RagController],
-        signature_types=[AbstractUnitOfWork],
-        dependencies={"uow": Provide(lambda: _UnusedUow(), sync_to_thread=False)},
+        signature_types=[AbstractUnitOfWork, AbstractDocumentContentReader],
+        dependencies={
+            "uow": Provide(lambda: _UnusedUow(), sync_to_thread=False),
+            "content_reader": Provide(lambda: FakeDocumentContentReader(), sync_to_thread=False),
+        },
         exception_handlers=get_error_handlers(),
     )
     with TestClient(app=app) as test_client:
@@ -60,7 +64,7 @@ def test_index_estimate_passes_chunking_overrides_from_the_body_to_the_command(
                 embedding=EmbeddingEstimate(tokens=10, exact=True, cost_usd=None),
             )
 
-    monkeypatch.setattr(rag_controller, "build_estimator", lambda strategy, uow: _RecordingOrchestrator())
+    monkeypatch.setattr(rag_controller, "build_estimator", lambda strategy, uow, content_reader: _RecordingOrchestrator())
 
     response = client.post(
         "/rags/naive/1/index-estimate/",

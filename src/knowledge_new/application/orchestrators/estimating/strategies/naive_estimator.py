@@ -3,6 +3,7 @@ from application.orchestrators.estimating.base import AbstractEstimateOrchestrat
 from application.results import EmbeddingEstimate, IndexEstimateResult
 from domain.enums import DocumentStatusEnum, RAGStrategy
 from domain.errors import (
+    ContentStorageUnavailableError,
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
     RagNotFoundError,
@@ -75,8 +76,7 @@ class NaiveEstimateOrchestrator(AbstractEstimateOrchestrator):
             document.status == DocumentStatusEnum.COMPLETED and not document.has_config_changed()
         )
 
-    @staticmethod
-    async def _chunk_texts(document: Document) -> list[str]:
+    async def _chunk_texts(self, document: Document) -> list[str]:
         """Return the chunk texts the indexer would embed, without persisting anything.
 
         Stored preview chunks win, as in the indexer; otherwise the document is chunked
@@ -87,9 +87,12 @@ class NaiveEstimateOrchestrator(AbstractEstimateOrchestrator):
             return [chunk.text for chunk in document.preview_chunks]
         try:
             extractor = build_file_text_extractor(document.extension)
-            text = await extractor.extract(document.content)
+            text = await extractor.extract(await self.content_reader.read(document.content_key))
             chunker = build_chunker(document.config.chunk_strategy, document.config)
             return [chunk.text for chunk in await chunker.chunk(text)]
+        except ContentStorageUnavailableError:
+            # Skipping every document would report a zero estimate as if it were real.
+            raise
         except Exception as error:
             # Mirror the indexer, which fails one bad document instead of the whole run.
             logger.warning("Skipped document(id={}) in index estimate: {}", document.id, error)

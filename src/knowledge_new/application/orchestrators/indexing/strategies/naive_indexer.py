@@ -8,6 +8,8 @@ from common.utils import utcnow
 from domain.enums import DocumentStatusEnum, IndexStatusEnum
 from domain.errors import (
     ChunksNotIndexedError,
+    ContentStorageUnavailableError,
+    DocumentContentMissingError,
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
     NoPreviewChunksProducedError,
@@ -29,9 +31,9 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
         async with self.uow:
             rag = await self._get_rag_under_uow(command.rag_id)
             # After the RAG is loaded, so a secret that fails to decrypt fails the RAG.
-            print('BEFORE SECRETS: {}', command.embedding_api_key)
+            print("BEFORE SECRETS: {}", command.embedding_api_key)
             secrets = open_sealed_secrets(command, self.cryptographer)
-            print('AFTER SECRETS: {}', secrets.embedding_api_key)
+            print("AFTER SECRETS: {}", secrets.embedding_api_key)
             embedder = await self._get_embedder_under_uow(
                 rag.id, secrets.embedding_api_key, secrets.embedding_extra_headers
             )
@@ -64,7 +66,12 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
             try:
                 if not document.preview_chunks or document.has_config_changed():
                     extractor = build_file_text_extractor(document.extension)
-                    text = await extractor.extract(document.content)
+                    try:
+                        content = await self.content_reader.read(document.content_key)
+                    except DocumentContentMissingError as error:
+                        # The reader knows only the key; the user knows the file name.
+                        raise DocumentContentMissingError(documents=f"'{document.name}'") from error
+                    text = await extractor.extract(content)
 
                     chuncker = build_chunker(document.config.chunk_strategy, document.config)
                     preview_chunks = await chuncker.chunk(text)
@@ -86,7 +93,8 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
                 if not indexed_chunks:
                     raise ChunksNotIndexedError(document_id=document.id, rag_id=rag.id)
 
-            except RepositoryError:
+            # An unreachable storage fails every document alike: the run fails instead.
+            except (RepositoryError, ContentStorageUnavailableError):
                 raise
 
             except Exception as e:

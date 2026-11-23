@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 from application.orchestrators.indexing import strategies
 from application.orchestrators.indexing.base import AbstractIndexOrchestrator
-from application.ports import AbstractUnitOfWork
+from application.ports import AbstractDocumentContentReader, AbstractUnitOfWork
 from common.lazy_import import LazyImport
 from domain.enums import RAGStrategy
 from domain.errors import UnsupportedError
@@ -25,7 +25,10 @@ _STRATEGIES: dict[RAGStrategy, type[AbstractIndexOrchestrator]] = {
 
 
 def build_indexer(
-    strategy: RAGStrategy, uow: AbstractUnitOfWork, cryptographer: AbstractCryptographer
+    strategy: RAGStrategy,
+    uow: AbstractUnitOfWork,
+    cryptographer: AbstractCryptographer,
+    content_reader: AbstractDocumentContentReader,
 ) -> AbstractIndexOrchestrator:
     """Build the indexer registered for `strategy`.
 
@@ -33,10 +36,11 @@ def build_indexer(
         strategy: RAG strategy to build an indexer for.
         uow: Unit of work providing repository access.
         cryptographer: Opens the secrets sealed in the command.
+        content_reader: Reads the documents' stored files.
 
     Raises:
         UnsupportedError: If no indexer is registered for `strategy`.
     """
     if strategy not in _STRATEGIES:
         raise UnsupportedError("index strategy", strategy)
-    return _STRATEGIES[strategy](uow, cryptographer)
+    return _STRATEGIES[strategy](uow, cryptographer, content_reader)

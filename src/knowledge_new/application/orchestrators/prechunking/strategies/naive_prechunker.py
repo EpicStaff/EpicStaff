@@ -12,13 +12,13 @@ class NaivePrechunkOrchestrator(AbstractPrechunkOrchestrator):
         config = command.chunking_config
 
         async with self.uow:
-            content, extension = await self.uow.naive_rag_repo.get_document_content(
+            content_key, extension = await self.uow.naive_rag_repo.get_document_content_key(
                 rag_id=command.rag_id,
                 document_id=command.document_id,
             )
 
         extractor = build_file_text_extractor(extension)
-        text = await extractor.extract(content)
+        text = await extractor.extract(await self.content_reader.read(content_key))
 
         chunker = build_chunker(config.chunk_strategy, config)
         preview_chunks = await chunker.chunk(text)

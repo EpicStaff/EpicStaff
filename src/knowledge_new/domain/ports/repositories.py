@@ -10,6 +10,7 @@ from domain.models import (
     Document,
     EmbeddingConfig,
     FoundChunk,
+    GraphDocument,
     GraphPricingConfig,
     IndexedChunk,
     PreviewChunk,
@@ -19,7 +20,6 @@ from domain.usage import IndexingRunUsage
 
 if TYPE_CHECKING:
     from graphrag.config.models.graph_rag_config import GraphRagConfig
-    from graphrag_input import TextDocument
     from graphrag_storage import StorageConfig
 
 
@@ -146,14 +146,14 @@ class AbstractNaiveRagRepository(abc.ABC):
         """
 
     @abc.abstractmethod
-    async def get_document_content(
+    async def get_document_content_key(
         self, rag_id: int, document_id: int
-    ) -> tuple[bytes, FileExtensionEnum]:
-        """Return the raw file bytes and file extension of `document_id` within RAG collection `rag_id`.
+    ) -> tuple[str, FileExtensionEnum]:
+        """Return where the file of `document_id` within RAG collection `rag_id` is stored, and its extension.
 
         Args:
             rag_id: Primary key of the RAG collection.
-            document_id: Primary key of the document (config) whose file content to load.
+            document_id: Primary key of the document (config) whose file to locate.
         """
 
 
@@ -184,8 +184,8 @@ class AbstractGraphRagRepository(abc.ABC):
         """
 
     @abc.abstractmethod
-    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list["TextDocument"]:
-        """Return `TextDocument` objects for the given `ids` within `rag_id`, with text extracted from raw content.
+    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[GraphDocument]:
+        """Return the documents with the given `ids` within `rag_id`; their files are not read.
 
         Args:
             rag_id: Primary key of the GraphRAG collection.
@@ -195,7 +195,7 @@ class AbstractGraphRagRepository(abc.ABC):
     @abc.abstractmethod
     async def get_indexed_documents_excluding(
         self, rag_id: int, ids: frozenset[int]
-    ) -> list["TextDocument"]:
+    ) -> list[GraphDocument]:
         pass
 
     @abc.abstractmethod

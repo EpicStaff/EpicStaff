@@ -44,7 +44,7 @@ from application.orchestrators.transferring.factory import (
     build_artifact_restorer,
     build_document_id_rewriter,
 )
-from application.ports import AbstractUnitOfWork
+from application.ports import AbstractDocumentContentReader, AbstractUnitOfWork
 from application.ports.artifact_store import AbstractArtifactStore
 from application.ports.task_register import AbstractTaskRegister
 from common.utils import make_key
@@ -90,6 +90,7 @@ class RagController(Controller):
         uow: AbstractUnitOfWork,
         task_register: AbstractTaskRegister,
         cryptographer: AbstractCryptographer,
+        content_reader: AbstractDocumentContentReader,
     ) -> None:
         command = commands.RunIndex(
             rag_id=rag_id,
@@ -99,7 +100,7 @@ class RagController(Controller):
             embedding_extra_headers=data.embedding_extra_headers,
             llm_extra_headers=data.llm_extra_headers,
         )
-        orchestrator = build_indexer(strategy, uow, cryptographer)
+        orchestrator = build_indexer(strategy, uow, cryptographer, content_reader)
         task = asyncio.create_task(orchestrator.execute(command))
         key = make_key("rag", strategy, rag_id, "index")
         task_register.register(key, task)
@@ -143,13 +144,14 @@ class RagController(Controller):
         rag_id: int,
         data: schemas.PrechunkInputSchema,
         uow: AbstractUnitOfWork,
+        content_reader: AbstractDocumentContentReader,
     ) -> schemas.PrechunkOutputSchema:
         command = commands.RunPrechunk(
             rag_id=rag_id,
             document_id=data.document_id,
             chunking_config=data.chunking_config,
         )
-        orchestrator = build_prechunker(strategy, uow)
+        orchestrator = build_prechunker(strategy, uow, content_reader)
         result = await orchestrator.execute(command)
         return schemas.PrechunkOutputSchema.model_validate(result)
 
@@ -164,6 +166,7 @@ class RagController(Controller):
         rag_id: int,
         data: schemas.IndexEstimateInputSchema,
         uow: AbstractUnitOfWork,
+        content_reader: AbstractDocumentContentReader,
     ) -> schemas.IndexEstimateOutputSchema:
         command = commands.GetIndexEstimate(
             rag_id=rag_id,
@@ -173,7 +176,7 @@ class RagController(Controller):
                 for override in data.chunking_overrides
             },
         )
-        orchestrator = build_estimator(strategy, uow)
+        orchestrator = build_estimator(strategy, uow, content_reader)
         result = await orchestrator.execute(command)
         return schemas.IndexEstimateOutputSchema.model_validate(result)
 
