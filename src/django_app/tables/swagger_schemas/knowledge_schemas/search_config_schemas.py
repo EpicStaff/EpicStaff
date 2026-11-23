@@ -34,9 +34,11 @@ GRAPH_RAG_SUGGEST_409_RESPONSE = OpenApiResponse(
     description=(
         "`graph_rag_llm_not_configured`: the collection's GraphRag has no LLM config "
         "(for example, its LLM config was deleted); set one and retry. Reported before "
-        "the index status. `rag_index_not_ready`: the GraphRag has not finished "
-        "indexing. `rag_error`: the knowledge service could not return the index "
-        "metrics; retry shortly."
+        "the index status. `graph_rag_embedder_not_configured`: the GraphRag has no "
+        "embedder config; set one and retry. `graph_rag_llm_and_embedder_not_configured`: "
+        "the GraphRag has neither an LLM nor an embedder config; set both and retry. "
+        "`rag_index_not_ready`: the GraphRag has not finished indexing. `rag_error`: the "
+        "knowledge service could not return the index metrics; retry shortly."
     ),
     examples=[
         OpenApiExample(
@@ -45,6 +47,26 @@ GRAPH_RAG_SUGGEST_409_RESPONSE = OpenApiResponse(
                 "status_code": 409,
                 "code": "graph_rag_llm_not_configured",
                 "message": "GraphRag for collection 1 has no LLM config.",
+            },
+            response_only=True,
+            status_codes=["409"],
+        ),
+        OpenApiExample(
+            "Embedder not configured",
+            value={
+                "status_code": 409,
+                "code": "graph_rag_embedder_not_configured",
+                "message": "GraphRag for collection 1 has no embedder config.",
+            },
+            response_only=True,
+            status_codes=["409"],
+        ),
+        OpenApiExample(
+            "LLM and embedder not configured",
+            value={
+                "status_code": 409,
+                "code": "graph_rag_llm_and_embedder_not_configured",
+                "message": ("GraphRag for collection 1 has no LLM config and no embedder config."),
             },
             response_only=True,
             status_codes=["409"],
