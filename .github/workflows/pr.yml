@@ -875,7 +875,7 @@ jobs:
   model-catalog-check:
     needs: changes
     if: needs.changes.outputs.model_catalog == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
       UV_PYTHON_DOWNLOADS: never
