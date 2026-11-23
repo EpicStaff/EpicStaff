@@ -105,7 +105,7 @@ describe('RagTabComponent token limits', () => {
     it.each([
         ['graph_rag_llm_not_configured', 'This RAG has no LLM config. Select one in Update RAG.'],
         ['graph_rag_embedder_not_configured', 'No embedder configured for this GraphRag.'],
-        ['graph_rag_llm_and_embedder_not_configured', 'No LLM config or embedder configured for this GraphRag.'],
+        ['graph_rag_llm_and_embedder_not_configured', 'No LLM config and embedder configured for this GraphRag.'],
     ])('surfaces the user-facing message for %s and offers no retry', (code: string, message: string) => {
         const component = render(() => throwError(() => new HttpErrorResponse({ status: 409, error: { code } })));
 

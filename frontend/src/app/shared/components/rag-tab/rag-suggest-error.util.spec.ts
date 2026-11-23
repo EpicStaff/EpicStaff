@@ -6,7 +6,7 @@ const CONNECTION_MESSAGE = "Couldn't load token limits. Check your connection an
 const NOT_INDEXED_MESSAGE = "This collection isn't indexed yet. Suggestions are available once indexing completes.";
 const NO_LLM_MESSAGE = 'This RAG has no LLM config. Select one in Update RAG.';
 const NO_EMBEDDER_MESSAGE = 'No embedder configured for this GraphRag.';
-const NO_LLM_AND_EMBEDDER_MESSAGE = 'No LLM config or embedder configured for this GraphRag.';
+const NO_LLM_AND_EMBEDDER_MESSAGE = 'No LLM config and embedder configured for this GraphRag.';
 
 describe('suggestErrorState', () => {
     it.each([
