@@ -1,7 +1,8 @@
 """Request validation of the bulk deletes that do not use BulkDeleteActionMixin.
 
 Python-code tools, MCP tools, sessions and source collections keep their own
-response shapes; their id lists are validated by the shared BulkIdListField.
+success shapes; their id lists are validated by the shared BulkIdListField, and a
+refusal is the standard error envelope naming the id field.
 """
 
 from collections.abc import Callable
@@ -16,6 +17,7 @@ from tables.models.knowledge_models import SourceCollection
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.session_models import Session
+from tests.error_envelope import attr_details, error_codes
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
@@ -43,7 +45,6 @@ def _make_collection(org) -> SourceCollection:
 class BulkDeleteEndpoint:
     url: str
     ids_key: str
-    error_key: str
     make_row: Callable[[object], Model]
 
     def __str__(self) -> str:
@@ -51,14 +52,10 @@ class BulkDeleteEndpoint:
 
 
 ENDPOINTS = [
-    BulkDeleteEndpoint(
-        "/api/python-code-tool/bulk-delete/", "ids", "detail", _make_python_code_tool
-    ),
-    BulkDeleteEndpoint("/api/mcp-tools/bulk-delete/", "ids", "detail", _make_mcp_tool),
-    BulkDeleteEndpoint("/api/sessions/bulk_delete/", "ids", "detail", _make_session),
-    BulkDeleteEndpoint(
-        "/api/source-collections/bulk-delete/", "collection_ids", "error", _make_collection
-    ),
+    BulkDeleteEndpoint("/api/python-code-tool/bulk-delete/", "ids", _make_python_code_tool),
+    BulkDeleteEndpoint("/api/mcp-tools/bulk-delete/", "ids", _make_mcp_tool),
+    BulkDeleteEndpoint("/api/sessions/bulk_delete/", "ids", _make_session),
+    BulkDeleteEndpoint("/api/source-collections/bulk-delete/", "collection_ids", _make_collection),
 ]
 
 endpoints = pytest.mark.parametrize("endpoint", ENDPOINTS, ids=str)
@@ -78,9 +75,10 @@ def test_a_boolean_id_is_rejected_and_nothing_is_deleted(endpoint, bad_id, acme_
     response = acme_admin_client.post(endpoint.url, {endpoint.ids_key: [bad_id]}, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.json() == {
-        endpoint.error_key: f"{endpoint.ids_key} must be a list of positive integers."
-    }
+    assert error_codes(response.json()) == ["invalid_item"]
+    assert attr_details(response.json()) == [
+        {"attr": endpoint.ids_key, "detail": "Must be a list of positive integers."}
+    ]
     assert _still_there(row)
 
 
@@ -95,9 +93,10 @@ def test_an_id_that_is_not_a_positive_integer_is_rejected(endpoint, bad_id, acme
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.json() == {
-        endpoint.error_key: f"{endpoint.ids_key} must be a list of positive integers."
-    }
+    assert error_codes(response.json()) == ["invalid_item"]
+    assert attr_details(response.json()) == [
+        {"attr": endpoint.ids_key, "detail": "Must be a list of positive integers."}
+    ]
     assert _still_there(row)
 
 
@@ -110,30 +109,34 @@ def test_more_than_500_ids_are_rejected_and_nothing_is_deleted(endpoint, acme_ad
     response = acme_admin_client.post(endpoint.url, {endpoint.ids_key: ids}, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.json() == {
-        endpoint.error_key: f"{endpoint.ids_key} must have at most 500 items."
-    }
+    assert error_codes(response.json()) == ["max_length"]
+    assert attr_details(response.json()) == [
+        {"attr": endpoint.ids_key, "detail": "Must have at most 500 items."}
+    ]
     assert _still_there(row)
 
 
 @pytest.mark.django_db
 @endpoints
 @pytest.mark.parametrize(
-    ("body_for", "expected_message"),
+    ("body_for", "expected_code", "expected_message"),
     [
-        (lambda key: {key: []}, "{key} must not be empty."),
-        (lambda key: {}, "{key} is required."),
-        (lambda key: {key: "1,2"}, "{key} must be a list of positive integers."),
+        (lambda key: {key: []}, "empty", "Must not be empty."),
+        (lambda key: {}, "required", "This field is required."),
+        (lambda key: {key: "1,2"}, "not_a_list", "Must be a list of positive integers."),
     ],
     ids=["empty", "missing", "not-a-list"],
 )
 def test_an_empty_missing_or_non_list_value_is_rejected(
-    endpoint, body_for, expected_message, acme_admin_client
+    endpoint, body_for, expected_code, expected_message, acme_admin_client
 ):
     response = acme_admin_client.post(endpoint.url, body_for(endpoint.ids_key), format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.json() == {endpoint.error_key: expected_message.format(key=endpoint.ids_key)}
+    assert error_codes(response.json()) == [expected_code]
+    assert attr_details(response.json()) == [
+        {"attr": endpoint.ids_key, "detail": expected_message}
+    ]
 
 
 @pytest.mark.django_db
@@ -142,9 +145,9 @@ def test_a_body_that_is_not_an_object_is_rejected(endpoint, acme_admin_client):
     response = acme_admin_client.post(endpoint.url, [1, 2], format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.json() == {
-        endpoint.error_key: "Invalid data. Expected a dictionary, but got list."
-    }
+    assert attr_details(response.json()) == [
+        {"attr": None, "detail": "Invalid data. Expected a dictionary, but got list."}
+    ]
 
 
 @pytest.mark.django_db

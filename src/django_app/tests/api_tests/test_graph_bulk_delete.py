@@ -20,6 +20,7 @@ from rbac.models import (
 )
 from rbac.models.enums import Permission, ResourceType
 from tests.api_tests.bulk_delete_helpers import custom_role_client, org_admin_client
+from tests.error_envelope import details_by_attr, error_codes, error_text
 
 
 @pytest.fixture
@@ -278,8 +279,8 @@ def test_bulk_delete_oversized_list_is_rejected_before_its_items(
     )
 
     assert resp.status_code == 400, resp.data
-    assert "500" in resp.data["message"]
-    assert "valid integer" not in resp.data["message"]
+    assert "500" in error_text(resp.data)
+    assert "valid integer" not in error_text(resp.data)
 
 
 @pytest.mark.django_db
@@ -356,7 +357,7 @@ def test_single_destroy_subgraph_usage_hidden_blocked(django_user_model, org_a):
     resp = client.delete(f"/api/graphs/{child.id}/")
 
     assert resp.status_code == 403, resp.data
-    assert resp.data["code"] == "in_use_restricted"
+    assert resp.data["errors"][0]["code"] == "in_use_restricted"
     assert Graph.objects.filter(id=child.id).exists()
 
 
@@ -375,8 +376,44 @@ def test_delete_by_uuid_runs_the_same_guard(django_user_model, org_a):
     resp = client.delete(f"/api/graphs/uuid/{child.uuid}/")
 
     assert resp.status_code == 403, resp.data
-    assert resp.data["code"] == "in_use_restricted"
+    assert resp.data["errors"][0]["code"] == "in_use_restricted"
     assert Graph.objects.filter(id=child.id).exists()
+
+
+@pytest.mark.django_db
+def test_delete_by_uuid_of_a_missing_graph_is_404(django_user_model, org_a):
+    client = org_admin_client(django_user_model, org_a, "admin-uuid@example.com")
+
+    resp = client.delete("/api/graphs/uuid/00000000-0000-0000-0000-000000000000/")
+
+    assert resp.status_code == 404, resp.data
+    assert error_codes(resp.data) == ["graph_not_found"]
+    assert details_by_attr(resp.data) == {None: ["Provided graph does not exist"]}
+
+
+@pytest.mark.django_db
+def test_delete_by_uuid_of_another_orgs_graph_is_the_same_404(django_user_model, org_a, org_b):
+    client = org_admin_client(django_user_model, org_a, "admin-uuid-cross@example.com")
+    other = _graph(org_b, "other")
+
+    foreign = client.delete(f"/api/graphs/uuid/{other.uuid}/")
+    missing = client.delete("/api/graphs/uuid/00000000-0000-0000-0000-000000000000/")
+
+    assert foreign.status_code == missing.status_code == 404
+    assert foreign.content == missing.content
+    assert Graph.objects.filter(id=other.id).exists()
+
+
+@pytest.mark.django_db
+def test_delete_by_uuid_with_a_malformed_uuid_is_400_on_the_uuid(django_user_model, org_a):
+    client = org_admin_client(django_user_model, org_a, "admin-uuid-bad@example.com")
+
+    # Matches the route's 36 hex-or-dash characters but is no UUID.
+    resp = client.delete(f"/api/graphs/uuid/{'-' * 36}/")
+
+    assert resp.status_code == 400, resp.data
+    assert error_codes(resp.data) == ["invalid"]
+    assert details_by_attr(resp.data) == {"graph_uuid": ["Invalid graph UUID format"]}
 
 
 @pytest.mark.django_db
