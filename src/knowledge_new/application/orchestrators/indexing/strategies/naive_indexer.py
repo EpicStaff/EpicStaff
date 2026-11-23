@@ -29,9 +29,7 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
         async with self.uow:
             rag = await self._get_rag_under_uow(command.rag_id)
             # After the RAG is loaded, so a secret that fails to decrypt fails the RAG.
-            print('BEFORE SECRETS: {}', command.embedding_api_key)
             secrets = open_sealed_secrets(command, self.cryptographer)
-            print('AFTER SECRETS: {}', secrets.embedding_api_key)
             embedder = await self._get_embedder_under_uow(
                 rag.id, secrets.embedding_api_key, secrets.embedding_extra_headers
             )

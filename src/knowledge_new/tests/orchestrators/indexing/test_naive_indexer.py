@@ -474,6 +474,26 @@ async def test_secret_that_cannot_be_decrypted_fails_the_rag_without_its_value(
     assert "sk-never-sealed" not in "".join(logged)
 
 
+async def test_embedding_api_key_never_reaches_the_service_output(embedding_api, capsys):
+    sealed_api_key = seal("sk-test")
+    logged: list[str] = []
+    sink_id = logger.add(logged.append, level="DEBUG", diagnose=False)
+    try:
+        await _index(
+            FakeNaiveRagRepo(documents=[_document()], rag=_new_rag()),
+            7,
+            embedding_api_key=sealed_api_key,
+        )
+    finally:
+        logger.remove(sink_id)
+
+    captured = capsys.readouterr()
+    service_output = captured.out + captured.err + "".join(logged)
+    assert embedding_api.await_args.kwargs["api_key"] == "sk-test"
+    assert "sk-test" not in service_output
+    assert sealed_api_key not in service_output
+
+
 async def test_run_records_embedding_tokens_and_priced_cost(embedding_api, monkeypatch):
     embedding_api.return_value = _provider_response(prompt_tokens=10)
     monkeypatch.setattr(naive_indexer, "embedding_cost", lambda model, tokens: tokens * 1e-7)
