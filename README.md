@@ -119,6 +119,9 @@ keeps the existing credentials, because the databases were created with them.
 
 Once running, open http://localhost to start building.
 
+### Resource limits
+Every container has a memory limit and a process limit, and the setup wizard fits them to the machine it runs on. To change them on an existing install, run `python scripts/envtool.py --setup` from the `EpicStaff` folder and choose **Tune performance and limits**; do not run the plain `python scripts/envtool.py`, which rewrites `.env` and its credentials. Each service has `<SERVICE>_MEMORY` (for example `CREW_MEMORY`, `DJANGO_MEMORY`) and `<SERVICE>_CPUS` (`0` means no CPU cap); `src/env.yaml` lists them all. Apply a change with `docker compose up -d` from `src/`, because a plain `restart` keeps the old limits. A host-wide cap for the whole stack is a server setup task, not part of EpicStaff.
+
 <details>
 <summary>Alternative Setup Options</summary>
 
