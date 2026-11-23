@@ -396,6 +396,7 @@ from tables.views.storage_grants import StorageGrantCheckedViewSetMixin
 from user_audit.context import mark_request_handled
 from user_audit.read_only import not_a_user_change, reads_only
 from user_audit.recorder import record_copy, record_user_action
+from user_audit.targets import fields_to_describe
 from utils.logger import logger
 from utils.pagination import DefaultLimitOffsetPagination
 
@@ -1091,6 +1092,8 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
     # Names the served model for user-action and plugin-activity records (`model_of`); never
     # queried, every action reads through its own lookup.
     queryset = GraphVersion.objects.none()
+    # How a version reaches its org, for the user-action records that name it (`org_row`).
+    org_filter_path = "graph__org_id"
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.FLOWS
     rbac_action_map = {
@@ -1143,6 +1146,25 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
             status=status.HTTP_201_CREATED,
         )
 
+    def perform_update(self, serializer):
+        version = serializer.instance
+        previous_name, previous_description = version.name, version.description
+        super().perform_update(serializer)
+        org_id = self.get_active_org_id()
+        # A rename is recorded as renamed with the old name, a description change as updated;
+        # both are recorded when both changed, and nothing when nothing did.
+        if version.name != previous_name:
+            record_user_action(
+                action=UserAction.RENAMED,
+                org_id=org_id,
+                target=version,
+                previous_name=previous_name,
+            )
+        if version.description != previous_description:
+            record_user_action(action=UserAction.UPDATED, org_id=org_id, target=version)
+        if (version.name, version.description) == (previous_name, previous_description):
+            mark_request_handled()
+
     @action(detail=False, methods=["get"], url_path="all")
     def all(self, request, *args, **kwargs):
         return self.list(request, *args, **kwargs)
@@ -1157,6 +1179,8 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
         self._check_trigger_nodes_may_be_recreated(request, version)
         self._check_secret_code_may_be_recreated(request, version)
         backup = request.query_params.get("backup", "").lower() == "true"
+        # The restore writes the version's flow name back onto this same instance.
+        previous_flow_name = version.graph.name
         result = GraphVersioningService().restore_version(
             version,
             expected_save_version=expected_save_version,
@@ -1173,6 +1197,18 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
             user=request.user,
             saved_at=timezone.now().isoformat(),
         )
+        # Recorded on the flow, whose content the restore always replaces, so always updated;
+        # renamed before it when the version brought back another name. Not "restored" on
+        # the version: that already means the version came back from the recycle bin.
+        org_id = self.get_active_org_id()
+        if version.graph.name != previous_flow_name:
+            record_user_action(
+                action=UserAction.RENAMED,
+                org_id=org_id,
+                target=version.graph,
+                previous_name=previous_flow_name,
+            )
+        record_user_action(action=UserAction.UPDATED, org_id=org_id, target=version.graph)
 
         return Response(result, status=status.HTTP_200_OK)
 
@@ -1182,6 +1218,11 @@ class GraphVersionViewSet(OrgScopedChildViewSetMixin, BulkDeleteActionMixin, vie
         self._check_trigger_nodes_may_be_recreated(request, version)
         self._check_secret_code_may_be_recreated(request, version)
         result = GraphVersioningService().create_graph_from_version(version, user=request.user)
+        record_user_action(
+            action=UserAction.CREATED,
+            org_id=self.get_active_org_id(),
+            target=Graph.objects.only(*fields_to_describe(Graph)).get(pk=result["graph_id"]),
+        )
         return Response(result, status=status.HTTP_201_CREATED)
 
     @staticmethod

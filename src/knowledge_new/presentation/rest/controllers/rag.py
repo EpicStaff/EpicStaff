@@ -52,14 +52,14 @@ from domain.enums import RAGStrategy
 from domain.errors import NotRunningOperationError
 from foundation.cryptographer import AbstractCryptographer
 from infrastructure.graphrag.availability import is_graphrag_available
-from litestar import Controller, Request, delete, get, post, put, status_codes
+from litestar import Controller, Request, Response, delete, get, post, put, status_codes
 from litestar.connection import ASGIConnection
 from litestar.exceptions import HTTPException
 from litestar.handlers.base import BaseRouteHandler
 from litestar.params import Parameter
 from litestar.response import Stream
 from presentation.rest import schemas
-from presentation.rest.disconnect import cancel_on_disconnect
+from presentation.rest.disconnect import HTTP_499_CLIENT_CLOSED_REQUEST, run_until_disconnect
 
 
 def require_graphrag_available(connection: ASGIConnection, _: BaseRouteHandler) -> None:
@@ -121,7 +121,7 @@ class RagController(Controller):
         data: schemas.SearchInputSchema,
         uow: AbstractUnitOfWork,
         cryptographer: AbstractCryptographer,
-    ) -> schemas.SearchOutputSchema:
+    ) -> Response[schemas.SearchOutputSchema]:
         command = commands.RunSearch(
             rag_id=rag_id,
             query=data.query,
@@ -136,9 +136,10 @@ class RagController(Controller):
             llm_parameters=data.llm_parameters,
         )
         orchestrator = build_search(strategy, uow, cryptographer)
-        async with cancel_on_disconnect(request):
-            result = await orchestrator.execute(command)
-        return schemas.SearchOutputSchema.model_validate(result)
+        result = await run_until_disconnect(request, orchestrator.execute(command))
+        if result is None:
+            return Response(content=b"", status_code=HTTP_499_CLIENT_CLOSED_REQUEST)
+        return Response(schemas.SearchOutputSchema.model_validate(result))
 
     @post(
         path="{rag_id:int}/prechunk/",

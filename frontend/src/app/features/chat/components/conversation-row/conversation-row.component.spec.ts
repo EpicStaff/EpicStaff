@@ -93,6 +93,8 @@ describe('ConversationRowComponent', () => {
         fixture = TestBed.createComponent(ConversationRowComponent);
         fixture.componentRef.setInput('conversation', row);
         fixture.componentRef.setInput('now', NOW);
+        // The section it is listed in; any one, where a spec is not about the badge.
+        fixture.componentRef.setInput('section', 'bot');
         Object.entries(inputs).forEach(([key, value]) => fixture.componentRef.setInput(key, value));
         fixture.detectChanges();
         return fixture.nativeElement as HTMLElement;
@@ -351,7 +353,7 @@ describe('ConversationRowComponent', () => {
                 canTakeOver: true,
                 rules: { style: 'support', overdueAfterMs: 60_000 },
             });
-            expect(host().querySelector('.conversation-row__holder')).toBeNull();
+            expect(tooltipOf('.conversation-section-badge').message).toBe('');
             expect(host().querySelector('.conversation-row__wait')).toBeNull();
             expect(takeOverButton()).toBeNull();
             expect(textOf('.conversation-row__preview')).toBe('Where is my order?');
@@ -366,53 +368,43 @@ describe('ConversationRowComponent', () => {
         });
     });
 
-    describe('who holds it', () => {
-        const holderBadge = (): HTMLElement | null => host().querySelector('.conversation-row__holder');
-        const holderImage = (): HTMLImageElement | null =>
-            host().querySelector<HTMLImageElement>('.conversation-row__holder-image');
+    describe("the section's badge", () => {
+        const badge = (): HTMLElement => host().querySelector('.conversation-section-badge')!;
+        const badgeIcon = (): string | null | undefined => badge().querySelector('use')?.getAttribute('href');
 
-        it('badges the avatar with the holder and names them: you, their name, or their number', () => {
-            render(conversation({ mode: 'human', assigned_operator_id: 3 }));
-            expect(tooltipOf('.conversation-row__holder').message).toBe('Taken by you');
+        // Which icon each section has is the badge's own spec; here, that the row shows the one it is listed in.
+        it.each([
+            { section: 'in_progress', icon: '#icon-headset-outline' },
+            { section: 'test_open', icon: '#icon-flask' },
+        ])("puts the $section header's icon on the avatar's corner", ({ section, icon }) => {
+            render(conversation(), { section });
+            expect(badgeIcon()).toBe(icon);
+        });
+
+        it("says who holds the conversation in its tooltip and in the row's name: you, their name, or their number", () => {
+            render(conversation({ mode: 'human', assigned_operator_id: 3 }), { section: 'in_progress' });
+            expect(tooltipOf('.conversation-section-badge').message).toBe('Taken by you');
             expect(accessibleName()).toContain('taken by you');
 
             render(conversation({ mode: 'human', assigned_operator_id: 7, assigned_operator_name: 'Grace Hopper' }));
-            expect(tooltipOf('.conversation-row__holder').message).toBe('Taken by Grace Hopper');
+            expect(tooltipOf('.conversation-section-badge').message).toBe('Taken by Grace Hopper');
             expect(accessibleName()).toContain('taken by Grace Hopper');
 
             render(conversation({ mode: 'human', assigned_operator_id: 7 }));
-            expect(tooltipOf('.conversation-row__holder').message).toBe('Taken by Operator #7');
+            expect(tooltipOf('.conversation-section-badge').message).toBe('Taken by Operator #7');
             expect(accessibleName()).toContain('taken by Operator #7');
         });
 
-        it("shows the current user's picture in the badge, and a person icon for anyone else or without one", () => {
-            currentUser.update((user) => ({ ...user, avatar_url: 'https://example.com/avatars/ada.png' }));
-            render(conversation({ mode: 'human', assigned_operator_id: 3 }));
-            expect(holderImage()?.getAttribute('src')).toBe('https://example.com/avatars/ada.png');
-            expect(holderBadge()?.querySelector('use[href="#icon-user"]')).toBeNull();
-
-            render(conversation({ mode: 'human', assigned_operator_id: 7, assigned_operator_name: 'Grace Hopper' }));
-            expect(holderImage()).toBeNull();
-            expect(holderBadge()?.querySelector('use[href="#icon-user"]')).not.toBeNull();
-
-            currentUser.update((user) => ({ ...user, avatar_url: null }));
-            render(conversation({ mode: 'human', assigned_operator_id: 3 }));
-            expect(holderImage()).toBeNull();
-            expect(holderBadge()?.querySelector('use[href="#icon-user"]')).not.toBeNull();
+        it("is hidden from a screen reader and no Tab stop: the row's name says who took it", () => {
+            render(conversation({ mode: 'human', assigned_operator_id: 3 }), { section: 'in_progress' });
+            expect(badge().getAttribute('aria-hidden')).toBe('true');
+            expect(badge().hasAttribute('tabindex')).toBe(false);
         });
 
-        it('falls back to the person icon when the picture fails to load', () => {
-            currentUser.update((user) => ({ ...user, avatar_url: 'https://example.com/avatars/expired.png' }));
-            render(conversation({ mode: 'human', assigned_operator_id: 3 }));
-            holderImage()!.dispatchEvent(new Event('error'));
-            fixture.detectChanges();
-            expect(holderImage()).toBeNull();
-            expect(holderBadge()?.querySelector('use[href="#icon-user"]')).not.toBeNull();
-        });
-
-        it('shows no badge on a conversation nobody holds', () => {
-            render(conversation());
-            expect(holderBadge()).toBeNull();
+        it('keeps the badge, without a tooltip, on a conversation nobody holds', () => {
+            render(conversation(), { section: 'bot' });
+            expect(badgeIcon()).toBe('#icon-bot');
+            expect(tooltipOf('.conversation-section-badge').message).toBe('');
             expect(accessibleName()).not.toContain('taken by');
         });
     });

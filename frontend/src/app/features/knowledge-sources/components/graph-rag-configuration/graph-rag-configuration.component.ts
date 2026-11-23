@@ -115,6 +115,15 @@ export class GraphRagConfigurationComponent implements OnInit, RagConfiguration 
             const allIds = new Set(this.allDocuments().map((d) => d.graph_rag_document_id));
             untracked(() => this.pruneOrphanedPendingDeletes(allIds));
         });
+
+        // In update-new mode a file that finishes indexing becomes unselectable, so
+        // drop it from checkedDocIds — otherwise its stale tick would be submitted
+        // on the next indexing run.
+        effect(() => {
+            this.allDocuments();
+            if (untracked(() => this.indexMode()) !== 'update_new') return;
+            untracked(() => this.pruneCheckedCompletedDocs());
+        });
     }
 
     ngOnInit() {
@@ -244,7 +253,10 @@ export class GraphRagConfigurationComponent implements OnInit, RagConfiguration 
      */
     private applyUpdateNewMode(): void {
         this.clearPendingDeletes();
+        this.pruneCheckedCompletedDocs();
+    }
 
+    private pruneCheckedCompletedDocs(): void {
         const indexedIds = new Set(
             this.allDocuments()
                 .filter((d) => d.status === 'completed')

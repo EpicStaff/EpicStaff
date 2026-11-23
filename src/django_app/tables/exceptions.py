@@ -731,6 +731,30 @@ class GraphRagLlmNotConfiguredException(RagException):
         super().__init__(f"GraphRag for collection {collection_id} has no LLM config.")
 
 
+class GraphRagEmbedderNotConfiguredException(RagException):
+    """Raised when GraphRag has no embedder config, e.g. after its embedder was deleted."""
+
+    status_code = 409
+    default_code = "graph_rag_embedder_not_configured"
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(f"GraphRag for collection {collection_id} has no embedder config.")
+
+
+class GraphRagLlmAndEmbedderNotConfiguredException(RagException):
+    """Raised when GraphRag has neither an LLM nor an embedder config."""
+
+    status_code = 409
+    default_code = "graph_rag_llm_and_embedder_not_configured"
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRag for collection {collection_id} has no LLM config and no embedder config."
+        )
+
+
 class GraphRagMetricsUnavailableException(RagException):
     """Raised when chunk metrics can't be fetched from the knowledge service."""
 

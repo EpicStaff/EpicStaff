@@ -13,7 +13,7 @@ from loguru import logger
 from rest_framework import status
 
 from tables.clients.errors import ClientBadGatewayError
-from ai_models.models import LLMConfig, LLMModel, Provider
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
 from tables.models.knowledge_models import BaseRagType, GraphRag, SourceCollection
 from tests.rbac_cross_org_fixtures import beta  # noqa: F401
 
@@ -50,12 +50,28 @@ def llm_config(default_org):
     yield LLMConfig.objects.create(custom_name="graph-llm", model=model, org=default_org)
 
 
-def _create_graph_rag(org, llm, rag_status) -> SourceCollection:
+@pytest.fixture
+def embedder_config(default_org):
+    provider, _ = Provider.objects.get_or_create(name="openai")
+    model, _ = EmbeddingModel.objects.get_or_create(
+        name="text-embedding-3-small", defaults={"embedding_provider": provider}
+    )
+    yield EmbeddingConfig.objects.create(
+        custom_name="graph-embedder", model=model, org=default_org
+    )
+
+
+def _create_graph_rag(org, llm, rag_status, embedder=None) -> SourceCollection:
     collection = SourceCollection.objects.create(collection_name="Graph", org=org)
     base_rag_type = BaseRagType.objects.create(
         source_collection=collection, rag_type=BaseRagType.RagType.GRAPH
     )
-    GraphRag.objects.create(base_rag_type=base_rag_type, llm=llm, rag_status=rag_status)
+    GraphRag.objects.create(
+        base_rag_type=base_rag_type,
+        llm=llm,
+        embedder=embedder,
+        rag_status=rag_status,
+    )
     return collection
 
 
@@ -86,10 +102,13 @@ def test_naive_rag_not_indexed_returns_index_not_ready_envelope(
 
 
 def test_graph_rag_not_indexed_returns_index_not_ready(
-    auth_client, default_org, llm_config, knowledge_client
+    auth_client, default_org, llm_config, embedder_config, knowledge_client
 ):
     collection = _create_graph_rag(
-        default_org, llm_config, GraphRag.GraphRagStatus.PROCESSING
+        default_org,
+        llm_config,
+        GraphRag.GraphRagStatus.PROCESSING,
+        embedder=embedder_config,
     )
 
     response = _post_graph(auth_client, collection)
@@ -102,10 +121,13 @@ def test_graph_rag_not_indexed_returns_index_not_ready(
 
 
 def test_graph_rag_whose_llm_config_was_deleted_returns_llm_not_configured(
-    auth_client, default_org, llm_config, knowledge_client
+    auth_client, default_org, llm_config, embedder_config, knowledge_client
 ):
     collection = _create_graph_rag(
-        default_org, llm_config, GraphRag.GraphRagStatus.COMPLETED
+        default_org,
+        llm_config,
+        GraphRag.GraphRagStatus.COMPLETED,
+        embedder=embedder_config,
     )
     llm_config.delete()
 
@@ -121,9 +143,14 @@ def test_graph_rag_whose_llm_config_was_deleted_returns_llm_not_configured(
 
 
 def test_graph_rag_without_llm_reports_llm_before_index_status(
-    auth_client, default_org, knowledge_client
+    auth_client, default_org, embedder_config, knowledge_client
 ):
-    collection = _create_graph_rag(default_org, None, GraphRag.GraphRagStatus.NEW)
+    collection = _create_graph_rag(
+        default_org,
+        None,
+        GraphRag.GraphRagStatus.NEW,
+        embedder=embedder_config,
+    )
 
     response = _post_graph(auth_client, collection)
 
@@ -131,11 +158,61 @@ def test_graph_rag_without_llm_reports_llm_before_index_status(
     assert response.json()["code"] == "graph_rag_llm_not_configured"
 
 
-def test_graph_rag_metrics_unavailable_keeps_retryable_rag_error(
-    auth_client, default_org, llm_config, knowledge_client, warnings_logged
+def test_graph_rag_without_embedder_reports_embedder_not_configured(
+    auth_client, default_org, llm_config, knowledge_client
 ):
     collection = _create_graph_rag(
-        default_org, llm_config, GraphRag.GraphRagStatus.COMPLETED
+        default_org,
+        llm_config,
+        GraphRag.GraphRagStatus.NEW,
+        embedder=None,
+    )
+
+    response = _post_graph(auth_client, collection)
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json() == {
+        "status_code": 409,
+        "code": "graph_rag_embedder_not_configured",
+        "message": (
+            f"GraphRag for collection {collection.collection_id} has no embedder config."
+        ),
+    }
+    knowledge_client.metrics.assert_not_called()
+
+
+def test_graph_rag_without_llm_and_embedder_reports_combined_code(
+    auth_client, default_org, knowledge_client
+):
+    collection = _create_graph_rag(
+        default_org,
+        None,
+        GraphRag.GraphRagStatus.NEW,
+        embedder=None,
+    )
+
+    response = _post_graph(auth_client, collection)
+
+    assert response.status_code == status.HTTP_409_CONFLICT
+    assert response.json() == {
+        "status_code": 409,
+        "code": "graph_rag_llm_and_embedder_not_configured",
+        "message": (
+            f"GraphRag for collection {collection.collection_id} has no LLM config "
+            "and no embedder config."
+        ),
+    }
+    knowledge_client.metrics.assert_not_called()
+
+
+def test_graph_rag_metrics_unavailable_keeps_retryable_rag_error(
+    auth_client, default_org, llm_config, embedder_config, knowledge_client, warnings_logged
+):
+    collection = _create_graph_rag(
+        default_org,
+        llm_config,
+        GraphRag.GraphRagStatus.COMPLETED,
+        embedder=embedder_config,
     )
     knowledge_client.metrics.side_effect = ClientBadGatewayError("upstream 500")
 
@@ -159,10 +236,13 @@ def test_graph_rag_metrics_unavailable_keeps_retryable_rag_error(
 
 
 def test_graph_rag_ready_with_llm_returns_suggested_params(
-    auth_client, default_org, llm_config, knowledge_client
+    auth_client, default_org, llm_config, embedder_config, knowledge_client
 ):
     collection = _create_graph_rag(
-        default_org, llm_config, GraphRag.GraphRagStatus.COMPLETED
+        default_org,
+        llm_config,
+        GraphRag.GraphRagStatus.COMPLETED,
+        embedder=embedder_config,
     )
     knowledge_client.metrics.return_value = {"total_chunks": 50, "avg_chunk_size": 300.0}
 

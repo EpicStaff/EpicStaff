@@ -11,7 +11,6 @@ from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.test import APIClient
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
 
 from agents.models import AgentDefinition, Surface
 from rbac.models import OrganizationUser
@@ -609,19 +608,6 @@ async def test_a_streamed_archive_records_the_folder_it_unpacked_into(
 
 
 # ---- a hard delete the fallback records still names the row it deleted ----
-
-
-@pytest.fixture
-def token_client(admin_acme, acme):
-    """A client sending a real bearer token: the row a DELETE names is loaded before
-    authentication only for a request that carries credentials, which force_authenticate
-    does not send."""
-    client = APIClient()
-    client.credentials(
-        HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(admin_acme).access_token}",
-        HTTP_X_ORGANIZATION_ID=str(acme.id),
-    )
-    return client
 
 
 def _deleted_event(sent_events) -> tuple:
