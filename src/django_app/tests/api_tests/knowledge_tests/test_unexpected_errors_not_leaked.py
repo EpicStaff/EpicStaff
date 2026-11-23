@@ -114,7 +114,9 @@ def test_unexpected_error_is_logged_and_not_returned(
         response = endpoint.call(auth_client, request.getfixturevalue)
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert response.json()["message"] == "Unpredictable error"
+    assert response.json()["errors"] == [
+        {"code": "unknown", "detail": "Internal server error.", "attr": None, "context": None}
+    ]
     assert "crewdb" not in response.content.decode()
     assert "password authentication" not in response.content.decode()
 
@@ -153,6 +155,6 @@ def test_knowledge_service_error_keeps_its_status_without_upstream_text(
     response = auth_client.delete(reverse("naive-rag-detail", kwargs={"pk": naive_rag.naive_rag_id}))
 
     assert response.status_code == expected_status
-    assert response.json()["message"] == expected_message
+    assert response.json()["errors"][0]["detail"] == expected_message
     assert "Traceback" not in response.content.decode()
     assert "knowledge-internal" not in response.content.decode()
