@@ -451,3 +451,52 @@ async def test_a_venv_does_not_find_a_library_of_another_scope(
 
     assert uow.venv_repo.rows[stored.id].status is VenvStatus.FAILED
     assert uv_provider.apply_calls == []
+
+
+async def test_prepare_builds_a_venv_that_is_not_built(uow, uv_provider, venvs_dir, file_storage):
+    stored = uow.venv_repo.seed(make_venv())[0]
+
+    venv = await VenvBuildOrchestrator(uow, uv_provider, file_storage).prepare(stored)
+
+    assert venv.status is VenvStatus.COMPLETED
+    assert (venvs_dir / f"venv-{venv.hash}").is_dir()
+
+
+async def test_prepare_only_refreshes_the_predefined_packages_of_a_built_venv(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    from manager import settings
+
+    (venvs_dir / "venv-1abc").mkdir(parents=True)
+    stored = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    venv = await VenvBuildOrchestrator(uow, uv_provider, file_storage).prepare(stored)
+
+    assert (venv.status, venv.hash) == (VenvStatus.COMPLETED, "1abc")
+    assert uv_provider.apply_calls == []
+    assert uv_provider.install_local_calls == [
+        (venvs_dir / "venv-1abc", settings.PREDEFINED_VENV_PACKAGES)
+    ]
+
+
+async def test_prepare_rebuilds_a_built_venv_whose_directory_is_gone(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    stored = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1gone"))[0]
+
+    venv = await VenvBuildOrchestrator(uow, uv_provider, file_storage).prepare(stored)
+
+    assert venv.status is VenvStatus.COMPLETED
+    assert (venvs_dir / f"venv-{venv.hash}").is_dir()
+    assert len(uv_provider.apply_calls) == 1
+
+
+async def test_prepare_returns_a_venv_that_failed_to_build_as_failed(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    uv_provider.fail_apply = RuntimeError("index unreachable")
+    stored = uow.venv_repo.seed(make_venv())[0]
+
+    venv = await VenvBuildOrchestrator(uow, uv_provider, file_storage).prepare(stored)
+
+    assert venv.status is VenvStatus.FAILED
