@@ -31,7 +31,7 @@ from tables.services.transfer_jobs.runner import IMPORT_ARCHIVE_NAME, TransferJo
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_backend_fake import FakeStorageBackend
-from utils.exception_handler import flatten_error_detail
+from tables.import_export.utils import flatten_error_detail
 
 REFUSED_UNDERSCORE_KEY = (
     "Placeholder '{a._b}' is not allowed: '_b' starts with '_'. Rename that variable or key."
@@ -147,7 +147,7 @@ def test_an_import_with_a_run_refusal_is_a_400_and_creates_no_flow(
     response = acme_client.post(reverse("graphs-import-entity"), {"file": file}, format="multipart")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["message"] == expected_message
+    assert response.data["errors"][0]["detail"] == expected_message
     assert Graph.objects.count() == graph_count_before
 
 

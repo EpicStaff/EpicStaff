@@ -138,7 +138,7 @@ def test_the_default_org_cannot_be_deleted(superadmin, surviving_org, query):
     response = as_user(superadmin).delete(url(org.pk) + query, data=phrase_body(org), format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "default_organization_not_deletable"
+    assert response.data["errors"][0]["code"] == "default_organization_not_deletable"
     assert Organization.objects.filter(pk=org.pk).exists()
 
 
@@ -149,7 +149,7 @@ def test_unknown_org_is_404(superadmin):
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.data["code"] == "organization_not_found"
+    assert response.data["errors"][0]["code"] == "organization_not_found"
 
 
 @pytest.mark.django_db
@@ -175,7 +175,7 @@ def test_real_delete_with_a_wrong_phrase_is_rejected_and_deletes_nothing(superad
     response = as_user(superadmin).delete(url(doomed_org.pk), **kwargs)
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "invalid_verification_phrase"
+    assert response.data["errors"][0]["code"] == "invalid_verification_phrase"
     assert _intact(doomed_org)
     if body and body.get("verification_phrase"):
         assert body["verification_phrase"].strip() not in response.content.decode()
@@ -189,8 +189,8 @@ def test_malformed_body_is_a_form_validation_error(superadmin, doomed_org, survi
     response = as_user(superadmin).delete(url(doomed_org.pk), data=body, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "invalid"
-    assert response.data["errors"][0]["field"] == "verification_phrase"
+    assert response.data["errors"][0]["code"] == "invalid"
+    assert response.data["errors"][0]["attr"] == "verification_phrase"
     assert _intact(doomed_org)
 
 
@@ -204,5 +204,5 @@ def test_rename_between_preview_and_delete_invalidates_the_phrase(superadmin, do
     response = client.delete(url(doomed_org.pk), data=stale_body, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "invalid_verification_phrase"
+    assert response.data["errors"][0]["code"] == "invalid_verification_phrase"
     assert Organization.objects.filter(pk=doomed_org.pk).exists()

@@ -611,7 +611,7 @@ def get_recent_sessions(
 _PRIMARY_CONTENT_FIELD_BY_MESSAGE_TYPE: dict[str, str] = {
     "start": "input",
     "finish": "output",
-    "error": "details",
+    "error": "error",
     "subgraph_start": "input",
     "subgraph_finish": "output",
     "classification_prompt": "raw_response",

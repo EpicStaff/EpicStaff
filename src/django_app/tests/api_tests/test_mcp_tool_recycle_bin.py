@@ -132,7 +132,7 @@ def test_export_rejects_a_binned_tool(auth_client, default_org):
     response = auth_client.post("/api/mcp-tools/export-jobs/", {"ids": [tool.id]}, format="json")
 
     assert response.status_code == 404, response.status_code
-    assert response.json()["code"] == "export_entities_not_found"
+    assert response.json()["errors"][0]["code"] == "export_entities_not_found"
 
 
 @pytest.mark.django_db

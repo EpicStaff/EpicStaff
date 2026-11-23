@@ -198,7 +198,13 @@ describe('ChatContractFixComponent', () => {
 
     it('says why another failure did not apply, and lets the user try again', async () => {
         await render({ ...NOTHING_MISSING, start_variables: ['chat_history'] });
-        flowsApi.failNextSave = new HttpErrorResponse({ status: 500, error: { detail: 'Database down' } });
+        flowsApi.failNextSave = new HttpErrorResponse({
+            status: 500,
+            error: {
+                type: 'server_error',
+                errors: [{ code: 'unknown', detail: 'Database down', attr: null, context: null }],
+            },
+        });
 
         await clickApply();
 

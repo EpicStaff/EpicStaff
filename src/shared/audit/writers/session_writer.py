@@ -218,10 +218,10 @@ class SessionAuditWriter(BaseAuditWriter[SessionAuditEvent]):
         failure. Same reasoning as add_finish_message: the kind="node"
         wrapper's own status stays None forever, this event is the only
         place a node's real completion state ever lives. error is
-        stringified but otherwise passed through flat, matching the primary
-        pipeline's ErrorMessageData.details: by default a sanitized public
-        message with a correlation id, but a caller may still pass through
-        unsanitized domain text via that pipeline's public_details escape
+        stringified but otherwise passed through flat, matching the `detail`
+        of the primary pipeline's ErrorMessageData.error item: by default the
+        fixed `Node "<name>" failed.` fact, but a caller may still pass through
+        unsanitized domain text via that pipeline's public_error escape
         hatch - this method stores whatever it is given, unchanged.
         """
         input_ = self._pop_start_input(session_id, node_name, execution_order)

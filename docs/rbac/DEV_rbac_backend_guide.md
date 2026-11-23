@@ -592,9 +592,9 @@ attribute it nests it under.
 and the write point lets it propagate (rolling back any open transaction).
 `custom_exception_handler` (`utils/exception_handler.py`) renders it as a `ValidationError`
 of `denial.field_errors()`, nested along `field_path`: the usual 400 envelope with the field
-named in `message`, e.g. `("python_code", "secret_ids")` →
-`{"python_code": {"secret_ids": [...]}}`. Graph bulk save catches it and reports it per node, as
-`{"errors": {"<list_key>": [{"index", "errors": {...}}]}}`. The config import strategy also
+as the item's `attr`, e.g. `("python_code", "secret_ids")` → `attr` `python_code.secret_ids`.
+Graph bulk save catches it and reports it per node, with `attr`
+`<list_key>.<index>.python_code.secret_ids`. The config import strategy also
 catches it and raises the same `ValidationError`, like every other rejection in that strategy
 (its callers and unit tests handle one kind of error). Because the check runs after
 validation, a shape error (an undeclared `get_secret`) wins over a `USE` denial.
@@ -716,7 +716,11 @@ Serializer rules for org-scoped models:
 
 `utils/exception_handler.custom_exception_handler` renders domain exceptions from
 `rbac/exceptions.py` as
-`{"status_code": ..., "code": "...", "message": "..."}`. Reuse existing codes
+`{"type", "errors": [{"code", "detail", "attr", "context"}]}`: `type` is
+`client_error` below 500 and `server_error` from 500 up, `errors` is never empty, and `attr`
+names the field at fault as a dotted path (null for an error of the request as a whole).
+A field error is a dict `detail` (`FormValidationError({"name": ["..."]})`), and extra facts
+safe to show any client go in the exception's `context`. Reuse existing codes
 (`org_context_required`, `org_membership_required`, `permission_denied`,
 `built_in_role_immutable`, `built_in_model_immutable`, `last_org_admin`,
 `last_superadmin`, …) and add new exceptions

@@ -13,6 +13,7 @@ cannot be opened refuses the submission, naming the secret and nothing else.
 import asyncio
 
 import pytest
+from foundation.schemas import ErrorDetailSchema
 
 from manager.application.holding import JobHoldingRegistry
 from manager.application.intake import IntakeGate
@@ -37,9 +38,7 @@ QUEUE_TIMEOUT = 120.0
 HOLD_TIMEOUT = 1800.0
 MAX_ACCEPTED = 2
 MAX_HELD = 2
-HOLD_TIMED_OUT_MESSAGE = (
-    "The execution environment did not finish building in time; the job was not run."
-)
+HOLD_TIMED_OUT_MESSAGE = "The libraries are still being installed."
 
 SUBMISSION = {
     "execution_id": "exec-1",
@@ -200,7 +199,7 @@ async def test_submit_against_a_failed_venv_reports_a_failure(
     assert holding.pending_venv_ids() == []
     [failure] = failure_sink.failures
     assert failure.execution_id == "exec-1"
-    assert "failed to build" in failure.message
+    assert failure.message == "Couldn't install the libraries."
     assert (failure.session_id, failure.not_run_reason) == (7, "venv_failed")
 
 
@@ -248,7 +247,7 @@ async def test_a_dispatch_failure_is_reported_as_a_failed_run(
 
     [failure] = failure_sink.failures
     assert failure.execution_id == "exec-1"
-    assert failure.message == "The job could not be handed to the worker and was not run."
+    assert failure.message == "The code couldn't run because of a server error."
     assert (failure.session_id, failure.not_run_reason) == (7, "dispatch_failed")
 
 
@@ -522,7 +521,8 @@ async def test_a_job_held_until_its_hold_deadline_is_failed_and_finished(
     [published] = await publish_results(result_queue, registry)
 
     assert published.execution_id == "exec-1"
-    assert published.stderr == HOLD_TIMED_OUT_MESSAGE
+    assert published.error == ErrorDetailSchema(code="hold_timeout", detail=HOLD_TIMED_OUT_MESSAGE)
+    assert published.stderr == ""
     assert published.not_run_reason == "hold_timeout"
     assert published.ran is False
     assert dispatcher.dispatched == []

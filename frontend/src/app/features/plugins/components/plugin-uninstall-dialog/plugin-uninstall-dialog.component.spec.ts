@@ -175,7 +175,12 @@ describe('PluginUninstallDialogComponent', () => {
                 () =>
                     new HttpErrorResponse({
                         status: 409,
-                        error: { status_code: 409, code: 'plugin_not_uninstallable', message: 'Refused.' },
+                        error: {
+                            type: 'client_error',
+                            errors: [
+                                { code: 'plugin_not_uninstallable', detail: 'Refused.', attr: null, context: null },
+                            ],
+                        },
                     })
             )
         );

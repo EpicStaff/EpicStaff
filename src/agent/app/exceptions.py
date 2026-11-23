@@ -8,9 +8,36 @@ target specific failure modes.  ``RequestHandler`` maps these onto
 re-delivery.
 """
 
+from foundation.schemas import ErrorDetailSchema
+
+from shared.models.agent_service import LoopResult
+
+# What crew shows when a failure has no user-safe fact of its own.
+AGENT_FAILED = ErrorDetailSchema(code="agent_failed", detail="The agent failed.")
+
+
+def loop_error_detail(result: LoopResult) -> ErrorDetailSchema | None:
+    """Return the user-safe `{code, detail}` a loop run failed with, or None if it has none."""
+    if result.error_code is None or result.error is None:
+        return None
+    return ErrorDetailSchema(code=result.error_code, detail=result.error)
+
 
 class AgentServiceError(Exception):
-    """Base domain error for the agent service."""
+    """Base domain error for the agent service.
+
+    ``error`` is the user-safe ``{code, detail}`` crew shows for this failure. ``None``
+    means the message is internal, and the emitter sends the generic "The agent failed."
+    """
+
+    def __init__(self, message: str = "", *, error: ErrorDetailSchema | None = None) -> None:
+        super().__init__(message)
+        self.error = error
+
+    @classmethod
+    def from_failed_loop(cls, message: str, result: LoopResult) -> "AgentServiceError":
+        """Wrap a failed loop run, passing its user-safe fact on to crew."""
+        return cls(message, error=loop_error_detail(result))
 
 
 class UnknownRunTypeError(AgentServiceError):

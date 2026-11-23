@@ -1,4 +1,4 @@
-import { KeyValueMode } from '@shared/models';
+import { ApiErrorDetail, KeyValueMode } from '@shared/models';
 
 // Base GraphMessage interface
 export interface GraphMessage {
@@ -62,7 +62,8 @@ export interface StartMessageData {
 }
 
 export interface ErrorMessageData {
-    details: string | Record<string, unknown>;
+    /** What went wrong, as every error is reported. */
+    error?: ApiErrorDetail;
     message_type: MessageType.ERROR; // Using snake_case from API
 }
 

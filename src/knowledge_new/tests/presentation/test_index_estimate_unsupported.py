@@ -41,7 +41,7 @@ def test_graph_index_estimate_is_rejected_with_a_readable_400(client):
     assert response.status_code == 400
     assert response.json() == {
         "code": "unsupported",
-        "detail": "Unsupported estimate strategy: 'graph'",
+        "detail": "The estimate strategy 'graph' isn't supported.",
     }
 
 

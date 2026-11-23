@@ -83,7 +83,7 @@ def test_a_restore_of_the_failed_upgrade_s_backup_is_asked_of_the_node(
 def test_an_unknown_plugin_comes_before_everything(superadmin_client):
     response = _restore(superadmin_client, 1, identifier="missing")
 
-    assert (response.status_code, response.json()["code"]) == (404, "plugin_not_found")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (404, "plugin_not_found")
 
 
 @pytest.mark.parametrize("which", ["unknown", "other_plugin", "deleted"])
@@ -109,7 +109,7 @@ def test_a_backup_the_plugin_does_not_hold_is_not_found_even_with_a_wrong_phrase
 
     response = _restore(superadmin_client, backup_id, {"verification_phrase": "wrong"})
 
-    assert (response.status_code, response.json()["code"]) == (404, "backup_not_found")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (404, "backup_not_found")
     assert _nothing_written()
 
 
@@ -127,7 +127,7 @@ def test_a_restore_outside_the_rule_conflicts_before_the_phrase_is_read(failed_m
 
     response = _restore(superadmin_client, backup.pk, {"verification_phrase": "wrong"})
 
-    assert (response.status_code, response.json()["code"]) == (409, "restore_not_allowed")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "restore_not_allowed")
     assert _nothing_written()
 
 
@@ -135,14 +135,14 @@ def test_a_restore_outside_the_rule_conflicts_before_the_phrase_is_read(failed_m
 def test_a_missing_or_different_phrase_is_refused(failed_migration, superadmin_client, body):
     response = _restore(superadmin_client, failed_migration.backup_id, body)
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid_restore_phrase")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid_restore_phrase")
     assert _nothing_written()
 
 
 def test_a_phrase_that_is_not_text_is_refused_without_echoing_it(failed_migration, superadmin_client):
     response = _restore(superadmin_client, failed_migration.backup_id, {"verification_phrase": ["restore-weather"]})
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid")
     assert "restore-weather" not in response.content.decode()
     assert _nothing_written()
 
@@ -152,7 +152,7 @@ def test_one_restore_at_a_time(failed_migration, superadmin_client):
 
     response = _restore(superadmin_client, failed_migration.backup_id)
 
-    assert (response.status_code, response.json()["code"]) == (409, "restore_not_allowed")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "restore_not_allowed")
 
 
 def test_the_plugin_cannot_be_deleted_while_a_restore_runs(failed_migration, superadmin_client):
@@ -160,7 +160,7 @@ def test_the_plugin_cannot_be_deleted_while_a_restore_runs(failed_migration, sup
 
     response = superadmin_client.delete("/api/admin/plugins/weather/", {"verification_phrase": "purge-weather"}, format="json")
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_not_purgeable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_not_purgeable")
 
 
 def test_a_running_report_records_the_step(failed_migration, weather, superadmin_client, node_client):

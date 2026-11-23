@@ -1,6 +1,6 @@
 import re
 from abc import ABC
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from typing import Any
 
 from django.contrib.auth import get_user_model
@@ -10,8 +10,6 @@ from django.core.validators import validate_email
 from tables.models.user import DISPLAY_NAME_MAX_LENGTH
 
 from rbac.exceptions import FormValidationError
-
-REDACTED_PLACEHOLDER = "***"
 
 # RFC 5321 limits: 64 characters before the @, 254 for the whole address.
 EMAIL_LOCAL_PART_MAX_LENGTH = 64
@@ -30,20 +28,15 @@ _EMAIL_DOMAIN = re.compile(r"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)
 @dataclass
 class FieldError:
     field: str
-    value: Any
     reason: str
-
-    def to_dict(self) -> dict:
-        return asdict(self)
 
 
 class BaseRBACValidator(ABC):
     """Shared infrastructure for every RBAC-domain form validator.
 
     Concrete subclasses expose their own `validate_*` methods, reusing the
-    protected primitives below. They override `_redacted_fields` to declare
-    which submitted values must never be echoed back in error responses
-    (passwords, tokens, refresh tokens — never org names).
+    protected primitives below. A submitted value is never echoed back in an
+    error response, so a password or token cannot leak through one.
 
     Each subclass `validate_*` method:
       - aggregates every applicable check into a list of FieldError
@@ -57,26 +50,22 @@ class BaseRBACValidator(ABC):
     documents intent.
     """
 
-    _redacted_fields: frozenset[str] = frozenset()
-
     # ---- error envelope ----
 
     def _raise_if_any(self, errors: list[FieldError]) -> None:
         if errors:
-            raise FormValidationError([e.to_dict() for e in errors])
-
-    def _echo(self, field: str, value: Any) -> Any:
-        if field in self._redacted_fields:
-            return REDACTED_PLACEHOLDER
-        return value
+            field_errors: dict[str, list[str]] = {}
+            for error in errors:
+                field_errors.setdefault(error.field, []).append(error.reason)
+            raise FormValidationError(field_errors)
 
     # ---- primitives ----
 
     def _require_nonblank_string(self, field: str, value: Any) -> list[FieldError]:
         if value is None or value == "":
-            return [FieldError(field, self._echo(field, value), "This field is required.")]
+            return [FieldError(field, "This field is required.")]
         if not isinstance(value, str):
-            return [FieldError(field, self._echo(field, value), "Must be a string.")]
+            return [FieldError(field, "Must be a string.")]
         return []
 
     def _validate_email_field(self, value: Any) -> list[FieldError]:
@@ -87,14 +76,13 @@ class BaseRBACValidator(ABC):
             return [
                 FieldError(
                     "email",
-                    self._echo("email", value),
                     "Email must not contain whitespace.",
                 )
             ]
         try:
             validate_email(value)
         except DjangoValidationError as exc:
-            return [FieldError("email", self._echo("email", value), msg) for msg in exc.messages]
+            return [FieldError("email", msg) for msg in exc.messages]
         return []
 
     def _validate_new_account_email(self, value: Any) -> list[FieldError]:
@@ -116,7 +104,7 @@ class BaseRBACValidator(ABC):
             reason = "Enter a valid email address."
         else:
             return []
-        return [FieldError("email", self._echo("email", value), reason)]
+        return [FieldError("email", reason)]
 
     def _prospective_user(self, email: Any):
         """Return an unsaved User carrying `email`, for the similarity check.
@@ -149,9 +137,7 @@ class BaseRBACValidator(ABC):
         try:
             validate_password(value, user=user)
         except DjangoValidationError as exc:
-            return [
-                FieldError(field_name, self._echo(field_name, value), msg) for msg in exc.messages
-            ]
+            return [FieldError(field_name, msg) for msg in exc.messages]
         return []
 
     def _clean_display_name(
@@ -167,20 +153,16 @@ class BaseRBACValidator(ABC):
             return None, [
                 FieldError(
                     "display_name",
-                    self._echo("display_name", value),
                     "Must be a string or null.",
                 )
             ]
         trimmed = value.strip()
         if not trimmed:
-            return None, [
-                FieldError("display_name", self._echo("display_name", value), blank_reason)
-            ]
+            return None, [FieldError("display_name", blank_reason)]
         if len(trimmed) > DISPLAY_NAME_MAX_LENGTH:
             return None, [
                 FieldError(
                     "display_name",
-                    self._echo("display_name", value),
                     f"Must be {DISPLAY_NAME_MAX_LENGTH} characters or fewer.",
                 )
             ]
@@ -188,11 +170,11 @@ class BaseRBACValidator(ABC):
 
     def _validate_positive_int_field(self, field: str, value: Any) -> list[FieldError]:
         if value is None or value == "":
-            return [FieldError(field, self._echo(field, value), "This field is required.")]
+            return [FieldError(field, "This field is required.")]
         try:
             coerced = int(value)
         except (TypeError, ValueError):
-            return [FieldError(field, self._echo(field, value), "Must be an integer.")]
+            return [FieldError(field, "Must be an integer.")]
         if coerced <= 0:
-            return [FieldError(field, self._echo(field, value), "Must be a positive integer.")]
+            return [FieldError(field, "Must be a positive integer.")]
         return []

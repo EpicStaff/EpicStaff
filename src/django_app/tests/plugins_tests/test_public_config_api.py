@@ -84,7 +84,7 @@ def test_an_unknown_plugin_is_not_found(anonymous_client, path):
     response = anonymous_client.get(f"/api/plugin-public/missing/{path}/")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_not_found"
 
 
 @pytest.mark.parametrize("path", ["config", "icon"])
@@ -95,7 +95,7 @@ def test_a_plugin_waiting_for_review_is_not_found(anonymous_client, installation
     response = anonymous_client.get(f"/api/plugin-public/weather/{path}/")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_not_found"
 
 
 @pytest.mark.parametrize("path", ["config", "icon"])
@@ -149,7 +149,7 @@ ICON_HEADERS = {
 
 def _assert_not_found(response):
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_not_found"
 
 
 @pytest.mark.parametrize(

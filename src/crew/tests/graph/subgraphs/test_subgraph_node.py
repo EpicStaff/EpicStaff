@@ -13,10 +13,11 @@ import pytest
 from dotdict import DotDict
 from langgraph.graph import StateGraph
 from litellm.types.utils import ModelResponse, Usage
+from loguru import logger
 
 from models.state import State
 from services.graph.events import StopEvent
-from services.graph.exceptions import InvalidStatePathError
+from services.graph.exceptions import InvalidStatePathError, ReturnCodeError, StopSession
 from services.graph.graph_builder import SessionGraphBuilder
 from services.graph.subgraphs.subgraph_node import SubGraphNode
 from src.shared.models import (
@@ -262,6 +263,22 @@ async def test_child_nodes_use_the_parents_services():
     assert updated["variables"].result.out == "stored k"
 
 
+def _error_details(messages) -> list[str]:
+    return [
+        message.message_data.error["detail"]
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+
+
+def _error_codes(messages) -> list[str]:
+    return [
+        message.message_data.error["code"]
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+
+
 async def test_child_classification_table_decrypts_with_the_parents_cryptographer():
     """A CDT prompt in a child flow reaches its LLM with the plaintext key only if the
     parent's cryptographer is passed down."""
@@ -316,5 +333,93 @@ async def test_underscore_output_path_fails_before_the_child_flow_runs():
     with pytest.raises(InvalidStatePathError, match=r"'variables\.__class__\.status'"):
         await node.run(state, writer=messages.append)
 
-    assert messages == []
+    assert _error_details(messages) == [
+        "Variable path 'variables.__class__.status' is not allowed: path segments cannot start with '_'."
+    ]
+    assert state["variables"].deep_dump() == PARENT
+
+
+@pytest.fixture
+def captured_logs():
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING")
+    yield records
+    logger.remove(sink_id)
+
+
+async def test_missing_child_flow_streams_the_fact():
+    node = _subgraph_node(_python_child("def main(): return {}"), "variables.result")
+    node.node_name = "Run B #1 #33"
+    node.subgraph_data = None
+    messages = []
+
+    with pytest.raises(AttributeError):
+        await node.run(_parent_state(), writer=messages.append)
+
+    assert _error_details(messages) == ["Subflow node \"Run B #1\" couldn't start its flow."]
+    assert _error_codes(messages) == ["subflow_failed"]
+
+
+async def test_child_flow_that_cannot_be_built_streams_the_fact(monkeypatch, captured_logs):
+    def failing_compile(builder, session_data):
+        raise RuntimeError("compile failed at /opt/crew/secret_path.py")
+
+    monkeypatch.setattr(SessionGraphBuilder, "compile_from_schema", failing_compile)
+    node = _subgraph_node(_python_child("def main(): return {}"), "variables.result")
+    node.node_name = "Run B #1 #33"
+    messages = []
+
+    with pytest.raises(RuntimeError):
+        await node.run(_parent_state(), writer=messages.append)
+
+    assert _error_details(messages) == ["Subflow node \"Run B #1\" couldn't start flow \"child\"."]
+    assert any("/opt/crew/secret_path.py" in record for record in captured_logs)
+
+
+async def test_child_flow_that_fails_streams_the_fact_after_the_childs_own_error():
+    node = _subgraph_node(_python_child("def main(): raise ValueError('boom')"), "variables.result")
+    node.node_name = "Run B #1 #33"
+    messages = []
+
+    with pytest.raises(ReturnCodeError):
+        await node.run(_parent_state(), writer=messages.append)
+
+    assert _error_details(messages)[-1] == "Subflow node \"Run B #1\" couldn't finish flow \"child\"."
+
+
+class StoppingPythonCodeExecutorService:
+    """Behaves like RunPythonCodeService when the session is stopped mid-run."""
+
+    async def run_code(self, *args, **kwargs):
+        raise StopSession(status="stop", reason="Token budget reached.")
+
+
+async def test_stop_inside_the_child_flow_streams_no_subflow_failure():
+    node = _subgraph_node(
+        _python_child("def main(): return {}"),
+        "variables.result",
+        python_code_executor_service=StoppingPythonCodeExecutorService(),
+    )
+    node.node_name = "Run B #1 #33"
+    messages = []
+
+    with pytest.raises(StopSession):
+        await node.run(_parent_state(), writer=messages.append)
+
+    assert not any("Subflow node" in details for details in _error_details(messages))
+
+
+async def test_output_path_that_does_not_exist_streams_the_fact():
+    node = _subgraph_node(_python_child("def main(): return {'done': True}"), "variables.records[5]")
+    node.node_name = "Run B #1 #33"
+    state = _parent_state()
+    messages = []
+
+    with pytest.raises(InvalidStatePathError):
+        await node.run(state, writer=messages.append)
+
+    assert _error_details(messages) == [
+        "Output path \"variables.records[5]\" of Subflow node \"Run B #1\" doesn't exist."
+    ]
+    assert _error_codes(messages) == ["invalid_state_path"]
     assert state["variables"].deep_dump() == PARENT

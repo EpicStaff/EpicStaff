@@ -7,6 +7,7 @@ from domain.enums import (
     IndexStatusEnum,
     SlotEnum,
 )
+from domain.errors import ArtifactStorageError, KnowledgeError, RepositoryError
 from pydantic import Field, computed_field
 from src.shared.models.base import Entity, ValueObject
 from src.shared.models.knowledge_new import (
@@ -48,6 +49,24 @@ __all__ = [
 ]
 
 
+_INDEXING_SERVER_ERROR_MESSAGE = "Indexing failed because of a server error."
+
+
+def _indexing_failure_message(error: Exception | str) -> str:
+    """Return the stored, user-facing text of an indexing failure.
+
+    A domain error's message is written for users, except for the errors that name
+    internals (a repository call, a storage prefix). Those and any other exception,
+    exception groups included, can carry provider responses or paths, so they are
+    replaced by a fixed fact; the caller logs the raw error.
+    """
+    if isinstance(error, RepositoryError | ArtifactStorageError):
+        return _INDEXING_SERVER_ERROR_MESSAGE
+    if isinstance(error, str | KnowledgeError):
+        return str(error)
+    return _INDEXING_SERVER_ERROR_MESSAGE
+
+
 class Rag(Entity):
     status: IndexStatusEnum
     indexing_document_ids: set[int]
@@ -73,13 +92,7 @@ class Rag(Entity):
 
     def mark_as_failed(self, error: Exception | str):
         self.status = IndexStatusEnum.FAILED
-        if isinstance(error, BaseExceptionGroup):
-            sub_details = "; ".join(f"{type(e).__name__}: {e}" for e in error.exceptions)
-            self.error_message = (
-                f"{error.message} [{sub_details}]" if sub_details else error.message
-            )
-        else:
-            self.error_message = str(error)
+        self.error_message = _indexing_failure_message(error)
 
     def mark_as_outdated(self, **reasons: str):
         self.status = IndexStatusEnum.OUTDATED
@@ -130,7 +143,7 @@ class Document(Entity):
 
     def mark_as_failed(self, error: Exception | str):
         self.status = DocumentStatusEnum.FAILED
-        self.error_message = str(error)
+        self.error_message = _indexing_failure_message(error)
 
 
 class EmbeddingConfig(ValueObject):

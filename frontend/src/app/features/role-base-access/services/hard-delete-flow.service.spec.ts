@@ -129,7 +129,16 @@ describe('HardDeleteFlowService', () => {
             dryRun
                 ? of(PREVIEW_REPORT)
                 : throwError(
-                      () => new HttpErrorResponse({ status: 400, error: { code: 'invalid_verification_phrase' } })
+                      () =>
+                          new HttpErrorResponse({
+                              status: 400,
+                              error: {
+                                  type: 'client_error',
+                                  errors: [
+                                      { code: 'invalid_verification_phrase', detail: '', attr: null, context: null },
+                                  ],
+                              },
+                          })
                   )
         );
 

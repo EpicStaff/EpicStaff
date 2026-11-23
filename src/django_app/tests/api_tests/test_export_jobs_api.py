@@ -293,7 +293,7 @@ def test_another_orgs_item_is_not_found_and_queues_nothing(
     response = client_in(exporter, acme).post(url, make_body(beta), format="json")
 
     assert response.status_code == 404, response.content
-    assert response.json()["code"] == "export_entities_not_found"
+    assert response.json()["errors"][0]["code"] == "export_entities_not_found"
     assert not TransferJob.objects.exists()
     assert enqueued == []
 
@@ -456,7 +456,7 @@ def test_a_session_export_takes_up_to_the_id_cap(client_in, exporter, acme, enqu
     response = client_in(exporter, acme).post("/api/sessions/export-jobs/", body, format="json")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "export_entities_not_found"
+    assert response.json()["errors"][0]["code"] == "export_entities_not_found"
 
 
 @pytest.mark.parametrize(
@@ -500,7 +500,7 @@ def test_a_session_export_with_ids_and_filters_names_the_filters_it_refused(
     )
 
     assert response.status_code == 400
-    assert response.json()["message"].endswith("(got graph_id, status).")
+    assert response.json()["errors"][0]["detail"].endswith("(got graph_id, status).")
     assert not TransferJob.objects.exists()
 
 
@@ -564,7 +564,7 @@ def test_a_system_api_key_is_refused_before_any_session_is_selected(
         )
 
     assert response.status_code == 403, response.content
-    assert response.json()["code"] == "transfer_job_requires_user"
+    assert response.json()["errors"][0]["code"] == "transfer_job_requires_user"
     assert not TransferJob.objects.exists()
     assert enqueued == []
     # Matching sessions by filters reads up to the id cap; a caller who could never own
@@ -703,7 +703,7 @@ def test_a_running_job_is_not_removed(client_in, exporter, acme, stored):
     response = client_in(exporter, acme).delete(f"/api/transfer-jobs/{job.id}/")
 
     assert response.status_code == 409
-    assert response.json()["code"] == "job_running"
+    assert response.json()["errors"][0]["code"] == "job_running"
     assert TransferJob.objects.filter(pk=job.pk).exists()
 
 

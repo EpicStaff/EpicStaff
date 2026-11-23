@@ -1,29 +1,45 @@
 from abc import ABC, abstractmethod
 from typing import Any, Literal
 
+from foundation.schemas import ErrorDetailSchema
 from langgraph.types import StreamWriter
 from loguru import logger
 from models.state import State
+from services.agent_task_service import AgentTaskError
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
-from services.graph.exceptions import InvalidStatePathError, ReturnCodeError, StopSession
+from services.graph.exceptions import (
+    InvalidStatePathError,
+    KeyValueNodeError,
+    KnowledgeSearchError,
+    NodeConfigurationError,
+    ReturnCodeError,
+    StopSession,
+)
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.flow_templates import RefusedPlaceholderError
 from utils import map_variables_to_input, set_output_variables
+from utils.node_label import runtime_node_name_to_label
 from utils.state_path import split_state_path
 
 # Errors whose text is written for the user and carries nothing internal, so it is streamed
-# as-is instead of the generic message with a correlation id.
+# as-is, under the error class's own `code`, instead of the fixed `Node "<name>" failed.` fact.
 _PUBLIC_ERROR_TYPES = (
     ReturnCodeError,
     StopSession,
     InvalidStatePathError,
     RefusedPlaceholderError,
+    KeyValueNodeError,
+    KnowledgeSearchError,
+    NodeConfigurationError,
+    AgentTaskError,
 )
 
 
 class BaseNode(ABC):
     TYPE = "BASE"
+    # How the node is named in a message to the user, e.g. `Python node "Clean data #2"`.
+    LABEL = "Node"
 
     def __init__(
         self,
@@ -63,6 +79,10 @@ class BaseNode(ABC):
             int: The number of times the node has been executed.
         """
         return state.get("execution_counts", {}).get(name, 0)
+
+    def _display_name(self) -> str:
+        """Name the node the way a message to the user does, e.g. `Python node "Clean data #2"`."""
+        return f'{self.LABEL} "{runtime_node_name_to_label(self.node_name)}"'
 
     def add_start_message(self, writer: StreamWriter, input_: Any, execution_order: int):
         """
@@ -122,25 +142,25 @@ class BaseNode(ABC):
         error: Exception | str,
         execution_order: int,
         *,
-        public_details: str | None = None,
+        public_error: ErrorDetailSchema | None = None,
     ):
         """
         Add an error message to the graph.
 
-        The raw error text is logged, not streamed: the client receives a
-        generic message carrying a correlation id, unless the caller supplies
-        already-safe text in `public_details` or the error is one of
-        _PUBLIC_ERROR_TYPES, whose own text is streamed.
+        The raw error text is logged, not streamed: the client receives
+        `Node "<name>" failed.`, unless the caller supplies an already-safe item in
+        `public_error` or the error is one of _PUBLIC_ERROR_TYPES, whose own code
+        and text are streamed.
 
         Args:
             writer (StreamWriter): A stream writer to write the message to.
             error (Exception | str): The exception or error text that was raised.
             execution_order (int): The order of execution of the node.
-            public_details (str | None): Safe text to stream instead of the
-                generic message.
+            public_error (ErrorDetailSchema | None): Safe item to stream instead of
+                the fixed fact.
         """
-        if public_details is None and isinstance(error, _PUBLIC_ERROR_TYPES):
-            public_details = str(error)
+        if public_error is None and isinstance(error, _PUBLIC_ERROR_TYPES):
+            public_error = ErrorDetailSchema(code=error.code, detail=str(error))
         self.custom_session_message_writer.add_error_message(
             session_id=self.session_id,
             node_name=self.node_name,
@@ -148,7 +168,7 @@ class BaseNode(ABC):
             error=error,
             execution_order=execution_order,
             node_type=self.TYPE,
-            public_details=public_details,
+            public_error=public_error,
         )
 
     @abstractmethod
@@ -204,11 +224,20 @@ class BaseNode(ABC):
                 input_=input_,
             )
 
-            set_output_variables(
-                state=state,
-                output_variable_path=self.output_variable_path,
-                output=self.get_output_variable_value(output),
-            )
+            output_variable_value = self.get_output_variable_value(output)
+            try:
+                set_output_variables(
+                    state=state,
+                    output_variable_path=self.output_variable_path,
+                    output=output_variable_value,
+                )
+            # set_output_variables raises these when a segment of the path is missing or
+            # can't hold the next one, e.g. an index past the end of a list.
+            except (IndexError, KeyError, TypeError, AttributeError) as error:
+                raise InvalidStatePathError(
+                    f'Output path "{self.output_variable_path}" of {self._display_name()} '
+                    "doesn't exist."
+                ) from error
 
             self.update_state_history(
                 state=state,
@@ -245,7 +274,9 @@ class BaseNode(ABC):
                 node_type=type(self).__name__,
                 ok=False,
             )
-            self.add_error_message(writer=writer, error=e, execution_order=execution_order)
+            # A stop isn't a failure: the session ends as stopped, so no error card.
+            if not isinstance(e, StopSession):
+                self.add_error_message(writer=writer, error=e, execution_order=execution_order)
             raise
 
     def get_input(self, state: State):

@@ -226,7 +226,7 @@ def test_naming_an_organization_one_is_not_a_member_of_is_refused(client_as, mak
     response = _available(client_as, beta_member, acme)
 
     assert response.status_code == 403
-    assert response.json()["code"] == "org_membership_required"
+    assert response.json()["errors"][0]["code"] == "org_membership_required"
 
 
 def test_a_superadmin_who_is_not_a_member_gets_an_empty_list(client_as, superadmin, acme, weather_in_acme):
@@ -249,7 +249,7 @@ def test_a_superadmin_naming_an_unknown_organization_is_not_found(client_as, sup
     response = client.get(AVAILABLE_URL)
 
     assert response.status_code == 404
-    assert response.json()["code"] == "organization_not_found"
+    assert response.json()["errors"][0]["code"] == "organization_not_found"
 
 
 @pytest.mark.parametrize("state", [PluginState.UPLOADED, PluginState.FAILED])
@@ -345,7 +345,7 @@ def test_the_organization_header_is_required(client_as, member_only, weather_in_
     response = client_as(member_only).get(AVAILABLE_URL)
 
     assert response.status_code == 400
-    assert response.json()["code"] == "org_context_required"
+    assert response.json()["errors"][0]["code"] == "org_context_required"
 
 
 def test_anonymous_callers_must_log_in(anonymous_client, acme):

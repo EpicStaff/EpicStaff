@@ -6,7 +6,7 @@ from rbac.authorship import resolve_author
 from rbac.models import ApiKey
 from rest_framework import serializers, status
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from src.shared.models import UserAction
@@ -73,16 +73,15 @@ class CopyActionMixin:
                     instance, name=name, user=request.user, **extra
                 )
                 record_copy(instance, new_instance)
-        except IntegrityError:
+        except IntegrityError as error:
             logger.warning(
                 "Copy of %s#%s raced on a unique constraint; client should retry.",
                 self.copy_service_class.__name__,
                 pk,
             )
-            return Response(
-                {"message": "A copy with that name was just created; please retry."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise ValidationError(
+                "A copy with that name was just created; please retry.", code="copy_name_taken"
+            ) from error
         return Response(
             self.copy_serializer_class(new_instance, context=self.get_serializer_context()).data,
             status=status.HTTP_201_CREATED,
@@ -219,29 +218,28 @@ class ToolUsageActionsMixin:
             if not isinstance(ids, list) or not all(
                 isinstance(i, int) and not isinstance(i, bool) for i in ids
             ):
-                return Response(
-                    {"detail": "ids must be a list of integers."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                raise ValidationError({"ids": ["Must be a list of integers."]}, code="invalid")
             if len(ids) > self.MAX_USAGE_IDS:
-                return Response(
-                    {"detail": (f"maximum {self.MAX_USAGE_IDS} allowed, got {len(ids)}")},
-                    status=status.HTTP_400_BAD_REQUEST,
+                raise ValidationError(
+                    {"ids": [f"Must have at most {self.MAX_USAGE_IDS} items, got {len(ids)}."]},
+                    code="max_length",
                 )
             ids = set(ids)
 
         rows = get_tools_usage(self.get_active_org_id(), tool_model, ids=ids)
 
         if not ids and len(rows) > self.MAX_USAGE_IDS:
-            return Response(
+            raise ValidationError(
                 {
-                    "detail": (
-                        f"more than {self.MAX_USAGE_IDS} tools visible to this "
-                        "org; pass explicit `ids` (<= the max) to scope the "
-                        "request instead of omitting it."
-                    )
+                    "ids": [
+                        (
+                            f"More than {self.MAX_USAGE_IDS} tools are visible to this "
+                            "org; pass explicit `ids` (<= the max) to scope the "
+                            "request instead of omitting it."
+                        )
+                    ]
                 },
-                status=status.HTTP_400_BAD_REQUEST,
+                code="required",
             )
 
         serializer = ToolUsageSerializer(rows, many=True)

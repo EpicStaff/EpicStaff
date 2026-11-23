@@ -178,14 +178,18 @@ async def test_rejected_submit_fails_the_run_instead_of_waiting_for_a_result(san
     )
 
     assert result["returncode"] == 1
-    assert result["stderr"] == '{"detail":"rejected"}'
+    assert result["error"] == {
+        "code": "server_error",
+        "detail": "The code couldn't run because of a server error.",
+    }
+    assert result["stderr"] == ""
     assert result["stdout"] == ""
 
 
 @pytest.mark.asyncio
 async def test_unreachable_sandbox_fails_the_run(sandbox_intake, captured_log_messages):
     """A connect error carries the request -- and its secrets -- so neither the log
-    nor the stderr may carry its text."""
+    nor the error may carry its text."""
 
     def refuse(request):
         raise httpx.ConnectError("connection refused", request=request)
@@ -201,9 +205,32 @@ async def test_unreachable_sandbox_fails_the_run(sandbox_intake, captured_log_me
     )
 
     assert result["returncode"] == 1
-    assert result["stderr"] == "The sandbox is unreachable."
+    assert result["error"] == {
+        "code": "sandbox_unreachable",
+        "detail": "The code couldn't run because of a server error.",
+    }
+    assert result["stderr"] == ""
     assert "sk-live-SENTINEL" not in "".join(captured_log_messages)
     assert "SandboxUnreachableError" in "".join(captured_log_messages)
+
+
+@pytest.mark.asyncio
+async def test_a_sandbox_that_stays_full_fails_the_run_as_overloaded(sandbox_intake):
+    sandbox_intake.status_code = 503
+    executor = PythonCodeExecutorService(
+        FakeRedisMessagingService(sandbox_intake), sandbox_intake.client()
+    )
+
+    result = await asyncio.wait_for(
+        executor.run_code(build_python_code_data(), inputs={}), timeout=5
+    )
+
+    assert result["returncode"] == 1
+    assert result["error"] == {
+        "code": "overloaded",
+        "detail": "The server was too busy to run the code in time.",
+    }
+    assert result["stderr"] == ""
 
 
 @pytest.fixture
@@ -224,9 +251,11 @@ async def test_execution_the_sandbox_lost_fails_the_run(sandbox_intake, fast_sta
     )
 
     assert result["returncode"] == 1
-    assert result["stderr"] == (
-        "The sandbox lost the execution (it restarted, or its result was not delivered)."
-    )
+    assert result["error"] == {
+        "code": "execution_lost",
+        "detail": "The code couldn't run because of a server error.",
+    }
+    assert result["stderr"] == ""
 
 
 @pytest.mark.asyncio
@@ -241,7 +270,11 @@ async def test_no_result_within_the_backstop_fails_the_run(sandbox_intake, monke
     )
 
     assert result["returncode"] == 1
-    assert result["stderr"] == "Timed out waiting for the result after 0.05 s."
+    assert result["error"] == {
+        "code": "result_timeout",
+        "detail": "The code's result didn't arrive in time.",
+    }
+    assert result["stderr"] == ""
 
 
 @pytest.mark.asyncio

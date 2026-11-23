@@ -71,23 +71,22 @@ class RoleValidationService(BaseRBACValidator):
             return errors
         trimmed = value.strip()
         if len(trimmed) == 0:
-            return [FieldError("name", value, "Must not be blank.")]
+            return [FieldError("name", "Must not be blank.")]
         if len(trimmed) > _MAX_NAME:
-            return [FieldError("name", value, f"Must be {_MAX_NAME} characters or fewer.")]
+            return [FieldError("name", f"Must be {_MAX_NAME} characters or fewer.")]
         if trimmed.lower() in _RESERVED_NAMES:
-            return [FieldError("name", value, "This name is reserved for built-in roles.")]
+            return [FieldError("name", "This name is reserved for built-in roles.")]
         return []
 
     def _validate_description(self, value: Any) -> list[FieldError]:
         if value is None:
             return []
         if not isinstance(value, str):
-            return [FieldError("description", value, "Must be a string or null.")]
+            return [FieldError("description", "Must be a string or null.")]
         if len(value) > _MAX_DESCRIPTION:
             return [
                 FieldError(
                     "description",
-                    value,
                     f"Must be {_MAX_DESCRIPTION} characters or fewer.",
                 )
             ]
@@ -104,15 +103,15 @@ class RoleValidationService(BaseRBACValidator):
         if value is None:
             return [], []
         if not isinstance(value, list):
-            return [], [FieldError("permissions", value, "Must be a list.")]
+            return [], [FieldError("permissions", "Must be a list.")]
 
         cleaned: list[dict] = []
         errors: list[FieldError] = []
         seen_resource_types: set = set()
         for index, entry in enumerate(value):
-            field = f"permissions[{index}]"
+            field = f"permissions.{index}"
             if not isinstance(entry, dict):
-                errors.append(FieldError(field, entry, "Must be an object."))
+                errors.append(FieldError(field, "Must be an object."))
                 continue
             resource_type = entry.get("resource_type")
             actions = entry.get("actions", [])
@@ -121,7 +120,6 @@ class RoleValidationService(BaseRBACValidator):
                 errors.append(
                     FieldError(
                         f"{field}.resource_type",
-                        resource_type,
                         "Unknown resource type.",
                     )
                 )
@@ -130,22 +128,20 @@ class RoleValidationService(BaseRBACValidator):
                 errors.append(
                     FieldError(
                         f"{field}.resource_type",
-                        resource_type,
                         "Duplicate resource_type; list each resource at most once.",
                     )
                 )
                 continue
             seen_resource_types.add(resource_type)
             if not isinstance(actions, list):
-                errors.append(FieldError(f"{field}.actions", actions, "Must be a list."))
+                errors.append(FieldError(f"{field}.actions", "Must be a list."))
                 continue
             platform = platform_actions_for(resource_type)
             bad_platform = [a for a in actions if a in platform]
             if bad_platform:
                 errors.append(
                     FieldError(
-                        f"{field}.{resource_type}.actions",
-                        actions,
+                        f"{field}.actions",
                         f"Actions {bad_platform} are platform-level (superadmin-only) "
                         f"and cannot be granted.",
                     )
@@ -155,8 +151,7 @@ class RoleValidationService(BaseRBACValidator):
             if bad:
                 errors.append(
                     FieldError(
-                        f"{field}.{resource_type}.actions",
-                        actions,
+                        f"{field}.actions",
                         f"Actions {bad} are not applicable to {resource_type}.",
                     )
                 )

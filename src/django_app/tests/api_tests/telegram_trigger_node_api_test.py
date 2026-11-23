@@ -362,11 +362,7 @@ class TestTelegramTriggerServiceLocalhostGuard:
 BOT_TOKEN = "987654321:AAH-webhook-info-SECRET-bot-token"
 TUNNEL_URL = "https://abcd1234.ngrok-free.app"
 TELEGRAM_SECRET_TOKEN = "WebhookInfoSecret123-xxxxxxxxxxx"
-BOT_KEY_REJECTED_BODY = {
-    "status_code": 422,
-    "code": "telegram_bot_key_rejected",
-    "message": "Telegram rejected this bot key. Check the secret selected as the bot key on this node.",
-}
+BOT_KEY_REJECTED_BODY = {"type": "client_error", "errors": [{"code": "telegram_bot_key_rejected", "detail": "Telegram rejected this bot key. Check the secret selected as the bot key on this node.", "attr": None, "context": None}]}
 
 
 def _telegram_response(url, *, status_code=200, body=None):
@@ -734,7 +730,7 @@ class TestTelegramTriggerNodeWebhookInfo:
 
         # The 502 contract is unchanged; the blocker rides only on the 200 body.
         assert response.status_code == 502, response.content
-        assert response.json()["code"] == "telegram_webhook_info_unavailable"
+        assert response.json()["errors"][0]["code"] == "telegram_webhook_info_unavailable"
 
     def test_node_without_bot_key_returns_400_without_calling_telegram(
         self, auth_client, default_org, tunnel_url, telegram_api
@@ -744,7 +740,7 @@ class TestTelegramTriggerNodeWebhookInfo:
         response = auth_client.get(_webhook_info_url(node.id))
 
         assert response.status_code == 400, response.content
-        assert response.json()["message"] == "This Telegram trigger node has no bot key configured."
+        assert response.json()["errors"][0]["detail"] == "This Telegram trigger node has no bot key configured."
         telegram_api.assert_not_called()
 
     def test_undecryptable_bot_key_returns_500_without_calling_telegram(
@@ -758,7 +754,7 @@ class TestTelegramTriggerNodeWebhookInfo:
         response = auth_client.get(_webhook_info_url(node.id))
 
         assert response.status_code == 500, response.content
-        assert response.json()["code"] == "secret_resolution_error"
+        assert response.json()["errors"][0]["code"] == "secret_resolution_error"
         assert BOT_TOKEN not in response.content.decode()
         telegram_api.assert_not_called()
 
@@ -784,7 +780,7 @@ class TestTelegramTriggerNodeWebhookInfo:
         response = auth_client.get(_webhook_info_url(node.id))
 
         assert response.status_code == 502, response.content
-        assert response.json()["message"] == "Could not fetch webhook info from Telegram."
+        assert response.json()["errors"][0]["detail"] == "Could not fetch webhook info from Telegram."
         assert BOT_TOKEN not in response.content.decode()
         assert telegram_api.call_count == 1
         assert telegram_api.call_args.kwargs["timeout"] == (3, 5)
@@ -971,18 +967,13 @@ class TestTelegramTriggerNodeRegisterWebhook:
         response = auth_client.post(_register_webhook_url(node.id))
 
         assert response.status_code == 409, response.content
-        assert response.json() == {
-            "status_code": 409,
-            "code": "telegram_registration_blocked",
-            "message": "This node's configuration does not allow registering its webhook.",
-            "registration_blocker": {
+        assert response.json() == {"type": "client_error", "errors": [{"code": "telegram_registration_blocked", "detail": "This node's configuration does not allow registering its webhook.", "attr": None, "context": {"registration_blocker": {
                 "code": "no_telegram_secret",
                 "message": (
                     "No Telegram secret configured for this webhook trigger. Set one via the "
                     "trigger's `auth_secret_id` before registering."
                 ),
-            },
-        }
+            }}}]}
         assert telegram.endpoints == []
 
     def test_node_without_bot_key_returns_400(self, auth_client, default_org, tunnel_url, telegram):
@@ -991,7 +982,7 @@ class TestTelegramTriggerNodeRegisterWebhook:
         response = auth_client.post(_register_webhook_url(node.id))
 
         assert response.status_code == 400, response.content
-        assert response.json()["code"] == "telegram_bot_key_not_configured"
+        assert response.json()["errors"][0]["code"] == "telegram_bot_key_not_configured"
         assert telegram.endpoints == []
 
     def test_undecryptable_bot_key_returns_500_without_calling_telegram(
@@ -1005,7 +996,7 @@ class TestTelegramTriggerNodeRegisterWebhook:
         response = auth_client.post(_register_webhook_url(node.id))
 
         assert response.status_code == 500, response.content
-        assert response.json()["code"] == "secret_resolution_error"
+        assert response.json()["errors"][0]["code"] == "secret_resolution_error"
         assert telegram.endpoints == []
 
     @pytest.mark.parametrize(
@@ -1037,13 +1028,7 @@ class TestTelegramTriggerNodeRegisterWebhook:
         response = auth_client.post(_register_webhook_url(node.id))
 
         assert response.status_code == 502, response.content
-        assert response.json() == {
-            "status_code": 502,
-            "code": "telegram_registration_failed",
-            "message": (
-                "Telegram could not register the webhook. Check the panel status and try again."
-            ),
-        }
+        assert response.json() == {"type": "server_error", "errors": [{"code": "telegram_registration_failed", "detail": "Telegram could not register the webhook. Check the panel status and try again.", "attr": None, "context": None}]}
         assert telegram.endpoints == ["setWebhook"] * expected_attempts
         body = response.content.decode()
         assert BOT_TOKEN not in body
@@ -1089,14 +1074,8 @@ class TestTelegramTriggerNodeRegisterWebhook:
         response = auth_client.post(_register_webhook_url(node.id))
 
         assert response.status_code == 503, response.content
-        assert response.json() == {
-            "status_code": 503,
-            "code": "telegram_tunnel_unavailable",
-            "message": (
-                "The webhook tunnel is not available yet. Check the trigger's tunnel and "
-                "try again."
-            ),
-        }
+        assert response.json() == {"type": "server_error", "errors": [{"code": "telegram_tunnel_unavailable", "detail": "The webhook tunnel is not available yet. Check the trigger's tunnel and "
+                "try again.", "attr": None, "context": None}]}
         assert telegram.endpoints == []
 
     def test_failed_follow_up_read_still_returns_200_from_the_confirmed_registration(

@@ -6,13 +6,9 @@ from typing import Any
 
 import websockets
 from application.tool_manager_service import ToolManagerService
+from domain.error_messages import TOOL_CALL_FAILED
 from domain.models.realtime_tool import RealtimeTool
 from loguru import logger
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
 from utils.openai_endpoints import derive_realtime_ws_url
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
@@ -233,13 +229,18 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
             )
             output = str(tool_result)
         except Exception as e:
-            correlation_id = new_error_correlation_id()
             logger.exception(
-                f"OpenAI: Tool execution failed [correlation_id={correlation_id}]: {e}"
+                "OpenAI: Tool execution failed connection_key={} org_id={} user_id={}"
+                " model={} tool={} call_id={}: {}",
+                self.connection_key,
+                self.org_id,
+                self.user_id,
+                self.model,
+                tool_name,
+                call_id,
+                e,
             )
-            output = build_public_error_message(
-                PublicErrorMessage.TOOL_EXECUTION_FAILED, correlation_id
-            )
+            output = TOOL_CALL_FAILED
 
         await self.send_function_result(call_id, output)
 

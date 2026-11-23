@@ -13,6 +13,7 @@ import httpx
 import pytest
 
 from common.contracts import ExecutionJobMessage, ExecutionResultMessage
+from foundation.schemas import ErrorDetailSchema
 from foundation.transport.http import AsyncClient
 from worker.application.ports import UndecodableJobError
 from worker.domain.models import ExecutionResult
@@ -177,7 +178,10 @@ async def test_a_refused_body_is_replaced_with_a_fixed_failure_result():
     replacement = ExecutionResultMessage.model_validate_json(script.requests[1].content)
     assert replacement.execution_id == "exec-9"
     assert replacement.returncode == 1
-    assert replacement.stderr == "Sandbox could not deliver the execution result."
+    assert replacement.error == ErrorDetailSchema(
+        code="result_undeliverable", detail="Sandbox could not deliver the execution result."
+    )
+    assert replacement.stderr == ""
     assert replacement.result is None
     assert replacement.session_id == 11
     assert replacement.reply_to_crew_channel is True
@@ -238,5 +242,8 @@ async def test_a_server_error_then_a_refused_body_still_sends_the_replacement():
     assert stop.called is False
     replacement = ExecutionResultMessage.model_validate_json(script.requests[2].content)
     assert replacement.execution_id == "exec-9"
-    assert replacement.stderr == "Sandbox could not deliver the execution result."
+    assert replacement.error == ErrorDetailSchema(
+        code="result_undeliverable", detail="Sandbox could not deliver the execution result."
+    )
+    assert replacement.stderr == ""
     assert replacement.session_id == 11

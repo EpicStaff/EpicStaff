@@ -621,14 +621,17 @@ class DocumentManagementService:
         Returns (copied, skipped).
 
         Raises:
-            CollectionNotFoundException: target collection missing or in another org.
+            ValidationError: target collection missing or in another org, on `collection_id`.
             DocumentsNotFoundException: a source document missing or in another org.
         """
         collection = SourceCollection.objects.filter(
             collection_id=collection_id, org_id=org_id
         ).first()
         if collection is None:
-            raise CollectionNotFoundException(collection_id)
+            raise serializers.ValidationError(
+                {"collection_id": [f"Source collection with id {collection_id} not found"]},
+                code=CollectionNotFoundException.default_code,
+            )
         source_documents = DocumentManagementService.get_documents_with_content(
             document_ids, org_id=org_id
         )

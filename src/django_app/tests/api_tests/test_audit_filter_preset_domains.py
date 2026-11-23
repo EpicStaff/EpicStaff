@@ -23,6 +23,7 @@ from tests.helpers import data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_backend_fake import FakeStorageBackend
 from tests.transfer_job_helpers import FinishedExport, export_via_job, run_job
+from tests.error_envelope import error_text
 
 SESSIONS = "sessions"
 USER_ACTIONS = "user_actions"
@@ -154,7 +155,7 @@ class TestDomainPermission:
         detail_response = superadmin_in_acme.get(_detail_url(preset, domain))
 
         assert list_response.status_code == 400
-        assert "domain" in list_response.json()["message"]
+        assert "domain" in error_text(list_response.json())
         assert detail_response.status_code == 400
 
 
@@ -423,7 +424,7 @@ class TestExportJobPerDomain:
         # The same 404 as for another org's preset: nothing tells the domains apart.
         for response in (alone, mixed):
             assert response.status_code == 404, response.content
-            assert response.json()["code"] == "export_entities_not_found"
+            assert response.json()["errors"][0]["code"] == "export_entities_not_found"
         assert not TransferJob.objects.exists()
 
     def test_a_user_audit_reader_exports_and_downloads_user_actions_presets(

@@ -22,11 +22,17 @@ const TRIGGER: WebhookTriggerModel = {
 
 /** The 400 the backend sends when a write would change a secret reference and the caller lacks Secrets "Use". */
 const SECRET_USE_REFUSAL = {
-    status_code: 400,
-    code: 'invalid',
-    message:
-        'ngrok_config: auth_token_secret_id: Changing the secrets referenced here requires the "Use" permission on ' +
-        'Secrets. The existing selection was left unchanged. Ask an organization admin to grant it.',
+    type: 'client_error',
+    errors: [
+        {
+            code: 'invalid',
+            detail:
+                'Changing the secrets referenced here requires the "Use" permission on ' +
+                'Secrets. The existing selection was left unchanged. Ask an organization admin to grant it.',
+            attr: 'ngrok_config.auth_token_secret_id',
+            context: null,
+        },
+    ],
 };
 
 // jsdom has no ResizeObserver; the overflow directive behind <app-button> only needs it to exist.
@@ -62,7 +68,10 @@ function render(data: WebhookTriggerDialogData): Setup {
     const fixture = TestBed.createComponent(WebhookTriggerDialogComponent);
     fixture.detectChanges();
     for (const request of httpMock.match((req) => req.url.includes('/secrets/'))) {
-        request.flush({ detail: 'forbidden' }, { status: 403, statusText: 'Forbidden' });
+        request.flush(
+            { type: 'client_error', errors: [{ code: 'unknown', detail: 'forbidden', attr: null, context: null }] },
+            { status: 403, statusText: 'Forbidden' }
+        );
     }
     fixture.detectChanges();
     return { fixture, host: fixture.nativeElement as HTMLElement, httpMock, close, keydown };
@@ -198,7 +207,15 @@ describe('WebhookTriggerDialogComponent', () => {
             const setup = render({ trigger: TRIGGER });
 
             save(setup);
-            answer(setup, { status_code: 500, code: 'Exception', message: 'Unpredictable error' }, 500, 'Server Error');
+            answer(
+                setup,
+                {
+                    type: 'server_error',
+                    errors: [{ code: 'Exception', detail: 'Unpredictable error', attr: null, context: null }],
+                },
+                500,
+                'Server Error'
+            );
 
             expect(bannerText(setup.host)).toBe('Failed to save webhook trigger.');
         });

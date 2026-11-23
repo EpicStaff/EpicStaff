@@ -206,7 +206,17 @@ describe('ChatThreadComposerComponent', () => {
                 () =>
                     new HttpErrorResponse({
                         status: 409,
-                        error: { code: 'run_in_progress', message: 'A reply is still being written.' },
+                        error: {
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'run_in_progress',
+                                    detail: 'A reply is still being written.',
+                                    attr: null,
+                                    context: null,
+                                },
+                            ],
+                        },
                     })
             )
         );
@@ -354,9 +364,15 @@ describe('ChatThreadComposerComponent', () => {
                     new HttpErrorResponse({
                         status: 400,
                         error: {
-                            code: 'validation_error',
-                            message: 'Validation failed for POST /messages',
-                            errors: [{ message: 'chat_extra_data is larger than 8192 bytes' }],
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'validation_error',
+                                    detail: 'chat_extra_data is larger than 8192 bytes',
+                                    attr: null,
+                                    context: null,
+                                },
+                            ],
                         },
                     })
             )
@@ -365,6 +381,36 @@ describe('ChatThreadComposerComponent', () => {
         type('hello');
         pressEnter();
         expect(notice()).toBe('chat_extra_data is larger than 8192 bytes');
+    });
+
+    it.each([
+        {
+            case: 'a run in progress, keeping the lock',
+            status: 409,
+            error: { code: 'run_in_progress', detail: 'A reply is still being written.', attr: null },
+            expected: 'A reply is still being written.',
+            locked: true,
+        },
+        {
+            case: 'the refused field of a validation error',
+            status: 400,
+            error: {
+                code: 'validation_error',
+                detail: 'chat_extra_data is larger than 8192 bytes',
+                attr: 'chat_extra_data',
+            },
+            expected: 'chat_extra_data is larger than 8192 bytes',
+            locked: false,
+        },
+    ])('shows $case from the error envelope', ({ status, error, expected, locked }) => {
+        chatApi.sendAsVisitor.mockReturnValue(
+            throwError(() => new HttpErrorResponse({ status, error: { type: 'client_error', errors: [error] } }))
+        );
+        setInputs({ conversation: row(), visitorToken: 'vt-1' });
+        type('hello');
+        pressEnter();
+        expect(notice()).toBe(expected);
+        expect(input().disabled).toBe(locked);
     });
 
     it('shows the extra-data error only after leaving the field or trying to send', () => {
@@ -477,9 +523,15 @@ describe('ChatThreadComposerComponent', () => {
                     new HttpErrorResponse({
                         status: 409,
                         error: {
-                            code: 'conversation_closed',
-                            message: 'Conversation is closed',
-                            close_reason: 'ended',
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'conversation_closed',
+                                    detail: 'Conversation is closed',
+                                    attr: null,
+                                    context: { close_reason: 'ended' },
+                                },
+                            ],
                         },
                     })
             );

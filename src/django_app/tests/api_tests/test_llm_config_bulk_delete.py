@@ -316,5 +316,5 @@ def test_single_destroy_hidden_usage_blocked(django_user_model, org_a):
     resp = client.delete(f"/api/llm-configs/{config.id}/")
 
     assert resp.status_code == 403, resp.data
-    assert resp.data["code"] == "in_use_restricted"
+    assert resp.data["errors"][0]["code"] == "in_use_restricted"
     assert LLMConfig.objects.filter(id=config.id).exists()

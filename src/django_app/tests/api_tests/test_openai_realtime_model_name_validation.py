@@ -13,6 +13,7 @@ from tables.serializers.model_serializers.realtime_serializers import (
     OpenAIRealtimeConfigSerializer,
 )
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 DEAD_MODEL_NAME = "gpt-4o-realtime-preview-2024-12-17"
 VALID_MODEL_NAME = "gpt-realtime-1.5"
@@ -41,7 +42,7 @@ def test_create_with_unregistered_model_name_rejected(
     # custom_exception_handler flattens DRF's {"model_name": [...]} into
     # {"message": "model_name: <error text>", ...} -- see
     # django_app/settings/rest_framework.py EXCEPTION_HANDLER.
-    assert "model_name" in resp.data["message"]
+    assert "model_name" in error_text(resp.data)
 
 
 @pytest.mark.django_db
@@ -111,7 +112,7 @@ def test_create_with_foreign_org_custom_model_name_rejected(
         format="json",
     )
     assert resp.status_code == 400, resp.data
-    assert "model_name" in resp.data["message"]
+    assert "model_name" in error_text(resp.data)
     assert not OpenAIRealtimeConfig.objects.filter(custom_name="cfg").exists()
 
 
@@ -164,8 +165,8 @@ def test_error_identical_for_nonexistent_vs_foreign_custom_model(
 
     assert foreign_resp.status_code == 400, foreign_resp.data
     assert nonexistent_resp.status_code == 400, nonexistent_resp.data
-    foreign_message = foreign_resp.data["message"].replace("secret-model", "<name>")
-    nonexistent_message = nonexistent_resp.data["message"].replace(
+    foreign_message = foreign_resp.data["errors"][0]["detail"].replace("secret-model", "<name>")
+    nonexistent_message = nonexistent_resp.data["errors"][0]["detail"].replace(
         "completely-made-up-model", "<name>"
     )
     assert foreign_message == nonexistent_message

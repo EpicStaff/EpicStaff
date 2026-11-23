@@ -24,7 +24,7 @@ import {
 } from '@shared/components';
 import { DEFAULT_STEP_SIZE } from '@shared/constants';
 import { ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
-import { ApiErrorItem } from '@shared/models';
+import { ApiErrorDetail } from '@shared/models';
 
 import { GraphRagFileType, GraphRagIndexConfig } from '../../../models/graph-rag.model';
 
@@ -172,8 +172,13 @@ export class AppGraphRagParametersComponent implements OnInit {
         this.reset.emit();
     }
 
-    setServerErrors(errors: ApiErrorItem[]): void {
+    setServerErrors(errors: ApiErrorDetail[]): void {
         this.serverErrorsRef.setErrors(errors);
+    }
+
+    /** Whether every error names a field of this form, so it is shown under that field. */
+    hasFieldsFor(errors: ApiErrorDetail[]): boolean {
+        return errors.every((error) => error.attr !== null && this.form.contains(error.attr));
     }
 
     onJsonValidChange(isValid: boolean): void {

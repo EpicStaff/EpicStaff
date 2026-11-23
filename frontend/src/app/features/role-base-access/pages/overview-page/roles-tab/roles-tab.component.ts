@@ -28,7 +28,7 @@ import {
     ViewButtonComponent,
 } from '@shared/components';
 import { ActionCode, GetRoleResponse, ResourceCode } from '@shared/models';
-import { escapeHtml } from '@shared/utils';
+import { escapeHtml, extractServerMessage } from '@shared/utils';
 import { combineLatest, debounceTime, EMPTY, finalize, switchMap } from 'rxjs';
 import { catchError, distinctUntilChanged, tap } from 'rxjs/operators';
 
@@ -299,7 +299,7 @@ export class RolesTabComponent {
                     );
                     this.mainAction()?.focus();
                 },
-                error: (e) => this.toast.error(e.error?.message ?? 'Failed to delete role'),
+                error: (e) => this.toast.error(extractServerMessage(e) ?? 'Failed to delete role'),
             });
     }
 }

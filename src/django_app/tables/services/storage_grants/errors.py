@@ -21,7 +21,7 @@ class StorageGrantDeniedError(PermissionDenied):
 
     Rendered as a 403 whose message names every missing role permission (Read, Create,
     Update, Delete); the grant actions they stand for are also in `missing_grants` of the
-    body for a client that wants them as data.
+    error's `context` for a client that wants them as data.
     """
 
     default_code = "storage_grant_denied"
@@ -58,6 +58,6 @@ class StorageGrantDeniedError(PermissionDenied):
                 "Contact an admin to change it."
             )
         super().__init__(detail=message)
-        self.extra_response_data = {
+        self.context = {
             "missing_grants": [action.value for action in StorageAction if action in self.missing]
         }

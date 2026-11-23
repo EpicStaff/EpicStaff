@@ -16,6 +16,7 @@ import {
 } from '@shared/components';
 import { EnterSubmitDirective } from '@shared/directives';
 import { ActionCode, GetRoleResponse, ResourceCode } from '@shared/models';
+import { extractErrorCode, extractServerMessage } from '@shared/utils';
 import { filter, finalize, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -151,12 +152,11 @@ export class CopyRoleDialogComponent {
     }
 
     private handleError(err: HttpErrorResponse): void {
-        const code: string | undefined = err.error?.code;
-        if (code === 'permission_escalation_denied') {
+        if (extractErrorCode(err) === 'permission_escalation_denied') {
             this.toast.error("You can't duplicate this role — it grants permissions you don't have in the target org.");
             return;
         }
-        this.toast.error(err.error?.message ?? 'Failed to duplicate role');
+        this.toast.error(extractServerMessage(err) ?? 'Failed to duplicate role');
     }
 
     onCancel(): void {

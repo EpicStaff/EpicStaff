@@ -62,7 +62,7 @@ def test_an_organization_flow_using_a_suspended_plugin_s_row_is_refused_before_a
     response = _run(olga, reached.flow)
 
     assert response.status_code == 409, response.content
-    assert response.json()["code"] == "plugin_suspended"
+    assert response.json()["errors"][0]["code"] == "plugin_suspended"
     assert not Session.objects.exists()
     redis_client_mock.publish.assert_not_called()
 
@@ -135,7 +135,7 @@ def test_a_row_whose_grant_is_gone_refuses(weather, acme):
     with pytest.raises(PluginSuspendedError) as refused:
         PluginRunGuard().check(_flow_subject(forecast))
 
-    assert refused.value.extra_response_data["plugin"] == {"identifier": "weather", "name": "Weather"}
+    assert refused.value.context["plugin"] == {"identifier": "weather", "name": "Weather"}
     assert "not active" in str(refused.value.detail)
 
 
@@ -147,7 +147,7 @@ def test_once_the_plugin_row_is_gone_its_identifier_names_it(weather, grant_to, 
     with pytest.raises(PluginSuspendedError) as refused:
         PluginRunGuard().check(_flow_subject(forecast))
 
-    assert refused.value.extra_response_data["plugin"] == {"identifier": "weather", "name": "weather"}
+    assert refused.value.context["plugin"] == {"identifier": "weather", "name": "weather"}
     assert refused.value.log_key == "weather:none:removed:0"
 
 
@@ -161,7 +161,7 @@ def test_with_two_plugins_the_lowest_identifier_names_the_refusal(running_plugin
     with pytest.raises(PluginSuspendedError) as refused:
         PluginRunGuard().check(_flow_subject(reached.flow))
 
-    assert refused.value.extra_response_data["plugin"]["identifier"] == "almanac"
+    assert refused.value.context["plugin"]["identifier"] == "almanac"
 
 
 # ---- organizations ----
@@ -197,13 +197,7 @@ def test_the_refusal_names_the_plugin_and_the_organization_never_the_resource(gr
 
     body = _run(olga, reached.flow).json()
 
-    assert body == {
-        "status_code": 409,
-        "code": "plugin_suspended",
-        "message": 'This run uses resources of the plugin "Weather", which is suspended in this organization.',
-        "plugin": {"identifier": "weather", "name": "Weather"},
-        "organization": {"id": acme.pk},
-    }
+    assert body == {"type": "client_error", "errors": [{"code": "plugin_suspended", "detail": 'This run uses resources of the plugin "Weather", which is suspended in this organization.', "attr": None, "context": {"plugin": {"identifier": "weather", "name": "Weather"}, "organization": {"id": acme.pk}}}]}
     assert "very-private-secret-name" not in str(body)
     assert str(reached.row.pk) not in str(body).replace(str(acme.pk), "")
 

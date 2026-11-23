@@ -135,7 +135,7 @@ class TestAttachedTrigger:
             )
 
         assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-        assert response.data["code"] == DENIED_CODE
+        assert response.data["errors"][0]["code"] == DENIED_CODE
         assert _state(trigger) == before
         republished["tunnels"].assert_not_called()
         republished["telegram"].assert_not_called()
@@ -153,7 +153,7 @@ class TestAttachedTrigger:
         )
 
         assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-        assert response.data["code"] == DENIED_CODE
+        assert response.data["errors"][0]["code"] == DENIED_CODE
         assert _state(trigger) == before
 
     def test_body_errors_still_get_the_same_403(self, editor_client, acme, republished):
@@ -165,7 +165,7 @@ class TestAttachedTrigger:
         )
 
         assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-        assert response.data["code"] == DENIED_CODE
+        assert response.data["errors"][0]["code"] == DENIED_CODE
 
     def test_with_use_the_trigger_is_rekeyed(
         self, runner_client, acme, republished, django_capture_on_commit_callbacks
@@ -207,7 +207,7 @@ class TestAttachedTrigger:
 
         assert response.status_code == expected_status, response.content
         if expected_status == status.HTTP_403_FORBIDDEN:
-            assert response.data["code"] == DENIED_CODE
+            assert response.data["errors"][0]["code"] == DENIED_CODE
         assert _state(trigger)[0] == expected_path
 
     def test_superadmin_needs_no_role(self, superadmin_client, acme, republished):

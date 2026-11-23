@@ -113,7 +113,7 @@ def test_create_python_node_missing_code_field(auth_client, graph):
     response = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert "python_node_list" in response.data["errors"]
+    assert any(str(item["attr"]).startswith("python_node_list.") for item in response.data["errors"])
 
 
 # ---------------------------------------------------------------------------
@@ -388,7 +388,7 @@ def test_invalid_node_id_in_payload(auth_client, graph):
     response = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert "python_node_list" in response.data["errors"]
+    assert any(str(item["attr"]).startswith("python_node_list.") for item in response.data["errors"])
 
 
 @pytest.mark.django_db

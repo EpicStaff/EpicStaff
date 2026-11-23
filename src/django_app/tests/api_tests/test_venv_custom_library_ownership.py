@@ -113,10 +113,10 @@ def test_the_refusal_does_not_say_whether_the_library_exists_elsewhere(
     )
 
     assert unknown.status_code == elsewhere.status_code == status.HTTP_400_BAD_REQUEST
-    assert unknown.data["code"] == elsewhere.data["code"] == "unknown_custom_library"
-    assert unknown.data["message"].replace("never-created", "X") == elsewhere.data[
-        "message"
-    ].replace("their-lib", "X")
+    assert unknown.data["errors"][0]["code"] == elsewhere.data["errors"][0]["code"] == "unknown_custom_library"
+    assert unknown.data["errors"][0]["detail"].replace("never-created", "X") == elsewhere.data[
+        "errors"
+    ][0]["detail"].replace("their-lib", "X")
 
 
 @pytest.mark.django_db

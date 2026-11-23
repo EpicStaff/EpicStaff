@@ -63,7 +63,7 @@ def org_llm_model(acme, providers):
 
 def _refused(response, *fields):
     assert response.status_code == 400, response.content
-    message = response.json()["message"]
+    message = response.json()["errors"][0]["detail"]
     assert REFUSED in message
     assert all(field in message for field in fields)
 

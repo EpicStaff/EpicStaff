@@ -2,8 +2,16 @@ import asyncio
 from unittest.mock import MagicMock
 
 import pytest
+from dotdict import DotDict
+from loguru import logger
 
-from foundation.transport.http import ClientTimeoutError
+import httpx
+from foundation.transport.http import (
+    ClientBadGatewayError,
+    ClientConnectionError,
+    ClientTimeoutError,
+    ClientValidationError,
+)
 from services.graph.events import StopEvent
 from services.graph.exceptions import KnowledgeSearchError
 from services.graph.nodes.knowledge_node import KnowledgeNode
@@ -288,12 +296,78 @@ def test_refused_query_placeholder_fails_before_any_search():
     assert service.searches == []
 
 
-def test_search_timeout_fails_the_node_with_a_knowledge_search_error():
-    class TimingOutKnowledgeClient(FakeKnowledgeClient):
+def run_node(node: KnowledgeNode) -> list:
+    """Run the node through BaseNode.run and return the streamed message data."""
+    state = {"variables": DotDict({}), "state_history": [], "system_variables": {}}
+    messages = []
+    with pytest.raises(KnowledgeSearchError):
+        asyncio.run(node.run(state, writer=messages.append))
+    return [
+        message.message_data.error["detail"]
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+
+
+def knowledge_response(status_code: int) -> httpx.Response:
+    return httpx.Response(status_code, request=httpx.Request("POST", "http://knowledge-internal:8001/search"))
+
+
+@pytest.fixture
+def captured_logs():
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING")
+    yield records
+    logger.remove(sink_id)
+
+
+def test_empty_query_streams_the_fact_without_searching():
+    service = RecordingKnowledgeSearchService()
+    node = make_node(service)
+    node.node_name = "Search docs #1 #12"
+    node.query_template = "   "
+
+    assert run_node(node) == ['Knowledge Retriever node "Search docs #1" got an empty query.']
+    assert service.searches == []
+
+
+@pytest.mark.parametrize(
+    ("service_error", "logged_text"),
+    [
+        (
+            ClientBadGatewayError(
+                "<html>502 at http://knowledge-internal:8001 key=sk-abc123</html>",
+                response=knowledge_response(502),
+            ),
+            "knowledge-internal:8001",
+        ),
+        (
+            ClientValidationError(
+                '{"detail": "rag 2 at http://knowledge-internal:8001 not indexed"}',
+                response=knowledge_response(400),
+            ),
+            "knowledge-internal:8001",
+        ),
+        (
+            ClientConnectionError("Knowledge service is unreachable at knowledge-internal:8001."),
+            "knowledge-internal:8001",
+        ),
+        # KnowledgeSearchService turns a client timeout into its own TimeoutError text.
+        (ClientTimeoutError("knowledge-internal:8001 timed out"), "Knowledge search timeout"),
+    ],
+    ids=["5xx", "4xx", "unreachable", "timeout"],
+)
+def test_failed_search_streams_the_fact_and_logs_the_service_text(
+    captured_logs, service_error, logged_text
+):
+    class FailingKnowledgeClient(FakeKnowledgeClient):
         async def search_with_usage(self, **kwargs):
-            raise ClientTimeoutError
+            raise service_error
 
-    node = make_node(make_service(TimingOutKnowledgeClient()))
+    node = make_node(make_service(FailingKnowledgeClient()))
+    node.node_name = "Search docs #1 #12"
 
-    with pytest.raises(KnowledgeSearchError, match="Knowledge search timeout for naive:2"):
-        asyncio.run(node.execute(state={}, writer=MagicMock(), execution_order=1, input_={}))
+    assert run_node(node) == [
+        'Knowledge Retriever node "Search docs #1" couldn\'t search its collection.'
+    ]
+    assert any(logged_text in record for record in captured_logs)

@@ -75,5 +75,5 @@ curl -i https://weather.plugins.example.com/api/ping
 ```
 
 answers with your backend's response. A path that is not public answers
-`401 {"status_code":401,"code":"login_required",…}` to a request without a plugin login token,
+`401` with code `login_required` in the shared error envelope to a request without a plugin login token,
 without reaching the backend.

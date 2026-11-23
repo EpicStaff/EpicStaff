@@ -21,7 +21,7 @@ import {
     SelectItem,
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
-import { ActionCode, ApiErrorItem, ResourceCode } from '@shared/models';
+import { ActionCode, ApiErrorDetail, ResourceCode } from '@shared/models';
 import { EMPTY, Observable } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
@@ -199,8 +199,12 @@ export class GraphRagConfigurationComponent implements OnInit, RagConfiguration 
         return this.indexMode() === 'total_reindex';
     }
 
-    setServerValidationErrors(errors: ApiErrorItem[]): void {
+    setServerValidationErrors(errors: ApiErrorDetail[]): void {
         this.indexParameters().setServerErrors(errors);
+    }
+
+    showsServerErrorsInline(errors: ApiErrorDetail[]): boolean {
+        return this.indexParameters().hasFieldsFor(errors);
     }
 
     getPendingDeleteDocumentIds(): number[] {

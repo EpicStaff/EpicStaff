@@ -10,14 +10,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.clients.knowledge import KnowledgeClient
 from tables.exceptions import (
-    CollectionNotFoundException,
     EmbedderNotFoundException,
-    GraphRagDocumentNotFoundException,
-    GraphRagNotFoundException,
     InvalidFieldType,
-    InvalidGraphRagParametersException,
     LLMConfigNotFoundException,
-    RagException,
+    NoGraphRagForCollectionException,
 )
 from tables.models import SourceCollection
 from tables.models.embedding_models import EmbeddingConfig
@@ -137,36 +133,29 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         embedder_id = serializer.validated_data["embedder_id"]
         llm_id = serializer.validated_data["llm_id"]
-        # Referenced configs must belong to the active org (404 like a missing pk).
-        self.get_in_active_org_or_404(EmbeddingConfig, embedder_id)
-        self.get_in_active_org_or_404(LLMConfig, llm_id)
+        # The body names both configs: one from another org is refused like a missing one.
+        org_id = self.get_active_org_id()
+        if not EmbeddingConfig.objects.filter(pk=embedder_id, org_id=org_id).exists():
+            raise EmbedderNotFoundException(embedder_id)
+        if not LLMConfig.objects.filter(pk=llm_id, org_id=org_id).exists():
+            raise LLMConfigNotFoundException(llm_id)
 
-        try:
-            graph_rag = GraphRagService.create_or_update_graph_rag(
-                collection_id=collection_id,
-                embedder_id=embedder_id,
-                llm_id=llm_id,
-                user=request.user,
-            )
+        graph_rag = GraphRagService.create_or_update_graph_rag(
+            collection_id=collection_id,
+            embedder_id=embedder_id,
+            llm_id=llm_id,
+            user=request.user,
+        )
 
-            response_serializer = GraphRagDetailSerializer(graph_rag)
+        response_serializer = GraphRagDetailSerializer(graph_rag)
 
-            return Response(
-                {
-                    "message": "GraphRag configured successfully",
-                    "graph_rag": response_serializer.data,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except CollectionNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except EmbedderNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except LLMConfigNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except RagException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": "GraphRag configured successfully",
+                "graph_rag": response_serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(
         detail=False,
@@ -189,10 +178,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         graph_rag = GraphRagService.get_or_none_graph_rag_by_collection(collection_id)
 
         if not graph_rag:
-            return Response(
-                {"error": f"GraphRag not found for collection {collection_id}"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            raise NoGraphRagForCollectionException(collection_id)
 
         serializer = GraphRagDetailSerializer(graph_rag)
         return Response(serializer.data)
@@ -204,14 +190,10 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         URL: GET /graph-rag/{id}/
         """
         self._assert_graph_rag_in_active_org(pk)
-        try:
-            graph_rag = GraphRagService.get_graph_rag(int(pk))
+        graph_rag = GraphRagService.get_graph_rag(int(pk))
 
-            serializer = GraphRagDetailSerializer(graph_rag)
-            return Response(serializer.data)
-
-        except GraphRagNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        serializer = GraphRagDetailSerializer(graph_rag)
+        return Response(serializer.data)
 
     def destroy(self, request, pk=None):
         """
@@ -220,16 +202,12 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         URL: DELETE /graph-rag/{id}/
         """
         self._assert_graph_rag_in_active_org(pk)
-        try:
-            result = GraphRagService.delete_graph_rag(int(pk), user=request.user)
+        result = GraphRagService.delete_graph_rag(int(pk), user=request.user)
 
-            return Response(
-                {"message": "GraphRag deleted successfully", **result},
-                status=status.HTTP_200_OK,
-            )
-
-        except GraphRagNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"message": "GraphRag deleted successfully", **result},
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=["put"], url_path="index-config")
     def update_index_config(self, request, pk=None):
@@ -254,29 +232,21 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        try:
-            graph_rag = GraphRagService.update_index_config(
-                graph_rag_id=int(pk),
-                data=serializer.validated_data,
-                user=request.user,
-            )
+        graph_rag = GraphRagService.update_index_config(
+            graph_rag_id=int(pk),
+            data=serializer.validated_data,
+            user=request.user,
+        )
 
-            response_serializer = GraphRagDetailSerializer(graph_rag)
+        response_serializer = GraphRagDetailSerializer(graph_rag)
 
-            return Response(
-                {
-                    "message": "Index configuration updated successfully",
-                    "graph_rag": response_serializer.data,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except GraphRagNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except InvalidGraphRagParametersException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except RagException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": "Index configuration updated successfully",
+                "graph_rag": response_serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=["post"], url_path="documents/bulk-delete")
     def remove_documents(self, request, pk=None):
@@ -296,25 +266,19 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
 
         document_ids = serializer.validated_data["document_ids"]
 
-        try:
-            result = GraphRagService.remove_documents_from_graph_rag(
-                graph_rag_id=int(pk),
-                document_ids=document_ids,
-                user=request.user,
-            )
+        result = GraphRagService.remove_documents_from_graph_rag(
+            graph_rag_id=int(pk),
+            document_ids=document_ids,
+            user=request.user,
+        )
 
-            return Response(
-                {
-                    "message": f"Removed {result['removed_count']} document(s) from GraphRag",
-                    **result,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except GraphRagNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except RagException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": f"Removed {result['removed_count']} document(s) from GraphRag",
+                **result,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(
         detail=True,
@@ -328,25 +292,19 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         URL: DELETE /graph-rag/{id}/documents/{document_id}/
         """
         self._assert_graph_rag_in_active_org(pk)
-        try:
-            result = GraphRagService.delete_document(
-                graph_rag_id=int(pk),
-                document_id=int(document_id),
-                user=request.user,
-            )
+        result = GraphRagService.delete_document(
+            graph_rag_id=int(pk),
+            document_id=int(document_id),
+            user=request.user,
+        )
 
-            return Response(
-                {
-                    "message": f"Document {result['document_id']} removed from GraphRag",
-                    **result,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except GraphRagNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except GraphRagDocumentNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {
+                "message": f"Document {result['document_id']} removed from GraphRag",
+                **result,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @action(detail=True, methods=["get"], url_path="documents/list")
     def list_documents(self, request, pk=None):
@@ -356,18 +314,15 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         URL: GET /graph-rag/{id}/documents/list/
         """
         self._assert_graph_rag_in_active_org(pk)
-        try:
-            documents = GraphRagService.get_documents_for_graph_rag(int(pk))
-            serializer = GraphRagDocumentListSerializer(documents, many=True)
-            return Response(
-                {
-                    "graph_rag_id": pk,
-                    "total_documents": len(documents),
-                    "documents": serializer.data,
-                }
-            )
-        except GraphRagNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        documents = GraphRagService.get_documents_for_graph_rag(int(pk))
+        serializer = GraphRagDocumentListSerializer(documents, many=True)
+        return Response(
+            {
+                "graph_rag_id": pk,
+                "total_documents": len(documents),
+                "documents": serializer.data,
+            }
+        )
 
     @extend_schema(
         request=None,
@@ -385,27 +340,21 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         URL: POST /graph-rag/{id}/documents/initialize/
         """
         self._assert_graph_rag_in_active_org(pk)
-        try:
-            result = GraphRagService.init_documents_from_collection(int(pk), user=request.user)
+        result = GraphRagService.init_documents_from_collection(int(pk), user=request.user)
 
-            message = (
-                f"Initialized {result['added_count']} document(s)"
-                if result["added_count"] > 0
-                else "All documents already linked"
-            )
+        message = (
+            f"Initialized {result['added_count']} document(s)"
+            if result["added_count"] > 0
+            else "All documents already linked"
+        )
 
-            return Response(
-                {
-                    "message": message,
-                    **result,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except GraphRagNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except RagException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": message,
+                **result,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(responses=GRAPH_INDEX_READ_RESPONSES)
     @action(detail=True, methods=["get"], url_path="table-summary")

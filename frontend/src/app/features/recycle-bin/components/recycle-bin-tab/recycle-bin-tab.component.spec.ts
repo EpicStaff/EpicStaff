@@ -320,9 +320,13 @@ describe('RecycleBinTabComponent', () => {
             const element = openFlowsWith([entry(5, 'Report')]);
 
             click(element, ROW_RESTORE);
-            httpTesting
-                .expectOne({ method: 'POST', url: `${FLOWS_BIN}restore/` })
-                .flush({ message: 'Not found.' }, { status: 404, statusText: 'Not Found' });
+            httpTesting.expectOne({ method: 'POST', url: `${FLOWS_BIN}restore/` }).flush(
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'unknown', detail: 'Not found.', attr: null, context: null }],
+                },
+                { status: 404, statusText: 'Not Found' }
+            );
 
             expect(toast.error).toHaveBeenCalledWith('This item is no longer in the recycle bin.');
             httpTesting.expectOne(FLOWS_LIST).flush(page([]));
@@ -333,9 +337,13 @@ describe('RecycleBinTabComponent', () => {
             const element = openFlowsWith([entry(5, 'Report')]);
 
             click(element, ROW_RESTORE);
-            httpTesting
-                .expectOne({ method: 'POST', url: `${FLOWS_BIN}restore/` })
-                .flush({ message: 'Forbidden' }, { status: 403, statusText: 'Forbidden' });
+            httpTesting.expectOne({ method: 'POST', url: `${FLOWS_BIN}restore/` }).flush(
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'unknown', detail: 'Forbidden', attr: null, context: null }],
+                },
+                { status: 403, statusText: 'Forbidden' }
+            );
 
             expect(toast.error).not.toHaveBeenCalled();
             httpTesting.expectNone(FLOWS_LIST);
@@ -347,12 +355,20 @@ describe('RecycleBinTabComponent', () => {
             const element = openFlowsWith([entry(5, 'Report')]);
 
             click(element, ROW_DELETE);
-            httpTesting
-                .expectOne({ method: 'POST', url: `${FLOWS_BIN}purge/` })
-                .flush(
-                    { message: 'Superadmin privileges are required for this action.' },
-                    { status: 403, statusText: 'Forbidden' }
-                );
+            httpTesting.expectOne({ method: 'POST', url: `${FLOWS_BIN}purge/` }).flush(
+                {
+                    type: 'client_error',
+                    errors: [
+                        {
+                            code: 'unknown',
+                            detail: 'Superadmin privileges are required for this action.',
+                            attr: null,
+                            context: null,
+                        },
+                    ],
+                },
+                { status: 403, statusText: 'Forbidden' }
+            );
 
             expect(toast.error).not.toHaveBeenCalled();
             httpTesting.expectNone(FLOWS_LIST);

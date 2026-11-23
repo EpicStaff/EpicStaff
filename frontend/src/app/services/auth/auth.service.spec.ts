@@ -1,7 +1,3 @@
-// Side-effect import: AuthService's dependency graph reads the `validationErrors` augmentation this module declares
-// (see forbidden.interceptor.spec.ts), so without it the spec program fails to type-check.
-import '../../core/interceptors/validation-errors.interceptor';
-
 import { HttpClient, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';

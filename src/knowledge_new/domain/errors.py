@@ -35,23 +35,23 @@ class KnowledgeError(Exception):
 
 
 class UnsupportedError(KnowledgeError):
-    default_message = "Unsupported {that}: '{got}'"
+    default_message = "The {that} '{got}' isn't supported."
 
 
 class FileTextExtractingError(KnowledgeError):
-    default_message = "{extractor} failed to extract text from binary content."
+    default_message = "The text couldn't be extracted from the file."
 
 
 class ChunkingError(KnowledgeError):
-    default_message = "{chunker} failed to chunk text."
+    default_message = "The text couldn't be split into chunks."
 
 
 class EmbeddingError(KnowledgeError):
-    default_message = "{embedder} failed to embed text."
+    default_message = "The text couldn't be embedded."
 
 
 class SecretDecryptError(KnowledgeError):
-    default_message = "Could not decrypt {field}: it is not a value sealed with the transport key."
+    default_message = "The {field} couldn't be decrypted."
 
 
 class RepositoryError(KnowledgeError):
@@ -59,59 +59,55 @@ class RepositoryError(KnowledgeError):
 
 
 class NoPreviewChunksProducedError(KnowledgeError):
-    default_message = (
-        "No preview chunks produced for Document(id={document_id}) of RAG(id={rag_id})."
-    )
+    default_message = "The document produced no chunks."
 
 
 class EmbeddingConfigNotFoundError(KnowledgeError):
-    default_message = "Embedding config not found for RAG(id={rag_id})."
+    default_message = "The knowledge source has no embedding settings."
 
 
 class DocumentNotFoundError(KnowledgeError):
-    default_message = "Document(id={document_id}) not found for RAG(id={rag_id})."
+    default_message = "The document wasn't found."
 
 
 class GraphRagConfigNotFoundError(KnowledgeError):
-    default_message = "Config not found for RAG(id={rag_id})."
+    default_message = "The knowledge source has no graph settings."
 
 
 class ChunksNotIndexedError(KnowledgeError):
-    default_message = "Document(id={document_id}) chunks not indexed for RAG(id={rag_id})."
+    default_message = "The document's chunks weren't indexed."
 
 
 class GraphNotIndexedError(KnowledgeError):
-    default_message = "Graph index output not available for RAG(id={rag_id}). Run indexing first."
+    default_message = "The graph isn't indexed yet."
 
 
 class RagNotFoundError(KnowledgeError):
-    default_message = "RAG(id={rag_id}) not found."
+    default_message = "The knowledge source wasn't found."
 
 
 class NotRunningOperationError(KnowledgeError):
-    default_message = "No running {operation} for RAG(id={rag_id})."
+    default_message = "No {operation} is running for this knowledge source."
 
 
 class RagInProcessingError(KnowledgeError):
-    default_message = "Cannot remove RAG(id={rag_id}) while it is being processed."
+    default_message = "The knowledge source can't be removed while it's being processed."
 
 
 class EntityNotFoundError(KnowledgeError):
-    default_message = "Entity(id={entity_id}) not found in RAG(id={rag_id}) graph index."
+    default_message = "The entity wasn't found in the graph."
 
 
 class RelationshipNotFoundError(KnowledgeError):
-    default_message = (
-        "Relationship(id={relationship_id}) not found in RAG(id={rag_id}) graph index."
-    )
+    default_message = "The relationship wasn't found in the graph."
 
 
 class InvalidArtifactArchiveError(KnowledgeError):
-    default_message = "Invalid artifact archive: {reason}."
+    default_message = "The archive isn't valid: {reason}."
 
 
 class GraphArtifactsNotReadyError(KnowledgeError):
-    default_message = "Graph artifacts not ready for RAG(id={rag_id})."
+    default_message = "The graph files aren't ready yet."
 
 
 class ArtifactStorageError(KnowledgeError):

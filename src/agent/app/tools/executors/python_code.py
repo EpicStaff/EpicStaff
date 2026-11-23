@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 
+from foundation.schemas import ErrorDetailSchema
 from foundation.transport.http import ClientError
 from loguru import logger
 from pydantic import ValidationError
@@ -9,8 +10,8 @@ from pydantic import ValidationError
 from app.sandbox.client import SandboxClient
 from shared.models.agent_service import ToolResult
 from shared.models.storage_scope import StorageCredentials
-from shared.models.tools import CodeTaskData, PythonCodeToolData
-from shared.sandbox_errors import SandboxError
+from shared.models.tools import CodeResultData, CodeTaskData, PythonCodeToolData
+from shared.sandbox_errors import SANDBOX_SERVER_ERROR_MESSAGE, SandboxError
 
 
 class PythonCodeToolExecutor:
@@ -83,6 +84,9 @@ class PythonCodeToolExecutor:
             # client's own "stopped" or "listener failed" notice.
             return ToolResult(tool_call_id="", content=str(error), is_error=True)
 
+        if result.error is not None:
+            return ToolResult(tool_call_id="", content=_error_detail(result), is_error=True)
+
         if result.returncode != 0 or result.stderr:
             return ToolResult(
                 tool_call_id="",
@@ -95,3 +99,14 @@ class PythonCodeToolExecutor:
             content=result.result_data or "",
             is_error=False,
         )
+
+
+def _error_detail(result: CodeResultData) -> str:
+    # The code's own stderr first, then the sandbox's detail; a malformed error is logged,
+    # never shown.
+    try:
+        detail = ErrorDetailSchema.model_validate(result.error).detail
+    except ValidationError:
+        logger.warning("Code result {} has an error without code and detail", result.execution_id)
+        detail = SANDBOX_SERVER_ERROR_MESSAGE
+    return f"{result.stderr}\n{detail}" if result.stderr else detail

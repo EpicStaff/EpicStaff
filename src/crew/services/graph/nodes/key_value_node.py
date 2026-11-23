@@ -3,10 +3,11 @@ import re
 from dataclasses import asdict
 from typing import Any, Literal
 
-from clients.errors import ClientError
+from clients.errors import ClientError, ClientValidationError
 from clients.key_value import KeyValueClient
 from dotdict import DotDict
 from langgraph.types import StreamWriter
+from loguru import logger
 from models.graph_models import KeyValueMessageData, KeyValueMessageEntry
 from models.state import State
 from services.graph.events import StopEvent
@@ -23,6 +24,12 @@ KEY_RULE = (
     "use only letters, digits and _, don't start with a digit, "
     f"and keep it to at most {MAX_KEY_LENGTH} characters"
 )
+# What a failed table call couldn't do, by mode.
+_FAILED_CALL = {
+    "read": "couldn't read its table",
+    "write": "couldn't write to its table",
+    "delete": "couldn't delete from its table",
+}
 # Mirrors Django's MAX_KEYS_PER_REQUEST, which the internal routes enforce per call.
 MAX_ENTRIES = 500
 # Mirrors Django's VALUE_PREVIEW_CHARS: a value past the message budget is previewed the way
@@ -67,6 +74,7 @@ class KeyValueNode(BaseNode):
     """
 
     TYPE = "KEY_VALUE"
+    LABEL = "Key-Value node"
 
     def __init__(
         self,
@@ -92,10 +100,10 @@ class KeyValueNode(BaseNode):
 
     async def execute(self, state: State, writer: StreamWriter, execution_order: int, input_: Any):
         if self.key_value_table_id is None:
-            raise KeyValueNodeError(f"Key-Value node '{self.node_name}' has no table selected.")
+            raise KeyValueNodeError(f"{self._display_name()} has no table selected.")
         if len(self.entries) > MAX_ENTRIES:
             raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}' has {len(self.entries)} entries; "
+                f"{self._display_name()} has {len(self.entries)} entries; "
                 f"at most {MAX_ENTRIES} are allowed."
             )
         variables = state["variables"]
@@ -106,10 +114,19 @@ class KeyValueNode(BaseNode):
                 output, message = await self._write(variables)
             else:
                 output, message = await self._delete(variables)
+        # A 4xx is Django refusing this node's request, and its message says why.
+        except ClientValidationError as e:
+            raise KeyValueNodeError(f"{self._display_name()}: {e.detail}") from e
+        # Any other answer can name internal hosts or echo the request, so it is only logged.
         except ClientError as e:
-            raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}' {self.mode} failed: {e.detail}"
-            ) from e
+            logger.opt(exception=e).error(
+                "Key-Value {mode} failed: {detail} (session_id={session_id}, node_name={node_name})",
+                mode=self.mode,
+                detail=e.detail,
+                session_id=self.session_id,
+                node_name=self.node_name,
+            )
+            raise KeyValueNodeError(f"{self._display_name()} {_FAILED_CALL[self.mode]}.") from e
         self.custom_session_message_writer.add_custom_message(
             session_id=self.session_id,
             node_name=self.node_name,
@@ -150,8 +167,7 @@ class KeyValueNode(BaseNode):
             # Checked on the rendered key: different templates can render to the same one.
             if key in written:
                 raise KeyValueNodeError(
-                    f"Key-Value node '{self.node_name}': more than one entry writes key "
-                    f"'{key}'. Use a different key for each entry."
+                    f'{self._display_name()}: more than one entry writes key "{key}".'
                 )
             value_path = entry["value"]
             value = self._resolve(value_path, variables)
@@ -164,8 +180,7 @@ class KeyValueNode(BaseNode):
                 and not self._holds_null(variables, value_path)
             ):
                 raise KeyValueNodeError(
-                    f"Key-Value node '{self.node_name}': value '{value_path}' is missing "
-                    "from the flow state."
+                    f'{self._display_name()}: value "{value_path}" is missing from the flow state.'
                 )
             written[key] = value
             source_by_key[key] = value_path
@@ -215,13 +230,14 @@ class KeyValueNode(BaseNode):
             value = self._resolve(path, variables)
             if value is None:
                 raise KeyValueNodeError(
-                    f"Key-Value node '{self.node_name}': key '{template}' needs '{path}', "
+                    f'{self._display_name()}: key "{template}" needs "{path}", '
                     "which is missing from the flow state or is null."
                 )
             if isinstance(value, (dict, list)):
+                shape = "an object" if isinstance(value, dict) else "a list"
                 raise KeyValueNodeError(
-                    f"Key-Value node '{self.node_name}': '{path}' must be a string or number, "
-                    f"got {type(value).__name__}."
+                    f'{self._display_name()}: key "{template}" needs "{path}" to be a string or '
+                    f"number, but it is {shape}."
                 )
             return str(value)
 
@@ -230,16 +246,15 @@ class KeyValueNode(BaseNode):
         leftover = _PLACEHOLDER.sub("", template)
         if "{" in leftover or "}" in leftover:
             raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}': key '{template}' has an empty or "
-                "unbalanced placeholder. Use '{variables.<path>}', e.g. 'profile_{variables.user.id}'."
+                f'{self._display_name()}: key "{template}" has an empty or unbalanced placeholder.'
             )
         key = _PLACEHOLDER.sub(substitute, template)
         # Checked on the resolved key: placeholder values are free text until rendered.
         if len(key) > MAX_KEY_LENGTH or not KEY_PATTERN.fullmatch(key):
             shown = key if len(key) <= 100 else f"{key[:100]}…"
             raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}': key '{template}' resolved to {shown!r}, "
-                f"which is not a valid key: {KEY_RULE}."
+                f'{self._display_name()}: key "{template}" resolved to {shown!r}, '
+                f"which isn't a valid key: {KEY_RULE}."
             )
         return key
 
@@ -257,21 +272,19 @@ class KeyValueNode(BaseNode):
                     continue
                 if len(segments) == len(earlier_segments):
                     raise KeyValueNodeError(
-                        f"Key-Value node '{self.node_name}': more than one entry reads into "
-                        f"'{target}'. Use a different variable for each entry."
+                        f'{self._display_name()}: more than one entry reads into "{target}".'
                     )
                 inner, outer = (target, earlier) if len(segments) > shared else (earlier, target)
                 raise KeyValueNodeError(
-                    f"Key-Value node '{self.node_name}': read target '{inner}' is inside "
-                    f"read target '{outer}'. Use a different variable for each entry."
+                    f'{self._display_name()}: read target "{inner}" is inside read target "{outer}".'
                 )
             seen.append((segments, target))
 
     def _check_target(self, path: str) -> str:
         if "|" in path:
             raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}': read target '{path}' is where the stored "
-                "value goes, so it takes no '|default'. Use a path like 'variables.user.name'."
+                f'{self._display_name()}: read target "{path}" has a "|default", '
+                "which a read target can't have."
             )
         self._segments(path)
         return path
@@ -281,20 +294,13 @@ class KeyValueNode(BaseNode):
         state_path = path.split("|", 1)[0]
         segments = _PATH_SEGMENT.findall(state_path)
         if segments == ["variables"]:
-            raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}': '{path}' names the whole flow state. "
-                "Point at a single variable, e.g. 'variables.user.id'."
-            )
+            raise KeyValueNodeError(f'{self._display_name()}: "{path}" names the whole flow state.')
         if not _STATE_PATH.fullmatch(state_path):
-            raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}': '{path}' is not a flow state path. "
-                "Use one like 'variables.user.id' (in a key: 'profile_{variables.user.id}')."
-            )
+            raise KeyValueNodeError(f'{self._display_name()}: "{path}" isn\'t a flow state path.')
         # getattr on a DotDict would return its internals, e.g. `variables.__class__`.
         if any(segment.startswith("_") for segment in segments):
             raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}': '{path}' has a segment starting with '_'. "
-                "Flow state paths cannot name internal attributes."
+                f'{self._display_name()}: "{path}" has a segment starting with "_".'
             )
         # The resolver reads with getattr, which finds the method before a stored key of the
         # same name: `variables.values.total` would resolve to a miss, and so write null or
@@ -302,8 +308,7 @@ class KeyValueNode(BaseNode):
         method = next((segment for segment in segments if segment in _DOTDICT_ATTRIBUTES), None)
         if method:
             raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}': '{path}' uses '{method}', "
-                "the name of a built-in method. Use a different variable name."
+                f'{self._display_name()}: "{path}" uses "{method}", the name of a built-in method.'
             )
         return segments
 
@@ -325,8 +330,8 @@ class KeyValueNode(BaseNode):
             if isinstance(slot, str) and slot not in container:
                 if segments[position + 1].startswith("["):
                     raise KeyValueNodeError(
-                        f"Key-Value node '{self.node_name}': '{path}' does not exist, so "
-                        f"'{target}' has no list to index into."
+                        f'{self._display_name()}: "{path}" doesn\'t exist, so '
+                        f'"{target}" has no list to index into.'
                     )
                 container[slot] = DotDict()
             # Read back rather than keep the DotDict above: DotDict stores a converted copy.
@@ -359,29 +364,27 @@ class KeyValueNode(BaseNode):
             index = int(segment[1:-1])
             if isinstance(container, dict):
                 raise KeyValueNodeError(
-                    f"Key-Value node '{self.node_name}': '{path}' is an object; use a name "
-                    f"like '{path}.name' instead of '{segment}'."
+                    f'{self._display_name()}: "{path}" is an object, so it has no index {segment}.'
                 )
             if not isinstance(container, list):
                 raise KeyValueNodeError(
-                    f"Key-Value node '{self.node_name}': '{path}' is {_describe(container)}, "
+                    f'{self._display_name()}: "{path}" is {_describe(container)}, '
                     f"so it has no index {segment}."
                 )
             if index >= len(container):
                 raise KeyValueNodeError(
-                    f"Key-Value node '{self.node_name}': index {index} is out of range for "
-                    f"'{path}', which has {len(container)} items."
+                    f'{self._display_name()}: index {index} is out of range for "{path}", '
+                    f"which has {len(container)} items."
                 )
             return index
         if isinstance(container, list):
             raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}': '{path}' is a list; use an index like "
-                f"'{path}[0]' instead of '.{segment}'."
+                f'{self._display_name()}: "{path}" is a list, so it has no "{segment}".'
             )
         if not isinstance(container, dict):
             raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}': '{path}' is {_describe(container)}, "
-                f"so it cannot hold '{segment}'."
+                f'{self._display_name()}: "{path}" is {_describe(container)}, '
+                f'so it can\'t hold "{segment}".'
             )
         return segment
 
@@ -393,15 +396,14 @@ class KeyValueNode(BaseNode):
         # The resolver raises IndexError for a list index out of range, KeyError/TypeError
         # for indexing a non-list.
         except (IndexError, KeyError, TypeError) as e:
+            logger.warning("Key-Value node {} can't resolve {}: {!r}", self.node_name, path, e)
             raise KeyValueNodeError(
-                f"Key-Value node '{self.node_name}': cannot resolve '{path}' ({e}). "
-                "Use a flow state path such as 'variables.user.id' "
-                "(in a key: 'profile_{variables.user.id}')."
+                f'{self._display_name()}: "{path}" can\'t be read from the flow state.'
             ) from e
         # `_segments` rejects DotDict method names; getattr still finds the methods of other
         # values, e.g. `variables.name.upper` on a string, which the resolver rejects.
         except InvalidStatePathError as e:
-            raise KeyValueNodeError(f"Key-Value node '{self.node_name}': {e}") from e
+            raise KeyValueNodeError(f"{self._display_name()}: {e}") from e
         return value
 
 

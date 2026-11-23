@@ -2,7 +2,7 @@
 
 Serves an `httpx.MockTransport`. It keeps one organization's flows, files, secrets, LLM
 configs and sessions, records every request, and answers in EpicStaff's shapes (DRF
-limit/offset pages, the `{status_code, code, message}` error envelope).
+limit/offset pages, the `{type, errors: [{code, detail, attr, context}]}` error envelope).
 
 A flow's bulk save works as EpicStaff's does: a node without an `id` is added and gets one, a
 node with an `id` replaces that node whole, and nodes the save does not name stay.
@@ -16,7 +16,9 @@ import httpx
 
 
 def _error(status, code, message):
-    return httpx.Response(status, json={"status_code": status, "code": code, "message": message})
+    item = {"code": code, "detail": message, "attr": None, "context": None}
+    error_type = "client_error" if status < 500 else "server_error"
+    return httpx.Response(status, json={"type": error_type, "errors": [item]})
 
 
 @dataclass

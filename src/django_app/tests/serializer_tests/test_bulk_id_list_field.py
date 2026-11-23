@@ -1,13 +1,15 @@
 import pytest
 
-from tables.serializers.utils.bulk_ids import BulkIdListField, BulkIdListSerializer
+from rest_framework import serializers
+
+from tables.serializers.utils.bulk_ids import BulkIdListField
 
 # Nothing here touches the database, but the session-scoped autouse flush in
 # tests/conftest.py needs the test database set up (see test_env_bool.py).
 pytestmark = pytest.mark.django_db
 
 
-class ItemIdsSerializer(BulkIdListSerializer):
+class ItemIdsSerializer(serializers.Serializer):
     item_ids = BulkIdListField()
 
 
@@ -23,28 +25,31 @@ def test_accepts_a_list_of_positive_integers(item_ids):
     assert serializer.validated_data["item_ids"] == item_ids
 
 
+LIST_OF_IDS = "Must be a list of positive integers."
+
+
 @pytest.mark.parametrize(
-    ("body", "expected_message"),
+    ("body", "expected_code", "expected_message"),
     [
-        ({"item_ids": [True]}, "item_ids must be a list of positive integers."),
-        ({"item_ids": [False]}, "item_ids must be a list of positive integers."),
-        ({"item_ids": [1, True]}, "item_ids must be a list of positive integers."),
-        ({"item_ids": ["1"]}, "item_ids must be a list of positive integers."),
-        ({"item_ids": ["x"]}, "item_ids must be a list of positive integers."),
-        ({"item_ids": [1.0]}, "item_ids must be a list of positive integers."),
-        ({"item_ids": [1.5]}, "item_ids must be a list of positive integers."),
-        ({"item_ids": [0]}, "item_ids must be a list of positive integers."),
-        ({"item_ids": [-1]}, "item_ids must be a list of positive integers."),
-        ({"item_ids": [None]}, "item_ids must be a list of positive integers."),
-        ({"item_ids": [[1]]}, "item_ids must be a list of positive integers."),
-        ({"item_ids": "1"}, "item_ids must be a list of positive integers."),
-        ({"item_ids": 1}, "item_ids must be a list of positive integers."),
-        ({"item_ids": {"1": 1}}, "item_ids must be a list of positive integers."),
-        ({"item_ids": None}, "item_ids must be a list of positive integers."),
-        ({"item_ids": []}, "item_ids must not be empty."),
-        ({}, "item_ids is required."),
-        ({"item_ids": list(range(1, 502))}, "item_ids must have at most 500 items."),
-        ({"item_ids": ["x"] * 501}, "item_ids must have at most 500 items."),
+        ({"item_ids": [True]}, "invalid_item", LIST_OF_IDS),
+        ({"item_ids": [False]}, "invalid_item", LIST_OF_IDS),
+        ({"item_ids": [1, True]}, "invalid_item", LIST_OF_IDS),
+        ({"item_ids": ["1"]}, "invalid_item", LIST_OF_IDS),
+        ({"item_ids": ["x"]}, "invalid_item", LIST_OF_IDS),
+        ({"item_ids": [1.0]}, "invalid_item", LIST_OF_IDS),
+        ({"item_ids": [1.5]}, "invalid_item", LIST_OF_IDS),
+        ({"item_ids": [0]}, "invalid_item", LIST_OF_IDS),
+        ({"item_ids": [-1]}, "invalid_item", LIST_OF_IDS),
+        ({"item_ids": [None]}, "invalid_item", LIST_OF_IDS),
+        ({"item_ids": [[1]]}, "invalid_item", LIST_OF_IDS),
+        ({"item_ids": "1"}, "not_a_list", LIST_OF_IDS),
+        ({"item_ids": 1}, "not_a_list", LIST_OF_IDS),
+        ({"item_ids": {"1": 1}}, "not_a_list", LIST_OF_IDS),
+        ({"item_ids": None}, "null", LIST_OF_IDS),
+        ({"item_ids": []}, "empty", "Must not be empty."),
+        ({}, "required", "This field is required."),
+        ({"item_ids": list(range(1, 502))}, "max_length", "Must have at most 500 items."),
+        ({"item_ids": ["x"] * 501}, "max_length", "Must have at most 500 items."),
     ],
     ids=[
         "true",
@@ -68,16 +73,9 @@ def test_accepts_a_list_of_positive_integers(item_ids):
         "501-junk-items",
     ],
 )
-def test_rejects_anything_else_with_one_sentence(body, expected_message):
+def test_rejects_anything_else_with_one_sentence_on_the_field(body, expected_code, expected_message):
     serializer = ItemIdsSerializer(data=body)
 
     assert not serializer.is_valid()
-    assert serializer.error_message == expected_message
-
-
-def test_a_body_that_is_not_an_object_reports_the_non_field_error():
-    serializer = ItemIdsSerializer(data=[1, 2])
-
-    assert not serializer.is_valid()
-    assert serializer.error_message == "Invalid data. Expected a dictionary, but got list."
-
+    assert serializer.errors == {"item_ids": [expected_message]}
+    assert [error.code for error in serializer.errors["item_ids"]] == [expected_code]

@@ -12,8 +12,9 @@ function httpError(status: number, body: unknown = null): HttpErrorResponse {
     return new HttpErrorResponse({ status, error: body, url: '/api/storage/upload/stream?filename=a.txt' });
 }
 
-function envelope(status: number, code: string, message: string): HttpErrorResponse {
-    return httpError(status, { status_code: status, code, message });
+function envelope(status: number, code: string, detail: string): HttpErrorResponse {
+    const type = status >= 500 ? 'server_error' : 'client_error';
+    return httpError(status, { type, errors: [{ code, detail, attr: null, context: null }] });
 }
 
 describe('describeUploadError', () => {
@@ -61,12 +62,40 @@ describe('describeUploadError', () => {
     it('falls back on the status when the body has no known code (e.g. a proxy answered)', () => {
         expect(describeUploadError(httpError(413, '<html>Request Entity Too Large</html>')).label).toBe('Too large');
         expect(describeUploadError(httpError(504, null)).message).toBe('Unexpected server error.');
-        expect(describeUploadError(httpError(403, { detail: 'nope' })).label).toBe('Not allowed');
+        expect(
+            describeUploadError(
+                httpError(403, {
+                    type: 'client_error',
+                    errors: [{ code: 'unknown', detail: 'nope', attr: null, context: null }],
+                })
+            ).label
+        ).toBe('Not allowed');
     });
 
     it('describes a skipped file and a non-HTTP error', () => {
         expect(describeUploadError(new UploadSkippedError(null)).label).toBe('Not uploaded');
         expect(describeUploadError(new Error('boom')).label).toBe('Upload failed');
+    });
+});
+
+describe('describeUploadError for the error envelope', () => {
+    const RESTRICTED = "Archive 'a.zip' contains executable files: run.exe";
+
+    it('reads the code and the reason of the body', () => {
+        expect(describeUploadError(envelope(413, 'storage_quota_exceeded', 'x')).label).toBe('Quota exceeded');
+        expect(isStorageQuotaExceeded(envelope(413, 'storage_quota_exceeded', 'x'))).toBe(true);
+        expect(describeUploadError(envelope(400, 'invalid', RESTRICTED))).toEqual({
+            label: 'Contains restricted files',
+            message: RESTRICTED,
+            canRetry: false,
+        });
+        expect(describeUploadError(envelope(500, 'RuntimeError', 'Unpredictable error')).message).toBe(
+            'Unexpected server error: Unpredictable error'
+        );
+    });
+
+    it('keeps its own text for a 400 that is not JSON', () => {
+        expect(describeUploadError(httpError(400, 'Bad request')).message).toBe('The server rejected the file.');
     });
 });
 

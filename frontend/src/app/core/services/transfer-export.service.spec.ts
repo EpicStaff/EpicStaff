@@ -151,16 +151,38 @@ describe('TransferExportService export of any start', () => {
         [
             'too many unfinished jobs',
             429,
-            { status_code: 429, code: 'too_many_jobs', message: 'You already have 3 unfinished exports.' },
+            {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'too_many_jobs',
+                        detail: 'You already have 3 unfinished exports.',
+                        attr: null,
+                        context: null,
+                    },
+                ],
+            },
+            'You already have 3 unfinished exports.',
         ],
         [
             'items that are gone or in another organization',
             404,
-            { status_code: 404, code: 'export_entities_not_found', message: 'Some entity IDs do not exist' },
+            {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'export_entities_not_found',
+                        detail: 'Some entity IDs do not exist',
+                        attr: null,
+                        context: null,
+                    },
+                ],
+            },
+            'Some entity IDs do not exist',
         ],
     ])(
         'shows the reason the server refused to start the export (%s), and completes without a value',
-        (_case, status, body) => {
+        (_case, status, body, shown) => {
             let completed = false;
             const finished: TransferJob[] = [];
             service.export(transferJobs.startExport('mcpTools', { ids: [4] })).subscribe({
@@ -170,7 +192,7 @@ describe('TransferExportService export of any start', () => {
 
             httpMock.expectOne('/api/mcp-tools/export-jobs/').flush(body, { status, statusText: 'Refused' });
 
-            expect(toastError.mock.calls.map(([message]) => message)).toEqual([body.message]);
+            expect(toastError.mock.calls.map(([message]) => message)).toEqual([shown]);
             expect(finished).toEqual([]);
             expect(completed).toBe(true);
         }
@@ -211,7 +233,10 @@ describe('TransferExportService download of a finished export', () => {
     }
 
     it('says an export the user may no longer download is not available, without saying why', async () => {
-        const completed = await refuseDownload(404, 'Not Found', { detail: 'Not found.' });
+        const completed = await refuseDownload(404, 'Not Found', {
+            type: 'client_error',
+            errors: [{ code: 'not_found', detail: 'Not found.', attr: null, context: null }],
+        });
 
         expect(toasts.map((toast) => [toast.type, toast.message])).toEqual([
             ['error', 'This export is no longer available to you.'],
@@ -220,7 +245,10 @@ describe('TransferExportService download of a finished export', () => {
     });
 
     it("shows the server's reason when the archive was removed", async () => {
-        await refuseDownload(410, 'Gone', { detail: 'The archive was removed.' });
+        await refuseDownload(410, 'Gone', {
+            type: 'client_error',
+            errors: [{ code: 'archive_removed', detail: 'The archive was removed.', attr: null, context: null }],
+        });
 
         expect(toasts.map((toast) => [toast.type, toast.message])).toEqual([['error', 'The archive was removed.']]);
     });

@@ -16,6 +16,7 @@ from tests.plugins_tests.package_builder import (
     menu_manifest,
     sample_manifest,
 )
+from tests.error_envelope import attr_details
 
 ACCESS = {"resource_type": "flows", "actions": ["read"], "reason": "Reads flows."}
 PUBLIC_PATH = {"path": "/api/ping", "match": "exact", "methods": ["GET"], "rate_limit_per_minute": 60, "max_body_kb": 0}
@@ -170,7 +171,7 @@ def _upload_locs(installation, superadmin, manifest) -> list[str]:
     data = build_package(manifest=copy.deepcopy(manifest))
     with pytest.raises(InvalidPluginError) as raised:
         installation.upload(upload_file(data), len(data), superadmin)
-    return [error["loc"] for error in raised.value.errors]
+    return [loc for loc, messages in raised.value.detail.items() for _ in messages]
 
 
 @pytest.mark.django_db
@@ -214,10 +215,10 @@ def test_the_upload_api_reports_manifest_problems_in_the_error_envelope(plugins_
 
     assert response.status_code == 400
     body = response.json()
-    assert body["code"] == "invalid_plugin"
+    assert body["errors"][0]["code"] == "invalid_plugin"
     assert body["status_code"] == 400
-    assert {"loc": "manifest.id", "message": "'admin' is reserved"} in body["errors"]
-    assert {error["loc"] for error in body["errors"]} >= {"manifest.id", "manifest.user_permissions"}
+    assert {"attr": "manifest.id", "detail": "'admin' is reserved"} in attr_details(body)
+    assert {error["attr"] for error in attr_details(body)} >= {"manifest.id", "manifest.user_permissions"}
 
 
 @pytest.mark.django_db
@@ -247,48 +248,43 @@ def test_a_menu_entry_gated_on_a_declared_action_round_trips(installation, super
     [
         pytest.param(
             _menu(_menu_item(), _menu_item(label="Home")),
-            {"loc": "manifest.spa.navigation", "message": "lists path '/' more than once"},
+            {"attr": "manifest.spa.navigation", "detail": "lists path '/' more than once"},
             id="duplicate path",
         ),
         pytest.param(
             _menu(_menu_item(), _menu_item(label="Projects", path="/projects/")),
-            {
-                "loc": "manifest.spa.navigation[1].path",
-                "message": (
-                    "must be '/' or '/'-separated segments of letters, digits, '-', '.', '_' and '~', "
-                    "without a query, a '.' or '..' segment, or a trailing '/'"
-                ),
-            },
+            {"attr": "manifest.spa.navigation[1].path", "detail": "must be '/' or '/'-separated segments of letters, digits, '-', '.', '_' and '~', "
+                    "without a query, a '.' or '..' segment, or a trailing '/'"},
             id="trailing slash",
         ),
         pytest.param(
             _menu(_menu_item(label="\u2066Forecast")),
-            {"loc": "manifest.spa.navigation[0].label", "message": "must not contain invisible formatting characters"},
+            {"attr": "manifest.spa.navigation[0].label", "detail": "must not contain invisible formatting characters"},
             id="invisible formatting character",
         ),
         pytest.param(
             _menu(_menu_item(label=" Forecast")),
-            {"loc": "manifest.spa.navigation[0].label", "message": "must not start or end with whitespace"},
+            {"attr": "manifest.spa.navigation[0].label", "detail": "must not start or end with whitespace"},
             id="leading whitespace",
         ),
         pytest.param(
             _menu(_menu_item(label="Fore\u00a0cast")),
-            {"loc": "manifest.spa.navigation[0].label", "message": "must not contain whitespace other than plain spaces"},
+            {"attr": "manifest.spa.navigation[0].label", "detail": "must not contain whitespace other than plain spaces"},
             id="no-break space",
         ),
         pytest.param(
             _menu(_menu_item(label="\u2800")),
-            {"loc": "manifest.spa.navigation[0].label", "message": "must contain at least one visible character"},
+            {"attr": "manifest.spa.navigation[0].label", "detail": "must contain at least one visible character"},
             id="only a braille blank",
         ),
         pytest.param(
             _menu(_menu_item(), _menu_item(label="FORECAST", path="/home")),
-            {"loc": "manifest.spa.navigation", "message": "lists label 'FORECAST' more than once"},
+            {"attr": "manifest.spa.navigation", "detail": "lists label 'FORECAST' more than once"},
             id="duplicate label in another case",
         ),
         pytest.param(
             _menu(_menu_item(), _menu_item(label="Settings", path="/settings", permission="delete")),
-            {"loc": "manifest.spa.navigation[1].permission", "message": "names 'delete', which user_permissions does not declare"},
+            {"attr": "manifest.spa.navigation[1].permission", "detail": "names 'delete', which user_permissions does not declare"},
             id="permission user_permissions does not declare",
         ),
     ],
@@ -300,6 +296,6 @@ def test_the_upload_api_reports_menu_problems_in_the_error_envelope(plugins_enab
 
     assert response.status_code == 400
     body = response.json()
-    assert body["code"] == "invalid_plugin"
-    assert body["errors"] == [error]
+    assert body["errors"][0]["code"] == "invalid_plugin"
+    assert attr_details(body) == [error]
     assert not Plugin.objects.exists()

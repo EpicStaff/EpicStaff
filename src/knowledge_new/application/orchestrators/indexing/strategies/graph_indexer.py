@@ -182,7 +182,7 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
         documents = await self.uow.graph_rag_repo.get_documents(rag_id=rag_id, ids=ids)
 
         if not documents:
-            raise DocumentNotFoundError(f"No Document found for RAG(id={rag_id}).")
+            raise DocumentNotFoundError("The knowledge source has no documents.")
         return documents
 
     async def _get_indexed_documents_excluding(self, rag_id: int, ids: frozenset[int]):

@@ -72,7 +72,12 @@ describe('WebhookTriggerEditPermissionService', () => {
         ['503', 503, 'edit'],
     ])('decides on a failed check with %s', (_case, status, decision) => {
         const decisions = decide();
-        httpMock.expectOne(FLOWS_URL).flush({ detail: 'failed' }, { status, statusText: 'Failed' });
+        httpMock
+            .expectOne(FLOWS_URL)
+            .flush(
+                { type: 'client_error', errors: [{ code: 'unknown', detail: 'failed', attr: null, context: null }] },
+                { status, statusText: 'Failed' }
+            );
 
         expect(decisions).toEqual([decision]);
     });

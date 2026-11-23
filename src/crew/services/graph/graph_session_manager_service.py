@@ -10,11 +10,12 @@ import redis
 from clients.key_value import KeyValueClient
 from dotdict import DotDict
 from foundation.cryptographer import AbstractCryptographer
+from foundation.schemas import ErrorDetailSchema
 from loguru import logger
 from models.graph_models import GraphMessage
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
-from services.graph.exceptions import StopSession
+from services.graph.exceptions import FLOW_FAILED_CODE, StopSession
 from services.graph.graph_builder import SessionGraphBuilder
 from services.knowledge_search_service import KnowledgeSearchService
 from services.redis_service import AsyncPubsubSubscriber, RedisService
@@ -31,12 +32,10 @@ from src.crew.services.graph.session_audit_provider import (
 )
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import SessionData, StopSessionMessage
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
 from utils.singleton_meta import SingletonMeta
+
+# Shown to the user when a session fails outside a node; the raw error is only logged.
+SESSION_FAILED_MESSAGE = "The flow failed."
 
 
 def _extract_finish_token_total(message_data: dict) -> int:
@@ -167,6 +166,10 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
     async def run_session(self, session_data: SessionData, stop_event: StopEvent):
         session_id = session_data.id
+        # The error item of the card streamed in the current graph step, if any. A failing
+        # node streams its card right before its exception ends the run, so a session that
+        # fails with one set needs no second error item.
+        node_error: dict | None = None
         try:
             audit_context = SessionAuditContext.from_session_data(session_data)
             register_session_audit_context(session_id, audit_context)
@@ -222,9 +225,14 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
             ):  # TODO: change hardcoded recursion limit
                 if stream_mode == "values":
                     final_state = chunk
+                    # A step that ends normally handled any error card it streamed.
+                    node_error = None
                 elif stream_mode == "custom":
                     data = chunk.to_payload()
                     encoded_data = GraphMessage.encode_payload(data)
+                    message_data = data.get("message_data") or {}
+                    if message_data.get("message_type") == "error":
+                        node_error = message_data.get("error")
                     try:
                         emit_session_audit_event(encoded_data)
                     except Exception as audit_exc:
@@ -234,9 +242,7 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                         logger.warning("Audit dispatch failed, dropping: {}", audit_exc)
 
                     if token_budget is not None:
-                        token_usage_total += _extract_finish_token_total(
-                            data.get("message_data") or {}
-                        )
+                        token_usage_total += _extract_finish_token_total(message_data)
                         if token_usage_total > token_budget:
                             logger.warning(
                                 f"Session {session_id} exceeded token budget "
@@ -365,12 +371,10 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 )
 
         except Exception as e:
-            correlation_id = new_error_correlation_id()
             logger.opt(exception=e).error(
-                "Failed to start session {session_id}: {error} (correlation_id={correlation_id})",
+                "Failed to start session {session_id}: {error}",
                 session_id=session_id,
                 error=str(e),
-                correlation_id=correlation_id,
             )
             logger.log(
                 BENCH_LEVEL,
@@ -381,14 +385,20 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 reason=type(e).__name__,
             )
 
-            public_error = build_public_error_message(
-                PublicErrorMessage.SESSION_EXECUTION_FAILED, correlation_id
-            )
+            # A node's failure is already on its error card; only a failure outside any
+            # node gets the session-level fact.
+            status_kwargs = {}
+            if not node_error:
+                status_kwargs["error"] = ErrorDetailSchema(
+                    code=FLOW_FAILED_CODE, detail=SESSION_FAILED_MESSAGE
+                ).model_dump()
             await self.redis_service.aupdate_session_status(
-                session_id=session_id, status="error", error=public_error
+                session_id=session_id, status="error", **status_kwargs
             )
             audit_context = get_session_audit_context(session_id)
-            failure_details = {"error": public_error}
+            failure_details = {
+                "error": node_error["detail"] if node_error else SESSION_FAILED_MESSAGE
+            }
             if audit_context is not None:
                 _dispatch_session_audit(
                     lambda: get_session_audit_writer().add_session_end(

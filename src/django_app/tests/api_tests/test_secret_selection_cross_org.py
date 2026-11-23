@@ -21,6 +21,7 @@ from tables.models.graph_models import Graph, TelegramTriggerNode
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from tables.services.secrets import secret_service
+from tests.error_envelope import error_text
 
 
 @pytest.fixture
@@ -71,8 +72,8 @@ def test_llm_config_rejects_foreign_secret(client_a, org_a, foreign_secret):
     assert resp.status_code == 400, resp.content
     # This project's exception handler flattens ValidationError into
     # {"code", "message", "status_code"}, so the field name lives in "message".
-    assert "api_key_secret_id" in resp.data["message"]
-    assert "does not exist" in resp.data["message"]
+    assert "api_key_secret_id" in error_text(resp.data)
+    assert "does not exist" in error_text(resp.data)
     assert not LLMConfig.objects.filter(custom_name="cfg-xorg").exists()
 
 
@@ -111,8 +112,8 @@ def test_rejection_is_indistinguishable_from_a_nonexistent_id(
     def _without_digits(detail):
         return "".join(ch for ch in str(detail) if not ch.isdigit())
 
-    assert _without_digits(foreign.data["message"]) == _without_digits(
-        nonexistent.data["message"]
+    assert _without_digits(foreign.data["errors"][0]["detail"]) == _without_digits(
+        nonexistent.data["errors"][0]["detail"]
     )
 
 

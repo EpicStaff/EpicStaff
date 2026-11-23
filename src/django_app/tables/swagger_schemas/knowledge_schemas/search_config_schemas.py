@@ -16,12 +16,16 @@ NAIVE_RAG_SUGGEST_409_RESPONSE = OpenApiResponse(
         OpenApiExample(
             "Index not ready",
             value={
-                "status_code": 409,
-                "code": "rag_index_not_ready",
-                "message": (
-                    "NaiveRAG index for collection 1 not ready. "
-                    "Run indexing and wait for rag_status='completed'."
-                ),
+                "type": "client_error",
+                "errors": [
+                    {
+                        "code": "rag_index_not_ready",
+                        "detail": "NaiveRAG index for collection 1 not ready. "
+                        "Run indexing and wait for rag_status='completed'.",
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
             },
             response_only=True,
             status_codes=["409"],
@@ -42,9 +46,15 @@ GRAPH_RAG_SUGGEST_409_RESPONSE = OpenApiResponse(
         OpenApiExample(
             "LLM not configured",
             value={
-                "status_code": 409,
-                "code": "graph_rag_llm_not_configured",
-                "message": "GraphRag for collection 1 has no LLM config.",
+                "type": "client_error",
+                "errors": [
+                    {
+                        "code": "graph_rag_llm_not_configured",
+                        "detail": "GraphRag for collection 1 has no LLM config.",
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
             },
             response_only=True,
             status_codes=["409"],
@@ -52,12 +62,16 @@ GRAPH_RAG_SUGGEST_409_RESPONSE = OpenApiResponse(
         OpenApiExample(
             "Index not ready",
             value={
-                "status_code": 409,
-                "code": "rag_index_not_ready",
-                "message": (
-                    "GraphRAG index for collection 1 not ready. "
-                    "Run indexing and wait for rag_status='completed'."
-                ),
+                "type": "client_error",
+                "errors": [
+                    {
+                        "code": "rag_index_not_ready",
+                        "detail": "GraphRAG index for collection 1 not ready. "
+                        "Run indexing and wait for rag_status='completed'.",
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
             },
             response_only=True,
             status_codes=["409"],
@@ -65,11 +79,15 @@ GRAPH_RAG_SUGGEST_409_RESPONSE = OpenApiResponse(
         OpenApiExample(
             "Metrics temporarily unavailable",
             value={
-                "status_code": 409,
-                "code": "rag_error",
-                "message": (
-                    "GraphRAG metrics for collection 1 are temporarily unavailable. Retry shortly."
-                ),
+                "type": "client_error",
+                "errors": [
+                    {
+                        "code": "rag_error",
+                        "detail": "GraphRAG metrics for collection 1 are temporarily unavailable. Retry shortly.",
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
             },
             response_only=True,
             status_codes=["409"],

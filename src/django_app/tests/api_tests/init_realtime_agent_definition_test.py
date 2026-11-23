@@ -39,6 +39,7 @@ from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgentDefinition
+from tests.error_envelope import error_codes
 from tests.fixtures import *  # noqa: F401,F403
 
 
@@ -342,7 +343,7 @@ def _other_orgs_realtime_agent_definition_id(org_b):
 )
 def test_init_realtime_refuses_a_definition_the_caller_cannot_use(auth_client, org_b, body):
     """An unknown id and another org's id get the same answer, so a guessed pk
-    reveals nothing (the view's broad except turns the missing-agent 404 into 400)."""
+    reveals nothing: both are a 400 on `agent_definition_id`."""
     url = reverse("init-realtime")
     unknown = auth_client.post(url, data={"agent_definition_id": 999999}, format="json")
 
@@ -353,3 +354,21 @@ def test_init_realtime_refuses_a_definition_the_caller_cannot_use(auth_client, o
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     if "agent_definition_id" in data:
         assert re.sub(r"\d", "", response.content.decode()) == re.sub(r"\d", "", unknown.content.decode())
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("with_realtime_part", [False, True], ids=["no-realtime-part", "no-provider-config"])
+def test_init_realtime_refuses_an_agent_without_a_usable_realtime_config(
+    agent_definition, auth_client, redis_client_mock, with_realtime_part
+):
+    if with_realtime_part:
+        RealtimeAgentDefinition.objects.create(agent_definition=agent_definition)
+
+    response = auth_client.post(
+        reverse("init-realtime"), data={"agent_definition_id": agent_definition.pk}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
+    assert error_codes(response.json()) == ["realtime_agent_not_configured"]
+    assert [item["attr"] for item in response.json()["errors"]] == ["agent_definition_id"]
+    redis_client_mock.publish.assert_not_called()

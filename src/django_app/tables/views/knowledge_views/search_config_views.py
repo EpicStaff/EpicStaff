@@ -1,10 +1,14 @@
 from drf_spectacular.utils import extend_schema
-from pydantic import ValidationError
+from pydantic import BaseModel
+from pydantic import ValidationError as PydanticValidationError
 from rbac.access.asserts import assert_org_permission
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedServiceViewSetMixin
 from rest_framework import status
+from rest_framework.exceptions import ErrorDetail
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
+from rest_framework.settings import api_settings
 from rest_framework.views import APIView
 from src.shared.models.search_config_suggestion import (
     GraphRagSuggestInput,
@@ -38,18 +42,21 @@ from tables.swagger_schemas.knowledge_schemas.search_config_schemas import (
 from tables.utils.litellm_model_info import resolve_context_window
 from user_audit.read_only import reads_only
 
+NON_FIELD_ERRORS = api_settings.NON_FIELD_ERRORS_KEY
 
-def _validation_error_response(exc: ValidationError) -> Response:
-    return Response(
-        {
-            "error": "Validation error",
-            "details": [
-                {"field": ".".join(str(p) for p in err["loc"]), "msg": err["msg"]}
-                for err in exc.errors()
-            ],
-        },
-        status=status.HTTP_400_BAD_REQUEST,
-    )
+
+def _parse_body(request, input_model: type[BaseModel]) -> BaseModel:
+    """Validate the request body as `input_model`, refusing it with a 400 naming each field."""
+    if not isinstance(request.data, dict):
+        raise DRFValidationError("Request body must be a JSON object.", code="invalid")
+    try:
+        return input_model(**request.data)
+    except PydanticValidationError as error:
+        problems: dict[str, list[ErrorDetail]] = {}
+        for problem in error.errors():
+            attr = ".".join(str(part) for part in problem["loc"]) or NON_FIELD_ERRORS
+            problems.setdefault(attr, []).append(ErrorDetail(problem["msg"], code=problem["type"]))
+        raise DRFValidationError(problems) from error
 
 
 def _resolve_graph_llm_ctx(collection_id: int) -> tuple[int, str, str | None, bool]:
@@ -109,15 +116,7 @@ class NaiveRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
     @extend_schema(**NAIVE_RAG_SUGGEST_PARAMS_POST)
     @reads_only
     def post(self, request):
-        try:
-            req = NaiveRagSuggestInput(**(request.data or {}))
-        except ValidationError as exc:
-            return _validation_error_response(exc)
-        except TypeError:
-            return Response(
-                {"error": "Request body must be a JSON object."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        req = _parse_body(request, NaiveRagSuggestInput)
 
         self.get_in_active_org_or_404(SourceCollection, req.knowledge_collection_id)
         assert_org_permission(
@@ -142,15 +141,7 @@ class GraphRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
     @extend_schema(**GRAPH_RAG_SUGGEST_PARAMS_POST)
     @reads_only
     def post(self, request):
-        try:
-            req = GraphRagSuggestInput(**(request.data or {}))
-        except ValidationError as exc:
-            return _validation_error_response(exc)
-        except TypeError:
-            return Response(
-                {"error": "Request body must be a JSON object."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        req = _parse_body(request, GraphRagSuggestInput)
 
         self.get_in_active_org_or_404(SourceCollection, req.knowledge_collection_id)
         assert_org_permission(
@@ -162,8 +153,10 @@ class GraphRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
 
         try:
             strategy = get_graph_strategy(req.search_method)
-        except ValueError as exc:
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as error:
+            raise DRFValidationError(
+                {"search_method": ["Unknown graph search method."]}, code="invalid_choice"
+            ) from error
 
         ctx, llm_name, warning, is_trusted = _resolve_graph_llm_ctx(req.knowledge_collection_id)
         metrics = CollectionManagementService.get_collection_metrics(

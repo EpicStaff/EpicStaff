@@ -202,7 +202,7 @@ class LaunchStep:
         stdout = stdout_bytes.decode("utf-8", errors="replace")
         stderr = stderr_bytes.decode("utf-8", errors="replace")
 
-        timeout_message = f"Execution exceeded {timeout:g} seconds and was terminated."
+        timeout_message = f"The code ran longer than {timeout:g} seconds and was stopped."
         if not killed:
             timeout_message += " Process could not be terminated and may still be running."
         stderr = f"{stderr}\n{timeout_message}" if stderr else timeout_message

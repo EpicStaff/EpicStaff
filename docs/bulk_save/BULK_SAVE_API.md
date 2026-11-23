@@ -298,39 +298,56 @@ Returns the full serialized graph object (same shape as `GET /api/graphs/{pk}/`)
 
 ### HTTP 400 — Validation Error
 
-No database writes have occurred. The response body contains a structured error map keyed by the payload section that failed.
+No database writes have occurred. The body is the error envelope every endpoint answers with:
+one item per problem, across every part of the payload that failed.
 
 ```json
 {
-  "errors": {
-    "python_node_list": [
-      {
-        "index": 0,
-        "errors": {
-          "python_code": {
-            "code": ["This field is required."]
-          }
-        }
-      }
-    ],
-    "edge_list": [
-      {
-        "index": 1,
-        "errors": "Provide exactly one of start_node_id or start_temp_id, not both."
-      }
-    ],
-    "deleted": [
-      "python_node_ids: IDs [99999] not found in graph 12"
-    ]
-  }
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "required",
+      "detail": "This field is required.",
+      "attr": "python_node_list.0.python_code.code",
+      "context": null
+    },
+    {
+      "code": "max_length",
+      "detail": "Ensure this field has no more than 255 characters.",
+      "attr": "classification_decision_table_node_list.3.prompt_configs.1.result_variable",
+      "context": null
+    },
+    {
+      "code": "invalid",
+      "detail": "Provide exactly one of start_node_id or start_temp_id, not both.",
+      "attr": "edge_list.1",
+      "context": null
+    },
+    {
+      "code": "invalid",
+      "detail": "python_node_ids: IDs [99999] not found in graph 12",
+      "attr": "deleted",
+      "context": null
+    }
+  ]
 }
 ```
 
-Error shape per section:
+`attr` is a dotted path into the request payload:
 
-- **Node list errors** (`task_node_list`, `python_node_list`, etc.): array of `{ "index": <int>, "errors": <object or string> }`. `index` is the zero-based position of the failing item in the submitted list.
-- **Edge list errors** (`edge_list`): same `{ "index", "errors" }` shape. May also include a top-level string for cross-edge reference failures (e.g. referencing a non-existent real node id).
-- **Deletion errors** (`deleted`): array of plain strings, each naming the delete key and the invalid ids.
+- **A field of a node or edge**: the list key, the item's zero-based position in the submitted
+  list, then the field path, with list positions as numbers
+  (`classification_decision_table_node_list.3.prompt_configs.1.result_variable`).
+- **A node or edge as a whole** (an unknown `id`, a routing reference that resolves nowhere):
+  the list key and position alone (`python_node_list.0`, `edge_list.1`).
+- **A list as a whole**: the key alone. `deleted` for an id to delete that is not in this graph,
+  `edge_list` for an edge naming a real node id that is not in this graph.
+- **Nothing**: `attr` is null when no part of the payload can be named, such as a node `uuid`
+  taken by another node of the flow at write time.
+
+`code` is DRF's code for a field error (`required`, `blank`, `does_not_exist`, ...), the error's
+own code where it has one, and `invalid` for the rest. Read `code` and `attr`; `detail` is text
+for people and may change.
 
 ### HTTP 404 — Graph Not Found
 
@@ -494,23 +511,25 @@ If any of the three operations fail validation, none of the writes happen.
 
 ## Error Scenarios and Common Mistakes
 
-| Mistake | Error |
-|---|---|
-| Sending `id` that does not exist in this graph | `{ "index": 0, "errors": "id=99999 not found in graph 12" }` |
-| Referencing another org's `subgraph` / `llm_config` | `{ "index": 0, "errors": { "subgraph": ["Invalid pk \"77\" - object does not exist."] } }` |
-| Sending both `start_node_id` and `start_temp_id` on the same edge | `{ "index": 0, "errors": "Provide exactly one of start_node_id or start_temp_id, not both." }` |
-| `start_temp_id` value not matching any `temp_id` in the node lists | `{ "index": 0, "errors": "start_temp_id='...' does not match any temp_id in the node lists of this request." }` |
-| Deleting a node id that belongs to a different graph | `"deleted": ["python_node_ids: IDs [42] not found in graph 12"]` |
-| Declaring or changing the secrets of a node's code (`python_code.secret_ids`; also the Telegram trigger node's `telegram_bot_api_key_secret_id`) without the `Use` permission on Secrets. A resend of the stored value is free, and so is editing `code` or the virtual environment (`venv_id`) | `{ "index": 0, "errors": { "python_code": { "secret_ids": ["Changing the secrets referenced here requires the \"Use\" permission on Secrets. ..."] } } }` |
-| Missing required nested field (e.g. `python_code.code`) | `{ "index": 0, "errors": { "python_code": { "code": ["This field is required."] } } }` |
-| DTN: both `default_next_node_id` and `default_next_node_temp_id` provided | `{ "index": 0, "errors": ["Provide at most one of default_next_node_id or default_next_node_temp_id, not both."] }` |
-| DTN: `default_next_node_temp_id` not matching any `temp_id` in node lists | `{ "index": 0, "errors": ["default_next_node_temp_id='...' does not match any temp_id in the node lists of this request."] }` |
-| DTN: condition group `next_node_temp_id` not matching any `temp_id` | `{ "index": 0, "errors": ["condition_groups[0]: next_node_temp_id='...' does not match any temp_id ..."] }` |
-| DTN / CDT: `default_next_node_id` or `next_error_node_id` references a node outside this graph (nonexistent, soft-deleted, or in another graph or organization) | `{ "index": 0, "errors": { "default_next_node_id": ["Invalid pk \"99999\" - object does not exist."] } }` |
-| DTN / CDT: a condition group's `next_node_id` references a node outside this graph | under the table's own list key (`decision_table_node_list` / `classification_decision_table_node_list`): `{ "index": 0, "errors": ["Decision table routing references node IDs not found in this graph: [99999]"] }` |
-| CDT: a condition group value of the wrong type (e.g. `"order": "first"`) | `{ "index": 0, "errors": [{ "condition_groups": [{ "order": ["A valid integer is required."] }] }] }` |
-| CDT: a `sections[].id` that belongs to another node (soft-deleted or not) | `{ "index": 0, "errors": ["Section <uuid> already belongs to another node."] }` |
-| Edge `start_node_id` / `end_node_id` references a node outside this graph | `"edge_list": ["Edge references node IDs not found in this graph: [99999]"]` |
+Each row shows the `attr` and `detail` of the error item it produces, for an item at position 0.
+
+| Mistake | `attr` | `detail` |
+|---|---|---|
+| Sending `id` that does not exist in this graph | `python_node_list.0` | `id=99999 not found in graph 12` |
+| Referencing another org's `subgraph` / `llm_config` | `subgraph_node_list.0.subgraph` | `Invalid pk "77" - object does not exist.` |
+| Sending both `start_node_id` and `start_temp_id` on the same edge | `edge_list.0` | `Provide exactly one of start_node_id or start_temp_id, not both.` |
+| `start_temp_id` value not matching any `temp_id` in the node lists | `edge_list.0` | `start_temp_id='...' does not match any temp_id in the node lists of this request.` |
+| Deleting a node id that belongs to a different graph | `deleted` | `python_node_ids: IDs [42] not found in graph 12` |
+| Declaring or changing the secrets of a node's code (`python_code.secret_ids`; also the Telegram trigger node's `telegram_bot_api_key_secret_id`) without the `Use` permission on Secrets. A resend of the stored value is free, and so is editing `code` or the virtual environment (`venv_id`) | `python_node_list.0.python_code.secret_ids` | `Changing the secrets referenced here requires the "Use" permission on Secrets. ...` |
+| Missing required nested field (e.g. `python_code.code`) | `python_node_list.0.python_code.code` | `This field is required.` |
+| DTN: both `default_next_node_id` and `default_next_node_temp_id` provided | `decision_table_node_list.0` | `Provide at most one of default_next_node_id or default_next_node_temp_id, not both.` |
+| DTN: `default_next_node_temp_id` not matching any `temp_id` in node lists | `decision_table_node_list.0` | `default_next_node_temp_id='...' does not match any temp_id in the node lists of this request.` |
+| DTN: condition group `next_node_temp_id` not matching any `temp_id` | `decision_table_node_list.0` | `condition_groups[0]: next_node_temp_id='...' does not match any temp_id ...` |
+| DTN / CDT: `default_next_node_id` or `next_error_node_id` references a node outside this graph (nonexistent, soft-deleted, or in another graph or organization) | `decision_table_node_list.0.default_next_node_id` | `Invalid pk "99999" - object does not exist.` |
+| DTN / CDT: a condition group's `next_node_id` references a node outside this graph | `decision_table_node_list.0` (or `classification_decision_table_node_list.0`) | `Decision table routing references node IDs not found in this graph: [99999]` |
+| CDT: a condition group value of the wrong type (e.g. `"order": "first"`) | `classification_decision_table_node_list.0.condition_groups.0.order` | `A valid integer is required.` |
+| CDT: a `sections[].id` that belongs to another node (soft-deleted or not) | `classification_decision_table_node_list.0` | `Section <uuid> already belongs to another node.` |
+| Edge `start_node_id` / `end_node_id` references a node outside this graph | `edge_list` | `Edge references node IDs not found in this graph: [99999]` |
 
 ---
 

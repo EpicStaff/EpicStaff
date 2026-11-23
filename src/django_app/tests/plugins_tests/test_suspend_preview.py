@@ -251,7 +251,7 @@ def test_another_plugin_s_grant_or_an_unknown_one_is_not_found(grant, running_pl
 
     for url in (_preview_url(grant.pk, "almanac"), _preview_url(grant.pk + 1000), _preview_url(grant.pk, "missing")):
         response = superadmin_client.get(url)
-        assert (response.status_code, response.json()["code"]) == (404, "grant_not_found"), url
+        assert (response.status_code, response.json()["errors"][0]["code"]) == (404, "grant_not_found"), url
 
 
 def test_an_org_admin_is_refused(grant, client_as, admin_acme, acme):

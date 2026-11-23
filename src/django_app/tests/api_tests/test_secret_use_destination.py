@@ -115,7 +115,7 @@ def test_llm_config_base_url_change_with_api_key_denied(no_use_client, secret_ll
     )
 
     assert response.status_code == 400, response.json()
-    assert response.json()["message"].startswith("base_url:")
+    assert response.json()["errors"][0]["attr"] == "base_url"
     secret_llm_config.refresh_from_db()
     assert secret_llm_config.base_url is None
 
@@ -131,7 +131,7 @@ def test_base_url_change_on_marker_only_config_denied(no_use_client, default_org
     )
 
     assert response.status_code == 400, response.json()
-    assert response.json()["message"].startswith("base_url:")
+    assert response.json()["errors"][0]["attr"] == "base_url"
     config.refresh_from_db()
     assert config.base_url is None
 
@@ -167,7 +167,7 @@ def test_switch_to_custom_model_with_other_base_url_denied(
     )
 
     assert response.status_code == 400, response.json()
-    assert response.json()["message"].startswith("model:")
+    assert response.json()["errors"][0]["attr"] == "model"
     secret_llm_config.refresh_from_db()
     assert secret_llm_config.model_id == gateway_llm_model.pk
 
@@ -255,7 +255,7 @@ def test_llm_model_base_url_edit_used_by_secret_config_denied(
     )
 
     assert response.status_code == 400, response.json()
-    assert response.json()["message"].startswith("base_url:")
+    assert response.json()["errors"][0]["attr"] == "base_url"
     gateway_llm_model.refresh_from_db()
     assert gateway_llm_model.base_url == GATEWAY_URL
 
@@ -310,7 +310,7 @@ def test_embedding_config_model_switch_denied(
     )
 
     assert response.status_code == 400, response.json()
-    assert response.json()["message"].startswith("model:")
+    assert response.json()["errors"][0]["attr"] == "model"
     secret_embedding_config.refresh_from_db()
     assert secret_embedding_config.model_id == embedding_model.pk
 
@@ -332,7 +332,7 @@ def test_embedding_model_base_url_edit_denied(
     )
 
     assert response.status_code == 400, response.json()
-    assert response.json()["message"].startswith("base_url:")
+    assert response.json()["errors"][0]["attr"] == "base_url"
     gateway_model.refresh_from_db()
     assert gateway_model.base_url == GATEWAY_URL
 
@@ -411,7 +411,7 @@ def test_openai_realtime_base_url_change_with_secret_denied(
     )
 
     assert response.status_code == 400, response.json()
-    assert response.json()["message"].startswith("base_url:")
+    assert response.json()["errors"][0]["attr"] == "base_url"
     config.refresh_from_db()
     assert config.base_url is None
 
@@ -446,7 +446,7 @@ def test_twilio_upsert_existing_channel_secret_change_denied(
     )
 
     assert response.status_code == 400, response.json()
-    assert response.json()["message"].startswith("auth_token_secret_id:")
+    assert response.json()["errors"][0]["attr"] == "auth_token_secret_id"
     twilio_channel.refresh_from_db()
     assert twilio_channel.auth_token_secret_id == secret_a.pk
     assert twilio_channel.account_sid == "AC_original"
@@ -541,7 +541,7 @@ def test_mcp_transport_change_with_auth_secret_denied_patch(no_use_client, secre
     )
 
     assert response.status_code == 400, response.json()
-    assert response.json()["message"].startswith("transport:")
+    assert response.json()["errors"][0]["attr"] == "transport"
     secret_mcp_tool.refresh_from_db()
     assert secret_mcp_tool.transport == MCP_SERVER_URL
 
@@ -556,7 +556,7 @@ def test_mcp_transport_change_with_auth_secret_denied_put(no_use_client, secret_
     )
 
     assert response.status_code == 400, response.json()
-    assert response.json()["message"].startswith("transport:")
+    assert response.json()["errors"][0]["attr"] == "transport"
     secret_mcp_tool.refresh_from_db()
     assert secret_mcp_tool.transport == MCP_SERVER_URL
 

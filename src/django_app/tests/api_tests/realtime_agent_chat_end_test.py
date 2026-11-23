@@ -8,6 +8,7 @@ from tables.models.realtime_models import (
     RealtimeAgent,
     RealtimeAgentChat,
 )
+from tests.error_envelope import details_by_attr, error_codes
 from tests.fixtures import *
 
 
@@ -267,6 +268,19 @@ class TestRealtimeAgentChatEnd:
         response = api_client.post(self._url(), data={}, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert error_codes(response.json()) == ["required"]
+        assert details_by_attr(response.json()) == {"connection_key": ["This field is required."]}
+
+    def test_unknown_connection_key_returns_404(self, api_client, env_api_key, db):
+        raw_key, _key = env_api_key
+        api_client.credentials(HTTP_X_API_KEY=raw_key)
+
+        response = api_client.post(
+            self._url(), data={"connection_key": "no-such-chat"}, format="json"
+        )
+
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+        assert error_codes(response.json()) == ["not_found"]
 
 
 @pytest.mark.django_db

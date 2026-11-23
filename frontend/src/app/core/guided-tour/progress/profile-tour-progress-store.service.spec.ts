@@ -15,9 +15,15 @@ const SESSION_USER_HEADER = 'X-Session-User';
 
 /** What the backend answers once the user completed as many distinct tours as it keeps. */
 const TOUR_LIMIT_EXCEEDED = {
-    status_code: 400,
-    code: 'tour_limit_exceeded',
-    message: 'Maximum number of completed tours reached (50).',
+    type: 'client_error',
+    errors: [
+        {
+            code: 'tour_limit_exceeded',
+            detail: 'Maximum number of completed tours reached (50).',
+            attr: null,
+            context: null,
+        },
+    ],
 };
 
 function profileOf(userId: number, completedTours: readonly string[]): GetMeResponse {

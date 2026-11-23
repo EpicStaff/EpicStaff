@@ -3,7 +3,6 @@ from tables.constants.decision_table_constants import (
     CONDITION_INPUT_FIELDS,
 )
 from tables.exceptions import (
-    BulkSaveValidationError,
     NodeChildValidationError,
     SectionIdConflictError,
     SectionNotFoundError,
@@ -23,6 +22,7 @@ from tables.services.classification_decision_table_node_children import (
     resolve_group_prompt,
 )
 from tables.services.graph_bulk_save_service.data_types import NodeRef
+from tables.services.graph_bulk_save_service.save_errors import BulkSaveErrors
 from tables.services.rag_assignment_service import SearchConfigService
 from tables.validators.knowledge_node_validator import KnowledgeNodeValidator
 
@@ -533,9 +533,9 @@ class _NodeSaveable:
             # Nested child rows (e.g. a group's prompt or section) resolve against
             # rows synced by this same save, so they cannot be checked before the
             # write. Raising rolls the whole save back.
-            raise BulkSaveValidationError(
-                {self._list_key: [{"index": self._index, "errors": [str(exc.detail)]}]}
-            ) from exc
+            errors = BulkSaveErrors()
+            errors.add_item(self._list_key, self._index, exc.detail)
+            raise errors.as_exception() from exc
         if self._temp_id and instance is not None:
             temp_id_map[self._temp_id] = instance.id
 

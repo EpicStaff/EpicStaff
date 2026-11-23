@@ -1,6 +1,7 @@
 // Pins the collection wizard's step logic (in-flight guard, indexing confirmation) at the unit layer, and which
 // container the Configure step renders (graph tabbed view or plain) at the component layer through the DOM.
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, input, model, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService, ConfirmationResult } from '@shared/components';
@@ -132,7 +133,8 @@ describe('CreateCollectionDialogComponent indexing confirmation', () => {
         reloadedCollection$: Observable<CreateCollectionDtoResponse> = of({
             ...COLLECTION,
             rag_configurations: [NAIVE_RAG, GRAPH_RAG],
-        })
+        }),
+        configurationExtras: object = {}
     ): {
         shown: IndexingConfirmationDialogData;
         startIndexing: ReturnType<typeof vi.fn>;
@@ -178,7 +180,11 @@ describe('CreateCollectionDialogComponent indexing confirmation', () => {
         // The collection as the wizard found it, before any RAG.
         TestBed.inject(CollectionsStorageService).updateOrCreateCollectionInCache(COLLECTION);
         const component = TestBed.runInInjectionContext(() => new CreateCollectionDialogComponent());
-        const instance = { getConfigurationData: () => ({}), getIndexingDocuments: () => [FILE] };
+        const instance = {
+            getConfigurationData: () => ({}),
+            getIndexingDocuments: () => [FILE],
+            ...configurationExtras,
+        };
         Reflect.set(component, 'strategyComponent', { _componentRef: { instance } });
         component.currentStepIndex.set(1);
         component.selectedRagType.set(ragType);
@@ -236,6 +242,32 @@ describe('CreateCollectionDialogComponent indexing confirmation', () => {
         const { startIndexing } = openIndexingConfirmation('naive', {}, answer);
 
         expect(startIndexing).toHaveBeenCalledTimes(startCount);
+    });
+
+    it.each<[string, object]>([
+        ['a configuration with no fields', {}],
+        [
+            'a configuration with no such field',
+            { setServerValidationErrors: () => undefined, showsServerErrorsInline: () => false },
+        ],
+    ])('says in a toast why indexing was refused when %s cannot show the error', (_case, configurationExtras) => {
+        const refusal = new HttpErrorResponse({
+            status: 400,
+            error: {
+                type: 'validation_error',
+                errors: [{ code: 'invalid', detail: 'Unknown document.', attr: 'document_ids', context: null }],
+            },
+        });
+
+        openIndexingConfirmation(
+            'naive',
+            { startIndexing: () => throwError(() => refusal) },
+            true,
+            undefined,
+            configurationExtras
+        );
+
+        expect(TestBed.inject(ToastService).error).toHaveBeenCalledWith('document_ids: Unknown document.');
     });
 });
 

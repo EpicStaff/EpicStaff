@@ -15,6 +15,7 @@ from domain.models import ConversationEvent
 from infrastructure.callback_verifier import SESSION_ID_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, sign
 from infrastructure.database.models import CallbackReceiptRow
 from sqlalchemy import select, text
+from tests.errors import first_error
 from tests.factories import make_binding
 from tests.infrastructure.test_django_client import CHAT_FLOW
 from tests.integration.test_operator_api import ALL, BASE, h
@@ -314,7 +315,7 @@ async def test_concurrent_streams_per_conversation_are_capped(client, conversati
     open_streams = [asyncio.create_task(read_stream(client, url + t, {}, seconds=0.6)) for t in tickets]
     await asyncio.sleep(0.2)
     refused = await client.get(url + await ticket())
-    assert refused.status_code == 429 and refused.json()["code"] == "rate_limited"
+    assert refused.status_code == 429 and first_error(refused)["code"] == "rate_limited"
     await asyncio.gather(*open_streams)
     assert await redis_client.zcard(f"chat:streams:conv:{conversation_id}") == 0
     assert await redis_client.zcard("chat:streams:ip:127.0.0.1") == 0
@@ -367,7 +368,7 @@ async def test_stream_connect_rechecks_that_the_binding_is_active(client, conver
         await uow.bindings.update(binding)
         await uow.commit()
     refused = await client.get(f"/chat/public/v1/conversations/{conversation_id}/stream?ticket={ticket}")
-    assert (refused.status_code, refused.json()["code"]) == (410, "binding_inactive")
+    assert (refused.status_code, first_error(refused)["code"]) == (410, "binding_inactive")
 
 
 

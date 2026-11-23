@@ -12,6 +12,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from tables.clients.errors import ClientBadGatewayError, ClientResourceNotFoundError
+from tests.error_envelope import error_codes
 
 pytestmark = pytest.mark.django_db
 
@@ -39,4 +40,25 @@ def test_cancel_maps_the_knowledge_service_answer(auth_client, cancel_url, upstr
 
     assert response.status_code == expected_status
     if expected_status >= 400:
-        assert "error" in response.data
+        assert error_codes(response.data) == ["upstream_service_error"]
+        assert "knowledge_new is down" not in response.content.decode()
+
+
+def test_a_chunking_failure_upstream_reaches_the_caller_without_its_text(
+    auth_client, naive_rag_document_config
+):
+    url = reverse(
+        "process-document-chunking",
+        args=[naive_rag_document_config.naive_rag_id, naive_rag_document_config.pk],
+    )
+    body = {"chunk_strategy": "token", "chunk_size": 1000, "chunk_overlap": 100}
+
+    with patch(
+        "tables.clients.knowledge.KnowledgeClient.prechunk",
+        side_effect=ClientBadGatewayError("knowledge_new crashed in /srv/knowledge/chunker.py"),
+    ):
+        response = auth_client.post(url, body, format="json")
+
+    assert response.status_code == status.HTTP_502_BAD_GATEWAY
+    assert error_codes(response.data) == ["upstream_service_error"]
+    assert "/srv/knowledge" not in response.content.decode()

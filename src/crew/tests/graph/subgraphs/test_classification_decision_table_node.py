@@ -16,6 +16,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
+import litellm
 import pytest
 from dotdict import DotDict
 from langgraph.graph import END, StateGraph
@@ -502,6 +503,27 @@ async def test_error_route_emits_finish_after_error(
     assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == expected_route
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("node_data_overrides", "expected_details"),
+    [
+        ({"pre_python_code": _FAILING_CODE}, "Pre-computation code: boom"),
+        ({"post_python_code": _FAILING_CODE}, "Post-computation code: boom"),
+    ],
+    ids=["pre-computation", "post-computation"],
+)
+async def test_computation_code_error_shows_the_users_stderr_after_the_code_it_came_from(
+    monkeypatch, node_data_overrides, expected_details
+):
+    monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code_error, raising=True)
+    node_data = make_node_data(next_error_node="error_node").model_copy(update=node_data_overrides)
+    subgraph, redis_service = build_subgraph_with_redis(node_data)
+
+    await subgraph.ainvoke(make_state())
+
+    assert first_error_message(redis_service)["error"]["detail"] == expected_details
+
+
 # ---------------------------------------------------------------------------
 # Batched condition evaluation
 # ---------------------------------------------------------------------------
@@ -654,11 +676,9 @@ async def test_broken_expression_before_match_routes_to_error_after_earlier_rows
     ]
     assert messages[1]["group_name"] == "miss"
     assert messages[1]["result"] is False
-    error_details = messages[2]["details"]
-    assert error_details.startswith(
-        "Error in condition 'broken': Expression execution failed:"
+    assert messages[2]["error"]["detail"] == (
+        "Condition \"broken\": NameError: name 'undefined_name' is not defined"
     )
-    assert "NameError" in error_details
 
 
 @pytest.mark.asyncio
@@ -683,7 +703,7 @@ async def test_non_boolean_expression_routes_to_error(monkeypatch):
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     )
-    assert "Expression must return a boolean value" in error_message["details"]
+    assert error_message["error"]["detail"] == "Condition \"not_bool\" didn't give true or false."
 
 
 @pytest.mark.asyncio
@@ -812,9 +832,7 @@ async def test_exit_in_expression_is_reported_against_its_row(monkeypatch):
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     )
-    assert error_message["details"].startswith(
-        "Error in condition 'exits': Expression execution failed: SystemExit"
-    )
+    assert error_message["error"]["detail"] == 'Condition "exits": SystemExit: 3'
 
 
 # ---------------------------------------------------------------------------
@@ -848,7 +866,7 @@ async def run_pre_computation_input_map(monkeypatch, input_map: dict, **node_ove
 
 def error_details(redis_service: MagicMock) -> list[str]:
     return [
-        message["details"]
+        message["error"]["detail"]
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     ]
@@ -1143,10 +1161,7 @@ async def test_batch_run_failure_names_the_row_range(monkeypatch):
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     )
-    assert error_message["details"] == (
-        "Error evaluating conditions from 'first' to 'last': "
-        "Expression execution failed: boom"
-    )
+    assert error_message["error"]["detail"] == 'Conditions "first" to "last": boom'
 
 
 # ---------------------------------------------------------------------------
@@ -1165,14 +1180,38 @@ def first_error_message(redis_service: MagicMock) -> dict:
     )
 
 
+def litellm_authentication_error(message: str) -> Exception:
+    return litellm.AuthenticationError(message=message, llm_provider="openai", model="gpt-4o")
+
+
 @pytest.mark.asyncio
-async def test_llm_failure_reports_the_prompt_without_provider_exception_text(monkeypatch):
-    """A provider failure names the prompt; the provider's own message, which can
-    quote the API key and endpoint, stays in the logs."""
+@pytest.mark.parametrize(
+    ("raised", "expected_details"),
+    [
+        (
+            lambda: litellm_authentication_error(_SENSITIVE_EXCEPTION_TEXT),
+            'Prompt "classify": The provider rejected the API key for model "gpt-4o".',
+        ),
+        # Not a litellm error, e.g. a bug or a parse failure: not reported as an LLM failure.
+        (
+            lambda: RuntimeError(_SENSITIVE_EXCEPTION_TEXT),
+            'Node "cdt_node" failed.',
+        ),
+        (
+            lambda: ValueError(f"Expecting value: {_SENSITIVE_EXCEPTION_TEXT}"),
+            'Node "cdt_node" failed.',
+        ),
+    ],
+    ids=["authentication-error", "unknown-error", "parse-error"],
+)
+async def test_llm_failure_states_the_fact_after_the_prompt_and_logs_the_provider_text(
+    monkeypatch, captured_logs, raised, expected_details
+):
+    """The provider's own message can quote the API key and endpoint: it stays in the log."""
     monkeypatch.setattr(RunPythonCodeService, "run_code", fake_run_code, raising=True)
     prompt_config = PromptConfigData(
         prompt_text="Classify {text}",
-        llm_data=make_llm_data(),
+        llm_data=LLMData(provider="openai", config=LLMConfigData(model="gpt-4o")),
         result_variable="classification_result",
     )
     groups = [
@@ -1193,13 +1232,15 @@ async def test_llm_failure_reports_the_prompt_without_provider_exception_text(mo
     )
 
     with patch("litellm.acompletion", new_callable=AsyncMock) as mock_completion:
-        mock_completion.side_effect = RuntimeError(_SENSITIVE_EXCEPTION_TEXT)
+        mock_completion.side_effect = raised()
         result = await subgraph.ainvoke(make_state({"text": "hello"}))
 
     assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
-    assert first_error_message(redis_service)["details"] == (
-        "Error in condition 'prompt_row': LLM call failed for prompt 'classify'"
-    )
+    assert first_error_message(redis_service)["error"]["detail"] == expected_details
+    assert any("sk-live-abcdef" in record for record in captured_logs)
+    # Only a litellm error is logged as a failed LLM call.
+    llm_call_logged = any("LLM call failed" in record for record in captured_logs)
+    assert llm_call_logged == expected_details.startswith("Prompt ")
 
 
 # ---------------------------------------------------------------------------
@@ -1431,37 +1472,37 @@ async def test_the_message_carries_provider_model_version_state_and_raw_result(
         pytest.param(
             {"config": None},
             None,
-            "Error in condition 'row0': System One entry 'company_check' has no config.",
+            'Prompt "company_check" has no System One config.',
             id="no-config",
         ),
         pytest.param(
             {"questions": {}},
             None,
-            "Error in condition 'row0': System One entry 'company_check' has no valid questions.",
+            'Prompt "company_check" has no valid System One questions.',
             id="no-questions",
         ),
         pytest.param(
             {"questions": {"1bad": {"type": "noul", "instructions": "x"}}},
             None,
-            "Error in condition 'row0': System One entry 'company_check' has no valid questions.",
+            'Prompt "company_check" has no valid System One questions.',
             id="invalid-question-name",
         ),
         pytest.param(
             {"input_map": {}},
             None,
-            "Error in condition 'row0': System One entry 'company_check' has no input values.",
+            'Prompt "company_check" has no input values.',
             id="empty-input-map",
         ),
         pytest.param(
             {"input_map": {"company": "variables.missing|null"}},
             None,
-            "Error in condition 'row0': System One entry 'company_check' has no input values.",
+            'Prompt "company_check" has no input values.',
             id="every-input-value-is-none",
         ),
         pytest.param(
             {"input_map": {"company": "variables.missing"}},
             None,
-            "Error in condition 'row0': Prompt 'company_check' input map entry 'company': "
+            "Prompt 'company_check' input map entry 'company': "
             "variable path 'variables.missing' was not found and has no default "
             "(write 'variables.missing|null' to allow a missing value).",
             id="missing-path-without-default",
@@ -1469,15 +1510,13 @@ async def test_the_message_carries_provider_model_version_state_and_raw_result(
         pytest.param(
             {},
             SystemOneError("TypeSafe rate limit reached."),
-            "Error in condition 'row0': System One call failed for prompt 'company_check': "
-            "TypeSafe rate limit reached.",
+            'Prompt "company_check": TypeSafe rate limit reached.',
             id="adapter-reports-a-system-one-error",
         ),
         pytest.param(
             {},
             RuntimeError("401 key=ts-secret"),
-            "Error in condition 'row0': System One call failed for prompt 'company_check': "
-            "System One provider 'fake' failed.",
+            "Prompt \"company_check\": System One provider 'fake' failed.",
             id="adapter-crashes-with-provider-text",
         ),
     ],
@@ -1492,7 +1531,7 @@ async def test_a_failing_system_one_entry_takes_the_error_path_with_our_own_mess
     result = await subgraph.ainvoke(make_state({"company": "Acme"}))
 
     assert result_node(result) == "error_node"
-    details = first_error_message(redis_service)["details"]
+    details = first_error_message(redis_service)["error"]["detail"]
     assert details == expected
     assert "ts-secret" not in details
     if adapter_error is None:
@@ -1568,7 +1607,7 @@ async def test_underscore_computation_output_path_routes_to_error_without_a_sand
 
     assert calls == []
     error_details = [
-        message["details"]
+        message["error"]["detail"]
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     ]
@@ -1693,8 +1732,8 @@ async def test_refused_prompt_placeholder_routes_to_the_error_node_without_an_ll
 
     mock_completion.assert_not_awaited()
     assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
-    details = first_error_message(redis_service)["details"]
-    assert details.startswith("Error in condition 'prompt_row': Prompt 'classify': ")
+    details = first_error_message(redis_service)["error"]["detail"]
+    assert details.startswith('Prompt "classify": ')
     assert f"'{placeholder}'" in details
     assert canary_value not in json.dumps(published_messages(redis_service))
 
@@ -1731,6 +1770,126 @@ async def test_prompt_sent_unrendered_leaves_a_warning(monkeypatch, prompt_text,
         logger.remove(sink_id)
 
     assert [line.strip() for line in lines if "prompt sent as written" in line] == expected_warnings
+
+
+# ---------------------------------------------------------------------------
+# Facts the node states itself
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def captured_logs():
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING")
+    yield records
+    logger.remove(sink_id)
+
+
+def _one_row_node(**row_fields) -> ClassificationDecisionTableNodeData:
+    return make_node_data(
+        condition_groups=[
+            ClassificationConditionGroupData(
+                group_name="High score", next_node="after", order=0, **row_fields
+            )
+        ],
+        next_error_node="error_node",
+    )
+
+
+@pytest.mark.asyncio
+async def test_failing_manipulation_run_keeps_the_sandbox_text_after_the_condition(monkeypatch):
+    async def expression_ok_then_manipulation_fails(
+        self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None,
+        storage_credentials=None,
+    ):
+        if "expressions" in inputs:
+            return await fake_run_code(self, python_code_data, inputs, stop_event)
+        return await fake_run_code_error(self, python_code_data, inputs, stop_event)
+
+    monkeypatch.setattr(RunPythonCodeService, "run_code", expression_ok_then_manipulation_fails)
+    subgraph, redis_service = build_subgraph_with_redis(
+        _one_row_node(expression="True", manipulation="variables.total = 1")
+    )
+
+    await subgraph.ainvoke(make_state())
+
+    assert first_error_message(redis_service)["error"]["detail"] == 'Condition "High score": boom'
+
+
+@pytest.mark.asyncio
+async def test_unreadable_expression_result_states_a_server_error_and_logs_the_data(
+    monkeypatch, captured_logs
+):
+    async def unreadable_result(
+        self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None,
+        storage_credentials=None,
+    ):
+        return {
+            "returncode": 0,
+            "result_data": "<html>proxy at internal-host</html>",
+            "stderr": "",
+            "execution_id": "test",
+        }
+
+    monkeypatch.setattr(RunPythonCodeService, "run_code", unreadable_result)
+    subgraph, redis_service = build_subgraph_with_redis(_one_row_node(expression="True"))
+
+    await subgraph.ainvoke(make_state())
+
+    assert first_error_message(redis_service)["error"]["detail"] == (
+        "Condition \"High score\": The code couldn't run because of a server error."
+    )
+    assert any("internal-host" in record for record in captured_logs)
+
+
+@pytest.mark.asyncio
+async def test_prompt_without_an_llm_states_it(monkeypatch):
+    record_run_code(monkeypatch)
+    node_data = make_node_data(
+        condition_groups=[
+            ClassificationConditionGroupData(
+                group_name="High score", expression="True", prompt_id="classify",
+                next_node="after", order=0,
+            )
+        ],
+        prompts={"classify": PromptConfigData(prompt_text="Classify", llm_data=None, llm_id=5)},
+        next_error_node="error_node",
+    )
+    subgraph, redis_service = build_subgraph_with_redis(node_data)
+
+    await subgraph.ainvoke(make_state())
+
+    assert first_error_message(redis_service)["error"] == {
+        "code": "classification_decision_table_failed",
+        "detail": 'Prompt "classify" has no LLM.',
+        "attr": None,
+        "context": None,
+    }
+
+
+@pytest.mark.asyncio
+async def test_unexpected_error_states_that_the_node_failed_and_logs_the_raw_error(
+    monkeypatch, captured_logs
+):
+    async def crashing_run_code(
+        self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None,
+        storage_credentials=None,
+    ):
+        raise KeyError("email at internal-host")
+
+    monkeypatch.setattr(RunPythonCodeService, "run_code", crashing_run_code)
+    subgraph, redis_service = build_subgraph_with_redis(_one_row_node(expression="True"))
+
+    result = await subgraph.ainvoke(make_state())
+
+    assert result_node(result) == "error_node"
+    assert first_error_message(redis_service)["error"] == {
+        "code": "node_failed",
+        "detail": 'Node "cdt_node" failed.',
+        "attr": None,
+        "context": None,
+    }
+    assert any("internal-host" in record for record in captured_logs)
 
 
 # ---------------------------------------------------------------------------
@@ -1843,9 +2002,8 @@ async def test_undecryptable_prompt_key_routes_to_the_error_node_without_an_llm_
 
     assert result_node(result) == "error_node"
     assert mock_completion.await_count == 0
-    assert first_error_message(redis_service)["details"] == (
-        "Error in condition 'row0': LLM config of prompt 'classify': "
-        "api_key could not be decrypted."
+    assert first_error_message(redis_service)["error"]["detail"] == (
+        'Prompt "classify": api_key could not be decrypted.'
     )
     assert BROKEN_TOKEN not in json.dumps(published_messages(redis_service))
 
@@ -1863,8 +2021,137 @@ async def test_undecryptable_system_one_key_routes_to_the_error_node_without_a_p
 
     assert result_node(result) == "error_node"
     assert adapter.states == []
-    assert first_error_message(redis_service)["details"] == (
-        "Error in condition 'row0': System One entry 'company_check': "
-        "api_key could not be decrypted."
+    assert first_error_message(redis_service)["error"]["detail"] == (
+        'Prompt "company_check": api_key could not be decrypted.'
     )
     assert BROKEN_TOKEN not in json.dumps(published_messages(redis_service))
+
+
+_SANDBOX_LOST_DETAIL = "Sandbox worker was lost; the job may not have finished."
+
+
+async def fake_run_code_sandbox_lost(
+    self,
+    python_code_data,
+    inputs,
+    stop_event=None,
+    additional_global_kwargs=None,
+    storage_credentials=None,
+):
+    return {
+        "returncode": 1,
+        "result_data": None,
+        "stderr": "",
+        "error": {"code": "worker_lost", "detail": _SANDBOX_LOST_DETAIL},
+        "execution_id": "test",
+    }
+
+
+async def _expressions_ok_then_sandbox_lost(
+    self, python_code_data, inputs, stop_event=None, additional_global_kwargs=None,
+    storage_credentials=None,
+):
+    if "expressions" in inputs:
+        return await fake_run_code(self, python_code_data, inputs, stop_event)
+    return await fake_run_code_sandbox_lost(self, python_code_data, inputs, stop_event)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("run_code", "node_data", "expected_details"),
+    [
+        pytest.param(
+            fake_run_code_sandbox_lost,
+            make_node_data(next_error_node="error_node").model_copy(
+                update={"pre_python_code": _FAILING_CODE}
+            ),
+            f"Pre-computation code: {_SANDBOX_LOST_DETAIL}",
+            id="computation-code",
+        ),
+        pytest.param(
+            fake_run_code_sandbox_lost,
+            make_node_data(
+                condition_groups=[
+                    ClassificationConditionGroupData(
+                        group_name="first", expression="False", next_node="wrong", order=0
+                    ),
+                    ClassificationConditionGroupData(
+                        group_name="last", expression="True", next_node="wrong", order=1
+                    ),
+                ],
+                next_error_node="error_node",
+            ),
+            f'Conditions "first" to "last": {_SANDBOX_LOST_DETAIL}',
+            id="condition-batch",
+        ),
+        pytest.param(
+            _expressions_ok_then_sandbox_lost,
+            _one_row_node(expression="True", manipulation="variables.total = 1"),
+            f'Condition "High score": {_SANDBOX_LOST_DETAIL}',
+            id="manipulation",
+        ),
+    ],
+)
+async def test_a_sandbox_failure_streams_its_error_detail_after_what_it_ran(
+    monkeypatch, run_code, node_data, expected_details
+):
+    monkeypatch.setattr(RunPythonCodeService, "run_code", run_code, raising=True)
+    subgraph, redis_service = build_subgraph_with_redis(node_data)
+
+    await subgraph.ainvoke(make_state())
+
+    assert first_error_message(redis_service)["error"]["detail"] == expected_details
+
+
+def _run_code_failing_with(stderr: str, error: dict):
+    async def run_code(
+        self,
+        python_code_data,
+        inputs,
+        stop_event=None,
+        additional_global_kwargs=None,
+        storage_credentials=None,
+    ):
+        return {
+            "returncode": 1,
+            "result_data": None,
+            "stderr": stderr,
+            "error": error,
+            "execution_id": "test",
+        }
+
+    return run_code
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stderr", "error", "expected_details"),
+    [
+        pytest.param(
+            "child wrote this",
+            {"code": "result_too_large", "detail": "The function's return value is too big to save."},
+            "Pre-computation code: child wrote this\nThe function's return value is too big to save.",
+            id="code-wrote-then-sandbox-failed",
+        ),
+        pytest.param(
+            "",
+            {"code": "worker_lost", "detail": _SANDBOX_LOST_DETAIL, "attr": None},
+            f"Pre-computation code: {_SANDBOX_LOST_DETAIL}",
+            id="error-with-an-extra-field",
+        ),
+    ],
+)
+async def test_computation_code_shows_the_codes_stderr_before_the_sandbox_error(
+    monkeypatch, stderr, error, expected_details
+):
+    monkeypatch.setattr(
+        RunPythonCodeService, "run_code", _run_code_failing_with(stderr, error), raising=True
+    )
+    node_data = make_node_data(next_error_node="error_node").model_copy(
+        update={"pre_python_code": _FAILING_CODE}
+    )
+    subgraph, redis_service = build_subgraph_with_redis(node_data)
+
+    await subgraph.ainvoke(make_state())
+
+    assert first_error_message(redis_service)["error"]["detail"] == expected_details

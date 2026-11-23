@@ -270,8 +270,8 @@ def test_patch_rejects_an_invalid_display_name(member_acme, display_name):
     response = client_for(member_acme).patch(PROFILE_URL, {"display_name": display_name}, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["code"] == "invalid"
-    assert any(error["field"] == "display_name" for error in response.json()["errors"])
+    assert response.json()["errors"][0]["code"] == "invalid"
+    assert any(error["attr"] == "display_name" for error in response.json()["errors"])
 
 
 EMPTY_SHORTCUTS = {"custom": [], "overrides": {}}
@@ -521,9 +521,9 @@ def test_patch_rejects_a_malformed_shortcut_value(member_acme, payload):
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["code"] == "invalid"
+    assert response.json()["errors"][0]["code"] == "invalid"
     assert response.json()["errors"] == [
-        {"field": "custom_shortcuts", "value": None, "reason": ANY}
+        {"code": "invalid", "detail": ANY, "attr": "custom_shortcuts", "context": None}
     ]
     member_acme.refresh_from_db()
     assert member_acme.custom_shortcuts == SAVED_SHORTCUTS
@@ -635,8 +635,8 @@ def test_patch_rejects_a_body_that_is_not_an_object_before_reading_custom_shortc
     response = client_for(member_acme).patch(PROFILE_URL, raw_body, content_type="application/json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["code"] == "invalid"
-    assert [error["field"] for error in response.json()["errors"]] == ["body"]
+    assert response.json()["errors"][0]["code"] == "invalid"
+    assert [error["attr"] for error in response.json()["errors"]] == [None]
     member_acme.refresh_from_db()
     assert (member_acme.display_name, member_acme.custom_shortcuts) == ("Keep", EMPTY_SHORTCUTS)
 
@@ -674,7 +674,7 @@ def test_avatar_upload_rejects_anything_but_a_small_real_image(member_acme, sett
     response = client_for(member_acme).post(AVATAR_URL, {"avatar": file} if file else {}, format="multipart")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["code"] == code
+    assert response.json()["errors"][0]["code"] == code
     member_acme.refresh_from_db()
     assert not member_acme.avatar
 
@@ -695,7 +695,7 @@ def test_password_change_request_needs_the_current_password(member_acme, body, c
     response = client_for(member_acme).post(REQUEST_URL, body, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["code"] == code
+    assert response.json()["errors"][0]["code"] == code
 
 
 @pytest.mark.django_db
@@ -759,7 +759,7 @@ def test_password_change_confirm_needs_the_callers_unspent_ticket(member_acme, o
     response = client.post(CONFIRM_URL, {"ticket": ticket, "new_password": "EvilTakeover123!"}, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["code"] == "invalid_password_change_ticket"
+    assert response.json()["errors"][0]["code"] == "invalid_password_change_ticket"
     member_acme.refresh_from_db()
     assert member_acme.password == password_before
 
@@ -771,10 +771,10 @@ def test_password_change_confirm_rejects_a_weak_password_without_echoing_it(memb
     response = client.post(CONFIRM_URL, {"ticket": _ticket(client), "new_password": "123"}, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["code"] == "invalid"
-    password_errors = [error for error in response.json()["errors"] if error["field"] == "new_password"]
+    assert response.json()["errors"][0]["code"] == "invalid"
+    password_errors = [error for error in response.json()["errors"] if error["attr"] == "new_password"]
     assert password_errors
-    assert all(error["value"] == "***" for error in password_errors)
+    assert all("value" not in error for error in password_errors)
     member_acme.refresh_from_db()
     assert member_acme.check_password("StrongPass123!")
 
@@ -880,8 +880,9 @@ def test_a_malformed_tour_key_is_rejected_and_nothing_is_stored(member_acme, tou
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     body = response.json()
-    assert body["code"] == "invalid"
-    assert [(error["field"], error["value"]) for error in body["errors"]] == [("tour_key", tour_key)]
+    assert body["errors"][0]["code"] == "invalid"
+    assert [error["attr"] for error in body["errors"]] == ["tour_key"]
+    assert tour_key not in response.content.decode()
     assert not UserTourProgress.objects.filter(user=member_acme).exists()
 
 
@@ -903,7 +904,7 @@ def test_a_new_tour_beyond_fifty_is_rejected_and_nothing_is_stored(member_acme):
     response = client_for(member_acme).post(tour_url("one-too-many"))
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["code"] == "tour_limit_exceeded"
+    assert response.json()["errors"][0]["code"] == "tour_limit_exceeded"
     assert UserTourProgress.objects.filter(user=member_acme).count() == 50
     assert not UserTourProgress.objects.filter(user=member_acme, tour_key="one-too-many").exists()
 

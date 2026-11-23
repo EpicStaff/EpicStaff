@@ -33,7 +33,10 @@ const DELETING_PLUGIN: PluginDetail = buildPluginDetail({ state: 'purging', allo
 const ORGANIZATION_FLOWS = 'Flows of this organization that use them';
 
 function failure(status: number, code: string): HttpErrorResponse {
-    return new HttpErrorResponse({ status, error: { status_code: status, code, message: 'Refused.' } });
+    return new HttpErrorResponse({
+        status,
+        error: { type: 'client_error', errors: [{ code, detail: 'Refused.', attr: null, context: null }] },
+    });
 }
 
 describe('PluginPurgeDialogComponent', () => {

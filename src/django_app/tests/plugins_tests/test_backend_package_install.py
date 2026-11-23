@@ -6,6 +6,7 @@ from plugins.models import Plugin, PluginDatabase, PluginPackage, PluginPlacemen
 
 from tests.plugins_tests.conftest import upload_file
 from tests.plugins_tests.package_builder import backend_manifest, build_package, sample_files
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -26,7 +27,7 @@ def _backend_files(manifest, **replaced):
 
 
 def _locs(response):
-    return [error["loc"] for error in response.json()["errors"]]
+    return [error["attr"] for error in attr_details(response.json())]
 
 
 def test_a_package_with_a_backend_is_accepted(superadmin_client, plugin_node):
@@ -74,7 +75,7 @@ def test_each_backend_layout_rule_is_enforced(superadmin_client, plugin_node, re
     response = _upload(superadmin_client, build_package(_backend_files(manifest, **replaced), manifest=manifest))
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_plugin"
+    assert response.json()["errors"][0]["code"] == "invalid_plugin"
     assert loc in _locs(response)
 
 
@@ -106,7 +107,7 @@ def test_a_manifest_above_the_platform_maximums_is_refused(superadmin_client, pl
     response = _upload(superadmin_client, build_package(manifest=backend_manifest(**manifest_changes)))
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_plugin"
+    assert response.json()["errors"][0]["code"] == "invalid_plugin"
     assert _locs(response) == [loc]
 
 
@@ -161,7 +162,7 @@ def test_approval_without_a_node_is_refused_and_changes_nothing(superadmin_clien
     response = _approve(superadmin_client, package_id)
 
     assert response.status_code == 409
-    assert response.json()["code"] == "no_plugin_node"
+    assert response.json()["errors"][0]["code"] == "no_plugin_node"
     assert PluginPackage.objects.get(pk=package_id).review_state == ReviewState.PENDING
     assert Plugin.objects.get(identifier="weather").state == PluginState.UPLOADED
     assert not PluginPlacement.objects.exists()
@@ -191,4 +192,4 @@ def test_a_provisioning_plugin_cannot_be_granted_yet(superadmin_client, backend_
     response = superadmin_client.post("/api/admin/plugins/weather/grants/", {"organization_id": acme.id}, format="json")
 
     assert response.status_code == 409
-    assert response.json()["code"] == "plugin_not_running"
+    assert response.json()["errors"][0]["code"] == "plugin_not_running"

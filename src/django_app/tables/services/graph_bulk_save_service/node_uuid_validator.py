@@ -28,8 +28,8 @@ class NodeUuidValidator:
         graph: Graph,
         created_uuids: dict[str, list[tuple[int, UUID]]],
         deleted_data: dict,
-    ) -> dict[str, list[dict]]:
-        """Return per-list errors for uuids that are duplicated or already used in the graph.
+    ) -> list[tuple[str, int, dict]]:
+        """Return `(list key, payload index, problems)` for uuids duplicated or already used in the graph.
 
         Args:
             created_uuids: (payload index, uuid) pairs of the created nodes, keyed by list key.
@@ -40,7 +40,7 @@ class NodeUuidValidator:
             node_uuid for entries in created_uuids.values() for _, node_uuid in entries
         )
         if not occurrences:
-            return {}
+            return []
 
         taken_uuids = NodeIdentityMixin.active_node_uuids(
             graph,
@@ -50,7 +50,7 @@ class NodeUuidValidator:
                 for config in NODE_TYPE_REGISTRY
             },
         )
-        errors: dict[str, list[dict]] = {}
+        errors: list[tuple[str, int, dict]] = []
         for list_key, entries in created_uuids.items():
             for index, node_uuid in entries:
                 if occurrences[node_uuid] > 1:
@@ -59,9 +59,7 @@ class NodeUuidValidator:
                     message = TAKEN_UUID_MESSAGE
                 else:
                     continue
-                errors.setdefault(list_key, []).append(
-                    {"index": index, "errors": {"uuid": [message]}}
-                )
+                errors.append((list_key, index, {"uuid": [message]}))
         return errors
 
     @staticmethod

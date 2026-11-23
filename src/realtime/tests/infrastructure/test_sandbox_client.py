@@ -177,7 +177,7 @@ async def test_submit_does_not_ask_for_status_when_no_attempt_went_unanswered(cl
 async def test_submit_raises_overloaded_once_the_queue_budget_is_spent(clock, connect):
     sandbox = ScriptedSandbox(post=[overloaded(retry_after="5")])
 
-    with pytest.raises(SandboxOverloadedError, match=r"within 12 s"):
+    with pytest.raises(SandboxOverloadedError, match="The server was too busy to run the code in time."):
         await connect(sandbox, queue_timeout=12).submit(make_request())
 
     assert clock.sleeps == [5, 5, 2]
@@ -308,16 +308,75 @@ async def test_submit_keeps_retrying_overloaded_after_an_unanswered_attempt_the_
 @pytest.mark.parametrize("status_code", [400, 404, 422, 500])
 @pytest.mark.asyncio
 async def test_submit_raises_the_sandbox_refusal_at_once(clock, connect, status_code):
-    body = '{"errors":[{"code":"venv_not_found","detail":"Venv 7 does not exist."}]}'
+    body = (
+        '{"type":"client_error","errors":[{"code":"venv_not_found",'
+        '"detail":"Venv 7 does not exist."}]}'
+    )
     sandbox = ScriptedSandbox(post=[respond(status_code, text=body)])
 
     with pytest.raises(SandboxError) as raised:
         await connect(sandbox).submit(make_request())
 
     assert type(raised.value) is SandboxError
-    assert str(raised.value) == body
     assert len(sandbox.sent("POST")) == 1
     assert clock.sleeps == []
+
+
+SERVER_ERROR = "The code couldn't run because of a server error."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("answer", "expected_message", "expected_code"),
+    [
+        pytest.param(
+            respond(
+                400,
+                json={
+                    "type": "client_error",
+                    "errors": [{"code": "venv_not_found", "detail": "Venv 7 does not exist."}],
+                },
+            ),
+            "Venv 7 does not exist.",
+            "venv_not_found",
+            id="4xx-envelope",
+        ),
+        pytest.param(
+            respond(400, text='{"detail":"/app/manager/x.py rejected it"}'),
+            SERVER_ERROR,
+            "server_error",
+            id="4xx-not-an-envelope",
+        ),
+        pytest.param(
+            respond(
+                500,
+                json={
+                    "type": "server_error",
+                    "errors": [{"code": "unknown", "detail": "/app/manager/x.py rejected it"}],
+                },
+            ),
+            SERVER_ERROR,
+            "server_error",
+            id="5xx-envelope",
+        ),
+        pytest.param(
+            respond(500, text="<html>/app/manager/x.py rejected it</html>"),
+            SERVER_ERROR,
+            "server_error",
+            id="5xx-html",
+        ),
+    ],
+)
+async def test_a_refusal_shows_only_a_fact_the_sandbox_meant_for_the_user(
+    clock, connect, answer, expected_message, expected_code
+):
+    sandbox = ScriptedSandbox(post=[answer])
+
+    with pytest.raises(SandboxError) as raised:
+        await connect(sandbox).submit(make_request())
+
+    assert (str(raised.value), raised.value.code) == (expected_message, expected_code)
+    assert "/app/manager/x.py" not in str(raised.value)
 
 
 @pytest.mark.parametrize(
@@ -447,7 +506,7 @@ async def test_wait_raises_result_timeout_after_the_backstop(connect, fast_statu
     sandbox = ScriptedSandbox(get=[known()])
     result = asyncio.get_running_loop().create_future()
 
-    with pytest.raises(SandboxResultTimeoutError, match=r"after 0\.05 s"):
+    with pytest.raises(SandboxResultTimeoutError, match="The code's result didn't arrive in time."):
         await connect(sandbox).wait_for_result(EXECUTION_ID, result, backstop=0.05)
 
 

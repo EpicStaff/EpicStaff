@@ -26,6 +26,7 @@ from domain.errors import (
     RagNotFoundError,
 )
 from domain.models import Rag
+from loguru import logger
 from tests.fakes.artifact_store import InMemoryArtifactStore
 
 DOCUMENTS = "output/documents.parquet"
@@ -258,6 +259,26 @@ async def test_a_refused_archive_leaves_nothing_stored_for_the_rag(tmp_path, arc
     assert store.objects == {"graphrag/rag_90/a/output/documents.parquet": b"another rag"}
     # The message goes back to the caller; the server's temp path must not.
     assert str(tmp_path) not in str(raised.value)
+
+
+async def test_an_unreadable_archive_is_refused_with_a_fixed_reason_and_the_raw_error_logged(
+    tmp_path,
+):
+    archive_path = tmp_path / "upload.tar"
+    archive_path.write_bytes(b"definitely not a tar archive" * 40)
+    orchestrator = GraphArtifactRestoreOrchestrator(NoDatabaseUoW(), InMemoryArtifactStore())
+    logged: list[str] = []
+    sink_id = logger.add(logged.append, level="DEBUG", diagnose=False)
+    try:
+        with pytest.raises(InvalidArtifactArchiveError) as raised:
+            await orchestrator.execute(
+                RestoreGraphArtifacts(rag_id=9, archive_path=str(archive_path))
+            )
+    finally:
+        logger.remove(sink_id)
+
+    assert str(raised.value) == "The archive isn't valid: the file isn't a readable tar archive."
+    assert "tarfile.ReadError" in "".join(logged)
 
 
 class FailingAfterFirstPutStore(InMemoryArtifactStore):

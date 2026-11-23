@@ -62,7 +62,7 @@ def test_granting_an_organization_whose_grant_is_suspended_conflicts(superadmin_
 
     response = superadmin_client.post(_grants_url(), {"organization_id": acme.id}, format="json")
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_already_granted")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_already_granted")
 
 
 def test_the_plugin_count_shows_active_grants(superadmin_client, running_plugin, grant_to, acme, beta):
@@ -80,7 +80,7 @@ def test_granting_twice_conflicts(superadmin_client, running_plugin, acme):
     response = superadmin_client.post(_grants_url(), {"organization_id": acme.id}, format="json")
 
     assert response.status_code == 409
-    assert response.json()["code"] == "plugin_already_granted"
+    assert response.json()["errors"][0]["code"] == "plugin_already_granted"
     assert PluginGrant.objects.count() == 1
 
 
@@ -90,7 +90,7 @@ def test_granting_to_an_unknown_organization_is_not_found(superadmin_client, run
     response = superadmin_client.post(_grants_url(), {"organization_id": 999999}, format="json")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "organization_not_found"
+    assert response.json()["errors"][0]["code"] == "organization_not_found"
 
 
 def test_granting_to_an_inactive_organization_conflicts(superadmin_client, running_plugin, acme):
@@ -100,7 +100,7 @@ def test_granting_to_an_inactive_organization_conflicts(superadmin_client, runni
     response = superadmin_client.post(_grants_url(), {"organization_id": acme.id}, format="json")
 
     assert response.status_code == 409
-    assert response.json()["code"] == "organization_inactive"
+    assert response.json()["errors"][0]["code"] == "organization_inactive"
 
 
 def test_granting_a_plugin_that_is_not_running_conflicts(superadmin_client, acme):
@@ -109,14 +109,14 @@ def test_granting_a_plugin_that_is_not_running_conflicts(superadmin_client, acme
     response = superadmin_client.post(_grants_url(), {"organization_id": acme.id}, format="json")
 
     assert response.status_code == 409
-    assert response.json()["code"] == "plugin_not_running"
+    assert response.json()["errors"][0]["code"] == "plugin_not_running"
 
 
 def test_granting_an_unknown_plugin_is_not_found(superadmin_client, acme):
     response = superadmin_client.post(_grants_url("missing"), {"organization_id": acme.id}, format="json")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_not_found"
 
 
 @pytest.mark.parametrize("body", [{}, {"organization_id": "acme"}, {"organization_id": 0}])
@@ -126,7 +126,7 @@ def test_a_malformed_body_is_invalid(superadmin_client, running_plugin, body):
     response = superadmin_client.post(_grants_url(), body, format="json")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid"
+    assert response.json()["errors"][0]["code"] == "invalid"
 
 
 def test_the_grant_list_is_paginated_and_sorted_by_organization_name(superadmin_client, running_plugin, grant_to):
@@ -160,7 +160,7 @@ def test_the_grant_list_of_an_unknown_plugin_is_not_found(superadmin_client):
     response = superadmin_client.get(_grants_url("missing"))
 
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_not_found"
 
 
 def test_the_grant_list_lists_only_that_plugin_s_grants(superadmin_client, running_plugin, grant_to, acme, beta):

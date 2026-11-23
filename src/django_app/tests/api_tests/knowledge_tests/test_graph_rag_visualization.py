@@ -2,7 +2,7 @@
 
 The endpoints proxy to knowledge_new; the knowledge client is the only thing
 replaced because it is the HTTP boundary to the upstream service. Errors reach the
-browser through the global exception handler as `{status_code, code, message}`.
+browser through the global exception handler as `{type, errors: [{code, detail, attr, context}]}`.
 """
 
 from functools import partial
@@ -163,11 +163,7 @@ def test_endpoint_passes_graph_not_indexed_through_as_409(auth_client, default_o
         response = auth_client.get(_endpoint_url(endpoint_name, graph_rag))
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert response.data == {
-        "status_code": 409,
-        "code": "graph_not_indexed",
-        "message": "The graph has not been indexed yet. Run indexing to view it.",
-    }
+    assert response.data == {"type": "client_error", "errors": [{"code": "graph_not_indexed", "detail": "The graph has not been indexed yet. Run indexing to view it.", "attr": None, "context": None}]}
 
 
 @pytest.mark.parametrize("endpoint_name", _ENDPOINT_NAMES)
@@ -192,11 +188,7 @@ def test_upstream_graph_not_indexed_response_reaches_the_browser_as_409(
         response = auth_client.get(_endpoint_url(endpoint_name, graph_rag))
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert response.json() == {
-        "status_code": 409,
-        "code": "graph_not_indexed",
-        "message": "The graph has not been indexed yet. Run indexing to view it.",
-    }
+    assert response.json() == {"type": "client_error", "errors": [{"code": "graph_not_indexed", "detail": "The graph has not been indexed yet. Run indexing to view it.", "attr": None, "context": None}]}
     assert seen_paths == [_UPSTREAM_PATHS[endpoint_name].format(rag_id=graph_rag.graph_rag_id)]
 
 
@@ -222,9 +214,15 @@ def test_endpoint_maps_upstream_errors_to_error_envelope(
 
     assert response.status_code == expected_status
     assert response.data == {
-        "status_code": expected_status,
-        "code": expected_code,
-        "message": upstream_error.public_detail,
+        "type": "client_error" if expected_status < 500 else "server_error",
+        "errors": [
+            {
+                "code": expected_code,
+                "detail": upstream_error.public_detail,
+                "attr": None,
+                "context": None,
+            }
+        ],
     }
 
 
@@ -290,8 +288,8 @@ def test_visualization_rejects_invalid_query(auth_client, default_org, query, in
         response = auth_client.get(_endpoint_url("visualization", graph_rag), query)
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["status_code"] == 400
-    assert response.data["message"].startswith(f"{invalid_parameter}:")
+    assert response.data["type"] == "client_error"
+    assert [item["attr"] for item in response.data["errors"]] == [invalid_parameter]
     upstream.assert_not_called()
 
 
@@ -361,8 +359,8 @@ def test_table_data_rejects_invalid_query(auth_client, default_org, query, inval
         response = auth_client.get(_endpoint_url("table-data", graph_rag), query)
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["status_code"] == 400
-    assert response.data["message"].startswith(f"{invalid_parameter}:")
+    assert response.data["type"] == "client_error"
+    assert [item["attr"] for item in response.data["errors"]] == [invalid_parameter]
     upstream.assert_not_called()
 
 

@@ -37,6 +37,12 @@ pytestmark = pytest.mark.asyncio
 
 LLM = LLMData(provider="openai", config=LLMConfigData(model="gpt-4o"))
 COMPLETED = ("agent.result", {"final_text": "done", "stop_reason": "completed"})
+RATE_LIMIT_ERROR = {
+    "code": "llm_rate_limit",
+    "detail": 'The provider\'s rate limit for model "gpt-4o" was reached.',
+    "attr": None,
+}
+LLM_FAILED = "The LLM request failed."
 
 
 class FakeStreamClient:
@@ -160,10 +166,27 @@ def _leftover_run_keys(client, service) -> list[str]:
             ("agent.result", {"stop_reason": "max_consecutive_failures", "final_text": "summary"}),
             {"stop_reason": "max_consecutive_failures", "final_text": "summary"},
         ),
-        (("agent.result", {"stop_reason": "llm_error", "error": "LLM call failed"}), AgentTaskError("LLM call failed")),
-        (("agent.error", {"error": "boom"}), AgentTaskError("boom")),
+        (
+            ("agent.result", {"stop_reason": "llm_error", "error": RATE_LIMIT_ERROR}),
+            AgentTaskError(RATE_LIMIT_ERROR["detail"]),
+        ),
+        (("agent.error", {"error": RATE_LIMIT_ERROR}), AgentTaskError(RATE_LIMIT_ERROR["detail"])),
+        # An agent older than the {code, detail} contract sent its raw str(error).
+        (("agent.error", {"error": "boom at internal-host:8000"}), AgentTaskError(LLM_FAILED)),
+        (("agent.result", {"stop_reason": "llm_error"}), AgentTaskError(LLM_FAILED)),
+        (("agent.result", {"stop_reason": "timeout", "error": None}), AgentTaskError(LLM_FAILED)),
+        (("agent.error", {}), AgentTaskError(LLM_FAILED)),
     ],
-    ids=["completed", "max-consecutive-failures", "failure-stop-reason", "agent-error"],
+    ids=[
+        "completed",
+        "max-consecutive-failures",
+        "failure-stop-reason",
+        "agent-error",
+        "agent-error-plain-string",
+        "failure-stop-reason-without-error",
+        "failure-stop-reason-null-error",
+        "agent-error-without-error",
+    ],
 )
 async def test_run_ends_with_the_agents_answer_and_leaves_no_keys(service, client, reply, expected):
     result, _ = await _run(service, client, replies=[reply])
@@ -276,6 +299,7 @@ async def test_timeout_raises_after_forwarding_what_arrived_and_leaves_no_keys(c
     )
 
     assert isinstance(result, AgentTaskTimeoutError)
+    assert str(result) == "The agent service didn't answer in time."
     assert collected == ["agent.task_start"]
     assert _leftover_run_keys(client, service) == []
 

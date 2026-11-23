@@ -21,6 +21,7 @@ from tables.services.secrets import secret_service
 from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.sealed_values import open_sealed_values
+from tests.error_envelope import error_text
 
 URL = "/api/run-python-code/"
 PLAINTEXT = "sk-target-run-abc123"
@@ -274,9 +275,9 @@ class TestTargetLookupIsOrgScoped:
         response = _run_target(acme_client, "python_node", node.id)
 
         assert response.status_code == 400
-        assert response.data["message"] == (
-            f'target: Invalid pk "{node.id}" - object does not exist.'
-        )
+        assert [(item["attr"], item["detail"]) for item in response.data["errors"]] == [
+            ("target", f'Invalid pk "{node.id}" - object does not exist.')
+        ]
         assert sandbox_intake.bodies == []
         assert not PythonCodeResult.objects.exists()
 
@@ -291,7 +292,7 @@ class TestTargetLookupIsOrgScoped:
         response = _run_target(acme_client, "webhook_trigger_node", node.id)
 
         assert response.status_code == 400
-        assert "does not exist" in response.data["message"]
+        assert "does not exist" in error_text(response.data)
         assert sandbox_intake.bodies == []
 
     def test_soft_deleted_node_is_not_found(self, acme_client, acme_graph, sandbox_intake):
@@ -303,14 +304,14 @@ class TestTargetLookupIsOrgScoped:
         response = _run_target(acme_client, "python_node", node.id)
 
         assert response.status_code == 400
-        assert "does not exist" in response.data["message"]
+        assert "does not exist" in error_text(response.data)
         assert sandbox_intake.bodies == []
 
     def test_missing_node_is_not_found(self, acme_client, sandbox_intake):
         response = _run_target(acme_client, "python_node", 999_999)
 
         assert response.status_code == 400
-        assert "does not exist" in response.data["message"]
+        assert "does not exist" in error_text(response.data)
 
     def test_caller_without_flows_update_is_denied(
         self, client_as, django_user_model, acme, acme_graph, role_viewer, sandbox_intake
@@ -346,14 +347,14 @@ class TestRequestShape:
         )
 
         assert response.status_code == 400
-        assert "exactly one" in response.data["message"]
+        assert "exactly one" in error_text(response.data)
         assert sandbox_intake.bodies == []
 
     def test_neither_target_nor_python_code_id_is_rejected(self, acme_client, sandbox_intake):
         response = acme_client.post(URL, {"variables": {}}, format="json")
 
         assert response.status_code == 400
-        assert "exactly one" in response.data["message"]
+        assert "exactly one" in error_text(response.data)
 
     def test_unknown_target_type_is_rejected(self, acme_client, acme_graph, sandbox_intake):
         node = _python_node(acme_graph)
@@ -361,7 +362,7 @@ class TestRequestShape:
         response = _run_target(acme_client, "agent_node", node.id)
 
         assert response.status_code == 400
-        assert "agent_node" in response.data["message"]
+        assert "agent_node" in error_text(response.data)
         assert sandbox_intake.bodies == []
 
     def test_legacy_python_code_id_runs_bare_code_without_storage(
@@ -439,7 +440,7 @@ class TestTriggerNodeCodeNeedsRun:
 
         assert response.status_code == expected_status, response.data
         if expected_status == 403:
-            assert response.data["code"] == "permission_denied"
+            assert response.data["errors"][0]["code"] == "permission_denied"
             assert not sandbox_intake.bodies
             assert not PythonCodeResult.objects.exists()
         else:
@@ -478,7 +479,7 @@ class TestTriggerNodeCodeNeedsRun:
         response = _run_target(client, "webhook_trigger_node", 999_999)
 
         assert response.status_code == 403, response.data
-        assert response.data["code"] == "permission_denied"
+        assert response.data["errors"][0]["code"] == "permission_denied"
 
     def test_foreign_trigger_code_by_python_code_id_stays_not_found_without_use(
         self, custom_role_client, acme, beta_graph, sandbox_intake
@@ -491,5 +492,5 @@ class TestTriggerNodeCodeNeedsRun:
         response = _run_code_of(client, node, "python_code_id")
 
         assert response.status_code == 400, response.data
-        assert "does not exist" in response.data["message"]
+        assert "does not exist" in error_text(response.data)
         assert not sandbox_intake.bodies

@@ -5,9 +5,10 @@ import json
 import httpx
 import pytest
 import pytest_asyncio
-from foundation.transport.http import ClientUnauthorizedError
+from loguru import logger
 from src.shared.models.sandbox_execution import ExecutionRequest, ExecutionStorageCredentials
 from src.shared.sandbox_errors import (
+    SANDBOX_SERVER_ERROR_MESSAGE,
     SandboxError,
     SandboxExecutionLostError,
     SandboxOverloadedError,
@@ -72,6 +73,19 @@ def overloaded(retry_after: str | None = None) -> httpx.Response:
     return respond(503, headers=headers, json={"errors": [{"code": "overloaded"}]})
 
 
+def envelope(status_code: int, detail: str) -> httpx.Response:
+    """An error answer in foundation's envelope, the shape sandbox_new answers with."""
+    error_type = "client_error" if status_code < 500 else "server_error"
+    return respond(
+        status_code,
+        json={"type": error_type, "errors": [{"code": "refused", "detail": detail, "attr": None}]},
+    )
+
+
+HTML_BAD_GATEWAY = "<html><body><h1>502 Bad Gateway</h1>nginx at internal-proxy:8080</body></html>"
+SERVER_TRACEBACK = "Traceback (most recent call last): File /app/secret/manager.py, line 3"
+
+
 def known(status: str = "running") -> httpx.Response:
     return respond(200, json={"execution_id": EXECUTION_ID, "status": status})
 
@@ -112,6 +126,14 @@ async def connect():
     yield factory
     for client in clients:
         await client.aclose()
+
+
+@pytest.fixture
+def captured_logs():
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="DEBUG")
+    yield lines
+    logger.remove(sink_id)
 
 
 @pytest.fixture
@@ -178,7 +200,7 @@ async def test_submit_does_not_ask_for_status_when_no_attempt_went_unanswered(cl
 async def test_submit_raises_overloaded_once_the_queue_budget_is_spent(clock, connect):
     sandbox = ScriptedSandbox(post=[overloaded(retry_after="5")])
 
-    with pytest.raises(SandboxOverloadedError, match=r"within 12 s"):
+    with pytest.raises(SandboxOverloadedError):
         await connect(sandbox, queue_timeout=12).submit(make_request())
 
     assert clock.sleeps == [5, 5, 2]
@@ -306,19 +328,84 @@ async def test_submit_keeps_retrying_overloaded_after_an_unanswered_attempt_the_
     assert len(sandbox.sent("POST")) == 3
 
 
-@pytest.mark.parametrize("status_code", [400, 404, 422, 500])
+@pytest.mark.parametrize("status_code", [400, 404, 409, 422])
 @pytest.mark.asyncio
-async def test_submit_raises_the_sandbox_refusal_at_once(clock, connect, status_code):
-    body = '{"errors":[{"code":"venv_not_found","detail":"Venv 7 does not exist."}]}'
-    sandbox = ScriptedSandbox(post=[respond(status_code, text=body)])
+async def test_submit_raises_the_detail_of_a_client_error_envelope_at_once(
+    clock, connect, status_code
+):
+    sandbox = ScriptedSandbox(post=[envelope(status_code, "Venv 7 does not exist.")])
 
     with pytest.raises(SandboxError) as raised:
         await connect(sandbox).submit(make_request())
 
     assert type(raised.value) is SandboxError
-    assert str(raised.value) == body
+    assert str(raised.value) == "Venv 7 does not exist."
     assert len(sandbox.sent("POST")) == 1
     assert clock.sleeps == []
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        envelope(500, SERVER_TRACEBACK),
+        respond(500, text=HTML_BAD_GATEWAY),
+        respond(501, text=""),
+        respond(400, text=HTML_BAD_GATEWAY),
+        respond(400, text=""),
+        respond(400, text='{"detail": "not the envelope"}'),
+        # A 4xx status whose body says it is the server's fault is not shown either.
+        respond(
+            400,
+            json={
+                "type": "server_error",
+                "errors": [{"code": "unknown", "detail": SERVER_TRACEBACK}],
+            },
+        ),
+        respond(400, json={"type": "client_error", "errors": []}),
+    ],
+    ids=[
+        "5xx-envelope",
+        "5xx-html",
+        "5xx-empty",
+        "4xx-html",
+        "4xx-empty",
+        "4xx-other-json",
+        "4xx-server-error-type",
+        "4xx-no-errors",
+    ],
+)
+@pytest.mark.asyncio
+async def test_submit_shows_the_generic_fact_for_an_answer_it_cannot_trust(clock, connect, reply):
+    sandbox = ScriptedSandbox(post=[reply])
+
+    with pytest.raises(SandboxError) as raised:
+        await connect(sandbox).submit(make_request())
+
+    assert str(raised.value) == SANDBOX_SERVER_ERROR_MESSAGE
+    assert len(sandbox.sent("POST")) == 1
+
+
+@pytest.mark.asyncio
+async def test_submit_logs_the_raw_body_it_does_not_show(clock, connect, captured_logs):
+    sandbox = ScriptedSandbox(post=[envelope(500, SERVER_TRACEBACK)])
+
+    with pytest.raises(SandboxError) as raised:
+        await connect(sandbox).submit(make_request())
+
+    assert "/app/secret" not in str(raised.value)
+    assert "/app/secret" in "\n".join(captured_logs)
+
+
+@pytest.mark.asyncio
+async def test_submit_turns_a_gateway_error_that_never_clears_into_the_generic_fact(
+    clock, connect
+):
+    sandbox = ScriptedSandbox(post=[respond(502, text=HTML_BAD_GATEWAY)], get=[respond(404)])
+
+    with pytest.raises(SandboxError) as raised:
+        await connect(sandbox, queue_timeout=1).submit(make_request())
+
+    assert str(raised.value) == SANDBOX_SERVER_ERROR_MESSAGE
 
 
 @pytest.mark.parametrize(
@@ -365,6 +452,40 @@ async def test_status_raises_lost_for_an_execution_the_sandbox_does_not_know(con
 
     with pytest.raises(SandboxExecutionLostError):
         await connect(sandbox).status(EXECUTION_ID)
+
+
+@pytest.mark.parametrize(
+    ("reply", "message"),
+    [
+        (envelope(409, "Execution is not yours."), "Execution is not yours."),
+        (respond(401, text=HTML_BAD_GATEWAY), SANDBOX_SERVER_ERROR_MESSAGE),
+    ],
+    ids=["4xx-envelope", "4xx-html"],
+)
+@pytest.mark.asyncio
+async def test_status_raises_a_sandbox_error_for_a_refusal(connect, reply, message):
+    sandbox = ScriptedSandbox(get=[reply])
+
+    with pytest.raises(SandboxError) as raised:
+        await connect(sandbox).status(EXECUTION_ID)
+
+    assert type(raised.value) is SandboxError
+    assert str(raised.value) == message
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [httpx.ConnectError, httpx.ReadTimeout, envelope(500, SERVER_TRACEBACK), respond(502)],
+    ids=["connect", "timeout", "5xx-envelope", "502"],
+)
+@pytest.mark.asyncio
+async def test_status_raises_unreachable_when_the_sandbox_gives_no_usable_answer(connect, reply):
+    sandbox = ScriptedSandbox(get=[reply])
+
+    with pytest.raises(SandboxUnreachableError) as raised:
+        await connect(sandbox).status(EXECUTION_ID)
+
+    assert str(raised.value) == SANDBOX_SERVER_ERROR_MESSAGE
 
 
 # --- wait_for_result ---
@@ -435,12 +556,17 @@ async def test_wait_raises_unreachable_after_consecutive_status_failures(
 
 
 @pytest.mark.asyncio
-async def test_wait_propagates_a_status_refusal_that_is_not_transient(connect, fast_status_polls):
-    sandbox = ScriptedSandbox(get=[respond(401)])
+async def test_wait_raises_a_status_refusal_that_is_not_transient_as_a_sandbox_error(
+    connect, fast_status_polls
+):
+    sandbox = ScriptedSandbox(get=[respond(401, text=HTML_BAD_GATEWAY)])
     result = asyncio.get_running_loop().create_future()
 
-    with pytest.raises(ClientUnauthorizedError):
+    with pytest.raises(SandboxError) as raised:
         await connect(sandbox).wait_for_result(EXECUTION_ID, result, backstop=None)
+
+    assert type(raised.value) is SandboxError
+    assert str(raised.value) == SANDBOX_SERVER_ERROR_MESSAGE
 
 
 @pytest.mark.asyncio
@@ -448,7 +574,7 @@ async def test_wait_raises_result_timeout_after_the_backstop(connect, fast_statu
     sandbox = ScriptedSandbox(get=[known()])
     result = asyncio.get_running_loop().create_future()
 
-    with pytest.raises(SandboxResultTimeoutError, match=r"after 0\.05 s"):
+    with pytest.raises(SandboxResultTimeoutError):
         await connect(sandbox).wait_for_result(EXECUTION_ID, result, backstop=0.05)
 
 

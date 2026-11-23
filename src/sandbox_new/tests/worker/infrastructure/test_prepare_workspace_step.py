@@ -7,6 +7,8 @@ the worker's own.
 
 import json
 
+from foundation.schemas import ErrorDetailSchema
+
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
 from worker.infrastructure.execution.steps import PrepareWorkspaceStep
@@ -97,7 +99,10 @@ async def test_a_workspace_whose_chown_failed_is_still_removed_after_the_run(
 
     result, _ = result_sink.sent[0]
     assert result.returncode == 1
-    assert "could not chown execution dirs" in result.stderr
+    assert result.error == ErrorDetailSchema(
+        code="isolation_unavailable", detail="This server can't run code safely right now, so the code wasn't run."
+    )
+    assert result.stderr == ""
     assert not (tmp_path / "executions" / "exec-1").exists()
 
 

@@ -47,7 +47,7 @@ def system_client(issue_api_key):
 def _assert_refused(response, acme):
     assert response.status_code == 409, response.content
     body = response.json()
-    assert body["code"] == "plugin_suspended"
+    assert body["errors"][0]["code"] == "plugin_suspended"
     assert (body["plugin"], body["organization"]) == ({"identifier": "weather", "name": "Weather"}, {"id": acme.pk})
 
 

@@ -115,7 +115,7 @@ def test_a_plugin_without_a_backend_has_no_runtime(running_plugin, superadmin_cl
     response = superadmin_client.get(url) if url == RUNTIME_URL else superadmin_client.post(url)
 
     assert response.status_code == 409
-    assert response.json()["code"] == "plugin_has_no_backend"
+    assert response.json()["errors"][0]["code"] == "plugin_has_no_backend"
 
 
 def test_an_org_admin_cannot_restart(backend_plugin, client_as, admin_acme):

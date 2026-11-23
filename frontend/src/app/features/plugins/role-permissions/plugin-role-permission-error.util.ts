@@ -1,4 +1,4 @@
-import { HttpErrorResponse } from '@angular/common/http';
+import { extractErrorCode } from '@shared/utils';
 
 import { PluginRolePermissionsUpdate } from '../models/plugin-role-permissions.model';
 import { toPluginErrorView } from '../utils/plugin-error-message.util';
@@ -23,14 +23,8 @@ export const PLUGIN_ROLE_PERMISSION_ERROR_MESSAGES: Readonly<Record<PluginRolePe
     permission_denied: "You don't have permission to change roles in this organization.",
 };
 
-/** `plugins[<index>]…` in an `errors[]` item's `loc`. */
+/** `plugins[<index>]…` in an error item's `attr`. */
 const PLUGIN_INDEX_LOC = /^plugins\[(\d+)\]/;
-
-function errorCode(error: unknown): unknown {
-    if (!(error instanceof HttpErrorResponse)) return null;
-    const body: unknown = error.error;
-    return typeof body === 'object' && body !== null && 'code' in body ? body.code : null;
-}
 
 function isRoleErrorCode(code: unknown): code is PluginRolePermissionErrorCode {
     return typeof code === 'string' && Object.hasOwn(PLUGIN_ROLE_PERMISSION_ERROR_MESSAGES, code);
@@ -48,15 +42,15 @@ export function pluginRolePermissionErrorMessage(
     pluginNames?: ReadonlyMap<string, string>
 ): string {
     const view = toPluginErrorView(error, fallback);
-    const code = errorCode(error);
+    const code = extractErrorCode(error);
     if (!isRoleErrorCode(code)) return view.message;
     const message = PLUGIN_ROLE_PERMISSION_ERROR_MESSAGES[code];
     if (code !== 'invalid_plugin_role_permissions' || view.items.length === 0) return message;
     const problems = view.items.map((item) => {
-        const index = PLUGIN_INDEX_LOC.exec(item.loc)?.[1];
+        const index = item.attr === null ? undefined : PLUGIN_INDEX_LOC.exec(item.attr)?.[1];
         const identifier = index === undefined ? undefined : update?.plugins[Number(index)]?.plugin_identifier;
-        if (!identifier) return item.message;
-        return `${pluginNames?.get(identifier) ?? identifier}: ${item.message}`;
+        if (!identifier) return item.detail;
+        return `${pluginNames?.get(identifier) ?? identifier}: ${item.detail}`;
     });
     return `${message} ${problems.join(' ')}`;
 }

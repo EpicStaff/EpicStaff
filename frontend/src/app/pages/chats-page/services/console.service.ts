@@ -1,6 +1,7 @@
-import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpHeaders } from '@angular/common/http';
 import { DestroyRef, inject, Injectable, OnDestroy, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { extractServerMessage } from '@shared/utils';
 import { EMPTY, from, fromEvent, Observable, of, Subject } from 'rxjs';
 import { catchError, delay, map, switchMap, tap } from 'rxjs/operators';
 
@@ -18,19 +19,6 @@ import { WavRecorderService } from './wav-recorder.service';
 export interface ConnectionResult {
     success: boolean;
     error?: Error;
-}
-
-/**
- * What the server said when the realtime start failed: its `error` text, else the `message` of the error envelope
- * (for example a run refused because it uses a suspended plugin); `undefined` for anything else.
- */
-function realtimeStartErrorMessage(error: unknown): string | undefined {
-    if (!(error instanceof HttpErrorResponse)) return undefined;
-    const body: unknown = error.error;
-    if (typeof body !== 'object' || body === null) return undefined;
-    const { error: errorText, message } = body as { error?: unknown; message?: unknown };
-    if (typeof errorText === 'string' && errorText) return errorText;
-    return typeof message === 'string' && message ? message : undefined;
 }
 
 @Injectable({
@@ -155,7 +143,8 @@ export class ConsoleService implements OnDestroy {
                 catchError((error: Error) => {
                     this.connectionError$.next(error);
                     this.cleanupAfterFailedConnection();
-                    const backendMessage = realtimeStartErrorMessage(error);
+                    // What the server said, e.g. a run refused because it uses a suspended plugin.
+                    const backendMessage = extractServerMessage(error);
                     const message = backendMessage?.includes('conflicting RAG configs')
                         ? "Conflict: the agent's surfaces use the same collection with different RAG settings."
                         : (backendMessage ?? 'Failed to start the realtime conversation');

@@ -166,7 +166,7 @@ def test_the_preview_of_another_plugin_s_grant_or_an_unknown_one_is_not_found(gr
         _preview(superadmin_client, grant, "almanac"),
         _preview(superadmin_client, PluginGrant(pk=grant.pk + 1000)),
     ):
-        assert (response.status_code, response.json()["code"]) == (404, "grant_not_found")
+        assert (response.status_code, response.json()["errors"][0]["code"]) == (404, "grant_not_found")
 
 
 # ---- the phrase ----
@@ -179,7 +179,7 @@ def test_a_missing_different_or_malformed_phrase_changes_nothing(grant, superadm
     response = _purge(superadmin_client, grant, phrase)
 
     assert response.status_code == 400, response.content
-    assert response.json()["code"] in {"invalid_purge_phrase", "invalid"}
+    assert response.json()["errors"][0]["code"] in {"invalid_purge_phrase", "invalid"}
     grant.refresh_from_db()
     assert grant.state == GrantState.GRANTING
     assert PluginActivityEvent.objects.count() == events
@@ -190,7 +190,7 @@ def test_a_missing_different_or_malformed_phrase_changes_nothing(grant, superadm
 def test_a_non_string_phrase_is_invalid_and_never_echoed(grant, superadmin_client):
     response = _purge(superadmin_client, grant, 424242)
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid")
     assert "424242" not in response.content.decode()
 
 
@@ -246,7 +246,7 @@ def test_a_grant_being_deleted_cannot_be_deleted_again(grant, superadmin_client)
 
     response = _purge(superadmin_client, grant, _phrase(grant))
 
-    assert (response.status_code, response.json()["code"]) == (409, "grant_not_purgeable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "grant_not_purgeable")
 
 
 def test_a_grant_of_a_plugin_being_deleted_is_not_purgeable(grant, superadmin_client):
@@ -254,7 +254,7 @@ def test_a_grant_of_a_plugin_being_deleted_is_not_purgeable(grant, superadmin_cl
 
     response = _purge(superadmin_client, grant, _phrase(grant))
 
-    assert (response.status_code, response.json()["code"]) == (409, "grant_not_purgeable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "grant_not_purgeable")
 
 
 def test_the_conflict_comes_before_the_phrase(grant, superadmin_client):
@@ -262,7 +262,7 @@ def test_the_conflict_comes_before_the_phrase(grant, superadmin_client):
 
     response = _purge(superadmin_client, grant, "wrong")
 
-    assert response.json()["code"] == "grant_not_purgeable"
+    assert response.json()["errors"][0]["code"] == "grant_not_purgeable"
 
 
 def test_another_plugin_s_grant_or_an_unknown_one_is_not_found(grant, running_plugin, superadmin_client):
@@ -273,7 +273,7 @@ def test_another_plugin_s_grant_or_an_unknown_one_is_not_found(grant, running_pl
         _purge(superadmin_client, PluginGrant(pk=grant.pk + 1000), _phrase(grant)),
         _purge(superadmin_client, grant, "wrong", "missing"),
     ):
-        assert (response.status_code, response.json()["code"]) == (404, "grant_not_found")
+        assert (response.status_code, response.json()["errors"][0]["code"]) == (404, "grant_not_found")
     grant.refresh_from_db()
     assert grant.state == GrantState.GRANTING
 

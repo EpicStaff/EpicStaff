@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractApiErrors, extractErrorCode, extractHttpErrorMessage } from '@shared/utils';
 import { merge, Observable, Subject, Subscription } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -554,18 +554,12 @@ const keepsMatch = (
 ): boolean => belongsTo(newer, section, holderId) && newer.assigned_operator_id === matched.assigned_operator_id;
 
 const isInvalidSearch = (error: HttpErrorResponse): boolean =>
-    error.status === 400 && readErrorField(error, 'code') === 'invalid_search';
+    error.status === 400 && extractErrorCode(error) === 'invalid_search';
 
 // The server says what is wrong (too long, a NUL character); the fallback covers an answer without a message.
+// Shown under the search field itself, so the text goes without the field name a toast would add.
 const invalidSearchMessage = (error: HttpErrorResponse): string =>
-    readErrorField(error, 'message') ?? 'This search cannot be run. Try a shorter one.';
-
-function readErrorField(error: HttpErrorResponse, field: string): string | null {
-    const body: unknown = error.error;
-    if (!body || typeof body !== 'object') return null;
-    const value: unknown = (body as Record<string, unknown>)[field];
-    return typeof value === 'string' && value ? value : null;
-}
+    extractApiErrors(error)[0]?.detail || 'This search cannot be run. Try a shorter one.';
 
 function withoutSection(
     sections: ReadonlySet<ConversationListSection>,

@@ -257,15 +257,10 @@ async def test_validation_failure_raises_unchanged_data_load_error_text():
 
 
 @pytest.mark.asyncio
-async def test_validation_failure_publishes_unchanged_error_payload_to_crew():
-    """The ``agent.error`` payload crew reads is the raw ``DataLoadError`` text,
-    unaffected by the redacted log line."""
+async def test_validation_failure_publishes_the_generic_fact_to_crew():
+    """The ``DataLoadError`` text can quote the rejected request: crew gets a fixed fact."""
     rejected_marker = "SENSITIVE_RUN_TYPE_MARKER_16180"
     blob = _wire_blob(run_type=rejected_marker)
-
-    with pytest.raises(DataLoadError) as raised:
-        await _loader_returning(json.dumps(blob)).load(_ENVELOPE)
-    expected_error_text = str(raised.value)
 
     publish_calls: list[dict] = []
 
@@ -291,8 +286,8 @@ async def test_validation_failure_publishes_unchanged_error_payload_to_crew():
     assert len(publish_calls) == 1
     assert publish_calls[0]["fields"]["type"] == "agent.error"
     published = json.loads(publish_calls[0]["fields"]["payload"])
-    assert published["error"] == expected_error_text
-    assert rejected_marker in published["error"]
+    assert published["error"] == {"code": "agent_failed", "detail": "The agent failed.", "attr": None, "context": None}
+    assert rejected_marker not in publish_calls[0]["fields"]["payload"]
 
 
 @pytest.mark.asyncio

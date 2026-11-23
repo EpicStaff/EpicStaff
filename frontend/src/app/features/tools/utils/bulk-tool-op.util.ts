@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, WritableSignal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ConfirmationDialogData, ConfirmationDialogService } from '@shared/components';
-import { escapeHtml, movedToRecycleBinMessage, pluralize, recycleBinNotice } from '@shared/utils';
+import { escapeHtml, extractServerMessage, movedToRecycleBinMessage, pluralize, recycleBinNotice } from '@shared/utils';
 import { Observable } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
@@ -92,7 +92,7 @@ export function runBulkDeleteWithConfirm<T extends { id: number }>(
                     },
                     error: (err: HttpErrorResponse) => {
                         opts.toast.error(
-                            err.error?.message || `Failed to delete ${opts.scopeLabel} ${opts.entityLabel}s.`
+                            extractServerMessage(err) ?? `Failed to delete ${opts.scopeLabel} ${opts.entityLabel}s.`
                         );
                         opts.onError?.();
                     },
@@ -164,7 +164,7 @@ export function runDeleteUnused<T extends { id: number }>(
                 });
             },
             error: (err: HttpErrorResponse) => {
-                opts.toast.error(err.error?.message || 'Failed to load usage data.');
+                opts.toast.error(extractServerMessage(err) ?? 'Failed to load usage data.');
                 opts.onError?.();
             },
         });

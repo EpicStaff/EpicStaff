@@ -133,8 +133,8 @@ export class FlowMessagesPanelComponent implements OnInit, OnChanges, OnDestroy 
                     );
                     this.cdr.markForCheck();
                 },
-                error: (err) => {
-                    this.toast.error(err.error?.detail || 'Failed to stop session');
+                error: () => {
+                    this.toast.error('Failed to stop session');
                 },
             });
     }

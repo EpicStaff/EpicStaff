@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 from app.controllers.export_routes import build_export_router
 from app.core import settings
 from app.domains.sessions.domain import SESSIONS
+from app.main import register_exception_handlers
 from app.services.export_job_service import ExportJobService
 from src.shared.audit.export_jobs import JOB_KEY_PREFIX
 from src.shared.models import SessionAuditEvent
@@ -65,6 +66,7 @@ async def service(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "AUDITOR_EXPORT_DATA_DIR", str(tmp_path))
     app = FastAPI()
     app.include_router(build_export_router(SESSIONS))
+    register_exception_handlers(app)
     app.state.repositories = {SESSIONS.name: InMemoryFakeRepository([_event()])}
     redis_client = FakeAsyncRedis(decode_responses=True)
     app.state.export_job_service = ExportJobService(redis_client)
@@ -120,7 +122,15 @@ async def test_another_callers_job_looks_like_it_does_not_exist(service, method,
 
 
 async def test_unknown_job_is_404(service):
-    assert (await service.download("does-not-exist")).status_code == 404
+    response = await service.download("does-not-exist")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "type": "client_error",
+        "errors": [
+            {"code": "not_found", "detail": "Export job not found", "attr": None, "context": None}
+        ],
+    }
 
 
 async def test_download_returns_410_once_the_file_was_swept(service):
@@ -130,6 +140,12 @@ async def test_download_returns_410_once_the_file_was_swept(service):
     response = await service.download(job_id)
 
     assert response.status_code == 410
+    assert response.json() == {
+        "type": "client_error",
+        "errors": [
+            {"code": "gone", "detail": "Export file has expired", "attr": None, "context": None}
+        ],
+    }
 
 
 @pytest.mark.parametrize("method", ["GET", "DELETE"])
@@ -200,6 +216,12 @@ async def test_failed_export_is_a_500_without_the_exception_text(service):
     download = await service.download(await service.export())
 
     assert download.status_code == 500
+    assert download.json() == {
+        "type": "server_error",
+        "errors": [
+            {"code": "export_failed", "detail": "Export job failed.", "attr": None, "context": None}
+        ],
+    }
     assert "secret internal detail" not in download.text
     listing = await service.client.get(EXPORT_PATH)
     assert listing.json()[0]["status"] == "failed"

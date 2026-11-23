@@ -19,12 +19,16 @@ class RecordingAuditWriter:
     def __init__(self):
         self.start_calls: list[dict] = []
         self.finish_calls: list[dict] = []
+        self.error_calls: list[dict] = []
 
     async def add_start_message(self, **kwargs):
         self.start_calls.append(kwargs)
 
     async def add_finish_message(self, **kwargs):
         self.finish_calls.append(kwargs)
+
+    async def add_error_message(self, **kwargs):
+        self.error_calls.append(kwargs)
 
 
 @pytest.fixture
@@ -80,6 +84,24 @@ async def test_missing_node_input_and_output_default_to_empty_dict(recording_wri
     assert writer.finish_calls[0]["output"] == {}
 
 
+@pytest.mark.asyncio
+async def test_an_error_card_reaches_the_audit_trail_as_its_item_detail(recording_writer):
+    writer, session_id = recording_writer
+    error_item = {
+        "code": "key_value_failed",
+        "detail": "Key-Value node 'Save lead' couldn't read its table.",
+        "attr": None,
+        "context": None,
+    }
+
+    emit_session_audit_event(_chunk(session_id, {"message_type": "error", "error": error_item}))
+    await asyncio.sleep(0)
+
+    assert [call["error"] for call in writer.error_calls] == [
+        "Key-Value node 'Save lead' couldn't read its table."
+    ]
+
+
 RETENTION_SESSION_ID = 7
 
 # Each node message type, and how many events the writer emits for it: a start
@@ -87,7 +109,14 @@ RETENTION_SESSION_ID = 7
 MESSAGE_TYPES = [
     pytest.param({"message_type": "start", "input": {}}, 2, id="start"),
     pytest.param({"message_type": "finish", "output": {}}, 1, id="finish"),
-    pytest.param({"message_type": "error", "details": "boom"}, 1, id="error"),
+    pytest.param(
+        {
+            "message_type": "error",
+            "error": {"code": "node_failed", "detail": "boom", "attr": None, "context": None},
+        },
+        1,
+        id="error",
+    ),
     pytest.param({"message_type": "python", "stdout": ""}, 1, id="custom"),
 ]
 

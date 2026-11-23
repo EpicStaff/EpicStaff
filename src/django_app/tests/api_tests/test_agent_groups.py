@@ -14,6 +14,7 @@ from agents.services.surface_service import SurfaceService
 from rbac.models import OrganizationUser
 from tables.models.label_models import Label
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 pytestmark = pytest.mark.django_db
 
@@ -129,7 +130,7 @@ def test_nested_agent_label_is_400(acme_client, acme_group):
     )
 
     assert response.status_code == 400
-    assert "parent" in response.data["message"]
+    assert "parent" in error_text(response.data)
     assert not Label.objects.filter(name="Inner").exists()
 
 
@@ -201,7 +202,7 @@ def test_agent_group_from_another_org_is_invalid_pk(acme_client, acme, beta_grou
     )
 
     assert response.status_code == 400
-    assert "group: Invalid pk" in response.data["message"]
+    assert "group: Invalid pk" in error_text(response.data)
     assert not AgentDefinition.objects.filter(org=acme).exists()
 
 
@@ -212,7 +213,7 @@ def test_agent_group_of_another_scope_is_invalid_pk(acme_client, acme, scope):
     response = acme_client.post(AGENTS_URL, {"name": "closer", "group": label.id}, format="json")
 
     assert response.status_code == 400
-    assert "group: Invalid pk" in response.data["message"]
+    assert "group: Invalid pk" in error_text(response.data)
     assert not AgentDefinition.objects.filter(org=acme).exists()
 
 
@@ -238,7 +239,7 @@ def test_create_owned_surface_with_group_is_400(acme_client, acme, acme_group):
     )
 
     assert response.status_code == 400
-    assert "group" in response.data["message"]
+    assert "group" in error_text(response.data)
     assert not Surface.objects.filter(org=acme).exists()
 
 
@@ -303,7 +304,7 @@ def test_surface_group_from_another_org_is_invalid_pk(acme_client, acme, beta_gr
     )
 
     assert response.status_code == 400
-    assert "group: Invalid pk" in response.data["message"]
+    assert "group: Invalid pk" in error_text(response.data)
     assert not Surface.objects.filter(org=acme).exists()
 
 

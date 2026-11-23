@@ -1,7 +1,7 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE, error_example
 
 INIT_REALTIME_POST = {
     "summary": "Initialize a realtime agent session",
@@ -27,7 +27,9 @@ INIT_REALTIME_POST = {
             examples=[
                 OpenApiExample(
                     "Validation error",
-                    value={"error": "Invalid input data."},
+                    value=error_example(
+                        "required", "This field is required.", "agent_definition_id"
+                    ),
                     response_only=True,
                 ),
             ],

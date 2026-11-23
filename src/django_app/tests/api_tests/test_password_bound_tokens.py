@@ -13,6 +13,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from rbac.identity.passwords.token_repository import PasswordResetTokenRepository
 from rbac.identity.refresh_cookie import refresh_cookie_name
+from tests.error_envelope import details_by_attr, error_codes
 
 ORIGINAL_PASSWORD = "UserStrongPass123!"
 NEW_PASSWORD = "BrandNewPass456!"
@@ -183,5 +184,6 @@ def test_refresh_for_a_deactivated_user_is_rejected_and_clears_the_cookie(regula
     response = session.post(reverse("refresh"))
 
     assert response.status_code == 401
-    assert response.json() == {"detail": "Token is invalid or expired."}
+    assert error_codes(response.json()) == ["refresh_token_rejected"]
+    assert details_by_attr(response.json()) == {None: ["Token is invalid or expired."]}
     assert response.cookies[refresh_cookie_name()].value == ""

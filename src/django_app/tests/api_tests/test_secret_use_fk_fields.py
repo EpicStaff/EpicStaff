@@ -32,6 +32,7 @@ from rbac.models import OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from tables.serializers.model_serializers import PythonCodeSerializer
 from tables.services.secrets import secret_service
+from tests.error_envelope import details_by_attr, error_text
 
 
 def _client_with(
@@ -206,7 +207,7 @@ class TestFkFieldsAreGated:
         # ValidationError: a `{status_code, code, message}` envelope, folding the
         # per-field detail dict into the "message" string rather than keeping it
         # as a top-level key -- so the field name is asserted against "message".
-        assert field in response.json()["message"]
+        assert field in error_text(response.json())
 
     def test_resending_the_same_value_is_accepted(
         self, request, no_use_client, endpoint, field, fixture_name
@@ -390,7 +391,7 @@ class TestFkFieldsAreGated6b:
             f"{endpoint}{instance.pk}/", {field: secret_b.id}, format="json"
         )
         assert response.status_code == 400, response.json()
-        assert field in response.json()["message"]
+        assert field in error_text(response.json())
 
     def test_resending_the_same_value_is_accepted(
         self, request, no_use_client_6b, endpoint, field, fixture_name
@@ -429,9 +430,7 @@ def test_changing_one_openai_field_names_only_that_field(
     )
 
     assert response.status_code == 400, response.json()
-    body = response.json()["message"]
-    assert "api_key_secret_id" in body
-    assert "transcription_api_key_secret_id" not in body
+    assert [item["attr"] for item in response.json()["errors"]] == ["api_key_secret_id"]
 
 
 @pytest.fixture
@@ -461,7 +460,7 @@ def test_quickstart_with_an_existing_secret_requires_use(
     )
 
     assert response.status_code == 400, response.json()
-    assert "api_key_secret_id" in response.json()["message"]
+    assert "api_key_secret_id" in error_text(response.json())
 
 
 @pytest.mark.django_db
@@ -520,7 +519,7 @@ def test_removing_the_fk_secret_without_use_is_rejected(
     )
 
     assert response.status_code == 400, response.json()
-    assert "api_key_secret_id" in response.json()["message"]
+    assert "api_key_secret_id" in error_text(response.json())
     instance.refresh_from_db()
     assert instance.api_key_secret_id == secret_a.id
 
@@ -569,7 +568,7 @@ def test_removing_the_m2m_secret_without_use_is_rejected(
     )
 
     assert response.status_code == 400, response.json()
-    assert "secret_ids" in response.json()["message"]
+    assert "secret_ids" in error_text(response.json())
     tool.python_code.refresh_from_db()
     assert list(tool.python_code.secrets.values_list("id", flat=True)) == [secret_a.id]
 
@@ -611,7 +610,7 @@ def test_creating_with_the_fk_secret_without_use_is_rejected(
     )
 
     assert response.status_code == 400, response.json()
-    assert "api_key_secret_id" in response.json()["message"]
+    assert "api_key_secret_id" in error_text(response.json())
     assert not LLMConfig.objects.filter(custom_name="fkuse-create-denied").exists()
 
 
@@ -656,7 +655,7 @@ def test_creating_a_tool_with_the_m2m_secret_without_use_is_rejected(
     )
 
     assert response.status_code == 400, response.json()
-    assert "secret_ids" in response.json()["message"]
+    assert "secret_ids" in error_text(response.json())
     assert not PythonCodeTool.objects.filter(name="fkuse-create-tool-denied").exists()
 
 
@@ -784,9 +783,9 @@ class TestPythonCodeDeclarationIsGatedInEveryParent:
         )
 
         assert response.status_code == 400, response.json()
-        message = response.json()["message"]
-        assert f"{attribute}: secret_ids:" in message
-        assert '"Use" permission on Secrets' in message
+        error = response.json()["errors"][0]
+        assert error["attr"] == f"{attribute}.secret_ids"
+        assert '"Use" permission on Secrets' in error["detail"]
         parent.refresh_from_db()
         assert _declared_ids(parent, attribute) == [secret_a.id]
 
@@ -819,7 +818,7 @@ class TestPythonCodeDeclarationIsGatedInEveryParent:
         )
 
         assert response.status_code == 400, response.json()
-        assert response.json()["message"].startswith(f"{attribute}: code: ")
+        assert response.json()["errors"][0]["attr"] == f"{attribute}.code"
         python_code = getattr(parent, attribute)
         python_code.refresh_from_db()
         assert python_code.code == code_before
@@ -898,9 +897,9 @@ def test_bulk_save_declaration_change_without_use_is_rejected_per_node(
     )
 
     assert response.status_code == 400, response.json()
-    [item] = response.json()["errors"][list_key]
-    assert item["index"] == 0
-    [message] = item["errors"][attribute]["secret_ids"]
+    errors = details_by_attr(response.json())
+    assert list(errors) == [f"{list_key}.0.{attribute}.secret_ids"]
+    [message] = errors[f"{list_key}.0.{attribute}.secret_ids"]
     assert '"Use" permission on Secrets' in message
     graph.refresh_from_db()
     node.refresh_from_db()

@@ -13,6 +13,7 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { EnterSubmitDirective } from '@shared/directives';
+import { extractServerMessage } from '@shared/utils';
 import { of, switchMap } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
@@ -98,7 +99,7 @@ export class ProfileEditDialogComponent {
                     this.dialogRef.close(true);
                 },
                 error: (err: HttpErrorResponse) => {
-                    this.toast.error(err.error?.message ?? 'Failed to update profile.');
+                    this.toast.error(extractServerMessage(err) ?? 'Failed to update profile.');
                 },
             });
     }

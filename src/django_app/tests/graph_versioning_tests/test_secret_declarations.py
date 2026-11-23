@@ -918,7 +918,7 @@ class TestRestoreRequiresSecretsUse:
         )
 
         assert response.status_code == 403, response.json()
-        assert response.json()["code"] == CodeWithSecretsRequiresSecretsUsePermissionError.default_code
+        assert response.json()["errors"][0]["code"] == CodeWithSecretsRequiresSecretsUsePermissionError.default_code
         graph.refresh_from_db()
         assert graph.save_version == save_version_before
         assert list(PythonNode.objects.filter(graph=graph).values_list("pk", flat=True)) == [
@@ -939,7 +939,7 @@ class TestRestoreRequiresSecretsUse:
         )
 
         assert response.status_code == 403, response.json()
-        assert response.json()["code"] == FlowWithTriggerNodesRequiresUsePermissionError.default_code
+        assert response.json()["errors"][0]["code"] == FlowWithTriggerNodesRequiresUsePermissionError.default_code
 
     def test_create_graph_without_use_is_refused_and_creates_nothing(
         self, no_use_client, graph, default_org
@@ -952,7 +952,7 @@ class TestRestoreRequiresSecretsUse:
         response = no_use_client.post(f"/api/graph-versions/{version.id}/create-graph/")
 
         assert response.status_code == 403, response.json()
-        assert response.json()["code"] == CodeWithSecretsRequiresSecretsUsePermissionError.default_code
+        assert response.json()["errors"][0]["code"] == CodeWithSecretsRequiresSecretsUsePermissionError.default_code
         assert set(Graph.objects.values_list("pk", flat=True)) == graph_ids_before
 
     def test_a_binned_declared_secret_still_needs_use(self, no_use_client, graph, default_org):
@@ -989,7 +989,7 @@ class TestRestoreRequiresSecretsUse:
         )
 
         assert response.status_code == 403, response.json()
-        assert response.json()["code"] == CodeWithSecretsRequiresSecretsUsePermissionError.default_code
+        assert response.json()["errors"][0]["code"] == CodeWithSecretsRequiresSecretsUsePermissionError.default_code
         assert set(Graph.objects.values_list("pk", flat=True)) == graph_ids_before
         assert list(PythonNode.objects.filter(graph=graph).values_list("pk", flat=True)) == [
             node.pk
@@ -1013,7 +1013,7 @@ class TestRestoreRequiresSecretsUse:
         )
 
         assert response.status_code == 403, response.json()
-        assert response.json()["code"] == CodeWithSecretsRequiresSecretsUsePermissionError.default_code
+        assert response.json()["errors"][0]["code"] == CodeWithSecretsRequiresSecretsUsePermissionError.default_code
 
     def test_with_use_a_version_whose_secret_was_purged_restores_and_warns(
         self, use_client, graph, default_org

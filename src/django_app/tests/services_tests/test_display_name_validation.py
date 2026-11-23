@@ -2,7 +2,6 @@ import pytest
 
 from rbac.exceptions import FormValidationError
 from rbac.validation.auth import AuthValidationService
-from rbac.validation.base import REDACTED_PLACEHOLDER, BaseRBACValidator
 from rbac.validation.user import UserValidationService
 
 CREDENTIALS = {"email": "jane@example.com", "password": "StrongPass123!"}
@@ -61,9 +60,7 @@ def test_creation_rejects_invalid_display_name(validate_creation, submitted, rea
     with pytest.raises(FormValidationError) as caught:
         validate_creation({**CREDENTIALS, "display_name": submitted})
 
-    assert caught.value.errors == [
-        {"field": "display_name", "value": submitted, "reason": reason}
-    ]
+    assert caught.value.field_errors == {"display_name": [reason]}
 
 
 def test_creation_aggregates_display_name_with_email_errors(validate_creation):
@@ -72,9 +69,7 @@ def test_creation_aggregates_display_name_with_email_errors(validate_creation):
             {"email": "not-an-email", "password": "StrongPass123!", "display_name": "  "}
         )
 
-    fields = [error["field"] for error in caught.value.errors]
-    assert "email" in fields
-    assert "display_name" in fields
+    assert {"email", "display_name"} <= set(caught.value.field_errors)
 
 
 # ---- profile PATCH keeps its own contract ----
@@ -93,9 +88,7 @@ def test_profile_patch_rejects_invalid_display_name(user_validator, submitted, r
     with pytest.raises(FormValidationError) as caught:
         user_validator.validate_profile_patch({"display_name": submitted})
 
-    assert caught.value.errors == [
-        {"field": "display_name", "value": submitted, "reason": reason}
-    ]
+    assert caught.value.field_errors == {"display_name": [reason]}
 
 
 def test_profile_patch_null_clears_display_name(user_validator):
@@ -111,15 +104,3 @@ def test_profile_patch_trims_display_name(user_validator):
 def test_profile_patch_without_display_name_returns_nothing(user_validator):
     assert user_validator.validate_profile_patch({}) == {}
 
-
-# ---- redaction ----
-
-
-class _RedactingDisplayNameValidator(BaseRBACValidator):
-    _redacted_fields = frozenset({"display_name"})
-
-
-def test_display_name_error_value_follows_redaction():
-    _, errors = _RedactingDisplayNameValidator()._clean_display_name("   ")
-
-    assert errors[0].value == REDACTED_PLACEHOLDER

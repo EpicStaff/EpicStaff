@@ -98,6 +98,6 @@ def test_an_org_the_caller_cannot_manage_looks_like_it_does_not_exist(request, c
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.json()["code"] == "organization_not_found"
+    assert response.json()["errors"][0]["code"] == "organization_not_found"
     org.refresh_from_db()
     assert org.name == original

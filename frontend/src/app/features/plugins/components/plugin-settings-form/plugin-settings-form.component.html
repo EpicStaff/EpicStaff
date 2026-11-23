@@ -20,8 +20,11 @@
                     <ul class="settings__error-items">
                         @for (item of otherErrorItems(); track $index) {
                             <li>
-                                <code>{{ item.loc }}</code
-                                >: {{ item.message }}
+                                @if (item.attr) {
+                                    <code>{{ item.attr }}</code
+                                    >:
+                                }
+                                {{ item.detail }}
                             </li>
                         }
                     </ul>

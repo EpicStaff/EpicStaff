@@ -183,6 +183,6 @@ def test_the_people_endpoint_does_not_know_a_demoted_superadmin(
     lookup = client.post("/api/plugin-runtime/people/lookup/", {"user_ids": [demoted_superadmin.pk]}, format="json")
     on_behalf = service_account_client(service_account_key(plugin, acme), acme, on_behalf_of=demoted_superadmin.pk)
 
-    assert (response.status_code, response.json()["code"]) == (404, "person_not_found")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (404, "person_not_found")
     assert lookup.json() == {"people": []}
-    assert on_behalf.get("/api/plugin-runtime/me/").json()["code"] == "on_behalf_of_not_allowed"
+    assert on_behalf.get("/api/plugin-runtime/me/").json()["errors"][0]["code"] == "on_behalf_of_not_allowed"

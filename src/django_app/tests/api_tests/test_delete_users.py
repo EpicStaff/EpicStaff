@@ -115,7 +115,7 @@ def test_cannot_delete_self(superadmin):
     response = as_user(superadmin).delete(url(superadmin.pk), data=phrase_body(superadmin), format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "cannot_delete_self"
+    assert response.data["errors"][0]["code"] == "cannot_delete_self"
 
 
 @pytest.mark.django_db
@@ -125,7 +125,7 @@ def test_unknown_user_is_404(superadmin):
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.data["code"] == "user_not_found"
+    assert response.data["errors"][0]["code"] == "user_not_found"
 
 
 @pytest.mark.django_db
@@ -150,7 +150,7 @@ def test_real_delete_with_a_wrong_phrase_is_rejected_and_deletes_nothing(superad
     response = as_user(superadmin).delete(url(victim.pk), **kwargs)
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "invalid_verification_phrase"
+    assert response.data["errors"][0]["code"] == "invalid_verification_phrase"
     assert django_user_model.objects.filter(pk=victim.pk).exists()
     # The error must not echo the guess back (it would confirm or leak the email).
     if body and body.get("verification_phrase"):
@@ -172,8 +172,8 @@ def test_malformed_body_is_a_form_validation_error_that_echoes_nothing(superadmi
     response = as_user(superadmin).delete(url(victim.pk), data=body, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "invalid"
-    assert response.data["errors"][0]["field"] == "verification_phrase"
+    assert response.data["errors"][0]["code"] == "invalid"
+    assert response.data["errors"][0]["attr"] == "verification_phrase"
     assert "victim@x.com" not in response.content.decode()
     assert django_user_model.objects.filter(pk=victim.pk).exists()
 
@@ -188,5 +188,5 @@ def test_email_change_between_preview_and_delete_invalidates_the_phrase(superadm
     response = client.delete(url(victim.pk), data=stale_body, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "invalid_verification_phrase"
+    assert response.data["errors"][0]["code"] == "invalid_verification_phrase"
     assert django_user_model.objects.filter(pk=victim.pk).exists()

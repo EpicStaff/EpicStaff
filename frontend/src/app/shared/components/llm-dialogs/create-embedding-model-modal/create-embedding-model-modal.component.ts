@@ -8,7 +8,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { EnterSubmitDirective } from '@shared/directives';
 import { EmbeddingModel, LLMProvider } from '@shared/models';
 import { EmbeddingModelsStorageService } from '@shared/services';
-import { extractHttpErrorMessage, getProviderIconPath, isClientError } from '@shared/utils';
+import { extractErrorCode, extractHttpErrorMessage, getProviderIconPath, isClientError } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
@@ -121,7 +121,7 @@ export class CreateEmbeddingModelModalComponent implements OnInit {
     }
 
     private clientErrorMessage(error: HttpErrorResponse, fallback: string): string {
-        if (error.error?.code === 'built_in_model_immutable') {
+        if (extractErrorCode(error) === 'built_in_model_immutable') {
             return 'This model is a shared built-in and cannot be edited or deleted.';
         }
         return extractHttpErrorMessage(error, fallback);

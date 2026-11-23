@@ -7,13 +7,19 @@ from models.state import State
 from services.graph.events import StopEvent
 from services.graph.exceptions import ReturnCodeError
 from services.graph.nodes.base_node import BaseNode
-from services.run_python_code_service import RunPythonCodeService, build_state_globals
+from services.run_python_code_service import (
+    RunPythonCodeService,
+    build_state_globals,
+    code_failure_text,
+    streamed_execution_data,
+)
 from src.shared.models import PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 
 
 class PythonNode(BaseNode):
     TYPE = "PYTHON"
+    LABEL = "Python node"
 
     def __init__(
         self,
@@ -60,8 +66,29 @@ class PythonNode(BaseNode):
             storage_credentials=self.storage_credentials,
         )
 
+        return self.read_execution_data(python_code_execution_data, writer, execution_order)
+
+    def read_execution_data(
+        self, python_code_execution_data: dict, writer: StreamWriter, execution_order: int
+    ) -> Any:
+        """Stream the sandbox's execution data and return the code's result.
+
+        Raises:
+            ReturnCodeError: The code exited non-zero, or the sandbox couldn't run it;
+                carries the code's stderr or the sandbox's error detail.
+        """
+        self.write_python_message(python_code_execution_data, writer, execution_order)
+
+        if python_code_execution_data["returncode"] != 0:
+            raise ReturnCodeError(code_failure_text(python_code_execution_data))
+
+        return json.loads(python_code_execution_data["result_data"])
+
+    def write_python_message(
+        self, python_code_execution_data: dict, writer: StreamWriter, execution_order: int
+    ):
         python_message_data = PythonMessageData(
-            python_code_execution_data=python_code_execution_data,
+            python_code_execution_data=streamed_execution_data(python_code_execution_data),
         )
         graph_message = GraphMessage(
             session_id=self.session_id,
@@ -70,8 +97,3 @@ class PythonNode(BaseNode):
             message_data=python_message_data,
         )
         writer(graph_message)
-
-        if python_code_execution_data["returncode"] != 0:
-            raise ReturnCodeError(python_code_execution_data["stderr"])
-
-        return json.loads(python_code_execution_data["result_data"])

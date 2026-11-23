@@ -17,6 +17,7 @@ from rbac.identity.refresh_cookie import (
 )
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
+from tests.error_envelope import details_by_attr, error_codes
 
 HOST_PREFIXED_NAME = "__Host-auth.refresh"
 LEGACY_NAME = "auth.refresh"
@@ -156,7 +157,8 @@ def test_a_legacy_cookie_alone_is_no_session(https, regular_user):
     response = _refresh_with_cookie_header(f"{LEGACY_NAME}={RefreshToken.for_user(regular_user)}")
 
     assert response.status_code == 401
-    assert response.json() == {"detail": "No refresh token."}
+    assert error_codes(response.json()) == ["refresh_token_missing"]
+    assert details_by_attr(response.json()) == {None: ["No refresh token."]}
 
 
 @pytest.mark.django_db

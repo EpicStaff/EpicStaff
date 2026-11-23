@@ -22,6 +22,7 @@ from tables.models.webhook_models import RealtimeChannel, TwilioChannel
 from tables.services.secrets import secret_service
 from tables.services.twilio_service import TwilioService
 from tests.api_tests.role_grant_clients import FULL_CRUD, client_with_grants
+from tests.error_envelope import details_by_attr, error_text
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 pytestmark = pytest.mark.django_db
@@ -105,10 +106,10 @@ def _twilio(fake_or_error):
 def _field_error(response, expected_field: str) -> str:
     """The message of a 400 the project's exception handler rendered for one field."""
     body = response.json()
-    assert body["status_code"] == 400, body
-    field, _, message = body["message"].partition(": ")
-    assert field == expected_field, body
-    return message
+    assert response.status_code == 400, body
+    details = details_by_attr(body)
+    assert list(details) == [expected_field], body
+    return details[expected_field][0]
 
 
 def _phone_number_error(response) -> str:
@@ -334,7 +335,7 @@ def test_twilio_down_while_the_holder_is_checked_is_a_503_and_changes_nothing(
         response = _create(acme_admin_client, acme_channel, acme_secret, HELD_NUMBER)
 
     assert response.status_code == 503
-    assert response.json()["message"] == COULD_NOT_VERIFY
+    assert error_text(response.json()) == COULD_NOT_VERIFY
     assert not TwilioChannel.objects.filter(channel=acme_channel).exists()
     beta_holds_the_number.refresh_from_db()
     assert beta_holds_the_number.phone_number == HELD_NUMBER
@@ -361,7 +362,7 @@ def test_only_a_definite_credentials_rejection_releases_a_holder(
 
     assert response.status_code == expected_status, response.json()
     if holder_keeps_the_number:
-        assert response.json()["message"] == COULD_NOT_VERIFY
+        assert error_text(response.json()) == COULD_NOT_VERIFY
     beta_holds_the_number.refresh_from_db()
     assert (beta_holds_the_number.phone_number == HELD_NUMBER) is holder_keeps_the_number
     assert TwilioChannel.objects.filter(channel=acme_channel).exists() is not holder_keeps_the_number
@@ -474,8 +475,7 @@ def test_a_number_twilio_cannot_confirm_is_a_503_and_is_not_saved(
 
     assert held.status_code == free.status_code == 503
     assert held.json() == free.json()
-    assert free.json()["status_code"] == 503
-    assert free.json()["message"] == COULD_NOT_VERIFY
+    assert error_text(free.json()) == COULD_NOT_VERIFY
     assert not TwilioChannel.objects.filter(channel=acme_channel).exists()
     beta_holds_the_number.refresh_from_db()
     assert beta_holds_the_number.phone_number == HELD_NUMBER

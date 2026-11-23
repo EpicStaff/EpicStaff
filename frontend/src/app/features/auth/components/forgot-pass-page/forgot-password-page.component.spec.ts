@@ -119,7 +119,10 @@ describe('ForgotPasswordPageComponent result state', () => {
             new HttpErrorResponse({
                 status: 429,
                 headers: new HttpHeaders(retryAfter === null ? {} : { 'Retry-After': retryAfter }),
-                error: { status_code: 429, code: 'throttled', message: 'Request was throttled.' },
+                error: {
+                    type: 'client_error',
+                    errors: [{ code: 'throttled', detail: 'Request was throttled.', attr: null, context: null }],
+                },
             })
         );
 
@@ -127,9 +130,13 @@ describe('ForgotPasswordPageComponent result state', () => {
         expect(normalizedText('.subtitle')).toBe('Reset your password');
     });
 
-    it('shows the server message for any other failure', () => {
-        submitRejectedWith(new HttpErrorResponse({ status: 400, error: { message: 'Enter a valid email.' } }));
+    it('shows the server message, its field in front, for any other failure', () => {
+        const body = {
+            type: 'validation_error',
+            errors: [{ code: 'invalid', detail: 'Enter a valid email.', attr: 'email' }],
+        };
+        submitRejectedWith(new HttpErrorResponse({ status: 400, error: body }));
 
-        expect(toastError).toHaveBeenCalledWith('Enter a valid email.');
+        expect(toastError).toHaveBeenCalledWith('email: Enter a valid email.');
     });
 });

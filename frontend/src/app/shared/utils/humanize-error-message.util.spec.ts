@@ -16,7 +16,18 @@ describe('humanizeErrorMessage', () => {
         ['constructor: Not an acronym.', 'Constructor: Not an acronym.'],
         ['python_code: secret_ids: Requires "Use".', 'Python code: Secret ids: Requires "Use".'],
         ['name: a tool with this name already exists.', 'Name: a tool with this name already exists.'],
+        ['python_code.secret_ids: Requires "Use".', 'Python code: Secret ids: Requires "Use".'],
+        [
+            'ngrok_config.auth_token_secret_id: Changing the secrets requires "Use".',
+            'Ngrok config: Auth token secret: Changing the secrets requires "Use".',
+        ],
+        [
+            'classification_decision_table_node_list.3.prompt_configs.1.result_variable: Required.',
+            'Classification decision table node list: Prompt configs: Result variable: Required.',
+        ],
         ['model: Bad model.; base_url: Bad URL.', 'Model: Bad model.; Base URL: Bad URL.'],
+        ['name: Taken.; python_code.secret_ids: Not allowed.', 'Name: Taken.; Python code: Secret ids: Not allowed.'],
+        ['Read the docs at example.com: then retry.', 'Read the docs at example.com: then retry.'],
         ['quickstart will not attach a key: see the model.', 'Quickstart will not attach a key: see the model.'],
         ['the "Use" permission is missing.', 'The "Use" permission is missing.'],
         ['Already a sentence about base_url: kept.', 'Already a sentence about base_url: kept.'],

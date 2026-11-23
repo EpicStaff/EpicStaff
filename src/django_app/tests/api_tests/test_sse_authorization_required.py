@@ -82,15 +82,31 @@ class _StreamRefusingEveryone(SSEMixin):
         (
             NotFound("Conversation not found."),
             404,
-            {"status_code": 404, "code": "not_found", "message": "Conversation not found."},
+            {
+                "type": "client_error",
+                "errors": [
+                    {
+                        "code": "not_found",
+                        "detail": "Conversation not found.",
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
+            },
         ),
         (
             PermissionDenied(),
             403,
             {
-                "status_code": 403,
-                "code": "permission_denied",
-                "message": "You do not have permission to perform this action.",
+                "type": "client_error",
+                "errors": [
+                    {
+                        "code": "permission_denied",
+                        "detail": "You do not have permission to perform this action.",
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
             },
         ),
     ],
@@ -113,7 +129,13 @@ def test_a_missing_ticket_is_refused_before_authorize_runs():
 
     assert response.status_code == 401
     assert json.loads(response.content) == {
-        "status_code": 401,
-        "code": "invalid_sse_ticket",
-        "message": "Invalid or expired SSE ticket.",
+        "type": "client_error",
+        "errors": [
+            {
+                "code": "invalid_sse_ticket",
+                "detail": "Invalid or expired SSE ticket.",
+                "attr": None,
+                "context": None,
+            }
+        ],
     }

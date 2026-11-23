@@ -244,9 +244,15 @@ describe('VersionHistoryPanelComponent', () => {
                         new HttpErrorResponse({
                             status: 403,
                             error: {
-                                status_code: 403,
-                                code: 'flow_with_trigger_nodes_requires_use_permission',
-                                message: 'This flow contains trigger nodes.',
+                                type: 'client_error',
+                                errors: [
+                                    {
+                                        code: 'flow_with_trigger_nodes_requires_use_permission',
+                                        detail: 'This flow contains trigger nodes.',
+                                        attr: null,
+                                        context: null,
+                                    },
+                                ],
                             },
                         })
                 )
@@ -287,9 +293,15 @@ describe('VersionHistoryPanelComponent', () => {
                         new HttpErrorResponse({
                             status: 403,
                             error: {
-                                status_code: 403,
-                                code: 'code_with_secrets_requires_secrets_use_permission',
-                                message: SECRETS_REFUSAL_MESSAGE,
+                                type: 'client_error',
+                                errors: [
+                                    {
+                                        code: 'code_with_secrets_requires_secrets_use_permission',
+                                        detail: SECRETS_REFUSAL_MESSAGE,
+                                        attr: null,
+                                        context: null,
+                                    },
+                                ],
                             },
                         })
                 )

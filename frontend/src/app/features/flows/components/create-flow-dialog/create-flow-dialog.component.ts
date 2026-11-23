@@ -10,6 +10,7 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { EnterSubmitDirective, ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
+import { extractFieldErrorMessages } from '@shared/utils';
 import { of, Subscription } from 'rxjs';
 import { finalize, map, switchMap } from 'rxjs/operators';
 
@@ -118,11 +119,7 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
             .some((f) => f.name.toLowerCase() === trimmedName.toLowerCase() && f.id !== this.originalFlow?.id);
         if (isDuplicate) {
             this.nameErrorsRef.setErrors([
-                {
-                    field: 'name',
-                    value: trimmedName,
-                    reason: 'A flow with this name already exists. Please choose a different name.',
-                },
+                { attr: 'name', detail: 'A flow with this name already exists. Please choose a different name.' },
             ]);
             return;
         }
@@ -143,7 +140,7 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
                 .pipe(finalize(() => (this.isSubmitting = false)))
                 .subscribe({
                     next: (updatedFlow) => this.dialogRef.close(updatedFlow),
-                    error: (err: HttpErrorResponse) => this.setNameError(err, trimmedName, 'update'),
+                    error: (err: HttpErrorResponse) => this.setNameError(err, 'update'),
                 });
             return;
         }
@@ -178,7 +175,7 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
                 next: (newFlow: GraphDto) => {
                     this.dialogRef.close(newFlow);
                 },
-                error: (err: HttpErrorResponse) => this.setNameError(err, trimmedName, 'create'),
+                error: (err: HttpErrorResponse) => this.setNameError(err, 'create'),
             });
     }
 
@@ -191,13 +188,13 @@ export class CreateFlowDialogComponent implements OnInit, OnDestroy {
         this.flowForm.get('flow_icon')?.setValue(icon || '');
     }
 
-    private setNameError(err: HttpErrorResponse, name: string, action: 'create' | 'update'): void {
-        const nameError = err?.error?.name?.[0] as string | undefined;
-        const reason = nameError?.toLowerCase().includes('already exists')
+    private setNameError(err: HttpErrorResponse, action: 'create' | 'update'): void {
+        const nameError = extractFieldErrorMessages(err, 'name')[0];
+        const detail = nameError?.toLowerCase().includes('already exists')
             ? 'A flow with this name already exists. Please choose a different name.'
             : action === 'create'
               ? 'Failed to create flow. Please try again.'
               : 'Failed to update flow. Please try again.';
-        this.nameErrorsRef.setErrors([{ field: 'name', value: name, reason }]);
+        this.nameErrorsRef.setErrors([{ attr: 'name', detail }]);
     }
 }

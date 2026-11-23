@@ -2,10 +2,12 @@ import json
 import re
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 from dotdict import DotDict
+from loguru import logger
 
-from clients.errors import ClientValidationError
+from clients.key_value import KeyValueClient
 from services.graph.exceptions import KeyValueNodeError
 from services.graph.nodes import key_value_node
 from services.graph.nodes.key_value_node import KeyValueNode
@@ -192,8 +194,8 @@ async def test_key_placeholder_value_with_braces_is_rejected():
         await run(node, {"name": "a{b}"})
 
     assert str(error.value) == (
-        "Key-Value node 'persist_1': key 'profile_{variables.name}' resolved to "
-        f"'profile_a{{b}}', which is not a valid key: {key_value_node.KEY_RULE}."
+        'Key-Value node "persist_1": key "profile_{variables.name}" resolved to '
+        f"'profile_a{{b}}', which isn't a valid key: {key_value_node.KEY_RULE}."
     )
     client.read.assert_not_awaited()
 
@@ -335,8 +337,8 @@ async def test_render_key_rejects_too_long_key():
     with pytest.raises(KeyValueNodeError) as error:
         await run(node, {"long": "x" * 513})
     assert str(error.value) == (
-        "Key-Value node 'persist_1': key '{variables.long}' resolved to "
-        f"'{'x' * 100}…', which is not a valid key: use only letters, digits and _, "
+        'Key-Value node "persist_1": key "{variables.long}" resolved to '
+        f"'{'x' * 100}…', which isn't a valid key: use only letters, digits and _, "
         "don't start with a digit, and keep it to at most 512 characters."
     )
 
@@ -387,8 +389,8 @@ async def test_invalid_resolved_key_is_rejected_before_calling_the_table(mode, r
 
     shown = resolved if len(resolved) <= 100 else f"{resolved[:100]}…"
     assert str(error.value) == (
-        f"Key-Value node 'persist_1': key '{{variables.key}}' resolved to {shown!r}, "
-        f"which is not a valid key: {key_value_node.KEY_RULE}."
+        f'Key-Value node "persist_1": key "{{variables.key}}" resolved to {shown!r}, '
+        f"which isn't a valid key: {key_value_node.KEY_RULE}."
     )
     getattr(client, mode).assert_not_awaited()
 
@@ -607,35 +609,189 @@ async def test_write_accepts_canonical_list_indexes():
     assert output == {"first": 0, "last": 10}
 
 
+@pytest.fixture
+def captured_logs():
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="WARNING")
+    yield records
+    logger.remove(sink_id)
+
+
+def _django(status_code: int, **response) -> httpx.MockTransport:
+    """Django's internal key-value route answering every call with one response."""
+    return httpx.MockTransport(lambda request: httpx.Response(status_code, **response))
+
+
+def _django_unreachable() -> httpx.MockTransport:
+    def refuse(request):
+        raise httpx.ConnectError("connection refused by internal-host:8000", request=request)
+
+    return httpx.MockTransport(refuse)
+
+
+def _envelope(status_code: int, code: str, message: str) -> dict:
+    error_type = "client_error" if status_code < 500 else "server_error"
+    item = {"code": code, "detail": message, "attr": None, "context": None}
+    return {"json": {"type": error_type, "errors": [item]}}
+
+
+async def _streamed_errors(mode: str, transport: httpx.MockTransport) -> list[str]:
+    """Run a node against the real client over `transport`; return the error cards it streamed."""
+    client = KeyValueClient(
+        "http://django:8000/api/", api_key="secret", timeout=5.0, transport=transport
+    )
+    await client.start()
+    entries = [{"key": "k", "value": "variables.a"}] if mode != "delete" else [{"key": "k"}]
+    node = make_node(mode, entries, client)
+    messages = []
+    try:
+        with pytest.raises(KeyValueNodeError):
+            await node.run(make_state({"a": 1}), messages.append)
+    finally:
+        await client.stop()
+    assert not any(
+        isinstance(message.message_data, dict) and message.message_data.get("message_type") == "key_value"
+        for message in messages
+    )
+    return [
+        message.message_data.error["detail"]
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("mode", ["read", "write", "delete"])
-async def test_client_error_is_reported_with_node_context_and_no_key_value_message(mode):
-    client = make_client()
-    getattr(client, mode).side_effect = ClientValidationError("Key-value table 3 not found.")
-    node = make_node(mode, [{"key": "k", "value": "variables.a"}] if mode != "delete" else [{"key": "k"}], client)
-    writer = MagicMock()
+@pytest.mark.parametrize(
+    ("mode", "transport", "expected"),
+    [
+        pytest.param(
+            "write",
+            _django(
+                400,
+                **_envelope(
+                    400,
+                    "key_value_entry_value_too_large",
+                    "Value is 70000 bytes; the limit is 65536 bytes.",
+                ),
+            ),
+            'Key-Value node "persist_1": Value is 70000 bytes; the limit is 65536 bytes.',
+            id="size-limit",
+        ),
+        pytest.param(
+            "read",
+            _django(404, **_envelope(404, "key_value_table_not_found", "Key-value table 3 not found.")),
+            'Key-Value node "persist_1": Key-value table 3 not found.',
+            id="table-not-found",
+        ),
+        pytest.param(
+            "delete",
+            _django(
+                403,
+                **_envelope(
+                    403,
+                    "key_value_mode_denied",
+                    "You need Key-Value Tables View and Delete permission to configure a delete "
+                    "node on the table 'Customers'.",
+                ),
+            ),
+            'Key-Value node "persist_1": You need Key-Value Tables View and Delete permission '
+            "to configure a delete node on the table 'Customers'.",
+            id="mode-denied",
+        ),
+    ],
+)
+async def test_django_refusal_streams_djangos_own_message(mode, transport, expected):
+    assert await _streamed_errors(mode, transport) == [expected]
 
-    with pytest.raises(KeyValueNodeError, match=f"persist_1.*{mode} failed: Key-value table 3 not found"):
-        await node.execute(state=make_state({"a": 1}), writer=writer, execution_order=0, input_={})
 
-    assert key_value_messages(writer) == []
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("mode", "transport", "expected"),
+    [
+        pytest.param(
+            "read",
+            _django(500, text="Traceback at http://internal-host:8000/internal/"),
+            'Key-Value node "persist_1" couldn\'t read its table.',
+            id="5xx",
+        ),
+        pytest.param(
+            "write",
+            _django(500, **_envelope(500, "error", "relation at internal-host:8000 does not exist")),
+            'Key-Value node "persist_1" couldn\'t write to its table.',
+            id="5xx-envelope",
+        ),
+        pytest.param(
+            "delete",
+            _django(502, text="<html>502 Bad Gateway internal-host:8000</html>"),
+            'Key-Value node "persist_1" couldn\'t delete from its table.',
+            id="proxy-html",
+        ),
+        pytest.param(
+            "read",
+            _django(400, text="<html>400 from internal-host:8000</html>"),
+            'Key-Value node "persist_1" couldn\'t read its table.',
+            id="4xx-unreadable-body",
+        ),
+        pytest.param(
+            "read",
+            _django(400, json={"detail": "internal-host:8000 rejected the body"}),
+            'Key-Value node "persist_1" couldn\'t read its table.',
+            id="4xx-without-message",
+        ),
+        pytest.param(
+            "write",
+            _django_unreachable(),
+            'Key-Value node "persist_1" couldn\'t write to its table.',
+            id="no-connection",
+        ),
+    ],
+)
+async def test_server_failure_or_unreadable_answer_streams_the_fact_and_logs_the_raw_text(
+    mode, transport, expected, captured_logs, monkeypatch
+):
+    async def no_wait(seconds):
+        return None
+
+    # A failed connection is retried with backoff waits; the test doesn't sleep through them.
+    monkeypatch.setattr("clients.key_value.asyncio.sleep", no_wait)
+
+    assert await _streamed_errors(mode, transport) == [expected]
+    assert any("internal-host:8000" in record for record in captured_logs)
+
+
+@pytest.mark.asyncio
+async def test_entry_error_is_streamed_as_its_own_text():
+    node = make_node("write", _write_from("variables.email"))
+    messages = []
+
+    with pytest.raises(KeyValueNodeError):
+        await node.run(make_state({}), messages.append)
+
+    error_details = [
+        message.message_data.error["detail"]
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+    assert error_details == [
+        'Key-Value node "persist_1": value "variables.email" is missing from the flow state.'
+    ]
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("target", "variables", "message"),
     [
-        ("variables.tags.name", {"tags": ["x"]}, "'variables.tags' is a list; use an index like 'variables.tags[0]'"),
-        ("variables.tags.append", {"tags": ["x"]}, "'variables.tags' is a list"),
-        ("variables.user[0]", {"user": {"id": 1}}, "'variables.user' is an object; use a name like 'variables.user.name'"),
-        ("variables.user[0].name", {"user": {"id": 1}}, "'variables.user' is an object"),
-        ("variables.missing[0]", {}, "'variables.missing' does not exist"),
-        ("variables.a.missing[0]", {"a": {}}, "'variables.a.missing' does not exist"),
-        ("variables.tags[3]", {"tags": ["x"]}, "index 3 is out of range for 'variables.tags', which has 1 items"),
-        ("variables.tags[5].name", {"tags": ["x"]}, "index 5 is out of range for 'variables.tags'"),
-        ("variables.name.first", {"name": "Ann"}, "'variables.name' is a string, so it cannot hold 'first'"),
-        ("variables.nothing.first", {"nothing": None}, "'variables.nothing' is null"),
-        ("variables.count[0]", {"count": 3}, "'variables.count' is a number, so it has no index [0]"),
+        ("variables.tags.name", {"tags": ["x"]}, '"variables.tags" is a list, so it has no "name".'),
+        ("variables.tags.append", {"tags": ["x"]}, '"variables.tags" is a list'),
+        ("variables.user[0]", {"user": {"id": 1}}, '"variables.user" is an object, so it has no index [0].'),
+        ("variables.user[0].name", {"user": {"id": 1}}, '"variables.user" is an object'),
+        ("variables.missing[0]", {}, '"variables.missing" doesn\'t exist, so "variables.missing[0]" has no list to index into.'),
+        ("variables.a.missing[0]", {"a": {}}, '"variables.a.missing" doesn\'t exist'),
+        ("variables.tags[3]", {"tags": ["x"]}, 'index 3 is out of range for "variables.tags", which has 1 items.'),
+        ("variables.tags[5].name", {"tags": ["x"]}, 'index 5 is out of range for "variables.tags"'),
+        ("variables.name.first", {"name": "Ann"}, '"variables.name" is a string, so it can\'t hold "first".'),
+        ("variables.nothing.first", {"nothing": None}, '"variables.nothing" is null'),
+        ("variables.count[0]", {"count": 3}, '"variables.count" is a number, so it has no index [0].'),
     ],
 )
 async def test_read_rejects_target_that_does_not_fit_the_state(target, variables, message):
@@ -669,33 +825,33 @@ REJECTED = [
         for target, message in [
             ("variables", "whole flow state"),
             ("variables.", "whole flow state"),
-            ("profile", "'profile' is not a flow state path"),
-            ("", "'' is not a flow state path"),
-            ("variables[0]", "is not a flow state path"),
-            ("variables.user name", "is not a flow state path"),
-            ("variables.a..b", "is not a flow state path"),
-            (" variables.a", "is not a flow state path"),
-            ("variables.tags[x]", "is not a flow state path"),
-            ("variables.tags[01]", "is not a flow state path"),
-            ("variables.count|0", "takes no '|default'"),
-            ("variables._properties", "'_'"),
-            ("variables.user.__dict__", "'_'"),
-            ("variables.cart.items", "uses 'items', the name of a built-in method"),
-            ("variables.deep_dump.x", "uses 'deep_dump', the name of a built-in method"),
+            ("profile", '"profile" isn\'t a flow state path.'),
+            ("", '"" isn\'t a flow state path.'),
+            ("variables[0]", "isn't a flow state path"),
+            ("variables.user name", "isn't a flow state path"),
+            ("variables.a..b", "isn't a flow state path"),
+            (" variables.a", "isn't a flow state path"),
+            ("variables.tags[x]", "isn't a flow state path"),
+            ("variables.tags[01]", "isn't a flow state path"),
+            ("variables.count|0", 'read target "variables.count|0" has a "|default", which a read target can\'t have.'),
+            ("variables._properties", '"variables._properties" has a segment starting with "_".'),
+            ("variables.user.__dict__", 'segment starting with "_"'),
+            ("variables.cart.items", 'uses "items", the name of a built-in method.'),
+            ("variables.deep_dump.x", 'uses "deep_dump", the name of a built-in method.'),
         ]
     ],
     pytest.param(
         "read", [{"key": "k1", "value": "variables.a"}, {"key": "k2", "value": "variables.a"}], {},
-        "more than one entry reads into 'variables.a'", id="read-two-keys-into-one-target",
+        'more than one entry reads into "variables.a".', id="read-two-keys-into-one-target",
     ),
     pytest.param(
         "read", [{"key": "k1", "value": "variables.a"}, {"key": "k1", "value": "variables.a"}], {},
-        "more than one entry reads into 'variables.a'", id="read-duplicate-entry",
+        'more than one entry reads into "variables.a".', id="read-duplicate-entry",
     ),
     *[
         pytest.param(
             "read", [{"key": "k1", "value": first}, {"key": "k2", "value": second}], {},
-            f"read target '{inner}' is inside read target '{outer}'", id=f"read-nested:{first}+{second}",
+            f'read target "{inner}" is inside read target "{outer}".', id=f"read-nested:{first}+{second}",
         )
         for first, second, inner, outer in [
             ("variables.user", "variables.user.name", "variables.user.name", "variables.user"),
@@ -708,32 +864,32 @@ REJECTED = [
     *[
         pytest.param("write", _write_from(value_path), variables, message, id=f"write-value:{value_path!r}")
         for value_path, variables, message in [
-            ("variables.user name", {"user": {"id": 1}}, "is not a flow state path"),
-            ("variables[0]", {"user": {"id": 1}}, "is not a flow state path"),
-            ("variables.a..b|0", {"user": {"id": 1}}, "is not a flow state path"),
+            ("variables.user name", {"user": {"id": 1}}, "isn't a flow state path"),
+            ("variables[0]", {"user": {"id": 1}}, "isn't a flow state path"),
+            ("variables.a..b|0", {"user": {"id": 1}}, "isn't a flow state path"),
             ("variables", {"user": {"id": 1}}, "whole flow state"),
             ("variables.", {"user": {"id": 1}}, "whole flow state"),
             ("variables[", {"user": {"id": 1}}, "whole flow state"),
             ("variables.|0", {"user": {"id": 1}}, "whole flow state"),
-            ("variables._properties", {"user": {"_secret": 1}}, re.compile(r"'variables._properties'.*'_'")),
-            ("variables.__dict__", {"user": {"_secret": 1}}, re.compile(r"'variables.__dict__'.*'_'")),
-            ("variables.user._secret|0", {"user": {"_secret": 1}}, re.compile(r"'variables\.user\._secret\|0'.*'_'")),
-            ("variables.cart.items", {"cart": {"total": 3}}, re.compile(r"'variables.cart.items'.*method")),
-            ("profile", {"profile": "Ann"}, re.compile(r"'profile'.*variables.user.id")),
+            ("variables._properties", {"user": {"_secret": 1}}, re.compile(r'"variables._properties".*"_"')),
+            ("variables.__dict__", {"user": {"_secret": 1}}, re.compile(r'"variables.__dict__".*"_"')),
+            ("variables.user._secret|0", {"user": {"_secret": 1}}, re.compile(r'"variables\.user\._secret\|0".*"_"')),
+            ("variables.cart.items", {"cart": {"total": 3}}, re.compile(r'"variables.cart.items".*method')),
+            ("profile", {"profile": "Ann"}, '"profile" isn\'t a flow state path.'),
             # A missing path would write null over a previously stored value.
-            ("variables.profile", {}, "'variables.profile' is missing from the flow state"),
-            ("variables.user.middle_name", {"user": {"name": "Ann"}}, "'variables.user.middle_name' is missing from the flow state"),
-            ("variables.users[0].middle_name", {"users": [{"name": "Ann"}]}, "'variables.users[0].middle_name' is missing from the flow state"),
-            ("variables.user.profile.middle_name", {"user": {}}, "'variables.user.profile.middle_name' is missing from the flow state"),
-            ("variables.nothing.first", {"nothing": None}, "'variables.nothing' is null, so it cannot hold 'first'"),
+            ("variables.profile", {}, 'value "variables.profile" is missing from the flow state.'),
+            ("variables.user.middle_name", {"user": {"name": "Ann"}}, 'value "variables.user.middle_name" is missing from the flow state.'),
+            ("variables.users[0].middle_name", {"users": [{"name": "Ann"}]}, 'value "variables.users[0].middle_name" is missing from the flow state.'),
+            ("variables.user.profile.middle_name", {"user": {}}, 'value "variables.user.profile.middle_name" is missing from the flow state.'),
+            ("variables.nothing.first", {"nothing": None}, '"variables.nothing" is null, so it can\'t hold "first".'),
             # getattr on a DotDict finds a dict method before a stored key of the same name, so the
             # resolver cannot read past such a segment: it must raise rather than store null or the
             # default over the real value.
-            ("variables.values.total", {"values": {"total": 5}}, "uses 'values', the name of a built-in method"),
-            ("variables.items.count", {"items": {"count": 5}}, "uses 'items', the name of a built-in method"),
-            ("variables.order.items.count", {"order": {"items": {"count": 5}}}, "uses 'items', the name of a built-in method"),
-            ("variables.values.total|0", {"values": {"total": 5}}, "uses 'values', the name of a built-in method"),
-            ("variables.values.total|null", {"values": {"total": 5}}, "uses 'values', the name of a built-in method"),
+            ("variables.values.total", {"values": {"total": 5}}, 'uses "values", the name of a built-in method.'),
+            ("variables.items.count", {"items": {"count": 5}}, 'uses "items", the name of a built-in method.'),
+            ("variables.order.items.count", {"order": {"items": {"count": 5}}}, 'uses "items", the name of a built-in method.'),
+            ("variables.values.total|0", {"values": {"total": 5}}, 'uses "values", the name of a built-in method.'),
+            ("variables.values.total|null", {"values": {"total": 5}}, 'uses "values", the name of a built-in method.'),
             ("variables.name.upper", {"name": "Ann"}, "'variables.name.upper' reads a built-in method"),
             ("variables.tags.count", {"tags": ["x"]}, "'variables.tags.count' reads a built-in method"),
         ]
@@ -743,7 +899,7 @@ REJECTED = [
             "write",
             [{"key": first, "value": "variables.first"}, {"key": second, "value": "variables.second"}],
             {"id": 1, "other_id": "1", "first": 1, "second": 2},
-            "more than one entry writes key 'k_1'", id=f"write-same-key:{first}+{second}",
+            'more than one entry writes key "k_1".', id=f"write-same-key:{first}+{second}",
         )
         for first, second in [("k_1", "k_1"), ("k_{variables.id}", "k_1"), ("k_{variables.id}", "k_{ variables.other_id }")]
     ],
@@ -751,35 +907,35 @@ REJECTED = [
     *[
         pytest.param("read", _key(key), variables, message, id=f"key:{key!r}:{variables}")
         for key, variables, message in [
-            ("profile_{variables.user.id}", {}, "variables.user.id"),
-            ("profile_{variables.user_id}", {"user_id": None}, "variables.user_id"),
-            ("profile_{user_id}", {"user_id": 42}, re.compile(r"'user_id'.*profile_\{variables\.user\.id\}")),
-            ("profile_{ }", {"user_id": 42}, "profile_{variables.user.id}"),
-            ("profile_{variables.}", {"user": {"id": 1}}, re.compile(r"'variables.'.*whole flow state")),
-            ("k_{variables._properties}", {"user": {"id": 1}}, re.compile(r"'variables._properties'.*'_'")),
-            ("cart_{variables.cart.items}", {"cart": {"total": 3}}, re.compile(r"'variables.cart.items'.*method")),
-            ("k_{variables.values.id}", {"values": {"id": 1}}, "uses 'values', the name of a built-in method"),
-            ("profile_{}", {"x": 1}, "unbalanced placeholder"),
-            ("{{variables.x}}", {"x": 1}, "unbalanced placeholder"),
-            ("profile_{variables.x", {"x": 1}, "unbalanced placeholder"),
-            ("{variables.tags[5]}", {"tags": ["x"]}, "cannot resolve"),
-            ("{variables.user[0]}", {"user": {"id": 1}}, "cannot resolve"),
-            ("{variables.nothing[0]}", {"nothing": None}, "cannot resolve"),
-            ("profile_{variables.user_id}", {"user_id": {"x": 1}}, "string or number"),
-            ("profile_{variables.user_id}", {"user_id": [1, 2]}, "string or number"),
+            ("profile_{variables.user.id}", {}, 'key "profile_{variables.user.id}" needs "variables.user.id", which is missing from the flow state or is null.'),
+            ("profile_{variables.user_id}", {"user_id": None}, '"variables.user_id", which is missing from the flow state or is null.'),
+            ("profile_{user_id}", {"user_id": 42}, '"user_id" isn\'t a flow state path.'),
+            ("profile_{ }", {"user_id": 42}, '"" isn\'t a flow state path.'),
+            ("profile_{variables.}", {"user": {"id": 1}}, re.compile(r'"variables.".*whole flow state')),
+            ("k_{variables._properties}", {"user": {"id": 1}}, re.compile(r'"variables._properties".*"_"')),
+            ("cart_{variables.cart.items}", {"cart": {"total": 3}}, re.compile(r'"variables.cart.items".*method')),
+            ("k_{variables.values.id}", {"values": {"id": 1}}, 'uses "values", the name of a built-in method.'),
+            ("profile_{}", {"x": 1}, 'key "profile_{}" has an empty or unbalanced placeholder.'),
+            ("{{variables.x}}", {"x": 1}, "unbalanced placeholder."),
+            ("profile_{variables.x", {"x": 1}, "unbalanced placeholder."),
+            ("{variables.tags[5]}", {"tags": ["x"]}, '"variables.tags[5]" can\'t be read from the flow state.'),
+            ("{variables.user[0]}", {"user": {"id": 1}}, '"variables.user[0]" can\'t be read from the flow state.'),
+            ("{variables.nothing[0]}", {"nothing": None}, '"variables.nothing[0]" can\'t be read from the flow state.'),
+            ("profile_{variables.user_id}", {"user_id": {"x": 1}}, 'key "profile_{variables.user_id}" needs "variables.user_id" to be a string or number, but it is an object.'),
+            ("profile_{variables.user_id}", {"user_id": [1, 2]}, 'needs "variables.user_id" to be a string or number, but it is a list.'),
         ]
     ],
     *[
         pytest.param(
             mode, [{"key": "user-1"}] if mode == "delete" else [{"key": "user-1", "value": "variables.source"}],
-            {"source": 1}, "key 'user-1' resolved to 'user-1', which is not a valid key", id=f"{mode}-invalid-static-key",
+            {"source": 1}, "key \"user-1\" resolved to 'user-1', which isn't a valid key", id=f"{mode}-invalid-static-key",
         )
         for mode in ("read", "write", "delete")
     ],
     *[
         pytest.param(
             mode, entries_for(mode, 501), {f"v{index}": index for index in range(501)},
-            "501 entries; at most 500", id=f"{mode}-too-many-entries",
+            "has 501 entries; at most 500 are allowed.", id=f"{mode}-too-many-entries",
         )
         for mode in ("read", "write", "delete")
     ],
@@ -808,5 +964,7 @@ async def test_invalid_entry_is_rejected_before_touching_the_table(mode, entries
 async def test_node_without_table_is_rejected():
     node = make_node("read", _key("k"), table_id=None)
 
-    with pytest.raises(KeyValueNodeError, match="no table"):
+    with pytest.raises(KeyValueNodeError) as error:
         await run(node, {})
+
+    assert str(error.value) == 'Key-Value node "persist_1" has no table selected.'

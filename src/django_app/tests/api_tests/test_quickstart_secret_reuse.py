@@ -21,6 +21,7 @@ from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from tables.services.quickstart_service import QuickstartService
 from tables.services.secrets import secret_encryption, secret_service
+from tests.error_envelope import details_by_attr, error_codes
 
 
 def error_text(resp):
@@ -351,7 +352,9 @@ def test_quickstart_refuses_custom_model_with_base_url_when_no_built_in(
     )
 
     assert resp.status_code == 400, resp.content
-    assert f'custom model "{model_name}"' in resp.data["error"]
+    assert error_codes(resp.data) == ["quickstart_refused"]
+    [detail] = details_by_attr(resp.data)[None]
+    assert f'custom model "{model_name}"' in detail
     # The refusal rolls back the whole bundle, including the configs and the
     # secret written before the model lookup.
     assert not Secret.objects.filter(org=org).exists()
@@ -426,7 +429,9 @@ def test_quickstart_unsupported_provider_returns_its_reason(
     )
 
     assert resp.status_code == 400, resp.content
-    assert resp.data["error"].startswith("Unsupported provider: anthropic.")
+    assert error_codes(resp.data) == ["quickstart_refused"]
+    [detail] = details_by_attr(resp.data)[None]
+    assert detail.startswith("Unsupported provider: anthropic.")
     assert not Secret.objects.filter(org=org).exists()
 
 
@@ -446,9 +451,9 @@ def test_quickstart_unexpected_error_does_not_leak_exception_text(
     )
 
     assert resp.status_code == 500, resp.content
-    assert resp.data == {
-        "detail": "Error quickstart",
-        "error": "Quickstart failed. Please try again or contact support.",
+    assert error_codes(resp.data) == ["quickstart_failed"]
+    assert details_by_attr(resp.data) == {
+        None: ["Quickstart failed. Please try again or contact support."]
     }
     assert b"secret internal detail" not in resp.content
     assert not Secret.objects.filter(org=org).exists()

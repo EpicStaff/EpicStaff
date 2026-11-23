@@ -14,6 +14,7 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
 import { ButtonComponent, LabelDropdownComponent } from '@shared/components';
 import { EnterSubmitDirective } from '@shared/directives';
+import { extractFieldErrorMessages } from '@shared/utils';
 import { Subscription } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
@@ -253,7 +254,7 @@ export class FlowRenameDialogComponent implements OnInit, OnDestroy {
     }
 
     private parseUpdateError(err: HttpErrorResponse): string {
-        const nameError = err?.error?.name?.[0] as string | undefined;
+        const nameError = extractFieldErrorMessages(err, 'name')[0];
         if (nameError?.toLowerCase().includes('already exists')) {
             return 'A flow with this name already exists. Please choose a different name.';
         }

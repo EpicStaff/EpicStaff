@@ -390,7 +390,13 @@ describe('BulkDeleteService', () => {
         configure();
         const target = createTarget();
         target.previewBulkDelete.mockReturnValue(of(buildResponse({ deletable_ids: [1] })));
-        const httpError = new HttpErrorResponse({ status: 500, error: { message: 'Database is unavailable' } });
+        const httpError = new HttpErrorResponse({
+            status: 500,
+            error: {
+                type: 'server_error',
+                errors: [{ code: 'unknown', detail: 'Database is unavailable', attr: null, context: null }],
+            },
+        });
         target.bulkDelete.mockReturnValue(throwError(() => httpError));
         mockDialogResult(true);
 
@@ -430,7 +436,13 @@ describe('BulkDeleteService', () => {
     it('shows an error toast when the preview request fails with a non-403 error', () => {
         configure();
         const target = createTarget();
-        const httpError = new HttpErrorResponse({ status: 500, error: { message: 'Server exploded' } });
+        const httpError = new HttpErrorResponse({
+            status: 500,
+            error: {
+                type: 'server_error',
+                errors: [{ code: 'unknown', detail: 'Server exploded', attr: null, context: null }],
+            },
+        });
         target.previewBulkDelete.mockReturnValue(throwError(() => httpError));
 
         service.run([buildGroup(target, [{ id: 1, name: 'Alpha' }])]).subscribe();

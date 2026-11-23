@@ -124,7 +124,7 @@ def test_cross_org_retention_patch_is_404_and_leaves_value(client_as, admin_acme
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.json()["code"] == "organization_not_found"
+    assert response.json()["errors"][0]["code"] == "organization_not_found"
     assert retention_of(beta) == 7
 
 
@@ -152,7 +152,7 @@ def test_retention_patch_with_read_but_no_update_is_403_and_leaves_value(
     )
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert response.json()["code"] == "permission_denied"
+    assert response.json()["errors"][0]["code"] == "permission_denied"
     assert retention_of(acme) == 7
 
 

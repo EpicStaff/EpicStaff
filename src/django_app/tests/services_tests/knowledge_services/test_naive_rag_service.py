@@ -4,6 +4,7 @@ Real DB, no mocking — these services touch neither Redis nor LLM APIs.
 """
 
 import pytest
+from rest_framework.exceptions import ValidationError
 
 from tables.models.knowledge_models import (
     DocumentContent,
@@ -256,12 +257,22 @@ class TestBulkUpdateDocumentConfigs:
         assert result["unupdated"] == 0
         assert cfg_b.naive_rag_document_id in result["errors"]
 
-    def test_missing_config_id_raises(self, naive_rag):
-        with pytest.raises(DocumentConfigNotFoundException):
+    def test_missing_config_id_raises_naming_the_item(self, naive_rag, source_collection):
+        cfg = make_naive_rag_config(naive_rag, _make_doc(source_collection, "_missing"), S.NEW)
+
+        with pytest.raises(ValidationError) as refused:
             NaiveRagService.bulk_update_document_configs_with_partial_errors(
                 naive_rag_id=naive_rag.naive_rag_id,
-                data=[{"id": 999999, "chunk_size": 500}],
+                data=[
+                    {"id": cfg.naive_rag_document_id, "chunk_size": 500},
+                    {"id": 999999, "chunk_size": 500},
+                ],
             )
+
+        # The id came in the body: a 400 naming the item, not a 404.
+        assert refused.value.get_codes() == {"1": {"id": ["document_config_not_found"]}}
+        cfg.refresh_from_db()
+        assert cfg.chunk_size != 500
 
     def test_updating_completed_configs_flips_to_outdated(
         self, naive_rag, source_collection

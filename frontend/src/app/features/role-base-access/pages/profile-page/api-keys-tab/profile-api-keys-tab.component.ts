@@ -15,7 +15,7 @@ import {
     TableRow,
 } from '@shared/components';
 import { ApiKeyStatus } from '@shared/models';
-import { getRelativeTime } from '@shared/utils';
+import { extractServerMessage, getRelativeTime } from '@shared/utils';
 import { EMPTY, switchMap } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
@@ -157,7 +157,7 @@ export class ProfileApiKeysTabComponent implements OnInit {
                     this.toast.success(`"${name}" was revoked`);
                     this.createButton().focus();
                 },
-                error: (err) => this.toast.error(err.error?.message ?? 'Failed to revoke API key'),
+                error: (err) => this.toast.error(extractServerMessage(err) ?? 'Failed to revoke API key'),
             });
     }
 
@@ -177,7 +177,7 @@ export class ProfileApiKeysTabComponent implements OnInit {
                     this.toast.success(`"${name}" was deleted`);
                     this.createButton().focus();
                 },
-                error: (err) => this.toast.error(err.error?.message ?? 'Failed to delete API key'),
+                error: (err) => this.toast.error(extractServerMessage(err) ?? 'Failed to delete API key'),
             });
     }
 
@@ -186,7 +186,7 @@ export class ProfileApiKeysTabComponent implements OnInit {
             .refresh()
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                error: (err) => this.toast.error(err.error.message),
+                error: (err) => this.toast.error(extractServerMessage(err) ?? 'Failed to load API keys'),
             });
     }
 

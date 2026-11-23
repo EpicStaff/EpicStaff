@@ -11,6 +11,7 @@ from rest_framework import status
 
 from tables.models.knowledge_models import NaiveRagDocumentConfig, NaiveRagPreviewChunk
 from tables.views.knowledge_views.naive_rag_views import NaiveRagChunkSearchView
+from tests.error_envelope import attr_details, error_codes
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 pytestmark = pytest.mark.django_db
@@ -118,3 +119,41 @@ def test_a_config_under_another_rag_id_is_404(auth_client, naive_rag_document_co
     response = getattr(auth_client, method)(url, payload, format="json" if method == "post" else None)
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+
+
+def test_preview_pages_through_this_configs_chunks(auth_client, naive_rag_document_config, chunks):
+    response = auth_client.get(
+        _url("naive-rag-chunks-preview", naive_rag_document_config), {"limit": 2, "offset": 1}
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data["total_chunks"] == len(TEXTS)
+    assert (response.data["limit"], response.data["offset"]) == (2, 1)
+    assert [chunk["text"] for chunk in response.data["chunks"]] == TEXTS[1:3]
+
+
+@pytest.mark.parametrize(
+    ("params", "attr"),
+    [({"limit": "ten"}, "limit"), ({"offset": "one"}, "offset")],
+    ids=["limit-not-integer", "offset-not-integer"],
+)
+def test_a_preview_page_param_that_is_not_an_integer_is_400_on_that_param(
+    auth_client, naive_rag_document_config, params, attr
+):
+    response = auth_client.get(_url("naive-rag-chunks-preview", naive_rag_document_config), params)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert error_codes(response.json()) == ["invalid"]
+    assert attr_details(response.json()) == [{"attr": attr, "detail": "A valid integer is required."}]
+
+
+def test_preview_of_a_config_under_another_rag_id_is_404(auth_client, naive_rag_document_config):
+    url = reverse(
+        "naive-rag-chunks-preview",
+        args=[naive_rag_document_config.naive_rag_id + 1000, naive_rag_document_config.pk],
+    )
+
+    response = auth_client.get(url)
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert error_codes(response.json()) == ["not_found"]

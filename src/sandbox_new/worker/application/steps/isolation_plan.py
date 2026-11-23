@@ -10,7 +10,7 @@ returned, never raised.
 
 from loguru import logger
 
-from worker.application.context import ExecutionContext
+from worker.application.context import UNSAFE_TO_RUN_MESSAGE, ExecutionContext
 from worker.application.ports.isolation_probe import AbstractIsolationProbe
 from worker.domain.enums import (
     FilesystemIsolationPolicy,
@@ -26,19 +26,6 @@ from worker.domain.services import (
 )
 
 __all__ = ["BuildIsolationPlan"]
-
-_FILESYSTEM_REFUSED = "Sandbox isolation unavailable (kernel lacks Landlock); refusing to execute."
-_SIGNAL_REFUSED = (
-    "Sandbox signal isolation unavailable: executions require Landlock ABI 6+ "
-    "(Linux 6.12+) to stop them signalling each other; refusing to execute. "
-    "Set SANDBOX_REQUIRE_SIGNAL_ISOLATION=false to run without it."
-)
-_NETWORK_REFUSED = (
-    "Sandbox network isolation unavailable: storage-enabled executions require "
-    "Landlock ABI 4+ (Linux 6.7+) to restrict outbound connections to the storage "
-    "port; refusing to execute. Set SANDBOX_BLOCK_NETWORK=false to disable network "
-    "isolation for this execution."
-)
 
 
 class BuildIsolationPlan:
@@ -65,8 +52,12 @@ class BuildIsolationPlan:
             landlock_abi=abi, require_isolation=self._require_isolation
         )
         if filesystem is FilesystemIsolationPolicy.REFUSE:
-            logger.error("Filesystem isolation unavailable; refusing to execute {}.", execution_id)
-            context.fail(_FILESYSTEM_REFUSED)
+            logger.error(
+                "Filesystem isolation unavailable (kernel lacks Landlock); refusing to execute "
+                "{}. Set SANDBOX_REQUIRE_ISOLATION=false to run without it.",
+                execution_id,
+            )
+            context.fail("isolation_unavailable", UNSAFE_TO_RUN_MESSAGE)
             return
         if filesystem is FilesystemIsolationPolicy.UNCONFINED:
             logger.warning(
@@ -78,11 +69,13 @@ class BuildIsolationPlan:
         )
         if signal is SignalIsolationPolicy.REFUSE:
             logger.error(
-                "Signal isolation unavailable (Landlock ABI {} < 6); refusing to execute {}.",
+                "Signal isolation unavailable (Landlock ABI {} < 6, needs Linux 6.12+); "
+                "refusing to execute {}. Set SANDBOX_REQUIRE_SIGNAL_ISOLATION=false to run "
+                "without it.",
                 abi,
                 execution_id,
             )
-            context.fail(_SIGNAL_REFUSED)
+            context.fail("isolation_unavailable", UNSAFE_TO_RUN_MESSAGE)
             return
         if signal is SignalIsolationPolicy.UNISOLATED:
             logger.warning(
@@ -99,12 +92,13 @@ class BuildIsolationPlan:
         )
         if network.policy is NetworkPolicy.REFUSE:
             logger.error(
-                "Network isolation unavailable (Landlock ABI {} < 4); refusing to execute "
-                "{} because it uses storage.",
+                "Network isolation unavailable (Landlock ABI {} < 4, needs Linux 6.7+); "
+                "refusing to execute {} because it uses storage. Set SANDBOX_BLOCK_NETWORK=false "
+                "to disable network isolation.",
                 abi,
                 execution_id,
             )
-            context.fail(_NETWORK_REFUSED)
+            context.fail("isolation_unavailable", UNSAFE_TO_RUN_MESSAGE)
             return
 
         jail = None

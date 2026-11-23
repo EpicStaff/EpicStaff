@@ -97,7 +97,7 @@ sequenceDiagram
     alt started before its queue deadline
         S->>B: result
     else waited past the queue deadline
-        S->>B: "Sandbox overloaded: ... not run"
+        S->>B: "The server was too busy to run the code in time."
     end
     B-->>P: result or overloaded answer
 ```
@@ -119,7 +119,9 @@ sequenceDiagram
     Note over P: node fails: "The sandbox lost the execution"
 ```
 
-When the worker container dies instead, the manager keeps its registry: the restarted worker's new boot id makes the manager fail every job assigned to the old run within seconds. A worker that hangs, or never comes back, is caught by silence: it heartbeats every 10 s (any authenticated contact counts), and a sweeper fails the assigned jobs of a run silent for over 60 s -- and, when no worker at all has made contact for that long, drains and fails the dispatch queue too. Jobs are never timed against their own duration: a legitimate run may take hours. Every one of these paths publishes a failed result with "Sandbox worker was lost; the job may not have finished." ([0010](adr/0010-split-manager-and-worker-containers.md)).
+When the worker container dies instead, the manager keeps its registry: the restarted worker's new boot id makes the manager fail every job assigned to the old run within seconds. A worker that hangs, or never comes back, is caught by silence: it heartbeats every 10 s (any authenticated contact counts), and a sweeper fails the assigned jobs of a run silent for over 60 s -- and, when no worker at all has made contact for that long, drains and fails the dispatch queue too. Jobs are never timed against their own duration: a legitimate run may take hours. Every one of these paths publishes a failed result whose `error` is `{"code": "worker_lost", "detail": "Sandbox worker was lost; the job may not have finished."}` ([0010](adr/0010-split-manager-and-worker-containers.md)).
+
+Whenever the sandbox fails a job itself rather than the code failing (queue expired, worker lost, venv build failed, hold timeout, dispatch failed, job undecodable, run crashed), the result carries that failure as `error: {code, detail}`. `stderr` is never replaced by a platform failure: it keeps whatever the code wrote before the failure, and a timeout still appends its sentence there. The one exception is a result the manager refused to take: its replacement carries no `stderr`, because the original result was the problem. `error` is `null` when the code ran.
 
 ## Settings
 

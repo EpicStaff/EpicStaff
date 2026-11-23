@@ -52,8 +52,10 @@ class FakeSandbox:
     answers on crew's result channel, either at once (`auto_reply`) or when told to,
     and reports each submitted execution as running on `GET /executions/{id}`.
 
-    Setting `rejects_with` makes every submit answer 400 with that text, the way
-    sandbox_new refuses an execution it will not run; `full` makes it answer 503,
+    Setting `rejects_with` makes every submit answer 400 with that text as the
+    `detail` of foundation's error envelope, the way sandbox_new refuses an execution
+    it will not run; `submit_answer` and `status_answer` make every submit or status
+    check answer with that response instead; `full` makes it answer 503,
     the way a sandbox at capacity does, and `rejections_left` does so for that many
     submits only, each asking for a `REJECTED_RETRY_AFTER_S` wait; `unreachable` fails
     every request before it gets an answer; `loses_executions` answers every status
@@ -65,6 +67,8 @@ class FakeSandbox:
         self.tasks: list[dict] = []
         self.auto_reply = False
         self.rejects_with: str | None = None
+        self.submit_answer: httpx.Response | None = None
+        self.status_answer: httpx.Response | None = None
         self.full = False
         self.rejections_left = 0
         self.unreachable = False
@@ -74,13 +78,23 @@ class FakeSandbox:
         if self.unreachable:
             raise httpx.ConnectError("connection refused", request=request)
         if request.method == "GET":
+            if self.status_answer is not None:
+                return self.status_answer
             if self.loses_executions:
                 return httpx.Response(404, json={"detail": "not found"})
             return httpx.Response(200, json={"status": "running"})
         task = json.loads(request.content)
         self.tasks.append(task)
+        if self.submit_answer is not None:
+            return self.submit_answer
         if self.rejects_with is not None:
-            return httpx.Response(400, text=self.rejects_with)
+            return httpx.Response(
+                400,
+                json={
+                    "type": "client_error",
+                    "errors": [{"code": "invalid", "detail": self.rejects_with, "attr": None}],
+                },
+            )
         if self.full:
             return httpx.Response(503, headers={"Retry-After": "0"}, json={"detail": "full"})
         if self.rejections_left > 0:

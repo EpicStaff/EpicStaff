@@ -61,7 +61,7 @@ def test_an_org_admin_cannot_empty_the_bin(acme_admin_client, acme):
     response = acme_admin_client.post(EMPTY_URL)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-    assert response.json()["message"] == IsSuperadmin.message
+    assert response.json()["errors"][0]["detail"] == IsSuperadmin.message
     assert Graph.deleted_objects.filter(pk=flow_id).exists()
     assert Secret.deleted_objects.filter(pk=secret_id).exists()
 
@@ -77,7 +77,7 @@ def test_a_member_or_viewer_cannot_empty_the_bin(
     response = _client_in(client_as, user, acme).post(EMPTY_URL)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-    assert response.json()["message"] == IsSuperadmin.message
+    assert response.json()["errors"][0]["detail"] == IsSuperadmin.message
     assert Graph.deleted_objects.filter(pk=flow_id).exists()
 
 
@@ -93,7 +93,7 @@ def test_a_role_holding_every_bit_cannot_empty_the_bin(django_user_model, acme):
     response = client.post(EMPTY_URL)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-    assert response.json()["message"] == IsSuperadmin.message
+    assert response.json()["errors"][0]["detail"] == IsSuperadmin.message
     assert Graph.deleted_objects.filter(pk=flow_id).exists()
 
 
@@ -103,7 +103,7 @@ def test_a_superadmin_without_an_active_org_is_400_and_nothing_goes(client_as, s
     response = client_as(superadmin).post(EMPTY_URL)
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.json()["code"] == "org_context_required"
+    assert response.json()["errors"][0]["code"] == "org_context_required"
     assert Graph.deleted_objects.filter(pk__in=flow_ids).count() == 2
 
 
@@ -172,7 +172,7 @@ def test_api_keys_cannot_empty_the_bin(key_owner, admin_acme, superadmin, acme, 
     response = client.post(EMPTY_URL)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-    assert response.json()["message"] == DenyApiKeyAuth.message
+    assert response.json()["errors"][0]["detail"] == DenyApiKeyAuth.message
     assert Graph.all_objects.filter(pk=flow_id).exists()
 
 

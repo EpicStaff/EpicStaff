@@ -154,7 +154,10 @@ describe('RealtimeConfigFormComponent', () => {
 
         fixture.componentInstance.submit();
         http.expectOne('/api/openai-realtime-configs/11/').flush(
-            { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
+            {
+                type: 'server_error',
+                errors: [{ code: 'Exception', detail: 'Unpredictable error', attr: null, context: null }],
+            },
             { status: 500, statusText: 'Server Error' }
         );
 
@@ -170,7 +173,7 @@ describe('RealtimeConfigFormComponent', () => {
 
         fixture.componentInstance.submit();
         http.expectOne('/api/openai-realtime-configs/11/').flush(
-            { status_code: 400, code: 'invalid', message: reason },
+            { type: 'client_error', errors: [{ code: 'invalid', detail: reason, attr: null, context: null }] },
             { status: 400, statusText: 'Bad Request' }
         );
 

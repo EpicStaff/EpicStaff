@@ -7,6 +7,7 @@ from plugins.models import PluginUpgrade
 from tests.plugins_tests.conftest import mark_running, upload_file
 from tests.plugins_tests.package_builder import backend_manifest, build_package, sample_files
 from tests.plugins_tests.upgrade_fixtures import start_upgrade, upload, weather_manifest
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -23,8 +24,8 @@ def _failed(upgrade: PluginUpgrade) -> None:
 
 
 def _refused_for(response, loc: str, message: str) -> None:
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_upgrade_unavailable")
-    assert {"loc": loc, "message": message} in response.json()["errors"]
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_upgrade_unavailable")
+    assert {"attr": loc, "detail": message} in attr_details(response.json())
 
 
 @pytest.fixture

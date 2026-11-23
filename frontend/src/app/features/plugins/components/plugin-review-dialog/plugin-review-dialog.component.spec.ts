@@ -97,7 +97,12 @@ describe('PluginReviewDialogComponent', () => {
                 () =>
                     new HttpErrorResponse({
                         status: 409,
-                        error: { status_code: 409, code: 'review_outdated', message: 'Review outdated.' },
+                        error: {
+                            type: 'client_error',
+                            errors: [
+                                { code: 'review_outdated', detail: 'Review outdated.', attr: null, context: null },
+                            ],
+                        },
                     })
             )
         );
@@ -119,10 +124,15 @@ describe('PluginReviewDialogComponent', () => {
                     new HttpErrorResponse({
                         status: 400,
                         error: {
-                            status_code: 400,
-                            code: 'invalid_plugin_settings',
-                            message: 'Invalid settings.',
-                            errors: [{ loc: 'settings.units', message: 'Choose metric or imperial.' }],
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'invalid_plugin_settings',
+                                    detail: 'Choose metric or imperial.',
+                                    attr: 'settings.units',
+                                    context: null,
+                                },
+                            ],
                         },
                     })
             )

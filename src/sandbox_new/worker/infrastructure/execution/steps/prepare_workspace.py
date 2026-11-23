@@ -15,7 +15,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from worker.application.context import ExecutionContext
+from worker.application.context import UNSAFE_TO_RUN_MESSAGE, ExecutionContext
 from worker.infrastructure.execution.environment import build_base_env
 from worker.infrastructure.execution.privileges import (
     SANDBOX_GID,
@@ -49,7 +49,7 @@ class PrepareWorkspaceStep:
                     os.chown(directory, SANDBOX_UID, SANDBOX_GID)
             except OSError as error:
                 logger.error("Failed to chown execution dirs (EPERM?): {}", error)
-                context.fail(f"Security setup failed: could not chown execution dirs: {error}")
+                context.fail("isolation_unavailable", UNSAFE_TO_RUN_MESSAGE)
                 return
 
         context.home_dir = home_dir

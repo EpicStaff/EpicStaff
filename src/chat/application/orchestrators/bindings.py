@@ -23,7 +23,7 @@ from domain.public_name import (
     public_name_key,
     same_public_name,
 )
-from litestar.exceptions import ClientException
+from litestar.exceptions import ValidationException
 from loguru import logger
 from src.shared.models import UserAction
 
@@ -93,17 +93,18 @@ def bot_name_from(desk_name: str) -> str | None:
     """The bot's name when none is given: the desk name, cut to a public name's length.
 
     Raises:
-        ClientException: The desk name has a character a name shown to visitors cannot have.
+        ValidationException: The desk name has a character a name shown to visitors cannot have.
     """
     try:
         return normalize_public_name(
             unicodedata.normalize("NFC", desk_name)[:PUBLIC_NAME_MAX_LENGTH]
         )
     except ValueError as error:
-        raise ClientException(
+        message = (
             f"The desk name becomes the bot's name, which visitors see: {error} "
             "Set bot_display_name."
-        ) from error
+        )
+        raise ValidationException(message, extra=[{"message": message}]) from error
 
 
 def new_public_key() -> str:
@@ -292,7 +293,10 @@ class BindingOrchestrator:
         org_id = caller.org_id
         nulled = sorted(name for name, value in changes.items() if value is None)
         if nulled:
-            raise ClientException(f"These fields cannot be null: {', '.join(nulled)}.")
+            raise ValidationException(
+                f"These fields cannot be null: {', '.join(nulled)}.",
+                extra=[{"message": "This field cannot be null.", "key": name} for name in nulled],
+            )
         self._limits.check(changes)
         current = await self.get(binding_id, org_id)
         checked_graph_id = changes.get("graph_id", current.graph_id)

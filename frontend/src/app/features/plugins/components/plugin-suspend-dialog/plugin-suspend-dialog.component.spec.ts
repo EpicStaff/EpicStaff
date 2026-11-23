@@ -145,7 +145,10 @@ describe('PluginSuspendDialogComponent', () => {
                 () =>
                     new HttpErrorResponse({
                         status: 404,
-                        error: { status_code: 404, code: 'grant_not_found', message: 'Not found.' },
+                        error: {
+                            type: 'client_error',
+                            errors: [{ code: 'grant_not_found', detail: 'Not found.', attr: null, context: null }],
+                        },
                     })
             )
         );
@@ -350,7 +353,17 @@ describe('PluginSuspendDialogComponent', () => {
                 () =>
                     new HttpErrorResponse({
                         status: 409,
-                        error: { status_code: 409, code: 'grant_not_suspendable', message: 'Not suspendable.' },
+                        error: {
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'grant_not_suspendable',
+                                    detail: 'Not suspendable.',
+                                    attr: null,
+                                    context: null,
+                                },
+                            ],
+                        },
                     })
             )
         );

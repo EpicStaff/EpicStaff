@@ -1,6 +1,7 @@
 import { HttpErrorResponse, HttpStatusCode } from '@angular/common/http';
+import { extractApiErrors, extractErrorCode, extractServerMessage } from '@shared/utils';
 
-import { PluginErrorCode, PluginErrorItem, PluginErrorView } from '../models/plugin-error.model';
+import { PluginErrorCode, PluginErrorView } from '../models/plugin-error.model';
 
 /** What the UI says for each error code of the plugin endpoints. */
 export const PLUGIN_ERROR_MESSAGES: Readonly<Record<PluginErrorCode, string>> = {
@@ -84,40 +85,38 @@ const SERVER_MESSAGE_CODES: ReadonlySet<PluginErrorCode> = new Set<PluginErrorCo
     'plugin_version_not_newer',
 ]);
 
+/**
+ * Codes whose message only says that problems were found: each problem is an item, also one of the whole request,
+ * which names no `attr`. Any other error with no `attr` is one sentence, already said by the message or replaced by it.
+ */
+const PROBLEM_LIST_CODES: ReadonlySet<string> = new Set([
+    'invalid',
+    'invalid_plugin',
+    'plugin_upgrade_unavailable',
+    'invalid_plugin_settings',
+    'invalid_plugin_limits',
+    'invalid_plugin_role_permissions',
+]);
+
 function isPluginErrorCode(code: unknown): code is PluginErrorCode {
     return typeof code === 'string' && Object.hasOwn(PLUGIN_ERROR_MESSAGES, code);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function toErrorItems(errors: unknown): PluginErrorItem[] {
-    if (!Array.isArray(errors)) return [];
-    return errors.flatMap((item: unknown) =>
-        isRecord(item) && typeof item['loc'] === 'string' && typeof item['message'] === 'string'
-            ? [{ loc: item['loc'], message: item['message'] }]
-            : []
-    );
-}
-
 /**
  * Turns a failed plugin request into what the UI shows: the message for a known `code` (the server's own for a code
- * whose message names the plugin), the server's own message for an unknown code, else `fallback`; and the `errors[]`
- * items of a refused package. Any 413 is `package_too_large`, because nginx may refuse an oversized upload before
- * Django, with an HTML body.
+ * whose message names the plugin), the server's own message for an unknown code, else `fallback`; and the problems
+ * the server listed: the located ones, and for a problem-list code also those of the whole request. Any 413 is
+ * `package_too_large`, because nginx may refuse an oversized upload before Django, with an HTML body.
  */
 export function toPluginErrorView(error: unknown, fallback: string): PluginErrorView {
     if (!(error instanceof HttpErrorResponse)) return { code: null, message: fallback, items: [] };
     if (error.status === HttpStatusCode.PayloadTooLarge) {
         return { code: 'package_too_large', message: PLUGIN_ERROR_MESSAGES.package_too_large, items: [] };
     }
-    const body: unknown = error.error;
-    if (!isRecord(body)) return { code: null, message: fallback, items: [] };
-    const items = toErrorItems(body['errors']);
-    const code = body['code'];
-    const rawMessage = body['message'];
-    const serverMessage = typeof rawMessage === 'string' && rawMessage ? rawMessage : null;
+    const code = extractErrorCode(error);
+    const listsWholeRequestProblems = code !== null && PROBLEM_LIST_CODES.has(code);
+    const items = extractApiErrors(error).filter((item) => item.attr !== null || listsWholeRequestProblems);
+    const serverMessage = extractServerMessage(error);
     if (isPluginErrorCode(code)) {
         const message = SERVER_MESSAGE_CODES.has(code) && serverMessage ? serverMessage : PLUGIN_ERROR_MESSAGES[code];
         return { code, message, items };

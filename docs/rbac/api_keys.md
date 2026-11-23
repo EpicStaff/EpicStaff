@@ -62,14 +62,14 @@ Both classes authenticate the same way — header `X-Api-Key: <raw_key>`
 `last_used_at` on successful auth, throttled to at most one write per key
 per 60 seconds so hot keys don't turn every request into a row write.
 
-A key that fails lookup or is revoked returns `401` with
-`{"code": "authentication_failed", "message": "AuthenticationFailed: Invalid API key"}`.
+A key that fails lookup or is revoked returns `401` with one error item
+`{"code": "authentication_failed", "detail": "Invalid API key"}`.
 A key that is found but past `expires_at` returns `401` with
-`{"code": "authentication_failed", "message": "AuthenticationFailed: API key has expired"}`.
+`{"code": "authentication_failed", "detail": "API key has expired"}`.
 A `USER` key whose organization is inactive (whoever owns it, a superadmin
 too), or whose owner is not a superadmin and is no longer a member of the
 key's organization, returns `401` with
-`{"code": "authentication_failed", "message": "API key is no longer valid for its organization"}`.
+`{"code": "authentication_failed", "detail": "API key is no longer valid for its organization"}`.
 The check runs at authentication, so it covers every endpoint the key can
 reach, including those that do not otherwise look at the organization
 (profile, stream tickets, the admin surface, a superadmin's runs).
@@ -84,9 +84,15 @@ key) gets:
 
 ```json
 {
-  "status_code": 403,
-  "code": "permission_denied",
-  "message": "API keys cannot be used on this endpoint. Authenticate with a user session (JWT)."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "permission_denied",
+      "detail": "API keys cannot be used on this endpoint. Authenticate with a user session (JWT).",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -144,28 +150,47 @@ Errors:
   keys, don't count toward the cap):
   ```json
   {
-    "status_code": 400,
-    "code": "api_key_limit_exceeded",
-    "message": "ApiKeyLimitExceededError: Maximum number of active API keys in this organization reached (5). Revoke or delete an existing key first."
+    "type": "client_error",
+    "errors": [
+      {
+        "code": "api_key_limit_exceeded",
+        "detail": "Maximum number of active API keys in this organization reached (5). Revoke or delete an existing key first.",
+        "attr": null,
+        "context": null
+      }
+    ]
   }
   ```
 - `400 invalid` — structured validation errors, e.g.:
   ```json
   {
-    "status_code": 400,
-    "code": "invalid",
-    "message": "FormValidationError: Validation failed",
+    "type": "client_error",
     "errors": [
-      { "field": "name", "value": "", "reason": "Name is required." },
-      { "field": "expires_in_days", "value": 0, "reason": "Must be null (no expiry) or an integer between 1 and 3650." },
-      { "field": "org_id", "value": null, "reason": "Organization is required." }
+      {
+        "code": "invalid",
+        "detail": "Name is required.",
+        "attr": "name",
+        "context": null
+      },
+      {
+        "code": "invalid",
+        "detail": "Must be null (no expiry) or an integer between 1 and 3650.",
+        "attr": "expires_in_days",
+        "context": null
+      },
+      {
+        "code": "invalid",
+        "detail": "Organization is required.",
+        "attr": "org_id",
+        "context": null
+      }
     ]
   }
   ```
 - `403 org_membership_required` — the caller is not a member of `org_id`,
   or the organization is inactive (also for a superadmin):
   ```json
-  { "status_code": 403, "code": "org_membership_required", "message": "OrgMembershipRequiredError: You are not a member of this organization." }
+  {"type": "client_error", "errors": [{"code": "org_membership_required", "detail": "You are not a member of this organization.", "attr": null, "context": null}]}
   ```
 - `404 organization_not_found` — a superadmin named an organization that
   does not exist. (A non-superadmin gets the `403` above instead, so the
@@ -217,7 +242,7 @@ Both `revoke` and `delete` scope to the caller's own keys only
 else, or belongs to the SYSTEM key returns:
 
 ```json
-{ "status_code": 404, "code": "api_key_not_found", "message": "ApiKeyNotFoundError: API key not found." }
+{"type": "client_error", "errors": [{"code": "api_key_not_found", "detail": "API key not found.", "attr": null, "context": null}]}
 ```
 
 — the same 404 in every case, so a caller cannot use the error to probe
@@ -424,11 +449,11 @@ every organization's governance data. Rejections return `403
 permission_denied`:
 
 ```json
-{ "status_code": 403, "code": "permission_denied", "message": "The system API key cannot be used on the admin surface. Authenticate with a user session (JWT)." }
+{"type": "client_error", "errors": [{"code": "permission_denied", "detail": "The system API key cannot be used on the admin surface. Authenticate with a user session (JWT).", "attr": null, "context": null}]}
 ```
 
 ```json
-{ "status_code": 403, "code": "permission_denied", "message": "API keys cannot be used to change organizations, users, roles, memberships or API keys. Authenticate with a user session (JWT)." }
+{"type": "client_error", "errors": [{"code": "permission_denied", "detail": "API keys cannot be used to change organizations, users, roles, memberships or API keys. Authenticate with a user session (JWT).", "attr": null, "context": null}]}
 ```
 
 `POST /api/auth/reset-user/` and `POST /api/auth/admin/password-reset/`
@@ -508,7 +533,7 @@ Invoke-RestMethod http://localhost:8000/api/graphs/ `
   organization, or the organization is inactive (any owner, a superadmin
   too), the key no longer authenticates, on every endpoint:
   ```json
-  { "status_code": 401, "code": "authentication_failed", "message": "API key is no longer valid for its organization" }
+  {"type": "client_error", "errors": [{"code": "authentication_failed", "detail": "API key is no longer valid for its organization", "attr": null, "context": null}]}
   ```
 - A `USER` key never gets `400 org_context_required`: it always has an
   organization.
@@ -541,7 +566,7 @@ identity to bind the ticket to:
   and the view explicitly checks `hasattr(request.user, "email")` before
   issuing a ticket. A system-key caller gets:
   ```json
-  { "detail": "This endpoint requires a user context." }
+  {"type": "client_error", "errors": [{"code": "permission_denied", "detail": "This endpoint requires a user context.", "attr": null, "context": null}]}
   ```
   with `403`.
 
@@ -582,9 +607,10 @@ curl -s -X POST http://localhost:8000/api/auth/sse-ticket/ \
 ## Error envelope reference
 
 All errors share the shape produced by `custom_exception_handler`:
-`{"status_code": N, "code": "...", "message": "..."}`, with an `errors`
-list added for field-level validation failures. Codes relevant to API
-keys:
+`{"type", "errors": [{"code", "detail", "attr", "context"}]}`: `type` is
+`client_error` below 500 and `server_error` from 500 up, `errors` is never empty, and `attr`
+names the field at fault as a dotted path (null for an error of the request as a whole).
+A field-level validation failure gives one item per problem. Codes relevant to API keys:
 
 | Code | Status | Where |
 |---|---|---|

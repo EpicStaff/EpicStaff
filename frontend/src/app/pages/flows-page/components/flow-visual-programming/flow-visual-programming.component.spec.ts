@@ -763,9 +763,15 @@ describe('FlowVisualProgrammingComponent', () => {
                         new HttpErrorResponse({
                             status: 403,
                             error: {
-                                status_code: 403,
-                                code: 'flow_with_trigger_nodes_requires_use_permission',
-                                message: 'This flow contains trigger nodes.',
+                                type: 'client_error',
+                                errors: [
+                                    {
+                                        code: 'flow_with_trigger_nodes_requires_use_permission',
+                                        detail: 'This flow contains trigger nodes.',
+                                        attr: null,
+                                        context: null,
+                                    },
+                                ],
                             },
                         })
                 )
@@ -814,10 +820,15 @@ describe('FlowVisualProgrammingComponent', () => {
                         new HttpErrorResponse({
                             status: 403,
                             error: {
-                                status_code: 403,
-                                code: 'storage_grant_denied',
-                                message: 'You lack Files permissions: read, update.',
-                                missing_grants: ['read', 'update'],
+                                type: 'client_error',
+                                errors: [
+                                    {
+                                        code: 'storage_grant_denied',
+                                        detail: 'You lack Files permissions: read, update.',
+                                        attr: null,
+                                        context: { missing_grants: ['read', 'update'] },
+                                    },
+                                ],
                             },
                         })
                 )
@@ -842,9 +853,15 @@ describe('FlowVisualProgrammingComponent', () => {
                         new HttpErrorResponse({
                             status: 403,
                             error: {
-                                status_code: 403,
-                                code: 'code_with_secrets_requires_secrets_use_permission',
-                                message: SECRETS_REFUSAL_MESSAGE,
+                                type: 'client_error',
+                                errors: [
+                                    {
+                                        code: 'code_with_secrets_requires_secrets_use_permission',
+                                        detail: SECRETS_REFUSAL_MESSAGE,
+                                        attr: null,
+                                        context: null,
+                                    },
+                                ],
                             },
                         })
                 )
@@ -1188,6 +1205,34 @@ describe('FlowVisualProgrammingComponent', () => {
 
             const [buttonRun, keyRun] = runGraph['runGraph'].mock.calls;
             expect(keyRun).toEqual(buttonRun);
+        });
+
+        it('says why a run did not start', () => {
+            runGraph['runGraph'].mockReturnValue(
+                throwError(
+                    () =>
+                        new HttpErrorResponse({
+                            status: 400,
+                            error: {
+                                type: 'client_error',
+                                errors: [
+                                    {
+                                        code: 'unknown',
+                                        detail: 'No node connected to start node',
+                                        attr: null,
+                                        context: null,
+                                    },
+                                ],
+                            },
+                        })
+                )
+            );
+
+            header().run.emit();
+
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
+                "Couldn't run the flow. No node connected to start node"
+            );
         });
 
         it('Ctrl+Enter saves unsaved changes before the run starts', () => {
@@ -1584,10 +1629,14 @@ describe('FlowVisualProgrammingComponent', () => {
         it('shows the payload errors of a 400 under the editor of the open node instead of a toast', () => {
             TestBed.inject(SidePanelService).setSelectedNodeId(webhookNode.id);
             rejectWith(400, {
-                status_code: 400,
-                code: 'test_run_payload_invalid',
-                message: 'Invalid payload',
-                errors: ["'edited_message': not a field parent selected on this node"],
+                type: 'validation_error',
+                errors: [
+                    {
+                        code: 'test_run_payload_invalid',
+                        detail: "'edited_message': not a field parent selected on this node",
+                        attr: null,
+                    },
+                ],
             });
 
             testRun.request('webhook-trigger', webhookNode.id, { edited_message: {} });
@@ -1598,9 +1647,31 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(toast['error']).not.toHaveBeenCalled();
         });
 
+        it('shows a 400 that names a refused field as one line, with the field', () => {
+            TestBed.inject(SidePanelService).setSelectedNodeId(webhookNode.id);
+            rejectWith(400, {
+                type: 'client_error',
+                errors: [{ code: 'required', detail: 'This field is required.', attr: 'payload', context: null }],
+            });
+
+            testRun.request('webhook-trigger', webhookNode.id, {});
+
+            expect(testRun.serverErrors().get(webhookNode.id)).toEqual(['payload: This field is required.']);
+        });
+
         it('also toasts a 400 when the side panel does not show that node', () => {
             TestBed.inject(SidePanelService).setSelectedNodeId('another-node');
-            rejectWith(400, { errors: ["'edited_message': not a field parent selected on this node"] });
+            rejectWith(400, {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'test_run_payload_invalid',
+                        detail: "'edited_message': not a field parent selected on this node",
+                        attr: null,
+                        context: null,
+                    },
+                ],
+            });
 
             testRun.request('webhook-trigger', webhookNode.id, { edited_message: {} });
 
@@ -1621,7 +1692,13 @@ describe('FlowVisualProgrammingComponent', () => {
 
         it('starts no run when the save fails', () => {
             flowsApi['bulkSaveGraph'].mockReturnValue(
-                throwError(() => new HttpErrorResponse({ status: 500, error: { message: 'Boom' } }))
+                throwError(
+                    () =>
+                        new HttpErrorResponse({
+                            status: 500,
+                            error: { type: 'server_error', errors: [{ code: 'unknown', detail: 'Boom' }] },
+                        })
+                )
             );
 
             testRun.request('webhook-trigger', webhookNode.id, {});
@@ -1658,9 +1735,10 @@ describe('FlowVisualProgrammingComponent', () => {
 
         it('shows the message of another 400 under the editor', () => {
             rejectWith(400, {
-                status_code: 400,
-                code: 'invalid',
-                message: 'payload: Test payload must be a JSON object.',
+                type: 'client_error',
+                errors: [
+                    { code: 'invalid', detail: 'Test payload must be a JSON object.', attr: 'payload', context: null },
+                ],
             });
 
             testRun.request('webhook-trigger', webhookNode.id, {});
@@ -1673,9 +1751,12 @@ describe('FlowVisualProgrammingComponent', () => {
         it.each([
             [404, TEST_RUN_NODE_GONE_MESSAGE],
             [403, "You don't have permission to run tests on this flow."],
-            [500, 'Failed to start test run: Boom'],
+            [500, "Couldn't start the test run. Boom"],
         ])('reports a %i as a toast', (httpStatus, message) => {
-            rejectWith(httpStatus, { message: 'Boom' });
+            rejectWith(httpStatus, {
+                type: 'client_error',
+                errors: [{ code: 'unknown', detail: 'Boom', attr: null, context: null }],
+            });
 
             testRun.request('webhook-trigger', webhookNode.id, {});
 
@@ -1945,6 +2026,55 @@ describe('FlowVisualProgrammingComponent', () => {
             return toast['error'].mock.calls.at(-1)![0] as string;
         }
 
+        it('lists every invalid node in the toast, each as a sentence', () => {
+            openFlow(
+                graphDto({
+                    task_node_list: [
+                        { ...liveTask, node_name: 'Summarise', node_number: 4, instructions: '' },
+                        {
+                            ...liveTask,
+                            id: 99,
+                            uuid: 'draft-task-uuid',
+                            node_name: 'Draft',
+                            node_number: 5,
+                            instructions: '',
+                        },
+                    ],
+                })
+            );
+
+            expect(saveAndReadToast()).toBe(
+                `Couldn't save the flow. "Summarise #4" is missing instructions. "Draft #5" is missing instructions.`
+            );
+        });
+
+        it('refuses to save, without blaming a node, when checking the nodes itself fails', () => {
+            // Instructions that are not text make the task check throw.
+            openFlow(graphDto({ task_node_list: [{ ...liveTask, instructions: 42 as unknown as string }] }));
+            vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+            expect(saveAndReadToast()).toBe("Couldn't save the flow. Something went wrong.");
+        });
+
+        it('says why a flow did not load', () => {
+            flowsApi['getGraphById'].mockReturnValue(
+                throwError(
+                    () =>
+                        new HttpErrorResponse({
+                            status: 404,
+                            error: {
+                                type: 'client_error',
+                                errors: [{ code: 'unknown', detail: 'Flow not found.', attr: null, context: null }],
+                            },
+                        })
+                )
+            );
+            paramMap$.next(convertToParamMap({ id: String(nextRouteId++) }));
+            fixture.detectChanges();
+
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith("Couldn't load the flow. Flow not found.");
+        });
+
         it('names a nameless task by its badge number, like the badge on the canvas', () => {
             openFlow(graphDto({ task_node_list: [{ ...liveTask, node_name: '  ', node_number: 8 }] }));
 
@@ -1976,7 +2106,7 @@ describe('FlowVisualProgrammingComponent', () => {
                 })
             );
 
-            expect(saveAndReadToast()).toContain('"Summarise #4" is missing instructions');
+            expect(saveAndReadToast()).toBe(`Couldn't save the flow. "Summarise #4" is missing instructions.`);
         });
     });
 
@@ -1993,12 +2123,18 @@ describe('FlowVisualProgrammingComponent', () => {
             flowService.updateNode({ ...canvasTask(), data: { ...canvasTask().data, instructions } });
         }
 
-        function refusal(errors: Record<string, unknown>): HttpErrorResponse {
-            return new HttpErrorResponse({ status: 400, error: { errors } });
+        function refusal(...errors: [attr: string, detail: string][]): HttpErrorResponse {
+            return new HttpErrorResponse({
+                status: 400,
+                error: {
+                    type: 'client_error',
+                    errors: errors.map(([attr, detail]) => ({ code: 'invalid', detail, attr, context: null })),
+                },
+            });
         }
 
         function refusedInstructions(): Observable<never> {
-            return throwError(() => refusal({ task_node_list: [{ index: 0, errors: { instructions: [REFUSED] } }] }));
+            return throwError(() => refusal(['task_node_list.0.instructions', REFUSED]));
         }
 
         function savedWithInstructions(instructions: string): Observable<GraphDto> {
@@ -2026,7 +2162,9 @@ describe('FlowVisualProgrammingComponent', () => {
             component.onGraphSave(flowService.getFlowState());
 
             expect(saveErrors.fieldMessages(canvasTask().id, 'instructions', SENT)).toEqual([REFUSED]);
-            expect(toast['error']).toHaveBeenCalledWith('Failed to save graph — fix the refused fields in "Task #2".');
+            expect(toast['error']).toHaveBeenCalledWith(
+                `Couldn't save the flow. Some fields in "Task #2" were refused.`
+            );
             expect(canvasTask().data.instructions).toBe(SENT);
             expect(component.hasUnsavedChanges()).toBe(true);
         });
@@ -2054,7 +2192,9 @@ describe('FlowVisualProgrammingComponent', () => {
             sidePanel.requestSaveNode(canvasTask());
 
             expect(saveErrors.fieldMessages(canvasTask().id, 'instructions', SENT)).toEqual([REFUSED]);
-            expect(toast['error']).toHaveBeenCalledWith('Failed to save node — fix the refused fields in "Task #2".');
+            expect(toast['error']).toHaveBeenCalledWith(
+                `Couldn't save the node. Some fields in "Task #2" were refused.`
+            );
 
             editInstructions('Use {topic}');
             flowsApi['bulkSaveGraph'].mockReturnValue(savedWithInstructions('Use {topic}'));
@@ -2064,28 +2204,57 @@ describe('FlowVisualProgrammingComponent', () => {
         });
 
         it("says what the server said when its errors name none of the flow's nodes", () => {
-            const errors = { nodes: ['This uuid is already used by another node of this flow.'] };
-            flowsApi['bulkSaveGraph'].mockReturnValue(throwError(() => refusal(errors)));
-
-            component.onGraphSave(flowService.getFlowState());
-
-            expect(toast['error']).toHaveBeenCalledWith(expect.stringMatching(/^Failed to save graph: /));
-            expect(saveErrors.errors().size).toBe(0);
-        });
-
-        it('says too what no node shows, next to the node it names', () => {
-            const errors = {
-                task_node_list: [{ index: 0, errors: { instructions: [REFUSED] } }],
-                edge_list: ['Edge references node IDs not found in this graph: [9]'],
-            };
-            flowsApi['bulkSaveGraph'].mockReturnValue(throwError(() => refusal(errors)));
+            flowsApi['bulkSaveGraph'].mockReturnValue(
+                throwError(() => refusal(['nodes', 'This uuid is already used by another node of this flow.']))
+            );
 
             component.onGraphSave(flowService.getFlowState());
 
             expect(toast['error']).toHaveBeenCalledWith(
-                'Failed to save graph — fix the refused fields in "Task #2".' +
+                "Couldn't save the flow. nodes: This uuid is already used by another node of this flow."
+            );
+            expect(saveErrors.errors().size).toBe(0);
+        });
+
+        it('says too what no node shows, next to the node it names', () => {
+            const errors = refusal(
+                ['task_node_list.0.instructions', REFUSED],
+                ['edge_list', 'Edge references node IDs not found in this graph: [9]']
+            );
+            flowsApi['bulkSaveGraph'].mockReturnValue(throwError(() => errors));
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(toast['error']).toHaveBeenCalledWith(
+                `Couldn't save the flow. Some fields in "Task #2" were refused.` +
                     ' Also: Edge references node IDs not found in this graph: [9]'
             );
+        });
+
+        it.each([
+            [
+                'a server error without a message',
+                new HttpErrorResponse({ status: 500, error: null }),
+                "Couldn't save the flow. Something went wrong on the server.",
+            ],
+            [
+                'a refusal with the reason the server gave',
+                new HttpErrorResponse({
+                    status: 400,
+                    error: {
+                        type: 'client_error',
+                        errors: [{ code: 'unknown', detail: 'The flow is locked.', attr: null, context: null }],
+                    },
+                }),
+                "Couldn't save the flow. The flow is locked.",
+            ],
+        ])('states %s when a save fails', (_case, error, expected) => {
+            flowsApi['bulkSaveGraph'].mockReturnValue(throwError(() => error));
+
+            component.onGraphSave(flowService.getFlowState());
+
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith(expected);
+            expect(component.hasUnsavedChanges()).toBe(true);
         });
 
         it.each([
@@ -2099,7 +2268,7 @@ describe('FlowVisualProgrammingComponent', () => {
             flowsApi['getGraphById'].mockReturnValue(of(graphDto({ id: 2, start_node_list: [liveStart] })));
             paramMap$.next(convertToParamMap({ id: '2' }));
             fixture.detectChanges();
-            inFlight.error(refusal({ task_node_list: [{ index: 0, errors: { instructions: [REFUSED] } }] }));
+            inFlight.error(refusal(['task_node_list.0.instructions', REFUSED]));
 
             expect(toast['error']).not.toHaveBeenCalled();
             expect(saveErrors.errors().size).toBe(0);
@@ -2914,7 +3083,7 @@ describe('FlowVisualProgrammingComponent', () => {
 
             expect(flowsApi['bulkSaveGraph']).not.toHaveBeenCalled();
             expect(toast['error']).toHaveBeenCalledExactlyOnceWith(
-                `Cannot save flow — fix the following node(s) first: "${livePython.node_name}" needs an execution timeout of at least ${TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds} seconds.`
+                `Couldn't save the flow. "${livePython.node_name}" needs an execution timeout of at least ${TEST_EXECUTION_TIMEOUT_LIMITS.minSeconds} seconds.`
             );
         });
 

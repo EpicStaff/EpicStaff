@@ -1,5 +1,3 @@
-import re
-
 import pytest
 from core import config
 from foundation.cryptographer import FernetRotatedCryptographer
@@ -13,7 +11,6 @@ TOKEN = "mock_token"
 CONNECTION_URL = f"/realtime/?connection_key={CONNECTION_KEY}&token={TOKEN}"
 
 SECRET_SENTINEL = "sk-live-SENTINEL-do-not-leak-4316"
-PUBLIC_ERROR_REFERENCE = re.compile(r"\(reference: ([0-9a-f]{12})\)")
 
 TRANSPORT_KEY = "realtime-test-transport-key-0001"
 OTHER_TRANSPORT_KEY = "another-deployments-transport-key"
@@ -39,8 +36,17 @@ def app_transport_cryptographer(monkeypatch):
 
 @pytest.fixture
 def captured_log_messages():
-    """Collect every formatted loguru message (tracebacks included) emitted during a test."""
+    """Collect every formatted loguru message (tracebacks included) emitted during a test.
+
+    Like production logging, tracebacks show no local variables: otherwise a test of what a
+    log line says would also pass on values that only the traceback printed.
+    """
     messages: list[str] = []
-    sink_id = logger.add(lambda message: messages.append(str(message)), level="DEBUG")
+    sink_id = logger.add(
+        lambda message: messages.append(str(message)),
+        level="DEBUG",
+        diagnose=False,
+        backtrace=False,
+    )
     yield messages
     logger.remove(sink_id)

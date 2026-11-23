@@ -16,8 +16,14 @@ import { GraphRagDataTablesComponent } from './graph-rag-data-tables.component';
 const API_URL = 'http://api.test/api/';
 const RAG_ID = 42;
 const SUMMARY_URL = `${API_URL}graph-rag/${RAG_ID}/table-summary/`;
-const NOT_INDEXED_BODY = { status_code: 409, code: 'graph_not_indexed', message: 'Graph is not indexed' };
-const CONFLICT_BODY = { status_code: 409, code: 'upstream_resource_conflict', message: 'Upstream conflict' };
+const NOT_INDEXED_BODY = {
+    type: 'client_error',
+    errors: [{ code: 'graph_not_indexed', detail: 'Graph is not indexed', attr: null, context: null }],
+};
+const CONFLICT_BODY = {
+    type: 'client_error',
+    errors: [{ code: 'upstream_resource_conflict', detail: 'Upstream conflict', attr: null, context: null }],
+};
 
 function tableUrl(table: string, query = 'page=1&page_size=10'): string {
     return `${API_URL}graph-rag/${RAG_ID}/tables/${table}/?${query}`;
@@ -318,7 +324,7 @@ describe('GraphRagDataTablesComponent', () => {
 
         it.each<[string, number, object]>([
             ['a 409 with another code', 409, CONFLICT_BODY],
-            ['a 404', 404, { message: 'missing' }],
+            ['a 404', 404, { type: 'client_error', errors: [{ code: 'not_found', detail: 'missing', attr: null }] }],
         ])('shows a plain error, not the indexing hint, when the summary answers %s', (_label, status, body) => {
             httpMock.expectOne(SUMMARY_URL).flush(body, { status, statusText: 'Error' });
             fixture.detectChanges();

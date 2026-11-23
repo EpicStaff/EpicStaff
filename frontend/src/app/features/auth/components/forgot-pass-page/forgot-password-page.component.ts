@@ -11,7 +11,7 @@ import {
 } from '@shared/components';
 import { strictEmailValidator } from '@shared/form-validators';
 import { HttpStatus } from '@shared/models';
-import { getRetryAfterSeconds } from '@shared/utils';
+import { extractServerMessage, getRetryAfterSeconds } from '@shared/utils';
 import { finalize } from 'rxjs';
 
 import { AuthService } from '../../../../services/auth/auth.service';
@@ -82,7 +82,7 @@ export class ForgotPasswordPageComponent {
     }
 
     private describeRequestError(err: HttpErrorResponse): string {
-        if (err.status !== HttpStatus.TooManyRequests) return err.error?.message ?? RESET_REQUEST_FAILED_MESSAGE;
+        if (err.status !== HttpStatus.TooManyRequests) return extractServerMessage(err) ?? RESET_REQUEST_FAILED_MESSAGE;
 
         const seconds = getRetryAfterSeconds(err);
         if (!seconds) return 'Too many reset requests. Please try again later.';

@@ -2062,8 +2062,15 @@ describe('FlowGraphComponent', () => {
                     )
                     .flush(
                         {
-                            code: 'flow_with_trigger_nodes_requires_use_permission',
-                            message: 'This file contains trigger nodes.',
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'flow_with_trigger_nodes_requires_use_permission',
+                                    detail: 'This file contains trigger nodes.',
+                                    attr: null,
+                                    context: null,
+                                },
+                            ],
                         },
                         { status: 403, statusText: 'Forbidden' }
                     );

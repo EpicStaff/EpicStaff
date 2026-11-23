@@ -18,11 +18,17 @@ const EDITED_CONFIG = {
 const SECRET_USE_REFUSAL = new HttpErrorResponse({
     status: 400,
     error: {
-        status_code: 400,
-        code: 'invalid',
-        message:
-            'api_key_secret_id: Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
-            'The existing selection was left unchanged. Ask an organization admin to grant it.',
+        type: 'client_error',
+        errors: [
+            {
+                code: 'invalid',
+                detail:
+                    'Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
+                    'The existing selection was left unchanged. Ask an organization admin to grant it.',
+                attr: 'api_key_secret_id',
+                context: null,
+            },
+        ],
     },
 });
 
@@ -33,7 +39,10 @@ const SHOWN_REFUSAL =
 
 const SERVER_ERROR = new HttpErrorResponse({
     status: 500,
-    error: { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
+    error: {
+        type: 'server_error',
+        errors: [{ code: 'Exception', detail: 'Unpredictable error', attr: null, context: null }],
+    },
 });
 
 // jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.

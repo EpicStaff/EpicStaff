@@ -7,6 +7,8 @@ a reporting problem, not an execution failure.
 
 import json
 
+from foundation.schemas import ErrorDetailSchema
+
 from worker.domain.models import StorageCredentials
 from worker.infrastructure.execution.steps import CaptureMutationsStep, CaptureResultStep
 from tests.builders import make_context, make_worker_job
@@ -58,9 +60,10 @@ async def test_a_result_file_replaced_by_a_symlink_fails_the_run_without_reading
     assert context.result_data is None
     assert context.completed is True
     assert context.returncode == 1
-    assert "symbolic link" in context.stderr
-    assert "root-only secret" not in context.stderr
-    assert str(outside) not in context.stderr
+    assert context.error == ErrorDetailSchema(
+        code="unsafe_control_file", detail="The code couldn't run because of a server error."
+    )
+    assert context.stderr == ""
 
 
 async def test_a_result_file_over_the_configured_cap_fails_the_run(tmp_path):
@@ -72,7 +75,10 @@ async def test_a_result_file_over_the_configured_cap_fails_the_run(tmp_path):
 
     assert context.result_data is None
     assert context.returncode == 1
-    assert "larger than 4 bytes" in context.stderr
+    assert context.error == ErrorDetailSchema(
+        code="result_too_large", detail="The function's return value is too big to save."
+    )
+    assert context.stderr == ""
 
 
 async def test_the_result_step_completes_even_without_a_result_path():
@@ -174,8 +180,10 @@ async def test_a_mutations_file_replaced_by_a_symlink_fails_the_run_without_read
     assert context.storage_mutations is None
     assert context.completed is True
     assert context.returncode == 1
-    assert "symbolic link" in context.stderr
-    assert str(outside) not in context.stderr
+    assert context.error == ErrorDetailSchema(
+        code="unsafe_control_file", detail="The code couldn't run because of a server error."
+    )
+    assert context.stderr == ""
 
 
 async def test_a_mutations_file_over_the_configured_cap_fails_the_run(tmp_path):
@@ -185,4 +193,7 @@ async def test_a_mutations_file_over_the_configured_cap_fails_the_run(tmp_path):
 
     assert context.storage_mutations is None
     assert context.returncode == 1
-    assert "larger than 4 bytes" in context.stderr
+    assert context.error == ErrorDetailSchema(
+        code="unsafe_control_file", detail="The code couldn't run because of a server error."
+    )
+    assert context.stderr == ""

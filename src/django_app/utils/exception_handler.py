@@ -1,11 +1,17 @@
-import json
 from http import HTTPStatus
 
+import pydantic
 from django.core.exceptions import PermissionDenied
 from django.db import OperationalError
 from django.http import Http404, JsonResponse
 from django.utils.log import log_response
 from django_app.settings import DEBUG
+from foundation.schemas import (
+    INTERNAL_ERROR_DETAIL,
+    UNKNOWN_ERROR_CODE,
+    ErrorDetailSchema,
+    ErrorResponseSchema,
+)
 from foundation.transport.http.errors import (
     ClientConnectionError,
     ClientError,
@@ -15,112 +21,119 @@ from foundation.transport.http.errors import (
 )
 from psycopg_pool import PoolTimeout
 from rest_framework import status
-from rest_framework.exceptions import APIException, NotFound, Throttled, ValidationError
+from rest_framework.exceptions import (
+    APIException,
+    AuthenticationFailed,
+    NotFound,
+    Throttled,
+    ValidationError,
+)
 from rest_framework.exceptions import PermissionDenied as DRFPermissionDenied
+from rest_framework.response import Response
 from rest_framework.settings import api_settings
-from rest_framework.views import exception_handler
+from rest_framework.views import exception_handler, set_rollback
 from tables.clients.errors import ClientError as OutboundClientError
 
 from utils.exceptions import DatabasePoolExhaustedError
 from utils.logger import logger
 
-# Keys DRF generates itself; naming them back at the client adds no information.
+# Keys DRF generates itself for an error of the whole request or object, not of a field.
 _UNLABELLED_KEYS = frozenset({api_settings.NON_FIELD_ERRORS_KEY, "detail"})
 
+# Enough of an upstream body to tell what went wrong from the log, not a whole HTML page.
+_LOGGED_UPSTREAM_BODY_LIMIT = 2000
 
-def flatten_error_detail(detail) -> str:
-    """Render DRF's nested error detail as plain text, one message per error."""
+
+def render_error(status_code: int, items: list[ErrorDetailSchema]) -> dict:
+    """Return the body of an error answer: `{type, errors: [{code, detail, attr, context}]}`.
+
+    Every item carries all four keys, `attr` and `context` as null when absent, so a
+    client reads one shape whatever the status code.
+    """
+    return ErrorResponseSchema.for_status(status_code, items).model_dump(mode="json")
+
+
+def render_api_exception(exc: APIException) -> dict:
+    """Return the response body the exception handler would answer `exc` with.
+
+    Only the body: the caller sets the status (`exc.status_code`) and any headers the
+    handler would add, such as `Retry-After` or `WWW-Authenticate`. For code that builds
+    its own response instead of raising: a middleware, a streaming view, or a view that
+    must also change the response (clear a cookie).
+    """
+    return render_error(exc.status_code, _api_exception_items(exc))
+
+
+def _join_attr(prefix: str | None, key) -> str:
+    return str(key) if prefix is None else f"{prefix}.{key}"
+
+
+def _error_items(
+    detail, context: dict | None, *, default_code: str, attr: str | None = None
+) -> list[ErrorDetailSchema]:
+    """Turn DRF's error detail into one item per message.
+
+    A dict nests by field name and a list of dicts (a `many=True` serializer) by
+    index, both joined into a dotted `attr` such as `classification_decision_table_node_list.3.prompt_configs.1.result_variable`.
+    `non_field_errors` and `detail` name no field, so they add nothing to the path.
+    Each message keeps the code DRF gave it (`required`, `blank`, `unique`, or the
+    exception's own code); `context` goes on every item.
+    """
     if isinstance(detail, dict):
-        return "; ".join(
-            flatten_error_detail(value)
-            if key in _UNLABELLED_KEYS
-            else f"{key}: {flatten_error_detail(value)}"
+        return [
+            item
             for key, value in detail.items()
-        )
+            for item in _error_items(
+                value,
+                context,
+                default_code=default_code,
+                attr=attr if key in _UNLABELLED_KEYS else _join_attr(attr, key),
+            )
+        ]
 
     if isinstance(detail, (list, tuple)):
-        return "; ".join(flatten_error_detail(item) for item in detail)
-
-    return str(detail)
-
-
-def _upstream_detail(exc: ClientError) -> str | None:
-    """Return what the upstream said, or the exception text when there is no body.
-
-    `ClientTimeoutError` is raised without a response, and a response body can be empty,
-    so neither is assumed to be there. `None` lets DRF fall back to its default detail
-    rather than render an empty message.
-    """
-    response = getattr(exc, "response", None)
-    if response is not None and response.text:
-        return _upstream_message(response.text)
-    return str(exc) or None
-
-
-def _upstream_message(text: str) -> str:
-    """The upstream failure in words, taken out of the envelope it arrived in.
-
-    Services answer with the shared `{"type", "errors": [{"code", "detail", "attr"}]}`
-    shape; handed on as it stands, that JSON is what the user reads on their screen.
-    A body in any other shape is passed through, there being nothing to unwrap.
-    """
-    try:
-        body = json.loads(text)
-    except ValueError:
-        return text
-
-    if not isinstance(body, dict):
-        return text
-
-    errors = body.get("errors")
-    if isinstance(errors, list):
-        details = [
-            error["detail"]
-            for error in errors
-            if isinstance(error, dict) and isinstance(error.get("detail"), str)
+        return [
+            item
+            for index, value in enumerate(detail)
+            for item in _error_items(
+                value,
+                context,
+                default_code=default_code,
+                # A list of messages belongs to the field itself; a list of objects or
+                # lists is one entry per position.
+                attr=_join_attr(attr, index) if isinstance(value, (dict, list, tuple)) else attr,
+            )
         ]
-        if details:
-            return "; ".join(details)
 
-    detail = body.get("detail")
-    return detail if isinstance(detail, str) and detail else text
+    text = str(detail)
+    if not text:
+        return []
+    return [
+        ErrorDetailSchema(
+            code=getattr(detail, "code", None) or default_code,
+            detail=text,
+            attr=attr,
+            context=context,
+        )
+    ]
 
 
-def client_error_as_api_exception(exc: ClientError) -> APIException:
-    """Translate a transport error from a proxied microservice into a DRF exception.
+def _api_exception_items(exc: APIException) -> list[ErrorDetailSchema]:
+    context = getattr(exc, "context", None)
+    context = context if isinstance(context, dict) else None
 
-    An upstream 4xx is the caller's own request coming back refused, so it keeps its
-    status: a conflict stays a conflict rather than becoming a gateway failure the
-    caller can do nothing about. A dependency that could not be reached at all is
-    service unavailable, which tells the caller the request is worth retrying. What is
-    left - a timeout, an upstream 5xx, a response with no status at all - is this
-    gateway's dependency failing, and is reported as a bad gateway.
-    """
-    detail = _upstream_detail(exc)
+    if isinstance(exc, AuthenticationFailed) and isinstance(exc.detail, dict):
+        # simplejwt raises `{"detail", "code", "messages"}`: one refusal, explained
+        # once. `messages` lists every token class it tried, which says nothing more.
+        code = exc.detail.get("code") or exc.default_code
+        text = exc.detail.get("detail") or exc.default_detail
+        return [ErrorDetailSchema(code=str(code), detail=str(text), context=context)]
 
-    if isinstance(exc, ClientNotFoundError):
-        return NotFound(detail)
-    if isinstance(exc, ClientValidationError):
-        return ValidationError(detail)
-    if isinstance(exc, ClientRateLimitError):
-        return Throttled(detail=detail)
-    if isinstance(exc, ClientConnectionError):
-        unreachable_error = APIException(detail)
-        unreachable_error.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-        unreachable_error.default_code = "upstream_service_unreachable"
-        return unreachable_error
-
-    status_code = getattr(getattr(exc, "response", None), "status_code", None)
-    if status_code is not None and status.is_client_error(status_code):
-        client_error = APIException(detail)
-        client_error.status_code = status_code
-        client_error.default_code = _status_code_name(status_code)
-        return client_error
-
-    upstream_error = APIException(detail)
-    upstream_error.status_code = status.HTTP_502_BAD_GATEWAY
-    upstream_error.default_code = "upstream_service_error"
-    return upstream_error
+    items = _error_items(exc.detail, context, default_code=exc.default_code)
+    # An empty detail still has to say something: `errors` is never empty.
+    return items or [
+        ErrorDetailSchema(code=exc.default_code, detail=str(exc.default_detail), context=context)
+    ]
 
 
 def _status_code_name(status_code: int) -> str:
@@ -130,6 +143,88 @@ def _status_code_name(status_code: int) -> str:
     except ValueError:
         # A status outside the standard table: there is no phrase to name it with.
         return "client_error"
+
+
+def _upstream_envelope(exc: ClientError) -> tuple[int, ErrorResponseSchema] | None:
+    """Return the status and envelope of an upstream 4xx answered in the shared shape.
+
+    Only a refusal of the caller's own request is handed on: an upstream 5xx is this
+    gateway's dependency failing, which the caller is told in this service's words.
+    """
+    response = getattr(exc, "response", None)
+    if response is None or not status.is_client_error(response.status_code):
+        return None
+    try:
+        envelope = ErrorResponseSchema.model_validate_json(response.text)
+    except pydantic.ValidationError:
+        return None
+    if not envelope.errors:
+        return None
+    return response.status_code, envelope
+
+
+def client_error_as_api_exception(exc: ClientError) -> APIException:
+    """Translate a transport error from a proxied microservice into a DRF exception.
+
+    An upstream 4xx answered in the shared envelope already says what is wrong in
+    words meant for the caller, so its details are kept, collapsed into one message:
+    the first item's code and every item's detail, without `attr` or `context`. That
+    suits a caller reporting one message (a transfer job); `custom_exception_handler`
+    hands the envelope on whole before it gets here. Any other answer can be an
+    HTML page or a service's internals, so it goes to the log and the caller gets a
+    fixed text. An upstream 4xx is the caller's own request coming back refused, so it
+    keeps its status: a conflict stays a conflict rather than becoming a gateway failure the
+    caller can do nothing about. A dependency that could not be reached at all is
+    service unavailable, which tells the caller the request is worth retrying. What is
+    left - a timeout, an upstream 5xx, a response with no status at all - is this
+    gateway's dependency failing, and is reported as a bad gateway.
+    """
+    upstream = _upstream_envelope(exc)
+    if upstream is not None:
+        upstream_status, envelope = upstream
+        return _api_exception(
+            upstream_status, envelope.errors[0].code, [item.detail for item in envelope.errors]
+        )
+
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    logger.warning(
+        "Upstream service call failed: {error_type} (status {status_code}): {body}",
+        error_type=type(exc).__name__,
+        status_code=status_code,
+        body=response.text[:_LOGGED_UPSTREAM_BODY_LIMIT] if response is not None else str(exc),
+    )
+
+    if isinstance(exc, ClientNotFoundError):
+        return NotFound()
+    if isinstance(exc, ClientValidationError):
+        return ValidationError()
+    if isinstance(exc, ClientRateLimitError):
+        return Throttled()
+    if isinstance(exc, ClientConnectionError):
+        return _api_exception(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "upstream_service_unreachable",
+            "A service this request depends on could not be reached. Try again later.",
+        )
+    if status_code is not None and status.is_client_error(status_code):
+        return _api_exception(
+            status_code,
+            _status_code_name(status_code),
+            "A service this request depends on refused it.",
+        )
+    return _api_exception(
+        status.HTTP_502_BAD_GATEWAY,
+        "upstream_service_error",
+        "A service this request depends on failed.",
+    )
+
+
+def _api_exception(status_code: int, code: str, detail: str | list[str]) -> APIException:
+    error = APIException(detail, code=code)
+    error.status_code = status_code
+    error.default_code = code
+    return error
 
 
 def _outbound_client_error_as_api_exception(exc: OutboundClientError) -> APIException:
@@ -144,10 +239,7 @@ def _outbound_client_error_as_api_exception(exc: OutboundClientError) -> APIExce
         error_type=type(exc).__name__,
         detail=exc.detail,
     )
-    api_exception = APIException(exc.public_detail)
-    api_exception.status_code = exc.status_code
-    api_exception.default_code = exc.code
-    return api_exception
+    return _api_exception(exc.status_code, exc.code, exc.public_detail)
 
 
 def _is_database_pool_exhausted(exc: Exception) -> bool:
@@ -182,7 +274,7 @@ def _log_unhandled_exception(exc: Exception, request, response) -> None:
 
 
 def custom_exception_handler(exc, context):
-    """Render every exception as the project's `{status_code, code, message}` envelope."""
+    """Render every exception as the shared `{type, errors}` error envelope."""
 
     # Imported here, not at module level: the secrets package imports the models,
     # and this util must stay importable without the app registry or a cycle via tables.
@@ -204,9 +296,16 @@ def custom_exception_handler(exc, context):
         exc = DRFPermissionDenied(*exc.args)
     elif isinstance(exc, (SecretUseDeniedError, ModelEndpointNotSettableError)):
         # A domain error raised by a secret check. Rendered as the field error a
-        # serializer would report, so the 400 message names the field.
+        # serializer would report, so the 400 names the field.
         exc = ValidationError(exc.field_errors())
     elif isinstance(exc, ClientError):
+        upstream = _upstream_envelope(exc)
+        if upstream is not None:
+            # The upstream service already said what is wrong with the caller's
+            # request, in the shape this API answers with: hand it on as it is.
+            upstream_status, envelope = upstream
+            set_rollback()
+            return Response(render_error(upstream_status, envelope.errors), status=upstream_status)
         exc = client_error_as_api_exception(exc)
     elif isinstance(exc, OutboundClientError):
         exc = _outbound_client_error_as_api_exception(exc)
@@ -217,33 +316,20 @@ def custom_exception_handler(exc, context):
     response = exception_handler(exc, context)
 
     if isinstance(exc, APIException):
-        detail = exc.detail if exc.detail else exc.default_detail
-        response.data = {
-            "status_code": exc.status_code,
-            "code": exc.default_code,
-            "message": flatten_error_detail(detail),
-        }
-        errors = getattr(exc, "errors", None)
-        if isinstance(errors, list):
-            response.data["errors"] = errors
+        response.data = render_error(exc.status_code, _api_exception_items(exc))
         for name, value in getattr(exc, "headers", {}).items():
             response[name] = value
-        extra_response_data = getattr(exc, "extra_response_data", None)
-        if isinstance(extra_response_data, dict):
-            # Extra keys never replace the envelope's own.
-            response.data = {**extra_response_data, **response.data}
         return response
 
     if not DEBUG:
-        # The client gets a generic message: the exception text can carry
-        # internals such as database driver errors.
+        # The client gets a fixed text: the exception, and even its class name, can
+        # carry internals such as database driver errors.
         response = JsonResponse(
-            {
-                "status_code": 500,
-                "code": exc.__class__.__name__,
-                "message": "Unpredictable error",
-            },
-            status=500,
+            render_error(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                [ErrorDetailSchema(code=UNKNOWN_ERROR_CODE, detail=INTERNAL_ERROR_DETAIL)],
+            ),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
         _log_unhandled_exception(exc, context.get("request"), response)
         return response

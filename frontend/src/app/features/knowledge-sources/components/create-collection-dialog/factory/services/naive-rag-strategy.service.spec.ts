@@ -101,7 +101,10 @@ describe('NaiveRagStrategy estimateIndexing', () => {
         let result: unknown = 'unset';
 
         strategy.estimateIndexing([1]).subscribe((value) => (result = value));
-        http.expectOne(ESTIMATE_URL).flush({ detail: 'invalid' }, { status: 400, statusText: 'Bad Request' });
+        http.expectOne(ESTIMATE_URL).flush(
+            { type: 'client_error', errors: [{ code: 'unknown', detail: 'invalid', attr: null, context: null }] },
+            { status: 400, statusText: 'Bad Request' }
+        );
 
         expect(result).toBeNull();
     });

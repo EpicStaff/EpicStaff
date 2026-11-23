@@ -14,6 +14,7 @@ import {
 } from '@shared/components';
 import { EnterSubmitDirective, ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
 import { notNumericOnlyValidator } from '@shared/form-validators';
+import { extractFieldErrors, extractServerMessage, httpFailureReason } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { AuthService } from '../../../../services/auth/auth.service';
@@ -97,7 +98,7 @@ export class PasswordChangeDialogComponent {
                 },
                 error: (err: HttpErrorResponse) => {
                     this.verifyErrorsRef.setErrors([
-                        { field: 'current_password', value: '', reason: err.error?.message ?? 'Incorrect password.' },
+                        { attr: 'current_password', detail: extractServerMessage(err) ?? 'Incorrect password.' },
                     ]);
                 },
             });
@@ -108,9 +109,7 @@ export class PasswordChangeDialogComponent {
         if (this.newPasswordForm.invalid) return;
 
         if (!this.passwordsMatch) {
-            this.newPasswordErrorsRef.setErrors([
-                { field: 'confirm_password', value: '', reason: 'Passwords do not match.' },
-            ]);
+            this.newPasswordErrorsRef.setErrors([{ attr: 'confirm_password', detail: 'Passwords do not match.' }]);
             return;
         }
 
@@ -130,10 +129,16 @@ export class PasswordChangeDialogComponent {
                     this.dialogRef.close(true);
                 },
                 error: (err: HttpErrorResponse) => {
-                    if (err.validationErrors?.length) {
-                        this.newPasswordErrorsRef.setErrors(err.validationErrors);
+                    // The dialog has no line for errors outside its fields: unless every error is under one, say
+                    // the whole failure in the toast.
+                    const fieldErrors = extractFieldErrors(err);
+                    const isShownInline =
+                        fieldErrors.length > 0 &&
+                        fieldErrors.every((error) => error.attr !== null && this.newPasswordForm.contains(error.attr));
+                    if (isShownInline) {
+                        this.newPasswordErrorsRef.setErrors(fieldErrors);
                     } else {
-                        this.toast.error(err.error.message);
+                        this.toast.error(extractServerMessage(err) ?? httpFailureReason(err));
                     }
                 },
             });

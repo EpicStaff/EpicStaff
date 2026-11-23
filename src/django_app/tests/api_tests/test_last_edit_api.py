@@ -37,6 +37,7 @@ from tables.models.llm_models import LLMConfig
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tests.fixtures import *  # noqa: F401,F403
 from tests.user_summary_helpers import expected_user_summary
+from utils import exception_handler
 
 PREVIOUS_EDIT_AT = timezone.now() - timedelta(days=1)
 
@@ -622,8 +623,11 @@ def test_graph_patch_query_count_does_not_grow_with_nodes(
 
 @pytest.mark.django_db
 def test_failed_decision_table_write_rolls_back_last_edit(
-    colleague_client, regular_user, decision_table
+    colleague_client, regular_user, decision_table, monkeypatch
 ):
+    # With DEBUG on, the exception handler renders nothing and the error propagates;
+    # the 500 envelope is what production answers.
+    monkeypatch.setattr(exception_handler, "DEBUG", False)
     duplicate_groups = _group_payload("a > 1") + _group_payload("a > 2")
 
     response = colleague_client.patch(
@@ -633,7 +637,12 @@ def test_failed_decision_table_write_rolls_back_last_edit(
     )
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert response.json()["code"] == "IntegrityError"
+    assert response.json() == {
+        "type": "server_error",
+        "errors": [
+            {"code": "unknown", "detail": "Internal server error.", "attr": None, "context": None}
+        ],
+    }
 
     assert DecisionTableNode.objects.get(pk=decision_table.pk).node_name == "decide"
     last_edit = _last_edit_of(decision_table)

@@ -29,6 +29,7 @@ from tests.plugins_tests.upgrade_fixtures import (  # noqa: F401 (fixtures)
     weather,
     weather_manifest,
 )
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -61,7 +62,7 @@ def test_new_access_without_the_acknowledgement_is_refused_and_nothing_changes(w
 
     response = _approve(superadmin_client, package, reviewed_against_package_id=_baseline(weather))
 
-    assert (response.status_code, response.json()["code"]) == (400, "access_growth_not_acknowledged")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "access_growth_not_acknowledged")
     assert _nothing_started(weather, package)
     assert not (spa_root / "weather" / "0.7.0").exists()
 
@@ -100,7 +101,7 @@ def test_an_approval_that_does_not_name_the_reviewed_baseline_is_outdated(weathe
 
     response = _approve(superadmin_client, package, access_growth_acknowledged=True, **body)
 
-    assert (response.status_code, response.json()["code"]) == (409, "review_outdated")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "review_outdated")
     assert _nothing_started(weather, package)
 
 
@@ -112,8 +113,8 @@ def test_the_untrusted_acknowledgement_is_still_needed_and_checked_after_the_con
         superadmin_client, package, untrusted_acknowledged=False, reviewed_against_package_id=_baseline(weather)
     )
 
-    assert (outdated.status_code, outdated.json()["code"]) == (409, "review_outdated")
-    assert (unacknowledged.status_code, unacknowledged.json()["code"]) == (400, "untrusted_not_acknowledged")
+    assert (outdated.status_code, outdated.json()["errors"][0]["code"]) == (409, "review_outdated")
+    assert (unacknowledged.status_code, unacknowledged.json()["errors"][0]["code"]) == (400, "untrusted_not_acknowledged")
     assert _nothing_started(weather, package)
 
 
@@ -122,9 +123,9 @@ def test_a_setting_the_new_version_needs_must_be_given(weather, newer, superadmi
 
     response = _approve(superadmin_client, package, reviewed_against_package_id=_baseline(weather))
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid_plugin_settings")
-    assert response.json()["errors"] == [
-        {"loc": "settings.region", "message": "is required by the new version and has no value"}
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid_plugin_settings")
+    assert attr_details(response.json()) == [
+        {"attr": "settings.region", "detail": "is required by the new version and has no value"}
     ]
     assert _nothing_started(weather, package)
 
@@ -153,7 +154,7 @@ def test_a_setting_unknown_to_the_new_version_is_refused_at_its_location(weather
         superadmin_client, newer(), reviewed_against_package_id=_baseline(weather), settings={"colour": "blue"}
     )
 
-    assert response.json()["errors"] == [{"loc": "settings.colour", "message": "is not a setting of this plugin"}]
+    assert attr_details(response.json()) == [{"attr": "settings.colour", "detail": "is not a setting of this plugin"}]
 
 
 def test_a_frontend_only_upgrade_completes_at_once(
@@ -239,7 +240,7 @@ def test_an_upgrade_cannot_start_while_the_plugin_is_provisioning(weather, newer
 
     response = _approve(superadmin_client, package, reviewed_against_package_id=_baseline(weather))
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_not_upgradable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_not_upgradable")
 
 
 def test_an_upgrade_cannot_start_while_another_one_works(weather, newer, upgrade_of, superadmin_client):
@@ -248,7 +249,7 @@ def test_an_upgrade_cannot_start_while_another_one_works(weather, newer, upgrade
 
     response = _approve(superadmin_client, package, reviewed_against_package_id=upgrade.to_package_id)
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_not_upgradable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_not_upgradable")
 
 
 def test_an_uninstalled_plugin_is_refused_before_the_upgrade_rules(weather, newer, superadmin_client):
@@ -257,7 +258,7 @@ def test_an_uninstalled_plugin_is_refused_before_the_upgrade_rules(weather, newe
 
     response = _approve(superadmin_client, package, reviewed_against_package_id=_baseline(weather))
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_uninstalling")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_uninstalling")
 
 
 def test_starting_records_the_activity_and_the_log(weather, newer, upgrade_of, log_messages):

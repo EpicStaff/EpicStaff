@@ -212,13 +212,26 @@ describe('PluginSettingsFormComponent', () => {
                     new HttpErrorResponse({
                         status: 400,
                         error: {
-                            status_code: 400,
-                            code: 'invalid_plugin_settings',
-                            message: 'Invalid settings.',
+                            type: 'client_error',
                             errors: [
-                                { loc: 'values.endpoint', message: 'Enter an http(s) URL.' },
-                                { loc: 'values.city', message: 'At most 1000 characters.' },
-                                { loc: 'values', message: 'Unknown key "colour".' },
+                                {
+                                    code: 'invalid_plugin_settings',
+                                    detail: 'Enter an http(s) URL.',
+                                    attr: 'values.endpoint',
+                                    context: null,
+                                },
+                                {
+                                    code: 'invalid_plugin_settings',
+                                    detail: 'At most 1000 characters.',
+                                    attr: 'values.city',
+                                    context: null,
+                                },
+                                {
+                                    code: 'invalid_plugin_settings',
+                                    detail: 'Unknown key "colour".',
+                                    attr: 'values',
+                                    context: null,
+                                },
                             ],
                         },
                     })

@@ -57,16 +57,15 @@ def test_reset_user_recreates_a_missing_default_org(superadmin_client):
     [
         (
             {"display_name": "   "},
-            [{"field": "display_name", "value": "   ",
-              "reason": "Must not be blank. Omit it or use null to derive it from the email."}],
+            [{"code": "invalid", "detail": "Must not be blank. Omit it or use null to derive it from the email.", "attr": "display_name", "context": None}],
         ),
         (
             {"display_name": "x" * 256},
-            [{"field": "display_name", "value": "x" * 256, "reason": "Must be 255 characters or fewer."}],
+            [{"code": "invalid", "detail": "Must be 255 characters or fewer.", "attr": "display_name", "context": None}],
         ),
         (
             {"display_name": 123},
-            [{"field": "display_name", "value": 123, "reason": "Must be a string or null."}],
+            [{"code": "invalid", "detail": "Must be a string or null.", "attr": "display_name", "context": None}],
         ),
         ({"email": "not-an-email", "display_name": "   "}, {"email", "display_name"}),
         ({"password": "12345"}, {"password"}),
@@ -79,7 +78,7 @@ def test_invalid_reset_user_is_rejected_and_keeps_every_user(superadmin_client, 
     assert r.status_code == 400
     errors = r.json()["errors"]
     if isinstance(expected_errors, set):
-        assert expected_errors <= {error["field"] for error in errors}
+        assert expected_errors <= {error["attr"] for error in errors}
     else:
         assert errors == expected_errors
     assert list(get_user_model().objects.values_list("email", flat=True)) == [superadmin_user.email]

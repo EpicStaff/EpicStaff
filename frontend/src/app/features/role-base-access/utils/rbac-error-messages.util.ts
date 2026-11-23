@@ -1,7 +1,7 @@
-import { HttpErrorResponse } from '@angular/common/http';
+import { extractErrorCode, extractServerMessage } from '@shared/utils';
 
 /** Maps backend `code` values to user-facing messages.
- *  Callers can fall back to `err.error?.message` or a generic string for unknown codes. */
+ *  Callers can fall back to the server's own message or a generic string for unknown codes. */
 const CODE_TO_MESSAGE: Record<string, string> = {
     permission_denied: 'You do not have permission to perform this action.',
     permission_escalation_denied: "You can't assign a role with more permissions than you have.",
@@ -23,13 +23,9 @@ const CODE_TO_MESSAGE: Record<string, string> = {
 };
 
 /** Best-effort resolver: prefer the mapped message for a known `code`,
- *  then `error.message`, then a caller-supplied fallback. */
+ *  then the server's own message, then a caller-supplied fallback. */
 export function rbacErrorMessage(err: unknown, fallback = 'Operation failed'): string {
-    if (err instanceof HttpErrorResponse) {
-        const code = err.error?.code as string | undefined;
-        if (code && CODE_TO_MESSAGE[code]) return CODE_TO_MESSAGE[code];
-        const message = err.error?.message as string | undefined;
-        if (message) return message;
-    }
-    return fallback;
+    const code = extractErrorCode(err);
+    if (code && Object.hasOwn(CODE_TO_MESSAGE, code)) return CODE_TO_MESSAGE[code];
+    return extractServerMessage(err) ?? fallback;
 }

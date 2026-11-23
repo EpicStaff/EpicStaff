@@ -75,11 +75,11 @@ def _allowed(client):
 def _assert_only_restore_and_purge(client, newer_package):
     assert _allowed(client) == ONLY_RESTORE_AND_PURGE
     cancel = client.post(f"{PLUGIN_URL}upgrade/cancel/")
-    assert (cancel.status_code, cancel.json()["code"]) == (409, "upgrade_not_cancellable")
+    assert (cancel.status_code, cancel.json()["errors"][0]["code"]) == (409, "upgrade_not_cancellable")
     retry = client.post(f"{PLUGIN_URL}upgrade/retry/")
-    assert (retry.status_code, retry.json()["code"]) == (409, "upgrade_not_retryable")
+    assert (retry.status_code, retry.json()["errors"][0]["code"]) == (409, "upgrade_not_retryable")
     approval = _approve(client, newer_package)
-    assert (approval.status_code, approval.json()["code"]) == (409, "plugin_not_upgradable")
+    assert (approval.status_code, approval.json()["errors"][0]["code"]) == (409, "plugin_not_upgradable")
 
 
 @pytest.mark.parametrize("step", CHANGING_STEPS)

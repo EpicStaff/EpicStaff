@@ -13,6 +13,7 @@ from tables.models import DocumentContent, DocumentMetadata, SourceCollection, S
 from tables.views.knowledge_views.document_management_views import _audit_actor
 from tables.services.storage_service.manager import StorageManager
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file, zip_bytes
+from tests.error_envelope import error_text
 
 pytestmark = pytest.mark.django_db
 
@@ -180,14 +181,13 @@ class TestImportFromStorage:
         response = _post(auth_client, empty_collection, [sheet.id, big.id])
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        body = dict(response.data)
-        skipped = body.pop("skipped")
-        assert body == {
-            "status_code": 400,
-            "code": "nothing_to_import",
-            "message": "None of the selected storage files can be imported",
-        }
-        assert sorted(skipped, key=lambda item: item["path"]) == [
+        [error] = response.data["errors"]
+        assert (error["code"], error["detail"], error["attr"]) == (
+            "nothing_to_import",
+            "None of the selected storage files can be imported",
+            None,
+        )
+        assert sorted(error["context"]["skipped"], key=lambda item: item["path"]) == [
             {"storage_file_id": big.id, "path": "docs/big.txt", "reason": "too_large"},
             {"storage_file_id": sheet.id, "path": "docs/sheet.xlsx", "reason": "unsupported_type"},
         ]
@@ -202,12 +202,7 @@ class TestImportFromStorage:
         response = _post(auth_client, empty_collection, [folder.id])
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.data == {
-            "status_code": 400,
-            "code": "nothing_to_import",
-            "message": "None of the selected storage files can be imported",
-            "skipped": [],
-        }
+        assert response.data == {"type": "client_error", "errors": [{"code": "nothing_to_import", "detail": "None of the selected storage files can be imported", "attr": None, "context": {"skipped": []}}]}
         assert _document_count(empty_collection) == 0
 
     @override_settings(MAX_ARCHIVE_ENTRIES=2)
@@ -222,11 +217,7 @@ class TestImportFromStorage:
         response = _post(auth_client, empty_collection, ids)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.data == {
-            "status_code": 400,
-            "code": "storage_import_limit_exceeded",
-            "message": "Cannot import 3 files at once; the limit is 2",
-        }
+        assert response.data == {"type": "client_error", "errors": [{"code": "storage_import_limit_exceeded", "detail": "Cannot import 3 files at once; the limit is 2", "attr": None, "context": None}]}
         assert _document_count(empty_collection) == 0
 
     @override_settings(MAX_UPLOAD_TOTAL_SIZE=10)
@@ -241,11 +232,7 @@ class TestImportFromStorage:
         response = _post(auth_client, empty_collection, ids)
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.data == {
-            "status_code": 400,
-            "code": "storage_import_limit_exceeded",
-            "message": "Total import size is 12 bytes, over the limit of 10 bytes",
-        }
+        assert response.data == {"type": "client_error", "errors": [{"code": "storage_import_limit_exceeded", "detail": "Total import size is 12 bytes, over the limit of 10 bytes", "attr": None, "context": None}]}
         assert _document_count(empty_collection) == 0
 
     @override_settings(MAX_ARCHIVE_UNCOMPRESSED_SIZE=100)
@@ -264,13 +251,7 @@ class TestImportFromStorage:
         response = _post(auth_client, empty_collection, [docx.id])
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert response.data == {
-            "status_code": 400,
-            "code": "upload_rejected",
-            "message": (
-                "Upload rejected. Archive 'report.docx' expands to more than 100 bytes"
-            ),
-        }
+        assert response.data == {"type": "client_error", "errors": [{"code": "upload_rejected", "detail": "Upload rejected. Archive 'report.docx' expands to more than 100 bytes", "attr": None, "context": None}]}
         assert _document_count(empty_collection) == 0
 
     def test_duplicate_ids_are_imported_once(
@@ -305,7 +286,7 @@ class TestImportFromStorage:
         response = _post(auth_client, empty_collection, [1, 2, 3])
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "storage_file_ids" in response.data["message"]
+        assert "storage_file_ids" in error_text(response.data)
 
     @override_settings(MAX_ARCHIVE_ENTRIES=1)
     def test_ids_at_the_selection_cap_pass_the_serializer(
@@ -364,5 +345,5 @@ class TestImportFromStorage:
             response = _post(auth_client, empty_collection, [stored.id])
 
         assert response.status_code == status.HTTP_404_NOT_FOUND
-        assert response.data == {"status_code": 404, "code": "not_found", "message": "Not found."}
+        assert response.data == {"type": "client_error", "errors": [{"code": "not_found", "detail": "Not found.", "attr": None, "context": None}]}
         assert not DocumentMetadata.objects.filter(file_name="late.txt").exists()

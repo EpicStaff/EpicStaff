@@ -14,7 +14,17 @@ from rbac.serializers.auth import LoginSerializer
 
 INTROSPECT_URL = "/api/auth/introspect/"
 PROFILE_URL = "/api/profile/"
-SYSTEM_KEY_REQUIRED = {"detail": "System API key required"}
+SYSTEM_KEY_REQUIRED = {
+    "type": "client_error",
+    "errors": [
+        {
+            "code": "permission_denied",
+            "detail": "System API key required",
+            "attr": None,
+            "context": None,
+        }
+    ],
+}
 
 
 @pytest.fixture

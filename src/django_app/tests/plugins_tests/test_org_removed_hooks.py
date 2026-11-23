@@ -201,7 +201,7 @@ def test_a_job_whose_grant_is_not_being_purged_is_not_claimable(job, node_client
     response = _claim(node_client, job)
 
     assert response.status_code == 409
-    assert response.json()["code"] == "hook_job_not_claimable"
+    assert response.json()["errors"][0]["code"] == "hook_job_not_claimable"
 
 
 @pytest.mark.parametrize("plugin_state", [PluginState.UNINSTALLING, PluginState.PURGING])
@@ -384,14 +384,14 @@ def test_a_running_or_finished_job_can_be_neither_retried_nor_skipped(job, super
     retried = _retry(superadmin_client, job)
     skipped = _skip(superadmin_client, job)
 
-    assert (retried.status_code, retried.json()["code"]) == (409, "org_removed_hook_not_retryable")
-    assert (skipped.status_code, skipped.json()["code"]) == (409, "org_removed_hook_not_skippable")
+    assert (retried.status_code, retried.json()["errors"][0]["code"]) == (409, "org_removed_hook_not_retryable")
+    assert (skipped.status_code, skipped.json()["errors"][0]["code"]) == (409, "org_removed_hook_not_skippable")
     job.refresh_from_db()
     assert job.state == state
 
 
 def test_a_due_job_cannot_be_retried(job, superadmin_client):
-    assert _retry(superadmin_client, job).json()["code"] == "org_removed_hook_not_retryable"
+    assert _retry(superadmin_client, job).json()["errors"][0]["code"] == "org_removed_hook_not_retryable"
 
 
 def test_another_plugin_s_or_kind_s_job_is_not_found(job, superadmin_client, running_plugin, weather, acme):
@@ -405,8 +405,8 @@ def test_another_plugin_s_or_kind_s_job_is_not_found(job, superadmin_client, run
         _retry(superadmin_client, install_job),
         _skip(superadmin_client, PluginHookJob(pk=job.pk + 1000)),
     ):
-        assert (response.status_code, response.json()["code"]) == (404, "hook_job_not_found")
-    assert _skip(superadmin_client, job, identifier="nothing").json()["code"] == "plugin_not_found"
+        assert (response.status_code, response.json()["errors"][0]["code"]) == (404, "hook_job_not_found")
+    assert _skip(superadmin_client, job, identifier="nothing").json()["errors"][0]["code"] == "plugin_not_found"
 
 
 def test_an_org_admin_or_an_api_key_gets_403(job, client_as, admin_acme, acme):
@@ -444,7 +444,7 @@ def test_the_list_shows_open_jobs_of_deleted_organizations_by_their_name(
 def test_the_list_of_an_unknown_plugin_is_not_found(superadmin_client, plugins_enabled):
     response = superadmin_client.get("/api/admin/plugins/nothing/org-removed-jobs/")
 
-    assert (response.status_code, response.json()["code"]) == (404, "plugin_not_found")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (404, "plugin_not_found")
 
 
 def test_the_retry_window_ends_seven_days_after_the_first_attempt(job, node_client, clock, superadmin_client):

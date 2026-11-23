@@ -55,8 +55,10 @@ created = await acme.post("graphs/", {"name": "Weather forecast"})
 - Each call sends `Authorization: PluginKey <key>`, `X-Organization-Id: <org id>` and
   `Accept: application/json`, never goes through a proxy, never follows a redirect, and gives up
   after 30 seconds.
-- An answer of 400 or more raises `EpicStaffApiError` with `status`, `code`, `message` and
-  `errors` from EpicStaff's [error envelope](../reference/error-codes.md).
+- An answer of 400 or more raises `EpicStaffApiError`, read from EpicStaff's
+  [error envelope](../reference/error-codes.md): `status`, `code` (the first item's code),
+  `message` (every item's `detail`, led by `attr: ` when it names a field, joined with `; `) and `errors` (the items, each with `code`,
+  `detail`, `attr` and `context`). Branch on `code`, never on `message`.
 - An organization the runtime file holds no key for raises `ServiceAccountUnavailable`: the
   plugin is not granted there, its install hook failed, it is suspended there, or the node has
   not written the new runtime file yet.

@@ -1,3 +1,5 @@
+import { ApiErrorDetail } from '@shared/models';
+
 /** Every `code` the plugin endpoints answer with, and the generic ones the frontend may meet on them. */
 export type PluginErrorCode =
     | 'not_authenticated'
@@ -53,16 +55,17 @@ export type PluginErrorCode =
     | 'plugin_development_mode_off'
     | 'throttled';
 
-/** One problem in a refused package: `loc` is a dotted path such as `manifest.user_permissions[1].action`. */
-export interface PluginErrorItem {
-    loc: string;
-    message: string;
-}
+/**
+ * A problem the server listed: `attr` is a dotted path such as `manifest.user_permissions[1].action`, or null for a
+ * problem of the whole request.
+ */
+export type PluginErrorItem = ApiErrorDetail;
 
 /** A plugin API failure as the UI shows it. */
 export interface PluginErrorView {
     /** The known `code`, or `null` for an unknown one or a failure without a JSON body. */
     code: PluginErrorCode | null;
     message: string;
+    /** The problems the server listed (in a refused package, on a field, or of the whole request), and why. */
     items: PluginErrorItem[];
 }

@@ -118,7 +118,7 @@ async def test_the_request_rate_covers_the_upload_stream(key_for, acme):
     second = await _upload(raw_key, acme, "filename=two.txt", b"2")
 
     assert (first.status_code, second.status_code) == (200, 429)
-    assert second.json()["code"] == "throttled"
+    assert second.json()["errors"][0]["code"] == "throttled"
 
 
 async def test_a_service_account_never_purges_the_bin(key_for, acme):

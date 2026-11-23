@@ -55,7 +55,7 @@ class TestAuditFilterPresetExport:
         response = auth_client.post(EXPORT_JOBS_URL, {"ids": [preset.id, 999999]}, format="json")
 
         assert response.status_code == 404
-        assert response.json()["code"] == "export_entities_not_found"
+        assert response.json()["errors"][0]["code"] == "export_entities_not_found"
         assert not TransferJob.objects.exists()
 
     def test_a_repeated_id_is_exported_once(self, auth_client, preset):
@@ -82,7 +82,7 @@ class TestAuditFilterPresetExport:
         response = auth_client.post(EXPORT_JOBS_URL, {"ids": [foreign_preset.id]}, format="json")
 
         assert response.status_code == 404
-        assert response.json()["code"] == "export_entities_not_found"
+        assert response.json()["errors"][0]["code"] == "export_entities_not_found"
         assert not TransferJob.objects.exists()
 
     def test_the_exported_archive_imports_again(self, auth_client, preset):

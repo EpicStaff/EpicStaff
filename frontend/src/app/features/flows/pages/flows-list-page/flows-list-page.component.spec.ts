@@ -39,9 +39,15 @@ const SUMMARY: ImportResult = {
 };
 const CODE_TO_REVIEW: ReviewItem = { kind: 'mcp_tool', name: 'Search', transport: 'stdio' };
 const REFUSAL_BODY = {
-    status_code: 403,
-    code: 'flow_with_trigger_nodes_requires_use_permission',
-    message: 'This flow contains trigger nodes.',
+    type: 'client_error',
+    errors: [
+        {
+            code: 'flow_with_trigger_nodes_requires_use_permission',
+            detail: 'This flow contains trigger nodes.',
+            attr: null,
+            context: null,
+        },
+    ],
 };
 const IMPORT_REFUSAL_WARNING = {
     title: 'Use permission required',
@@ -308,7 +314,7 @@ describe('FlowsListPageComponent flow import', () => {
 
     it('reports any other import failure with the reason the backend gave', async () => {
         (await importFileWithoutCodeToReview()).flush(
-            { message: 'Bad file' },
+            { type: 'client_error', errors: [{ code: 'unknown', detail: 'Bad file', attr: null, context: null }] },
             { status: 400, statusText: 'Bad Request' }
         );
 
@@ -417,7 +423,10 @@ describe('FlowsListPageComponent flow import', () => {
 
         it('is free again when the inspection fails', async () => {
             (await chooseFileToImport()).flush(
-                { message: 'Not an export' },
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'unknown', detail: 'Not an export', attr: null, context: null }],
+                },
                 { status: 400, statusText: 'Bad Request' }
             );
 
@@ -543,7 +552,7 @@ describe('FlowsListPageComponent bulk export', () => {
         expect(start.request.body).toEqual({ ids: [1, 2], include_knowledge: false });
         // Refused, so no job is polled after the test.
         start.flush(
-            { status_code: 429, code: 'too_many_jobs', message: 'Busy.' },
+            { type: 'client_error', errors: [{ code: 'too_many_jobs', detail: 'Busy.', attr: null, context: null }] },
             { status: 429, statusText: 'Too Many Requests' }
         );
     });
@@ -579,12 +588,20 @@ describe('FlowsListPageComponent bulk export', () => {
     it('reports a refused start with the reason from the error envelope', () => {
         exportSelectedFlows();
 
-        httpMock
-            .expectOne('/api/graphs/export-jobs/')
-            .flush(
-                { status_code: 429, code: 'too_many_jobs', message: 'Too many exports are running. Try again later.' },
-                { status: 429, statusText: 'Too Many Requests' }
-            );
+        httpMock.expectOne('/api/graphs/export-jobs/').flush(
+            {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'too_many_jobs',
+                        detail: 'Too many exports are running. Try again later.',
+                        attr: null,
+                        context: null,
+                    },
+                ],
+            },
+            { status: 429, statusText: 'Too Many Requests' }
+        );
 
         expect(toastError).toHaveBeenCalledExactlyOnceWith('Too many exports are running. Try again later.');
         expect(clickedLinks).toEqual([]);

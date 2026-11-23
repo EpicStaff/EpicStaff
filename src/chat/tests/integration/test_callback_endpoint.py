@@ -11,6 +11,7 @@ from domain.enums import Role, RunState, SubmitState
 from infrastructure.callback_verifier import SESSION_ID_HEADER, SIGNATURE_HEADER, TIMESTAMP_HEADER, sign
 from infrastructure.redis.counters import RedisRateLimiter
 from infrastructure.redis.fanout import RedisFanout
+from tests.errors import first_error
 from tests.factories import make_binding
 from tests.infrastructure.test_django_client import CHAT_FLOW
 from tests.integration.test_conversation_lifecycle import GatedFlows
@@ -77,7 +78,7 @@ async def test_bad_signature_is_401_and_changes_nothing(client, running):
     conversation_id, headers, secret, url = running
     body, signed_headers = _signed("wrong-secret-wrong-secret-wrong-secret", _payload(result={"reply": "x"}))
     response = await client.post(url, content=body, headers=signed_headers)
-    assert response.status_code == 401 and response.json()["code"] == "invalid_signature"
+    assert response.status_code == 401 and first_error(response)["code"] == "invalid_signature"
     assert (await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=headers)).json()["state"] == "processing"
 
 
@@ -91,14 +92,14 @@ async def test_stale_timestamp_is_401(client, running):
 async def test_unknown_run_is_404_so_django_retries(client, running):
     body, signed_headers = _signed("whatever", _payload())
     response = await client.post(f"{CALLBACKS}/{new_id()}", content=body, headers=signed_headers)
-    assert response.status_code == 404 and response.json()["code"] == "unknown_run"
+    assert response.status_code == 404 and first_error(response)["code"] == "unknown_run"
 
 
 async def test_session_other_than_the_bound_one_is_rejected(client, running):
     conversation_id, headers, secret, url = running  # bound to session 100 by the start response
     body, signed_headers = _signed(secret, _payload(session_id=101, result={"reply": "not mine"}), session_id=101)
     response = await client.post(url, content=body, headers=signed_headers)
-    assert (response.status_code, response.json()["code"]) == (409, "session_mismatch")
+    assert (response.status_code, first_error(response)["code"]) == (409, "session_mismatch")
     assert (await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=headers)).json()["state"] == "processing"
     # The right session still applies afterwards: the rejection left the receipt untouched.
     body, signed_headers = _signed(secret, _payload(result={"reply": "mine"}))

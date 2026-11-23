@@ -1,7 +1,7 @@
 """Error contract of the naive and graph `suggest-search-params` endpoints.
 
-The frontend branches on `code` in the standard `{status_code, code, message}`
-envelope, so each failure the user can fix has its own code. Only the knowledge
+The frontend branches on `code` in the standard `{type, errors}` envelope, so each
+failure the user can fix has its own code. Only the knowledge
 service client is replaced; the database, views and exception handler run for real.
 """
 
@@ -75,14 +75,8 @@ def test_naive_rag_not_indexed_returns_index_not_ready_envelope(
     )
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert response.json() == {
-        "status_code": 409,
-        "code": "rag_index_not_ready",
-        "message": (
-            f"NaiveRAG index for collection {source_collection.collection_id} not ready. "
-            "Run indexing and wait for rag_status='completed'."
-        ),
-    }
+    assert response.json() == {"type": "client_error", "errors": [{"code": "rag_index_not_ready", "detail": f"NaiveRAG index for collection {source_collection.collection_id} not ready. "
+            "Run indexing and wait for rag_status='completed'.", "attr": None, "context": None}]}
 
 
 def test_graph_rag_not_indexed_returns_index_not_ready(
@@ -96,7 +90,7 @@ def test_graph_rag_not_indexed_returns_index_not_ready(
 
     assert response.status_code == status.HTTP_409_CONFLICT
     body = response.json()
-    assert body["code"] == "rag_index_not_ready"
+    assert body["errors"][0]["code"] == "rag_index_not_ready"
     assert "error" not in body
     knowledge_client.metrics.assert_not_called()
 
@@ -112,11 +106,7 @@ def test_graph_rag_whose_llm_config_was_deleted_returns_llm_not_configured(
     response = _post_graph(auth_client, collection)
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert response.json() == {
-        "status_code": 409,
-        "code": "graph_rag_llm_not_configured",
-        "message": f"GraphRag for collection {collection.collection_id} has no LLM config.",
-    }
+    assert response.json() == {"type": "client_error", "errors": [{"code": "graph_rag_llm_not_configured", "detail": f"GraphRag for collection {collection.collection_id} has no LLM config.", "attr": None, "context": None}]}
     knowledge_client.metrics.assert_not_called()
 
 
@@ -128,7 +118,7 @@ def test_graph_rag_without_llm_reports_llm_before_index_status(
     response = _post_graph(auth_client, collection)
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert response.json()["code"] == "graph_rag_llm_not_configured"
+    assert response.json()["errors"][0]["code"] == "graph_rag_llm_not_configured"
 
 
 def test_graph_rag_metrics_unavailable_keeps_retryable_rag_error(
@@ -142,14 +132,8 @@ def test_graph_rag_metrics_unavailable_keeps_retryable_rag_error(
     response = _post_graph(auth_client, collection)
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert response.json() == {
-        "status_code": 409,
-        "code": "rag_error",
-        "message": (
-            f"GraphRAG metrics for collection {collection.collection_id} are temporarily "
-            "unavailable. Retry shortly."
-        ),
-    }
+    assert response.json() == {"type": "client_error", "errors": [{"code": "rag_error", "detail": f"GraphRAG metrics for collection {collection.collection_id} are temporarily "
+            "unavailable. Retry shortly.", "attr": None, "context": None}]}
     assert any(
         record["level"].name == "WARNING"
         and record["extra"].get("collection_id") == collection.collection_id
@@ -192,7 +176,7 @@ def test_graph_rag_in_another_org_returns_404_without_revealing_llm_state(
     response = _post_graph(auth_client, collection)
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.json()["code"] == "not_found"
+    assert response.json()["errors"][0]["code"] == "not_found"
     knowledge_client.metrics.assert_not_called()
 
 
@@ -213,4 +197,43 @@ def test_collection_without_rag_returns_rag_not_found(
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.json()["code"] == expected_code
+    assert response.json()["errors"][0]["code"] == expected_code
+
+
+@pytest.mark.parametrize(
+    ("url", "body", "expected"),
+    [
+        (
+            NAIVE_URL,
+            {"knowledge_collection_id": 0, "unexpected": 1},
+            [("knowledge_collection_id", "greater_than"), ("unexpected", "extra_forbidden")],
+        ),
+        (NAIVE_URL, {}, [("knowledge_collection_id", "missing")]),
+        (
+            GRAPH_URL,
+            {"knowledge_collection_id": 1, "search_method": "no-such-method"},
+            [("search_method", "enum")],
+        ),
+    ],
+    ids=["naive-bad-fields", "naive-missing-field", "graph-unknown-method"],
+)
+def test_an_invalid_body_names_each_field_with_its_validation_code(auth_client, url, body, expected):
+    response = auth_client.post(url, body, format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert sorted((item["attr"], item["code"]) for item in response.json()["errors"]) == expected
+
+
+@pytest.mark.parametrize("url", [NAIVE_URL, GRAPH_URL], ids=["naive", "graph"])
+def test_a_body_that_is_not_an_object_is_400(auth_client, url):
+    response = auth_client.post(url, [1, 2], format="json")
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["errors"] == [
+        {
+            "code": "invalid",
+            "detail": "Request body must be a JSON object.",
+            "attr": None,
+            "context": None,
+        }
+    ]

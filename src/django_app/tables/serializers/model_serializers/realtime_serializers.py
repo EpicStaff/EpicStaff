@@ -280,9 +280,9 @@ def _phone_number_claim_error_as_field_error():
         yield
     except TwilioPhoneNumberClaimError as error:
         field = _PHONE_NUMBER_CLAIM_REFUSAL_FIELDS[error.reason]
-        raise serializers.ValidationError({field: [error.message]}) from None
+        raise serializers.ValidationError({field: [str(error.detail)]}) from None
     except TwilioNoAnswerError as error:
-        raise TwilioUnavailableError(error.message) from error
+        raise TwilioUnavailableError(str(error.detail)) from error
 
 
 class TwilioChannelSerializer(serializers.ModelSerializer):

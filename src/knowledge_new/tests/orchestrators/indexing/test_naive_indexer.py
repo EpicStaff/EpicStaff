@@ -277,17 +277,21 @@ CSV_CONFIG = ChunkingConfig(chunk_strategy=ChunkStrategyEnum.CSV, chunk_size=50,
 
 
 @pytest.mark.parametrize(
-    ("document", "provider_error"),
+    ("document", "provider_error", "expected_message"),
     [
-        (_document(name="doc.csv", content=b"\xff\xfe", config=CSV_CONFIG), None),
-        (_broken_json_document(7), None),
-        (_document(content=b"\n\n"), None),
-        (_document(), RuntimeError("provider down")),
+        (
+            _document(name="doc.csv", content=b"\xff\xfe", config=CSV_CONFIG),
+            None,
+            "The text couldn't be extracted from the file.",
+        ),
+        (_broken_json_document(7), None, "The text couldn't be split into chunks."),
+        (_document(content=b"\n\n"), None, "The document produced no chunks."),
+        (_document(), RuntimeError("provider down"), "The text couldn't be embedded."),
     ],
     ids=["extraction_failure", "chunking_failure", "no_chunks_produced", "embedding_failure"],
 )
 async def test_document_failure_marks_document_and_rag_failed(
-    embedding_api, document, provider_error
+    embedding_api, document, provider_error, expected_message
 ):
     embedding_api.side_effect = provider_error
     repo = FakeNaiveRagRepo(documents=[document], rag=_new_rag())
@@ -295,7 +299,7 @@ async def test_document_failure_marks_document_and_rag_failed(
     await _index(repo, 7)
 
     assert document.status == DocumentStatusEnum.FAILED
-    assert document.error_message
+    assert document.error_message == expected_message
     assert repo.doc_status_log == [DocumentStatusEnum.PROCESSING, DocumentStatusEnum.FAILED]
     assert repo.saved_indexed_chunks == []
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.FAILED]
@@ -315,24 +319,84 @@ async def test_one_failing_document_does_not_stop_the_others(embedding_api):
 
 
 @pytest.mark.parametrize(
-    ("embedding_config", "documents", "expected_error"),
+    ("embedding_config", "documents", "expected_error", "expected_message"),
     [
-        (None, [_document()], EmbeddingConfigNotFoundError),
-        (DEFAULT_EMBEDDING_CONFIG, [], DocumentNotFoundError),
+        (
+            None,
+            [_document()],
+            EmbeddingConfigNotFoundError,
+            "The knowledge source has no embedding settings.",
+        ),
+        (
+            DEFAULT_EMBEDDING_CONFIG,
+            [],
+            DocumentNotFoundError,
+            "The knowledge source has no documents.",
+        ),
     ],
     ids=["embedding_config_not_found", "no_documents"],
 )
 async def test_unusable_rag_is_marked_failed_and_the_error_raised(
-    embedding_api, embedding_config, documents, expected_error
+    embedding_api, embedding_config, documents, expected_error, expected_message
 ):
-    repo = FakeNaiveRagRepo(documents=documents, rag=_new_rag(), embedding_config=embedding_config)
+    rag = _new_rag()
+    repo = FakeNaiveRagRepo(documents=documents, rag=rag, embedding_config=embedding_config)
 
     with pytest.raises(expected_error):
         await _index(repo, 7)
 
+    assert rag.error_message == expected_message
     assert repo.rag_status_log == [IndexStatusEnum.FAILED]
     assert repo.doc_status_log == []
     assert _embedded_texts(embedding_api) == []
+
+
+@pytest.fixture
+def logged():
+    messages: list[str] = []
+    # diagnose=False as in the service's own sink, which keeps frame values out of tracebacks.
+    sink_id = logger.add(messages.append, level="DEBUG", diagnose=False)
+    yield messages
+    logger.remove(sink_id)
+
+
+async def test_unexpected_document_failure_stores_a_fixed_fact_and_logs_the_raw_error(
+    embedding_api, monkeypatch, logged
+):
+    def failing_extractor_factory(extension):
+        raise RuntimeError("parser crashed reading /tmp/upload-7.bin")
+
+    monkeypatch.setattr(naive_indexer, "build_file_text_extractor", failing_extractor_factory)
+    document = _document()
+    repo = FakeNaiveRagRepo(documents=[document], rag=_new_rag())
+
+    await _index(repo, 7)
+
+    assert document.status == DocumentStatusEnum.FAILED
+    assert document.error_message == "Indexing failed because of a server error."
+    log = "".join(logged)
+    assert "document(id=7) in RAG(id=1)" in log
+    assert "RuntimeError: parser crashed reading /tmp/upload-7.bin" in log
+
+
+async def test_unexpected_rag_failure_stores_a_fixed_fact_and_logs_the_raw_error(
+    embedding_api, logged
+):
+    rag = _new_rag()
+    repo = FakeNaiveRagRepo(
+        documents=[_document()],
+        rag=rag,
+        get_documents_raises=RuntimeError("connection to db:5432 reset"),
+    )
+
+    with pytest.raises(RuntimeError):
+        await _index(repo, 7)
+
+    assert rag.status == IndexStatusEnum.FAILED
+    assert rag.error_message == "Indexing failed because of a server error."
+    log = "".join(logged)
+    assert "RunIndex(rag_id=1, document_ids=frozenset({7}))" in log
+    assert "RuntimeError: connection to db:5432 reset" in log
 
 
 async def test_missing_rag_raises_and_marks_nothing(embedding_api):
@@ -444,9 +508,9 @@ async def test_sealed_header_markers_reach_the_embedding_provider_decrypted(
 @pytest.mark.parametrize(
     ("field", "command_fields"),
     [
-        ("embedding_api_key", {"embedding_api_key": "sk-never-sealed"}),
+        ("embedding API key", {"embedding_api_key": "sk-never-sealed"}),
         (
-            "embedding_extra_headers",
+            "embedding request headers",
             {"embedding_extra_headers": {"X-Key": "epicstaff_secret(sk-never-sealed)"}},
         ),
     ],

@@ -200,7 +200,10 @@ describe('GlobalSessionsListComponent bulk actions', () => {
 
         it('shows an error toast and keeps the selection when the delete fails', async () => {
             deleteSelectedAndConfirm(2).flush(
-                { detail: 'Database is unavailable.' },
+                {
+                    type: 'server_error',
+                    errors: [{ code: 'unknown', detail: 'Database is unavailable.', attr: null, context: null }],
+                },
                 { status: 500, statusText: 'Server Error' }
             );
             fixture.detectChanges();
@@ -211,7 +214,17 @@ describe('GlobalSessionsListComponent bulk actions', () => {
 
         it('shows a plain 403 once: the forbidden interceptor toasts it, the delete adds nothing', async () => {
             deleteSelectedAndConfirm(2).flush(
-                { message: 'You do not have permission to delete sessions.' },
+                {
+                    type: 'client_error',
+                    errors: [
+                        {
+                            code: 'unknown',
+                            detail: 'You do not have permission to delete sessions.',
+                            attr: null,
+                            context: null,
+                        },
+                    ],
+                },
                 { status: 403, statusText: 'Forbidden' }
             );
             fixture.detectChanges();
@@ -223,7 +236,10 @@ describe('GlobalSessionsListComponent bulk actions', () => {
 
         it('toasts a 403 the forbidden interceptor leaves to the caller', async () => {
             deleteSelectedAndConfirm(2).flush(
-                { code: 'in_use_restricted', message: 'Session is in use.' },
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'in_use_restricted', detail: 'Session is in use.', attr: null, context: null }],
+                },
                 { status: 403, statusText: 'Forbidden' }
             );
             fixture.detectChanges();

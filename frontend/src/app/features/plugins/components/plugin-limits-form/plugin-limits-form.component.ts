@@ -47,7 +47,7 @@ export const NO_DATABASE_BADGE = 'No database';
 /** The badge of any other limit the server says does not apply. */
 export const NOT_ENFORCED_BADGE = 'Not enforced';
 
-/** `overrides.<key>` in an `errors[]` item's `loc`. */
+/** `overrides.<key>` in an error item's `attr`. */
 const LIMIT_LOC_PREFIX = 'overrides.';
 
 interface NumericLimitRow {
@@ -165,7 +165,7 @@ export class PluginLimitsFormComponent {
     );
     /** Problems of a refused save that belong to no limit. */
     protected readonly otherErrorItems = computed<PluginErrorItem[]>(
-        () => this.saveError()?.items.filter((item) => !item.loc.startsWith(LIMIT_LOC_PREFIX)) ?? []
+        () => this.saveError()?.items.filter((item) => !item.attr?.startsWith(LIMIT_LOC_PREFIX)) ?? []
     );
     private readonly reloads = signal(0);
     private readonly request = computed(() => ({ identifier: this.identifier(), reload: this.reloads() }));
@@ -273,9 +273,9 @@ function overrideProblem(draft: number | null, bound: number): string | null {
 function fieldErrorsOf(items: PluginErrorItem[]): Partial<Record<PluginLimitKey, string>> {
     const errors: Partial<Record<PluginLimitKey, string>> = {};
     for (const item of items) {
-        if (!item.loc.startsWith(LIMIT_LOC_PREFIX)) continue;
-        const key = item.loc.slice(LIMIT_LOC_PREFIX.length);
-        if (isLimitKey(key)) errors[key] = errors[key] ? `${errors[key]} ${item.message}` : item.message;
+        if (!item.attr?.startsWith(LIMIT_LOC_PREFIX)) continue;
+        const key = item.attr.slice(LIMIT_LOC_PREFIX.length);
+        if (isLimitKey(key)) errors[key] = errors[key] ? `${errors[key]} ${item.detail}` : item.detail;
     }
     return errors;
 }

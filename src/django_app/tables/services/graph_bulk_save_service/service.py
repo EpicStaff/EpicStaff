@@ -26,6 +26,7 @@ from tables.services.graph_bulk_save_service.registry import (
     NODE_TYPE_REGISTRY,
     NodeTypeConfig,
 )
+from tables.services.graph_bulk_save_service.save_errors import BulkSaveErrors
 from tables.services.graph_bulk_save_service.saveables import (
     _EdgeSaveable,
     _NodeSaveable,
@@ -64,8 +65,9 @@ class GraphBulkSaveService:
         Pass 2  execute deletions then saves atomically; nodes before edges
               so the temp_id -> real_id map is ready when edges are written.
 
-    Raises BulkSaveValidationError with a structured error dict if any entity
-    fails validation. No DB writes happen in that case. An item error that can
+    Raises BulkSaveValidationError with every problem keyed by its list and item
+    position (see `BulkSaveErrors`) if any entity fails validation. No DB writes
+    happen in that case. An item error that can
     only be detected during Pass 2 (a node's nested child reference) is raised in
     the same shape, and the whole transaction is rolled back. A node uuid constraint
     violation at write time is raised the same way, so it is never a 500.
@@ -98,7 +100,7 @@ class GraphBulkSaveService:
         self._request = request
         expected_save_version = validated_input["save_version"]
         deleted_data = validated_input.get("deleted", {})
-        all_errors: dict = {}
+        all_errors = BulkSaveErrors()
         node_saveables: list[_NodeSaveable] = []
         edge_saveables: list = []
         self._serializer_context = {"request": self._request}
@@ -115,7 +117,7 @@ class GraphBulkSaveService:
         # Pass 1: validate deletions
         deletion_errors = self._validate_deletions(graph, deleted_data)
         if deletion_errors:
-            all_errors["deleted"] = deletion_errors
+            all_errors.add_section("deleted", deletion_errors)
 
         # Pass 1: validate nodes (driven by registry — no hardcoded lists)
         # {list_key: {item index: real routing target ids}}, so a bad routing ref is
@@ -135,18 +137,19 @@ class GraphBulkSaveService:
             result = self._validate_node_list(graph, incoming, config, db_map, payload_temp_ids)
             if result.created_uuids:
                 created_uuids[config.list_key] = result.created_uuids
-            if result.errors:
-                all_errors[config.list_key] = result.errors
-            else:
+            for index, problems in result.errors:
+                all_errors.add_item(config.list_key, index, problems)
+            if not result.errors:
                 node_saveables.extend(result.node_saveables)
                 edge_saveables.extend(result.deferred_saveables)
                 if result.real_routing_node_ids_by_index:
                     routing_refs_by_item[config.list_key] = result.real_routing_node_ids_by_index
 
         # Pass 1: validate client-sent node uuids across all node lists and tables
-        uuid_errors = NodeUuidValidator().find_errors(graph, created_uuids, deleted_data)
-        for list_key, errors in uuid_errors.items():
-            all_errors.setdefault(list_key, []).extend(errors)
+        for list_key, index, problems in NodeUuidValidator().find_errors(
+            graph, created_uuids, deleted_data
+        ):
+            all_errors.add_item(list_key, index, problems)
 
         # Pass 1: validate edges
         existing_node_ref_errors = []
@@ -159,9 +162,9 @@ class GraphBulkSaveService:
             Edge,
             payload_temp_ids,
         )
-        if edge_result.errors:
-            all_errors["edge_list"] = edge_result.errors
-        else:
+        for index, problems in edge_result.errors:
+            all_errors.add_item("edge_list", index, problems)
+        if not edge_result.errors:
             edge_saveables.extend(edge_result.saveables)
             edge_refs_to_validate |= edge_result.real_node_ids
 
@@ -194,14 +197,11 @@ class GraphBulkSaveService:
                             "Decision table routing references node IDs not found in this graph: "
                             f"{sorted(invalid_routing_refs)}"
                         )
-                        all_errors.setdefault(list_key, []).append(
-                            {"index": index, "errors": [message]}
-                        )
+                        all_errors.add_item(list_key, index, message)
         if existing_node_ref_errors:
-            all_errors.setdefault("edge_list", []).extend(existing_node_ref_errors)
+            all_errors.add_section("edge_list", existing_node_ref_errors)
 
-        if all_errors:
-            raise BulkSaveValidationError(all_errors)
+        all_errors.raise_if_any()
 
         # Pass 2: atomic write
         try:
@@ -218,8 +218,9 @@ class GraphBulkSaveService:
             # older one-per-graph index first, which stays a plain IntegrityError.
             if not NodeUuidValidator.is_uuid_conflict(error):
                 raise
-            # The atomic block rolls back every write of this request.
-            raise BulkSaveValidationError({"nodes": [TAKEN_UUID_MESSAGE]}) from error
+            # The atomic block rolls back every write of this request. Which node
+            # holds the uuid is not known here, so the error names none.
+            raise BulkSaveValidationError([TAKEN_UUID_MESSAGE]) from error
         return graph
 
     def _validate_node_list(
@@ -247,30 +248,25 @@ class GraphBulkSaveService:
 
             if item_id is None:
                 item_data.pop("id", None)
-                build = self._build_saveable(config, item_data, index, payload_temp_ids)
+                build = self._build_saveable(config, item_data, payload_temp_ids)
             else:
                 db_instance = db_map.get(item_id)
                 if db_instance is None:
-                    result.errors.append(
-                        {
-                            "index": index,
-                            "errors": f"id={item_id} not found in graph {graph.id}",
-                        }
-                    )
+                    result.errors.append((index, f"id={item_id} not found in graph {graph.id}"))
                     continue
 
                 item_data.pop("id", None)
                 build = self._build_saveable(
-                    config, item_data, index, payload_temp_ids, instance=db_instance
+                    config, item_data, payload_temp_ids, instance=db_instance
                 )
 
             # Refusals are reported only on an item that otherwise builds; behind another
             # error they come back on the next save, once that error is fixed.
             if build.error:
-                result.errors.append(build.error)
+                result.errors.append((index, build.error))
             else:
                 if run_refusals:
-                    result.errors.append({"index": index, "errors": run_refusals})
+                    result.errors.append((index, run_refusals))
                 result.node_saveables.append(
                     _NodeSaveable(
                         build.inner_saveable,
@@ -294,7 +290,6 @@ class GraphBulkSaveService:
         self,
         config: NodeTypeConfig,
         data: dict,
-        index: int,
         payload_temp_ids: set[str],
         instance=None,
     ) -> BuildSaveableResult:
@@ -305,7 +300,7 @@ class GraphBulkSaveService:
         # nested configs, ...) before attempting serializer construction.
         preprocess_errors = extra.get("preprocess_errors", [])
         if preprocess_errors:
-            return BuildSaveableResult(error={"index": index, "errors": preprocess_errors})
+            return BuildSaveableResult(error=preprocess_errors)
 
         s = (
             config.serializer_class(instance, data=data, context=self._serializer_context)
@@ -313,7 +308,7 @@ class GraphBulkSaveService:
             else config.serializer_class(data=data, context=self._serializer_context)
         )
         if not s.is_valid():
-            return BuildSaveableResult(error={"index": index, "errors": s.errors})
+            return BuildSaveableResult(error=s.errors)
 
         if config.secret_use_check is not None:
             try:
@@ -321,7 +316,7 @@ class GraphBulkSaveService:
                     actor_from_request(self._request), instance, s.validated_data
                 )
             except SecretUseDeniedError as denial:
-                return BuildSaveableResult(error={"index": index, "errors": denial.field_errors()})
+                return BuildSaveableResult(error=denial.field_errors())
 
         if config.storage_grant_check is not None:
             # Not collected into the item's errors: a refusal is a 403 for the whole save,
@@ -374,15 +369,15 @@ class GraphBulkSaveService:
             item_id = item_data.get("id")
 
             start_parsed = self._parse_node_ref(
-                item_data, "start_node_id", "start_temp_id", payload_temp_ids, index
+                item_data, "start_node_id", "start_temp_id", payload_temp_ids
             )
             end_parsed = self._parse_node_ref(
-                item_data, "end_node_id", "end_temp_id", payload_temp_ids, index
+                item_data, "end_node_id", "end_temp_id", payload_temp_ids
             )
 
             ref_errors = [p.error for p in (start_parsed, end_parsed) if p.error]
             if ref_errors:
-                result.errors.extend(ref_errors)
+                result.errors.append((index, ref_errors))
                 continue
 
             if start_parsed.ref and not start_parsed.ref.is_temp:
@@ -394,7 +389,7 @@ class GraphBulkSaveService:
                 item_data.pop("id", None)
                 s = serializer_class(data=item_data, context=self._serializer_context)
                 if not s.is_valid():
-                    result.errors.append({"index": index, "errors": s.errors})
+                    result.errors.append((index, s.errors))
                     continue
                 result.saveables.append(
                     _EdgeSaveable(s, start_parsed.ref, end_parsed.ref, instance=None)
@@ -402,18 +397,13 @@ class GraphBulkSaveService:
             else:
                 db_instance = db_map.get(item_id)
                 if db_instance is None:
-                    result.errors.append(
-                        {
-                            "index": index,
-                            "errors": f"id={item_id} not found in graph {graph.id}",
-                        }
-                    )
+                    result.errors.append((index, f"id={item_id} not found in graph {graph.id}"))
                     continue
 
                 item_data.pop("id", None)
                 s = serializer_class(db_instance, data=item_data, context=self._serializer_context)
                 if not s.is_valid():
-                    result.errors.append({"index": index, "errors": s.errors})
+                    result.errors.append((index, s.errors))
                     continue
                 result.saveables.append(
                     _EdgeSaveable(s, start_parsed.ref, end_parsed.ref, instance=db_instance)
@@ -427,7 +417,6 @@ class GraphBulkSaveService:
         id_field: str,
         temp_field: str,
         payload_temp_ids: set[str],
-        index: int,
     ) -> ParsedNodeRef:
         """Extract and validate one node ref from edge data."""
         node_id = item_data.get(id_field)
@@ -438,30 +427,19 @@ class GraphBulkSaveService:
 
         if has_id and has_temp:
             return ParsedNodeRef(
-                error={
-                    "index": index,
-                    "errors": f"Provide exactly one of {id_field} or {temp_field}, not both.",
-                }
+                error=f"Provide exactly one of {id_field} or {temp_field}, not both."
             )
         if not has_id and not has_temp:
-            return ParsedNodeRef(
-                error={
-                    "index": index,
-                    "errors": f"One of {id_field} or {temp_field} is required.",
-                }
-            )
+            return ParsedNodeRef(error=f"One of {id_field} or {temp_field} is required.")
 
         if has_temp:
             temp_str = str(temp_id)
             if temp_str not in payload_temp_ids:
                 return ParsedNodeRef(
-                    error={
-                        "index": index,
-                        "errors": (
-                            f"{temp_field}={temp_str!r} does not match any temp_id "
-                            f"in the node lists of this request."
-                        ),
-                    }
+                    error=(
+                        f"{temp_field}={temp_str!r} does not match any temp_id "
+                        f"in the node lists of this request."
+                    )
                 )
             return ParsedNodeRef(ref=NodeRef(is_temp=True, value=temp_str))
 

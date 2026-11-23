@@ -10,7 +10,6 @@ from django.db.models.functions import Coalesce
 from rbac.authorship.policy import resolve_author
 from rest_framework.exceptions import ValidationError
 from src.shared.enums.knowledge_new import RAGStrategy
-from utils.exception_handler import flatten_error_detail
 from utils.logger import logger
 
 from tables.clients.knowledge import ARTIFACT_TIMEOUT, KnowledgeClient
@@ -24,6 +23,7 @@ from tables.import_export.serializers.source_collection import (
     SourceCollectionExportSerializer,
 )
 from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.import_export.utils import flatten_error_detail
 from tables.models.knowledge_models import (
     BaseRagType,
     DocumentContent,

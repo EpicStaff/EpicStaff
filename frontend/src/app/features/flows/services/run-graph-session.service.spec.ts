@@ -50,10 +50,8 @@ describe('RunGraphService', () => {
             .subscribe({ error: (error: { error: unknown }) => (errorBody = error.error) });
 
         const errorEnvelope = {
-            status_code: 400,
-            code: 'test_run_payload_invalid',
-            message: 'Test payload is not a valid Telegram update.',
-            errors: ['update_id: Field required'],
+            type: 'client_error',
+            errors: [{ code: 'missing', detail: 'Field required', attr: 'payload.update_id', context: null }],
         };
         httpMock.expectOne('/api/run-session/test/').flush(errorEnvelope, { status: 400, statusText: 'Bad Request' });
 

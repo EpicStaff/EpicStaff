@@ -37,7 +37,11 @@ __all__ = [
 
 
 class ChatError(Exception):
-    """Base of every error the REST layer turns into `{code, message}`."""
+    """Base of every error the REST layer answers with its own status and code.
+
+    The answer is one error item: `detail` is the message, `attr` the `field` extra, and
+    `context` the other extras.
+    """
 
     code = "internal_error"
     status_code = 500

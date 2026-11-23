@@ -1,12 +1,12 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import { ConfirmationDialogService } from '@shared/components';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractErrorCode, extractHttpErrorMessage } from '@shared/utils';
 import { filter, Observable, Subject, switchMap } from 'rxjs';
 
 import { ProfileService } from '../../../services/auth/profile.service';
 import { ToastService } from '../../../services/notifications';
-import { ChatConversation, ChatErrorBody } from '../models/chat.model';
+import { ChatConversation } from '../models/chat.model';
 import { isConversationClosed } from '../utils/conversation-close.util';
 import { ChatApiService } from './chat-api.service';
 
@@ -167,7 +167,7 @@ export class ChatConversationActionsService {
         confirm: HolderConfirm,
         forced: () => Observable<ChatConversation>
     ): Observable<ChatConversation> | null {
-        if (errorCode(error) !== 'claimed_by_other') return null;
+        if (extractErrorCode(error) !== 'claimed_by_other') return null;
         return this.confirmationDialogService.confirm({ ...confirm, cancelText: 'Cancel', type: 'danger' }).pipe(
             filter((confirmed) => confirmed === true),
             switchMap(forced)
@@ -178,10 +178,6 @@ export class ChatConversationActionsService {
         const holderId = conversation.assigned_operator_id;
         return holderId !== null && holderId !== this.profileService.currentUserSignal()?.id;
     }
-}
-
-function errorCode(error: HttpErrorResponse): string | null {
-    return (error.error as ChatErrorBody | null)?.code ?? null;
 }
 
 function failureMessage(error: HttpErrorResponse): string {

@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { extractErrorCode } from '@shared/utils';
 
 export interface SuggestErrorState {
     message: string;
@@ -32,7 +33,7 @@ const SUGGEST_ERROR_STATES: ReadonlyMap<string, SuggestErrorState> = new Map([
 
 /** What a failed suggest-search-params request says, and whether Retry can help. Keyed on the backend's error code. */
 export function suggestErrorState(error: HttpErrorResponse): SuggestErrorState {
-    const code: unknown = (error.error as { code?: unknown } | null)?.code;
-    const state = typeof code === 'string' ? SUGGEST_ERROR_STATES.get(code) : undefined;
+    const code = extractErrorCode(error);
+    const state = code === null ? undefined : SUGGEST_ERROR_STATES.get(code);
     return state ?? RETRYABLE_ERROR;
 }

@@ -25,15 +25,12 @@ from rest_framework.viewsets import ReadOnlyModelViewSet
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models.knowledge_new import ChunkingConfig
 from tables.clients import KnowledgeClient
-from tables.clients.errors import ClientError, ClientResourceNotFoundError
+from tables.clients.errors import ClientResourceNotFoundError
 from tables.exceptions import (
-    CollectionNotFoundException,
     DocumentConfigNotFoundException,
     EmbedderNotFoundException,
-    InvalidChunkParametersException,
     InvalidFieldType,
-    NaiveRagNotFoundException,
-    RagException,
+    NoNaiveRagForCollectionException,
 )
 from tables.models import SourceCollection
 from tables.models.embedding_models import EmbeddingConfig
@@ -83,6 +80,13 @@ from user_audit.read_only import reads_only
 _NAIVE_RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
 _DOC_CONFIG_ORG_PATH = "naive_rag__base_rag_type__source_collection__org_id"
 _CHUNK_ORG_PATH = "naive_rag_document_config__naive_rag__base_rag_type__source_collection__org_id"
+
+
+def _integer_query_param(request, name: str, default: int) -> int:
+    try:
+        return int(request.query_params.get(name, default))
+    except ValueError as error:
+        raise ValidationError({name: ["A valid integer is required."]}, code="invalid") from error
 
 
 class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
@@ -147,30 +151,25 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
 
         embedder_id = serializer.validated_data["embedder_id"]
-        # An embedder from another org may not be referenced (404 like a missing pk).
-        self.get_in_active_org_or_404(EmbeddingConfig, embedder_id)
+        # The body names the embedder: one from another org is refused like a missing one.
+        if not EmbeddingConfig.objects.filter(
+            pk=embedder_id, org_id=self.get_active_org_id()
+        ).exists():
+            raise EmbedderNotFoundException(embedder_id)
 
-        try:
-            naive_rag = NaiveRagService.create_or_update_naive_rag(
-                collection_id=collection_id, embedder_id=embedder_id, user=request.user
-            )
+        naive_rag = NaiveRagService.create_or_update_naive_rag(
+            collection_id=collection_id, embedder_id=embedder_id, user=request.user
+        )
 
-            response_serializer = NaiveRagSerializer(naive_rag)
+        response_serializer = NaiveRagSerializer(naive_rag)
 
-            return Response(
-                {
-                    "message": "NaiveRag configured successfully",
-                    "naive_rag": response_serializer.data,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except CollectionNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except EmbedderNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except RagException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": "NaiveRag configured successfully",
+                "naive_rag": response_serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(**NAIVE_RAG_COLLECTIONS_GET)
     @action(
@@ -189,10 +188,7 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         naive_rag = NaiveRagService.get_or_none_naive_rag_by_collection(collection_id)
 
         if not naive_rag:
-            return Response(
-                {"error": f"NaiveRag not found for collection {collection_id}"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            raise NoNaiveRagForCollectionException(collection_id)
 
         serializer = NaiveRagSerializer(naive_rag)
         return Response(serializer.data)
@@ -200,74 +196,62 @@ class NaiveRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
     @extend_schema(**NAIVE_RAG_GET)
     def retrieve(self, request, pk=None):
         self.get_in_active_org_or_404(NaiveRag, int(pk), _NAIVE_RAG_ORG_PATH)
-        try:
-            naive_rag = NaiveRagService.get_naive_rag(int(pk))
+        naive_rag = NaiveRagService.get_naive_rag(int(pk))
 
-            serializer = NaiveRagDetailSerializer(naive_rag)
-            return Response(serializer.data)
-
-        except NaiveRagNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        serializer = NaiveRagDetailSerializer(naive_rag)
+        return Response(serializer.data)
 
     @extend_schema(**NAIVE_RAG_DELETE)
     def destroy(self, request, pk=None):
         self.get_in_active_org_or_404(NaiveRag, int(pk), _NAIVE_RAG_ORG_PATH)
-        try:
-            result = NaiveRagService.delete_naive_rag(int(pk), user=request.user)
+        result = NaiveRagService.delete_naive_rag(int(pk), user=request.user)
 
-            return Response(
-                {"message": "NaiveRag deleted successfully", **result},
-                status=status.HTTP_200_OK,
-            )
-
-        except NaiveRagNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"message": "NaiveRag deleted successfully", **result},
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_INITIALIZE_POST)
     def initialize_configs(self, request, naive_rag_id=None):
         self.get_in_active_org_or_404(NaiveRag, int(naive_rag_id), _NAIVE_RAG_ORG_PATH)
-        try:
-            naive_rag = NaiveRagService.get_naive_rag(int(naive_rag_id))
+        naive_rag = NaiveRagService.get_naive_rag(int(naive_rag_id))
 
-            # Initialize configs for documents without configs
-            new_configs = NaiveRagService.init_document_configs(
-                naive_rag_id=int(naive_rag_id), user=request.user
-            )
+        # Initialize configs for documents without configs
+        new_configs = NaiveRagService.init_document_configs(
+            naive_rag_id=int(naive_rag_id), user=request.user
+        )
 
-            record_rag_change(naive_rag.base_rag_type.source_collection, changed=bool(new_configs))
-            existing_count = NaiveRagDocumentConfig.objects.filter(
-                naive_rag=naive_rag
-            ).count() - len(new_configs)
+        record_rag_change(naive_rag.base_rag_type.source_collection, changed=bool(new_configs))
+        existing_count = NaiveRagDocumentConfig.objects.filter(naive_rag=naive_rag).count() - len(
+            new_configs
+        )
 
-            new_configs_data = [
-                {
-                    "config_id": config.naive_rag_document_id,
-                    "document_id": config.document.document_id,
-                    "file_name": config.document.file_name,
-                    "file_type": config.document.file_type,
-                    "chunk_strategy": config.chunk_strategy,
-                }
-                for config in new_configs
-            ]
+        new_configs_data = [
+            {
+                "config_id": config.naive_rag_document_id,
+                "document_id": config.document.document_id,
+                "file_name": config.document.file_name,
+                "file_type": config.document.file_type,
+                "chunk_strategy": config.chunk_strategy,
+            }
+            for config in new_configs
+        ]
 
-            message = (
-                f"Initialized {len(new_configs)} new document config(s)"
-                if new_configs
-                else "All documents already have configs"
-            )
+        message = (
+            f"Initialized {len(new_configs)} new document config(s)"
+            if new_configs
+            else "All documents already have configs"
+        )
 
-            return Response(
-                {
-                    "message": message,
-                    "configs_created": len(new_configs),
-                    "configs_existing": existing_count,
-                    "new_configs": new_configs_data,
-                },
-                status=status.HTTP_201_CREATED if new_configs else status.HTTP_200_OK,
-            )
-
-        except NaiveRagNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {
+                "message": message,
+                "configs_created": len(new_configs),
+                "configs_existing": existing_count,
+                "new_configs": new_configs_data,
+            },
+            status=status.HTTP_201_CREATED if new_configs else status.HTTP_200_OK,
+        )
 
 
 class NaiveRagDocumentConfigViewSet(
@@ -355,51 +339,43 @@ class NaiveRagDocumentConfigViewSet(
         serializer = self.get_serializer(data=request.data, many=True)
         serializer.is_valid(raise_exception=True)
 
-        try:
-            result = NaiveRagService.bulk_update_document_configs_with_partial_errors(
-                naive_rag_id=int(naive_rag_id),
-                data=serializer.validated_data,
-                user=request.user,
+        result = NaiveRagService.bulk_update_document_configs_with_partial_errors(
+            naive_rag_id=int(naive_rag_id),
+            data=serializer.validated_data,
+            user=request.user,
+        )
+
+        # Use the new serializer that includes errors field
+        response_serializer = DocumentConfigWithErrorsSerializer(
+            result["configs"],
+            many=True,
+            context={"config_errors": result["errors"]},
+        )
+
+        # Build status message
+        if result["failed"] == 0:
+            message = f"Successfully updated {result['updated']} config(s)"
+            response_status = status.HTTP_200_OK
+        elif result["updated"] == 0:
+            message = f"Failed to update {result['failed']} config(s)"
+            response_status = status.HTTP_207_MULTI_STATUS
+        else:
+            message = (
+                f"Successfully updated {result['updated']} config(s), "
+                f"Failed to update {result['failed']} config(s)"
             )
+            response_status = status.HTTP_207_MULTI_STATUS
 
-            # Use the new serializer that includes errors field
-            response_serializer = DocumentConfigWithErrorsSerializer(
-                result["configs"],
-                many=True,
-                context={"config_errors": result["errors"]},
-            )
-
-            # Build status message
-            if result["failed"] == 0:
-                message = f"Successfully updated {result['updated']} config(s)"
-                response_status = status.HTTP_200_OK
-            elif result["updated"] == 0:
-                message = f"Failed to update {result['failed']} config(s)"
-                response_status = status.HTTP_207_MULTI_STATUS
-            else:
-                message = (
-                    f"Successfully updated {result['updated']} config(s), "
-                    f"Failed to update {result['failed']} config(s)"
-                )
-                response_status = status.HTTP_207_MULTI_STATUS
-
-            return Response(
-                {
-                    "message": message,
-                    "updated_count": result["updated"],
-                    "unupdated_count": result["unupdated"],
-                    "failed_count": result["failed"],
-                    "configs": response_serializer.data,
-                },
-                status=response_status,
-            )
-
-        except DocumentConfigNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except InvalidChunkParametersException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except RagException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": message,
+                "updated_count": result["updated"],
+                "unupdated_count": result["unupdated"],
+                "failed_count": result["failed"],
+                "configs": response_serializer.data,
+            },
+            status=response_status,
+        )
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
@@ -410,59 +386,45 @@ class NaiveRagDocumentConfigViewSet(
 
         config_ids = serializer.validated_data["config_ids"]
 
-        try:
-            result = NaiveRagService.bulk_delete_document_configs(
-                naive_rag_id=int(naive_rag_id), config_ids=config_ids, user=request.user
-            )
+        result = NaiveRagService.bulk_delete_document_configs(
+            naive_rag_id=int(naive_rag_id), config_ids=config_ids, user=request.user
+        )
 
-            return Response(
-                {
-                    "message": f"Successfully deleted {result['deleted_count']} config(s)",
-                    **result,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except DocumentConfigNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except InvalidChunkParametersException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except RagException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": f"Successfully deleted {result['deleted_count']} config(s)",
+                **result,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIGS_GET)
     @action(detail=False, methods=["get"])
     def list_configs(self, request, naive_rag_id=None):
         self._assert_naive_rag_in_active_org(naive_rag_id)
-        try:
-            configs = NaiveRagService.get_document_configs_for_naive_rag(int(naive_rag_id))
+        configs = NaiveRagService.get_document_configs_for_naive_rag(int(naive_rag_id))
 
-            serializer = DocumentConfigSerializer(configs, many=True)
+        serializer = DocumentConfigSerializer(configs, many=True)
 
-            return Response(
-                {
-                    "naive_rag_id": int(naive_rag_id),
-                    "total_configs": len(configs),
-                    "configs": serializer.data,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except NaiveRagNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {
+                "naive_rag_id": int(naive_rag_id),
+                "total_configs": len(configs),
+                "configs": serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIG_GET)
     def retrieve(self, request, pk=None, naive_rag_id=None):
         try:
             config = self.get_object()
-            serializer = DocumentConfigSerializer(config)
-            return Response(serializer.data)
-
-        except Http404:
-            return Response(
-                {"error": f"Document config [{pk}] for naive_rag_id [{naive_rag_id}] not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+        except Http404 as error:
+            raise DocumentConfigNotFoundException(
+                f"Document config [{pk}] for naive_rag_id [{naive_rag_id}] not found"
+            ) from error
+        serializer = DocumentConfigSerializer(config)
+        return Response(serializer.data)
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIG_PUT)
     def update(self, request, pk=None, naive_rag_id=None):
@@ -470,51 +432,37 @@ class NaiveRagDocumentConfigViewSet(
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        try:
-            config = NaiveRagService.update_document_config(
-                config_id=int(pk),
-                naive_rag_id=naive_rag_id,
-                data=serializer.validated_data,
-                user=request.user,
-            )
+        config = NaiveRagService.update_document_config(
+            config_id=int(pk),
+            naive_rag_id=naive_rag_id,
+            data=serializer.validated_data,
+            user=request.user,
+        )
 
-            response_serializer = DocumentConfigSerializer(config)
+        response_serializer = DocumentConfigSerializer(config)
 
-            return Response(
-                {
-                    "message": "Document config updated successfully",
-                    "config": response_serializer.data,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except DocumentConfigNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except InvalidChunkParametersException as e:
-            return Response({"errors": e.errors}, status=status.HTTP_400_BAD_REQUEST)
-        except RagException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": "Document config updated successfully",
+                "config": response_serializer.data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(**NAIVE_RAG_DOCUMENT_CONFIG_DELETE)
     def destroy(self, request, pk=None, naive_rag_id=None):
         self._assert_naive_rag_in_active_org(naive_rag_id)
-        try:
-            result = NaiveRagService.delete_document_config(
-                config_id=int(pk), naive_rag_id=int(naive_rag_id), user=request.user
-            )
+        result = NaiveRagService.delete_document_config(
+            config_id=int(pk), naive_rag_id=int(naive_rag_id), user=request.user
+        )
 
-            return Response(
-                {
-                    "message": "Document config deleted successfully",
-                    **result,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except DocumentConfigNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except RagException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": "Document config deleted successfully",
+                **result,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class NaiveRagChunkViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet):
@@ -552,16 +500,13 @@ class ProcessNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView)
             chunk_overlap=validated["chunk_overlap"],
             extra=validated["additional_params"],
         )
-        try:
-            with KnowledgeClient(timeout=300) as client:
-                client.prechunk(
-                    strategy=RAGStrategy.NAIVE,
-                    rag_id=naive_rag_id,
-                    document_id=document_config_id,
-                    chunking_config=chunking_config,
-                )
-        except ClientError as e:
-            return Response({"error": str(e)}, status=e.status_code)
+        with KnowledgeClient(timeout=300) as client:
+            client.prechunk(
+                strategy=RAGStrategy.NAIVE,
+                rag_id=naive_rag_id,
+                document_id=document_config_id,
+                chunking_config=chunking_config,
+            )
         record_rag_change(config.naive_rag.base_rag_type.source_collection, changed=True)
 
         return Response(
@@ -591,8 +536,6 @@ class CancelNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView):
                 client.cancel(strategy=RAGStrategy.NAIVE, rag_id=naive_rag_id, operation="prechunk")
         except ClientResourceNotFoundError:
             cancelled = False  # No chunking was running.
-        except ClientError as e:
-            return Response({"error": str(e)}, status=e.status_code)
         record_rag_change(naive_rag.base_rag_type.source_collection, changed=cancelled)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -634,36 +577,8 @@ class NaiveRagChunkPreviewView(OrgScopedServiceViewSetMixin, APIView):
             ResourceType.KNOWLEDGE_SOURCES,
             Permission.READ,
         )
-        # Validate document config exists and belongs to naive_rag
-        try:
-            config = (
-                NaiveRagDocumentConfig.objects
-                .annotate(total_preview_chunks=Count("preview_chunks"))
-                .get(
-                    naive_rag_document_id=document_config_id,
-                    naive_rag_id=naive_rag_id,
-                )
-            )  # fmt: off
-        except NaiveRagDocumentConfig.DoesNotExist:
-            return Response(
-                {
-                    "error": f"DocumentConfig {document_config_id} not found "
-                    f"for NaiveRag {naive_rag_id}"
-                },
-                status=status.HTTP_404_NOT_FOUND,
-            )
-
-        try:
-            limit = min(
-                int(request.query_params.get("limit", self.DEFAULT_LIMIT)),
-                self.MAX_LIMIT,
-            )
-            offset = int(request.query_params.get("offset", 0))
-        except ValueError:
-            return Response(
-                {"error": "limit and offset must be integers"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        limit = min(_integer_query_param(request, "limit", self.DEFAULT_LIMIT), self.MAX_LIMIT)
+        offset = _integer_query_param(request, "offset", 0)
 
         chunks = config.preview_chunks.all()[offset : offset + limit]
         chunks = NaiveRagPreviewChunkSerializer(chunks, many=True).data
@@ -760,17 +675,13 @@ class NaiveRagChunkSearchView(OrgScopedServiceViewSetMixin, APIView):
         limit = serializer.validated_data["limit"]
         offset = serializer.validated_data["offset"]
 
-        try:
-            result = NaiveRagService.search_chunks(
-                naive_rag_id=naive_rag_id,
-                document_config_id=document_config_id,
-                query=query,
-                limit=limit,
-                offset=offset,
-            )
-        except DocumentConfigNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-
+        result = NaiveRagService.search_chunks(
+            naive_rag_id=naive_rag_id,
+            document_config_id=document_config_id,
+            query=query,
+            limit=limit,
+            offset=offset,
+        )
         return Response(
             {
                 "naive_rag_id": naive_rag_id,
@@ -827,15 +738,11 @@ class NaiveRagPreviewChunkBulkByIdsView(OrgScopedServiceViewSetMixin, APIView):
 
         preview_chunk_ids = serializer.validated_data["preview_chunk_ids"]
 
-        try:
-            chunks = NaiveRagService.get_preview_chunks_by_ids(
-                naive_rag_id=naive_rag_id,
-                document_config_id=document_config_id,
-                preview_chunk_ids=preview_chunk_ids,
-            )
-        except DocumentConfigNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-
+        chunks = NaiveRagService.get_preview_chunks_by_ids(
+            naive_rag_id=naive_rag_id,
+            document_config_id=document_config_id,
+            preview_chunk_ids=preview_chunk_ids,
+        )
         chunk_serializer = NaiveRagPreviewChunkSerializer(chunks, many=True)
         return Response(
             {

@@ -507,10 +507,9 @@ def test_invalid_inline_surface_is_refused_under_its_own_key(
     )
 
     assert response.status_code == 400, response.data
-    message = str(response.data["message"])
-    assert "inline_surface" in message
-    assert field in message
-    assert "surface_list" not in message
+    attrs = [item["attr"] for item in response.data["errors"]]
+    assert attrs
+    assert all(attr.startswith(f"inline_surface.{field}") for attr in attrs), attrs
     assert not TaskNode.objects.filter(node_name="inline-invalid").exists()
 
 

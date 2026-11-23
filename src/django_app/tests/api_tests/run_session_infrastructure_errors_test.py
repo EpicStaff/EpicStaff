@@ -25,11 +25,7 @@ def _pool_timeout(*args, **kwargs):
 def _assert_database_busy(response):
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE, response.content
     assert response["Retry-After"] == "5"
-    assert response.json() == {
-        "status_code": 503,
-        "code": "database_pool_exhausted",
-        "message": "The server is busy. Please retry shortly.",
-    }
+    assert response.json() == {"type": "server_error", "errors": [{"code": "database_pool_exhausted", "detail": "The server is busy. Please retry shortly.", "attr": None, "context": None}]}
 
 
 @pytest.mark.django_db
@@ -69,9 +65,10 @@ def test_unexpected_error_while_starting_the_session_answers_the_generic_500(
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR, response.content
     assert response.json() == {
-        "status_code": 500,
-        "code": "RuntimeError",
-        "message": "Unpredictable error",
+        "type": "server_error",
+        "errors": [
+            {"code": "unknown", "detail": "Internal server error.", "attr": None, "context": None}
+        ],
     }
     assert INTERNAL_TEXT.encode() not in response.content
     assert (
@@ -91,4 +88,4 @@ def test_server_side_domain_error_keeps_its_own_status(
     response = auth_client.post(reverse("run-session"), session_data, format="json")
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR, response.content
-    assert response.json()["code"] == "temporary_credential_issue_error"
+    assert response.json()["errors"][0]["code"] == "temporary_credential_issue_error"

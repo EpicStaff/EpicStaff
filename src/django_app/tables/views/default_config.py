@@ -5,7 +5,6 @@ from rbac.access.asserts import assert_org_permission
 from rbac.access.principals import is_plugin_credential
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import resolve_active_org_id
-from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -45,15 +44,13 @@ class BaseDefaultConfigAPIView(APIView):
         values_before = model_to_dict(obj)
         serializer = self.serializer(obj, data=request.data, context={"request": request})
 
-        if serializer.is_valid():
-            serializer.save()
-            if model_to_dict(obj) != values_before:
-                record_user_action(action=UserAction.UPDATED, org_id=obj.org_id, target=obj)
-            else:
-                mark_request_handled()
-            return Response(serializer.data)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        if model_to_dict(obj) != values_before:
+            record_user_action(action=UserAction.UPDATED, org_id=obj.org_id, target=obj)
+        else:
+            mark_request_handled()
+        return Response(serializer.data)
 
 
 class DefaultModelsAPIView(BaseDefaultConfigAPIView):

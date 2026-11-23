@@ -1,5 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { HttpErrorResponse, HttpRequest } from '@angular/common/http';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, forwardRef, input, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
@@ -16,7 +16,6 @@ import {
 } from '@shared/services';
 import { EMPTY, Observable, of, Subject, throwError } from 'rxjs';
 
-import { validationErrorsInterceptor } from '../../../../core/interceptors/validation-errors.interceptor';
 import { ToastService } from '../../../../services/notifications';
 import { ElevenLabsRealtimeConfigStorageService } from '../../services/llms/elevenlabs-realtime-config-storage.service';
 import { GeminiRealtimeConfigStorageService } from '../../services/llms/gemini-realtime-config-storage.service';
@@ -335,31 +334,30 @@ function reasoningErrorText(fixture: ComponentFixture<AddConfigurationDialogComp
     );
 }
 
-/** A 400 in the backend's validation envelope, passed through the interceptor the app registers. */
-function validationErrorResponse(field: string, value: string, reason: string): Observable<never> {
+/** A 400 in the backend's validation envelope. */
+function validationErrorResponse(field: string, reason: string): Observable<never> {
     const response = new HttpErrorResponse({
         status: 400,
-        error: {
-            status_code: 400,
-            code: 'validation_error',
-            message: 'Invalid input.',
-            errors: [{ field, value, reason }],
-        },
+        error: { type: 'client_error', errors: [{ code: 'invalid', detail: reason, attr: field, context: null }] },
     });
-    return validationErrorsInterceptor(new HttpRequest('POST', '/api/llm-configs/', null), () =>
-        throwError(() => response)
-    ) as Observable<never>;
+    return throwError(() => response);
 }
 
 /** The 400 the backend sends when a write would change where a secret goes and the caller lacks Secrets "Use". */
 const SECRET_USE_REFUSAL = new HttpErrorResponse({
     status: 400,
     error: {
-        status_code: 400,
-        code: 'invalid',
-        message:
-            'api_key_secret_id: Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
-            'The existing selection was left unchanged. Ask an organization admin to grant it.',
+        type: 'client_error',
+        errors: [
+            {
+                code: 'invalid',
+                detail:
+                    'Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
+                    'The existing selection was left unchanged. Ask an organization admin to grant it.',
+                attr: 'api_key_secret_id',
+                context: null,
+            },
+        ],
     },
 });
 
@@ -369,7 +367,7 @@ const SHOWN_REFUSAL =
     'The existing selection was left unchanged. Ask an organization admin to grant it.';
 
 function unsupportedEffortResponse(): Observable<never> {
-    return validationErrorResponse('reasoning_effort', 'xhigh', UNSUPPORTED_EFFORT_ERROR);
+    return validationErrorResponse('reasoning_effort', UNSUPPORTED_EFFORT_ERROR);
 }
 
 function bannerText(fixture: ComponentFixture<AddConfigurationDialogComponent>): string {
@@ -498,28 +496,28 @@ describe('AddConfigurationDialogComponent LLM reasoning effort', () => {
 
     it("shows the backend's reason in the banner when a field other than the effort is rejected", async () => {
         const reason = 'An LLM configuration with this name already exists.';
-        const createConfig = vi.fn(() => validationErrorResponse('custom_name', 'model-3', reason));
+        const createConfig = vi.fn(() => validationErrorResponse('custom_name', reason));
         const { fixture, toastError } = await render(getCachedModelById, createConfig);
         await pickModel(fixture, ALWAYS_REASONING_MODEL_ID);
 
         fixture.componentInstance.onSubmit();
         fixture.detectChanges();
 
-        expect(bannerText(fixture)).toBe(reason);
+        expect(bannerText(fixture)).toBe(`Custom name: ${reason}`);
         expect(toastError).not.toHaveBeenCalled();
         expect(reasoningErrorText(fixture)).toBe('');
     });
 
     it('shows a rejected effort in the banner when the select is hidden', async () => {
         const reason = "Model 'model-2' does not support reasoning.";
-        const createConfig = vi.fn(() => validationErrorResponse('reasoning_effort', 'high', reason));
+        const createConfig = vi.fn(() => validationErrorResponse('reasoning_effort', reason));
         const { fixture } = await render(getCachedModelById, createConfig);
         await pickModel(fixture, PLAIN_MODEL_ID);
 
         fixture.componentInstance.onSubmit();
         fixture.detectChanges();
 
-        expect(bannerText(fixture)).toBe(reason);
+        expect(bannerText(fixture)).toBe(`Reasoning effort: ${reason}`);
     });
 
     it('shows a secret Use refusal in the banner and keeps the dialog open', async () => {
@@ -554,7 +552,10 @@ describe('AddConfigurationDialogComponent LLM reasoning effort', () => {
 
 const SERVER_ERROR = new HttpErrorResponse({
     status: 500,
-    error: { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
+    error: {
+        type: 'server_error',
+        errors: [{ code: 'Exception', detail: 'Unpredictable error', attr: null, context: null }],
+    },
 });
 
 /** Types into the voice form's Configuration Name, as a user would. */
@@ -609,10 +610,19 @@ describe('AddConfigurationDialogComponent embedding and realtime save errors', (
     });
 
     it('shows a duplicate embedding name from the server in the banner, not in a toast', async () => {
-        const message = 'custom_name: An embedding config with this name already exists.';
         const duplicateName = new HttpErrorResponse({
             status: 400,
-            error: { status_code: 400, code: 'invalid', message },
+            error: {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'unique',
+                        detail: 'An embedding config with this name already exists.',
+                        attr: 'custom_name',
+                        context: null,
+                    },
+                ],
+            },
         });
 
         const fixture = await submitEmbedding(duplicateName);
@@ -670,7 +680,12 @@ describe('AddConfigurationDialogComponent System One tab', () => {
     it('shows the server refusal of a System One config in the banner', async () => {
         const refusal = new HttpErrorResponse({
             status: 400,
-            error: { status_code: 400, code: 'invalid', message: 'api_key_secret_id: This field is required.' },
+            error: {
+                type: 'client_error',
+                errors: [
+                    { code: 'required', detail: 'This field is required.', attr: 'api_key_secret_id', context: null },
+                ],
+            },
         });
         const { fixture } = await render(undefined, undefined, {
             systemOneStorage: { createConfig: () => throwError(() => refusal) },

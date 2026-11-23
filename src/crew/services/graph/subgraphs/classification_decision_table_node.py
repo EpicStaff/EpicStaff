@@ -4,6 +4,7 @@ from typing import Any
 
 from dotdict import DotDict
 from foundation.cryptographer import AbstractCryptographer
+from foundation.schemas import ErrorDetailSchema
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
@@ -11,7 +12,7 @@ from loguru import logger
 from pydantic import ValidationError
 from services.graph.exceptions import InvalidStatePathError
 from services.graph.storage_credentials_picker import pick_storage_credentials
-from services.run_python_code_service import RunPythonCodeService
+from services.run_python_code_service import RunPythonCodeService, code_failure_text
 from src.crew.models.graph_models import (
     GraphMessage,
 )
@@ -25,6 +26,7 @@ from src.crew.services.secret_decryption import (
     decrypt_system_one_config,
 )
 from src.shared.flow_templates import RefusedPlaceholderError, render_template
+from src.shared.litellm_errors import describe_litellm_error
 from src.shared.models import PythonCodeData
 from src.shared.models.graph_nodes import (
     ClassificationConditionGroupData,
@@ -33,6 +35,7 @@ from src.shared.models.graph_nodes import (
 )
 from src.shared.models.storage_scope import StorageCredentials
 from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND, SYSTEM_ONE_QUESTIONS_ADAPTER
+from src.shared.sandbox_errors import SANDBOX_SERVER_ERROR_MESSAGE
 from src.shared.state_path import split_state_path_segments
 from src.shared.system_one.adapter import SystemOneError, evaluate
 from src.shared.system_one.json_llm import run_json_llm
@@ -45,7 +48,8 @@ from utils.state_path import split_dynamic_key_path, split_state_path
 # builtins, sys.modules and imported modules are shared by all rows of a batch.
 # Lookup order matches the old per-row code, where the expression sat inside main():
 # `variables`, then the identifier-named variables, then the sandbox module globals
-# (json, os, sys, DotDict, get_secret, ...).
+# (json, os, sys, DotDict, get_secret, ...). A result that isn't a boolean stops the
+# batch with `not_boolean`, so crew states it without reading an error text.
 _EVALUATE_UNTIL_MATCH_CODE = """
 import traceback
 import types
@@ -75,20 +79,23 @@ def main(expressions, variables):
             result = eval(
                 compile(expression, "<condition>", "eval"), _build_namespace(variables)
             )
-            assert isinstance(result, bool), "Expression must return a boolean value"
         # BaseException so that exit() in an expression is reported against its row.
         except BaseException as error:
             message = "".join(traceback.format_exception_only(type(error), error)).strip()
-            return {"results": results, "error": message}
+            return {"results": results, "error": message, "not_boolean": False}
+        if not isinstance(result, bool):
+            return {"results": results, "error": None, "not_boolean": True}
         results.append(result)
         if result:
             break
-    return {"results": results, "error": None}
+    return {"results": results, "error": None, "not_boolean": False}
 """
 
 
 class ClassificationDecisionTableNodeError(Exception):
     """Custom exception for errors related to ClassificationDecisionTableNode."""
+
+    code = "classification_decision_table_failed"
 
 
 def _read_state_path(roots: DotDict, path: str) -> Any:
@@ -258,9 +265,7 @@ class ClassificationDecisionTableNodeSubgraph:
         )
 
         if result["returncode"] != 0:
-            raise ClassificationDecisionTableNodeError(
-                f"{label} execution failed: {result['stderr']}"
-            )
+            raise ClassificationDecisionTableNodeError(f"{label} code: {code_failure_text(result)}")
 
         if output_variable_path:
             output = json.loads(result["result_data"])
@@ -351,18 +356,22 @@ class ClassificationDecisionTableNodeSubgraph:
         return " and ".join(parts) if parts else None
 
     async def _evaluate_until_match(
-        self, expressions: list[str], state: State
-    ) -> tuple[list[bool], str | None]:
+        self, expressions: list[str], state: State, scope: str
+    ) -> tuple[list[bool], str | None, bool]:
         """Evaluate row expressions in order, in one sandbox run, up to the first match.
 
         Only a matched row changes state, so every row up to the next match sees the
         same variables and can share one run. Evaluation stops at the first True or the
-        first failing expression; later expressions are never compiled or run. The
-        whole batch shares one SANDBOX_DEFAULT_EXECUTION_TIMEOUT.
+        first failing or non-boolean expression; later expressions are never compiled or
+        run. The whole batch shares one SANDBOX_DEFAULT_EXECUTION_TIMEOUT.
+
+        Args:
+            scope: Names the rows of this run in a failure message, e.g. `Condition "A"`.
 
         Returns:
-            The result of each evaluated row, and the error message of the row right
-            after them (index `len(results)`) if that row failed, else None.
+            The result of each evaluated row; the error message of the row right after
+            them (index `len(results)`) if that row failed, else None; and whether that
+            row gave something other than a boolean.
 
         Raises:
             ClassificationDecisionTableNodeError: The sandbox run itself failed or
@@ -382,18 +391,25 @@ class ClassificationDecisionTableNodeSubgraph:
         )
 
         if result["returncode"] != 0:
-            raise ClassificationDecisionTableNodeError(
-                f"Expression execution failed: {result['stderr']}"
-            )
+            raise ClassificationDecisionTableNodeError(f"{scope}: {code_failure_text(result)}")
         try:
             evaluation = json.loads(result["result_data"])
-            return evaluation["results"], evaluation["error"]
+            return evaluation["results"], evaluation["error"], evaluation["not_boolean"]
         except (TypeError, ValueError, KeyError) as error:
+            self._log_unreadable_result(result["result_data"], error)
             raise ClassificationDecisionTableNodeError(
-                f"Expression execution returned an unreadable result: {result['result_data']!r}"
+                f"{scope}: {SANDBOX_SERVER_ERROR_MESSAGE}"
             ) from error
 
-    async def _execute_manipulation(self, manipulation: str, state: State) -> None:
+    def _log_unreadable_result(self, result_data: Any, error: Exception) -> None:
+        logger.opt(exception=error).error(
+            "Classification decision table '{}' got an unreadable code result {!r} (session_id={})",
+            self.node_name,
+            result_data,
+            self.session_id,
+        )
+
+    async def _execute_manipulation(self, manipulation: str, state: State, group_name: str) -> None:
         """Execute manipulation code in sandbox. Updates state variables."""
         variables_dict = state["variables"].model_dump()
 
@@ -442,10 +458,16 @@ def main(**kwargs) -> dict:
 
         if result["returncode"] != 0:
             raise ClassificationDecisionTableNodeError(
-                f"Manipulation execution failed: {result['stderr']}"
+                f'Condition "{group_name}": {code_failure_text(result)}'
             )
 
-        variables = json.loads(result["result_data"])
+        try:
+            variables = json.loads(result["result_data"])
+        except (TypeError, ValueError) as error:
+            self._log_unreadable_result(result["result_data"], error)
+            raise ClassificationDecisionTableNodeError(
+                f'Condition "{group_name}": {SANDBOX_SERVER_ERROR_MESSAGE}'
+            ) from error
         state["variables"].update(variables)
 
     def _render_prompt(self, prompt_id: str, prompt_text: str, variables: dict) -> str:
@@ -460,7 +482,7 @@ def main(**kwargs) -> dict:
         try:
             rendered = render_template(prompt_text, variables)
         except RefusedPlaceholderError as error:
-            raise ClassificationDecisionTableNodeError(f"Prompt '{prompt_id}': {error}") from error
+            raise ClassificationDecisionTableNodeError(f'Prompt "{prompt_id}": {error}') from error
         if rendered.unrendered_reason:
             logger.warning(
                 "Classification node '{}' prompt sent as written, no placeholder filled: {}",
@@ -500,30 +522,26 @@ def main(**kwargs) -> dict:
         config = prompt_config.system_one_config
         if config is None:
             raise ClassificationDecisionTableNodeError(
-                f"System One entry '{prompt_id}' has no config."
+                f'Prompt "{prompt_id}" has no System One config.'
             )
 
         try:
             questions = SYSTEM_ONE_QUESTIONS_ADAPTER.validate_python(prompt_config.questions)
         except ValidationError:
             raise ClassificationDecisionTableNodeError(
-                f"System One entry '{prompt_id}' has no valid questions."
+                f'Prompt "{prompt_id}" has no valid System One questions.'
             ) from None
 
         state_sent = self._resolve_input_map(
             prompt_config.input_map, state, f"Prompt '{prompt_id}'"
         )
         if all(value is None for value in state_sent.values()):
-            raise ClassificationDecisionTableNodeError(
-                f"System One entry '{prompt_id}' has no input values."
-            )
+            raise ClassificationDecisionTableNodeError(f'Prompt "{prompt_id}" has no input values.')
 
         try:
             decrypted_config = decrypt_system_one_config(config, self.secrets_cryptographer)
         except SecretDecryptionError as error:
-            raise ClassificationDecisionTableNodeError(
-                f"System One entry '{prompt_id}': {error}"
-            ) from None
+            raise ClassificationDecisionTableNodeError(f'Prompt "{prompt_id}": {error}') from None
 
         try:
             result, usage = await evaluate(decrypted_config, state_sent, questions)
@@ -531,9 +549,7 @@ def main(**kwargs) -> dict:
             logger.opt(exception=error).error(
                 "System One call failed for prompt '{}' in node '{}'", prompt_id, self.node_name
             )
-            raise ClassificationDecisionTableNodeError(
-                f"System One call failed for prompt '{prompt_id}': {error}"
-            ) from error
+            raise ClassificationDecisionTableNodeError(f'Prompt "{prompt_id}": {error}') from error
 
         stored = result.model_dump(mode="json")
         result_var = self._store_prompt_result(prompt_config, stored, state)
@@ -561,9 +577,7 @@ def main(**kwargs) -> dict:
 
         llm_data = prompt_config.llm_data
         if llm_data is None:
-            raise ClassificationDecisionTableNodeError(
-                f"No LLM configuration resolved for prompt '{prompt_id}' (llm_id={prompt_config.llm_id})"
-            )
+            raise ClassificationDecisionTableNodeError(f'Prompt "{prompt_id}" has no LLM.')
 
         # Render prompt with current variables
         # Plain data: the prompt is the flow author's text and must not reach live DotDict objects.
@@ -579,9 +593,7 @@ def main(**kwargs) -> dict:
         try:
             decrypted_llm_data = decrypt_llm_data(llm_data, self.secrets_cryptographer)
         except SecretDecryptionError as error:
-            raise ClassificationDecisionTableNodeError(
-                f"LLM config of prompt '{prompt_id}': {error}"
-            ) from None
+            raise ClassificationDecisionTableNodeError(f'Prompt "{prompt_id}": {error}') from None
 
         try:
             result, usage = await run_json_llm(
@@ -589,12 +601,18 @@ def main(**kwargs) -> dict:
                 llm=decrypted_llm_data,
                 output_schema=prompt_config.output_schema,
             )
+        # The provider's message can quote the API key or the endpoint: it is only logged.
         except Exception as e:
+            fact = describe_litellm_error(e, llm_data.config.model)
+            # Not an LLM failure (a bug, a parse error): the row loop logs it and shows
+            # the node's generic fact.
+            if fact is None:
+                raise
             logger.opt(exception=e).error(
                 "LLM call failed for prompt '{}' in node '{}'", prompt_id, self.node_name
             )
             raise ClassificationDecisionTableNodeError(
-                f"LLM call failed for prompt '{prompt_id}'"
+                f'Prompt "{prompt_id}": {fact.detail}'
             ) from e
 
         # Capture raw response text before JSON parsing
@@ -690,20 +708,26 @@ def main(**kwargs) -> dict:
                     writer=writer,
                     execution_order=self.execution_order(state),
                     node_type=self.TYPE,
-                    public_details=str(e),
+                    public_error=ErrorDetailSchema(code=e.code, detail=str(e)),
                 )
                 await self._publish_message(msg)
                 return state
 
             return state
 
-        async def route_to_error_node(state: State, writer: StreamWriter, public_details: str):
+        async def route_to_error_node(
+            state: State,
+            writer: StreamWriter,
+            public_error: ErrorDetailSchema | None,
+            error: Exception | None = None,
+        ):
             """Route to the error node and publish error, then finish.
 
             The finish closes the CDT message group in the UI, as on the
-            pre-computation error path. The caller has already logged the raw
-            error itself; `public_details` is the only text that reaches the
-            client."""
+            pre-computation error path. With `public_error`, the caller has
+            already logged the raw error and that item is the only one that
+            reaches the client. Without it, the message writer logs `error` and
+            streams its fixed `Node "<name>" failed.` fact."""
             decision_vars = state["system_variables"]["nodes"][self.node_name]
             decision_vars["result_node"] = self.node_data.next_error_node or END
             msg = self.custom_session_message_writer.add_error_message(
@@ -712,7 +736,8 @@ def main(**kwargs) -> dict:
                 writer=writer,
                 execution_order=self.execution_order(state),
                 node_type=self.TYPE,
-                public_details=public_details,
+                error=error,
+                public_error=public_error,
             )
             await self._publish_message(msg)
             msg = self.custom_session_message_writer.add_finish_message(
@@ -760,21 +785,19 @@ def main(**kwargs) -> dict:
                     itertools.takewhile(bool, condition_expressions[group_index:])
                 )
                 # A failure of the batch run itself belongs to no single row.
-                batch_failure_scope = None
+                batch_scope = f'Condition "{group.group_name}"'
                 if len(batch_expressions) > 1:
                     last_group = sorted_groups[group_index + len(batch_expressions) - 1]
-                    batch_failure_scope = (
-                        f"evaluating conditions from '{group.group_name}' "
-                        f"to '{last_group.group_name}'"
-                    )
+                    batch_scope = f'Conditions "{group.group_name}" to "{last_group.group_name}"'
                 try:
                     if batch_expressions:
-                        results, expression_error = await self._evaluate_until_match(
-                            batch_expressions, state
-                        )
+                        (
+                            results,
+                            expression_error,
+                            not_boolean,
+                        ) = await self._evaluate_until_match(batch_expressions, state, batch_scope)
                     else:
-                        results, expression_error = [True], None
-                    batch_failure_scope = None
+                        results, expression_error, not_boolean = [True], None, False
 
                     for expression_result in results:
                         group = sorted_groups[group_index]
@@ -793,7 +816,12 @@ def main(**kwargs) -> dict:
                     if expression_error is not None:
                         group = sorted_groups[group_index]
                         raise ClassificationDecisionTableNodeError(
-                            f"Expression execution failed: {expression_error}"
+                            f'Condition "{group.group_name}": {expression_error}'
+                        )
+                    if not_boolean:
+                        group = sorted_groups[group_index]
+                        raise ClassificationDecisionTableNodeError(
+                            f'Condition "{group.group_name}" didn\'t give true or false.'
                         )
 
                     if not results[-1]:
@@ -837,7 +865,9 @@ def main(**kwargs) -> dict:
 
                     if combined_manipulation:
                         vars_before = state["variables"].model_dump()
-                        await self._execute_manipulation(combined_manipulation, state)
+                        await self._execute_manipulation(
+                            combined_manipulation, state, group.group_name
+                        )
                         vars_after = state["variables"].model_dump()
                         changed = {k: v for k, v in vars_after.items() if vars_before.get(k) != v}
                         msg = self.custom_session_message_writer.add_condition_group_manipulation_message(
@@ -860,24 +890,19 @@ def main(**kwargs) -> dict:
                     if not group.continue_flag:
                         break
 
+                # Every raise site names its condition or prompt in the message.
                 except ClassificationDecisionTableNodeError as e:
-                    scope = batch_failure_scope or f"in condition '{group.group_name}'"
-                    public_details = f"Error {scope}: {e}"
                     logger.warning(
                         "Classification decision table '{}' routed to its error node: {}",
                         self.node_name,
-                        public_details,
+                        e,
                     )
-                    return await route_to_error_node(state, writer, public_details=public_details)
+                    return await route_to_error_node(
+                        state, writer, public_error=ErrorDetailSchema(code=e.code, detail=str(e))
+                    )
+                # Raw text can name internal hosts or paths: it is logged, never streamed.
                 except Exception as e:
-                    scope = batch_failure_scope or f"in condition '{group.group_name}'"
-                    public_details = f"Unexpected error {scope}: {type(e).__name__}: {e}"
-                    logger.opt(exception=e).error(
-                        "Classification decision table '{}' routed to its error node: {}",
-                        self.node_name,
-                        public_details,
-                    )
-                    return await route_to_error_node(state, writer, public_details=public_details)
+                    return await route_to_error_node(state, writer, public_error=None, error=e)
 
             decision_vars["result_node"] = (
                 matched_next_node or self.node_data.default_next_node or END
@@ -888,7 +913,9 @@ def main(**kwargs) -> dict:
                 await self._execute_post_computation(state)
             except (ClassificationDecisionTableNodeError, InvalidStatePathError) as e:
                 logger.error(f"Post-computation error: {e}")
-                return await route_to_error_node(state, writer, public_details=str(e))
+                return await route_to_error_node(
+                    state, writer, public_error=ErrorDetailSchema(code=e.code, detail=str(e))
+                )
 
             logger.debug(
                 "Classification table '{}' result: result_node={}",

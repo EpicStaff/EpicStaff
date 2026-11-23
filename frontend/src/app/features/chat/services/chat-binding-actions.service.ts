@@ -4,7 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, Injector } from '@angular/core';
 import { Router } from '@angular/router';
 import { ConfirmationDialogService } from '@shared/components';
-import { copyWithFeedback, escapeHtml, extractHttpErrorMessage } from '@shared/utils';
+import { copyWithFeedback, escapeHtml, extractErrorCode, extractHttpErrorMessage } from '@shared/utils';
 import { catchError, EMPTY, filter, firstValueFrom, map, Observable, of, switchMap, tap } from 'rxjs';
 
 import { PhoneLayoutService } from '../../../core/services/phone-layout.service';
@@ -19,7 +19,7 @@ import {
     MyDeskAliasDialogData,
 } from '../components/my-desk-alias-dialog/my-desk-alias-dialog.component';
 import { DESKS_ROUTE } from '../constants/routes.constants';
-import { ChatBinding, ChatErrorBody, ChatMyAliasResult } from '../models/chat.model';
+import { ChatBinding, ChatMyAliasResult } from '../models/chat.model';
 import { ChatApiService } from './chat-api.service';
 import { ChatDesksStorageService } from './chat-desks-storage.service';
 const CONTRACT_REFUSALS = new Set(['contract_failed', 'unknown_flow']);
@@ -103,7 +103,7 @@ export class ChatBindingActionsService {
             map(() => true),
             catchError((error: HttpErrorResponse) => {
                 this.toastService.error(extractHttpErrorMessage(error));
-                const code = (error.error as ChatErrorBody | null)?.code;
+                const code = extractErrorCode(error);
                 return code && CONTRACT_REFUSALS.has(code) ? of(true) : EMPTY;
             })
         );

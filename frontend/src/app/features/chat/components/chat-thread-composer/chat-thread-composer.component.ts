@@ -23,12 +23,11 @@ import {
     JSON_EDITOR_OPTIONS,
     JsonEditorComponent,
 } from '@shared/components';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractApiErrors, extractHttpErrorMessage } from '@shared/utils';
 
 import { ToastService } from '../../../../services/notifications';
 import {
     ChatConversation,
-    ChatErrorBody,
     ChatOperatorMessage,
     ChatSendState,
     ChatVisitorMessageExtras,
@@ -267,12 +266,11 @@ export class ChatThreadComposerComponent {
                     if (this.conversationId() !== sentOn.id) return;
                     this.restoreDraft(text);
                     // Widget-side errors are shown inline, exactly as a widget would.
-                    const body = error.error as ChatErrorBody | null;
-                    // A refused field (extra data, action) is named in `errors`; the top-level message is generic.
-                    const fieldError = body?.code === 'validation_error' ? body.errors?.[0]?.message : undefined;
-                    this.notice.set(fieldError ?? body?.message ?? extractHttpErrorMessage(error));
+                    // The first error says it: a refused field (extra data, action) comes first, ahead of a generic one.
+                    const firstError = extractApiErrors(error)[0];
+                    this.notice.set(firstError?.detail || extractHttpErrorMessage(error));
                     const streamSpoke = this.conversation() !== sentOn;
-                    if (body?.code === 'run_in_progress' && !streamSpoke) this.isAwaitingRun.set(true);
+                    if (firstError?.code === 'run_in_progress' && !streamSpoke) this.isAwaitingRun.set(true);
                     // Closed meanwhile, and the stream missed it: fetched again, the thread turns read-only.
                     if (isConversationClosed(error)) this.conversationActions.refresh(sentOn.id);
                 },

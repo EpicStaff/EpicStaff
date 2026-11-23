@@ -69,41 +69,38 @@ describe('ConsoleService', () => {
         return result;
     }
 
-    it("shows the server's message of a refused start, from the error envelope", () => {
-        const message = 'This run uses resources of the plugin "Weather", which is suspended in this organization.';
+    function envelope(detail: string): object {
+        return { type: 'client_error', errors: [{ code: 'invalid', detail, attr: null, context: null }] };
+    }
 
+    const SUSPENDED_PLUGIN =
+        'This run uses resources of the plugin "Weather", which is suspended in this organization.';
+
+    it("shows the server's message of a refused start", () => {
         const result = startAndFail(409, {
-            status_code: 409,
-            code: 'plugin_suspended',
-            message,
-            plugin: { identifier: 'weather', name: 'Weather' },
-            organization: { id: 3 },
+            type: 'client_error',
+            errors: [
+                {
+                    code: 'plugin_suspended',
+                    detail: SUSPENDED_PLUGIN,
+                    attr: null,
+                    context: { plugin: { identifier: 'weather', name: 'Weather' }, organization: { id: 3 } },
+                },
+            ],
         });
 
-        expect(toast.error).toHaveBeenCalledWith(message);
+        expect(toast.error).toHaveBeenCalledWith(SUSPENDED_PLUGIN);
         expect(result?.success).toBe(false);
     });
 
-    it('prefers the error text the realtime start answers with', () => {
-        startAndFail(400, { error: 'The agent has no realtime config.', message: 'ignored' });
+    it('shows the error text the realtime start answers with', () => {
+        startAndFail(400, envelope('The agent has no realtime config.'));
 
         expect(toast.error).toHaveBeenCalledWith('The agent has no realtime config.');
     });
 
-    it("shows the envelope's message when the error text is empty, never an empty toast", () => {
-        startAndFail(409, { error: '', message: 'This run uses a suspended plugin.' });
-
-        expect(toast.error).toHaveBeenCalledWith('This run uses a suspended plugin.');
-    });
-
-    it('falls back to a generic message when the error text is empty and there is no message', () => {
-        startAndFail(400, { error: '' });
-
-        expect(toast.error).toHaveBeenCalledWith('Failed to start the realtime conversation');
-    });
-
     it('explains conflicting RAG settings', () => {
-        startAndFail(400, { error: 'The surfaces have conflicting RAG configs for collection 3.' });
+        startAndFail(400, envelope('The surfaces have conflicting RAG configs for collection 3.'));
 
         expect(toast.error).toHaveBeenCalledWith(
             "Conflict: the agent's surfaces use the same collection with different RAG settings."

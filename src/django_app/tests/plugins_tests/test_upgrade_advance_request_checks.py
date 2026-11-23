@@ -12,6 +12,7 @@ from tests.plugins_tests.upgrade_fixtures import (  # noqa: F401 (fixtures)
     upgrade_of,
     weather,
 )
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -28,7 +29,7 @@ def in_maintenance(weather, newer, upgrade_of, node_client, django_capture_on_co
 
 
 def _code(response):
-    return response.status_code, response.json()["code"]
+    return response.status_code, response.json()["errors"][0]["code"]
 
 
 def test_an_unknown_upgrade_answers_404_whatever_the_body(weather, node_client):
@@ -59,8 +60,8 @@ def test_a_backup_recorded_with_another_sha256_answers_400_and_nothing_moves(in_
     )
 
     assert _code(response) == (400, "invalid_upgrade_advance")
-    assert response.json()["errors"] == [
-        {"loc": "advance.backup.sha256", "message": "is not the sha256 recorded for this backup"}
+    assert attr_details(response.json()) == [
+        {"attr": "advance.backup.sha256", "detail": "is not the sha256 recorded for this backup"}
     ]
     in_maintenance.refresh_from_db()
     assert (in_maintenance.stage, in_maintenance.backup_id) == (UpgradeStage.MAINTENANCE, None)

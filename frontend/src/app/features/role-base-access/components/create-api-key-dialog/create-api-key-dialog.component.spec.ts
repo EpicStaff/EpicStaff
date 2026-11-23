@@ -101,18 +101,21 @@ describe('CreateApiKeyDialogComponent', () => {
     });
 
     it('shows the server reason and stays on the form when the key cannot be created', () => {
+        const body = {
+            type: 'client_error',
+            errors: [
+                {
+                    code: 'org_membership_required',
+                    detail: 'You are not a member of this organization.',
+                    attr: null,
+                },
+            ],
+        };
         render(7);
         typeName('Deploy Bot');
         createButton().click();
 
-        httpTesting.expectOne('/api/profile/api-keys/').flush(
-            {
-                status_code: 403,
-                code: 'org_membership_required',
-                message: 'You are not a member of this organization.',
-            },
-            { status: 403, statusText: 'Forbidden' }
-        );
+        httpTesting.expectOne('/api/profile/api-keys/').flush(body, { status: 403, statusText: 'Forbidden' });
         fixture.detectChanges();
 
         expect(toastError).toHaveBeenCalledWith('You are not a member of this organization.');

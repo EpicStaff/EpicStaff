@@ -60,7 +60,7 @@ def test_cannot_link_other_org_run_under_own_org_session(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["code"] == "parent_session_not_found"
+    assert response.data["errors"][0]["code"] == "parent_session_not_found"
     assert not Session.objects.filter(graph=beta_graph).exists()
 
 

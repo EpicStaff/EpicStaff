@@ -33,7 +33,9 @@ import time
 import uuid
 from collections.abc import Callable
 
+from foundation.schemas import ErrorDetailSchema
 from loguru import logger
+from pydantic import ValidationError
 from services.graph.events import StopEvent
 from services.redis_service import RedisService
 from src.shared.bench_log import BENCH_LEVEL
@@ -61,10 +63,29 @@ LIVE_EVENT_TYPES = frozenset(
 """Envelope types forwarded live to ``on_event`` instead of ending the wait."""
 
 
-class AgentTaskError(Exception): ...
+class AgentTaskError(Exception):
+    """The agent run failed. The message is user-safe: it is shown on the error card."""
+
+    code = "agent_task_failed"
 
 
-class AgentTaskTimeoutError(AgentTaskError): ...
+class AgentTaskTimeoutError(AgentTaskError):
+    code = "agent_task_timeout"
+
+
+_LLM_REQUEST_FAILED = "The LLM request failed."
+
+
+def _agent_error_detail(error: object, correlation_id: str) -> str:
+    # Only the agent's {code, detail} is shown. An agent older than that contract sends
+    # its raw str(error), which can quote the provider's message: it is logged instead.
+    try:
+        return ErrorDetailSchema.model_validate(error).detail
+    except ValidationError:
+        logger.warning(
+            "agent error without code and detail correlation_id={} error={}", correlation_id, error
+        )
+        return _LLM_REQUEST_FAILED
 
 
 class AgentTaskService:
@@ -178,9 +199,10 @@ class AgentTaskService:
 
             remaining_s = deadline - time.monotonic()
             if remaining_s <= 0:
-                raise AgentTaskTimeoutError(
-                    f"Timed out waiting for agent result, correlation_id={correlation_id}"
+                logger.warning(
+                    "timed out waiting for agent result correlation_id={}", correlation_id
                 )
+                raise AgentTaskTimeoutError("The agent service didn't answer in time.")
 
             block_ms = min(self.poll_block_ms, max(int(remaining_s * 1000), 1))
             response = await client.xread({result_stream: last_id}, block=block_ms)
@@ -205,13 +227,15 @@ class AgentTaskService:
                         continue
 
                     if envelope.type == "agent.error":
-                        raise AgentTaskError(envelope.payload.get("error", "agent error"))
+                        raise AgentTaskError(
+                            _agent_error_detail(envelope.payload.get("error"), correlation_id)
+                        )
 
                     if envelope.type == "agent.result":
                         stop_reason = envelope.payload.get("stop_reason")
                         if stop_reason in FAILURE_STOP_REASONS:
                             raise AgentTaskError(
-                                envelope.payload.get("error") or f"agent stop_reason={stop_reason}"
+                                _agent_error_detail(envelope.payload.get("error"), correlation_id)
                             )
                         return envelope.payload
 

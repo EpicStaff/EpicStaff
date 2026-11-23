@@ -3,10 +3,8 @@ the raw authenticated REST call, phone-number lookup, and voice-webhook
 (VoiceUrl) configuration.
 
 Extracted from `tables/views/model_view_sets.py`'s Twilio views so those views only translate
-request data into a service call and a typed `TwilioServiceError` into the
-exact `Response({"error": ...}, status=...)` they produced before this
-refactor -- the response contract (body shape, status codes, message
-strings) is unchanged.
+request data into a service call; a typed `TwilioServiceError` reaches the exception
+handler, which renders it with its own status and code.
 """
 
 import base64
@@ -28,6 +26,7 @@ from tables.models.webhook_models import RealtimeChannel, TwilioChannel
 from tables.services.secrets import SecretResolutionError, secret_resolver
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from user_audit.recorder import record_user_action
+from utils.exceptions import CustomAPIExeption
 from utils.logger import logger
 from utils.singleton_meta import SingletonMeta
 
@@ -53,19 +52,18 @@ _NO_AUTH_TOKEN_MESSAGE = "No Twilio credentials configured for this channel"
 _AUTH_TOKEN_UNAVAILABLE_MESSAGE = "The Twilio auth token is unavailable; restore or replace it."
 
 
-class TwilioServiceError(Exception):
-    """Base for every typed error `TwilioService` raises.
+class TwilioServiceError(CustomAPIExeption):
+    """Base for every typed error `TwilioService` raises: a call to Twilio failed.
 
-    Carries the exact `(message, status_code)` pair the caller must
-    reproduce verbatim as `Response({"error": message}, status=status_code)`
-    -- this is what lets the views stay thin translators instead of
-    re-deciding status codes/messages themselves.
+    The message is always one of this module's fixed sentences, never Twilio's
+    response or an exception's text, so the exception handler shows it as it is.
     """
 
-    def __init__(self, message: str, status_code: int):
-        super().__init__(message)
-        self.message = message
-        self.status_code = status_code
+    status_code = 502
+    default_code = "twilio_request_failed"
+
+    def __init__(self, message: str):
+        super().__init__(detail=message)
 
 
 class TwilioNotFoundError(TwilioServiceError):
@@ -75,15 +73,21 @@ class TwilioNotFoundError(TwilioServiceError):
     another org both raise this with the same generic message.
     """
 
+    status_code = 404
+    default_code = "twilio_channel_not_found"
+
     def __init__(self, message: str = "Channel not found"):
-        super().__init__(message, status_code=404)
+        super().__init__(message)
 
 
 class TwilioValidationError(TwilioServiceError):
     """Malformed input or an unmet precondition -- 400."""
 
+    status_code = 400
+    default_code = "twilio_invalid_request"
+
     def __init__(self, message: str):
-        super().__init__(message, status_code=400)
+        super().__init__(message)
 
 
 class TwilioNoAnswerError(TwilioServiceError):
@@ -92,8 +96,13 @@ class TwilioNoAnswerError(TwilioServiceError):
     The question asked is neither proven nor disproven: callers must change nothing.
     """
 
+    status_code = 503
+    # Shared with TwilioUnavailableError on purpose: callers re-raise this as that error,
+    # and to a client both mean the same thing.
+    default_code = "twilio_unavailable"
+
     def __init__(self):
-        super().__init__(_PHONE_NUMBER_UNVERIFIED_MESSAGE, status_code=503)
+        super().__init__(_PHONE_NUMBER_UNVERIFIED_MESSAGE)
 
 
 class TwilioCredentialsRejectedError(TwilioValidationError):
@@ -144,7 +153,7 @@ def _log_and_wrap_unexpected_twilio_error(operation: str, error: Exception) -> T
         error_type=type(error).__name__,
         error=str(error),
     )
-    return TwilioServiceError("Failed to communicate with Twilio", status_code=502)
+    return TwilioServiceError("Failed to communicate with Twilio")
 
 
 def _twilio_request(
@@ -378,7 +387,7 @@ class TwilioService(metaclass=SingletonMeta):
             self.validate_account_sid(account_sid)
         except TwilioValidationError as error:
             raise TwilioPhoneNumberClaimError(
-                PhoneNumberClaimRefusal.INVALID_ACCOUNT_SID, error.message
+                PhoneNumberClaimRefusal.INVALID_ACCOUNT_SID, str(error.detail)
             ) from None
         auth_token = self._resolve_auth_token(org_id, auth_token_secret_id)
         try:
@@ -387,7 +396,7 @@ class TwilioService(metaclass=SingletonMeta):
             )
         except TwilioCredentialsRejectedError as error:
             raise TwilioPhoneNumberClaimError(
-                PhoneNumberClaimRefusal.CREDENTIALS_REJECTED, error.message
+                PhoneNumberClaimRefusal.CREDENTIALS_REJECTED, str(error.detail)
             ) from None
         if not owned:
             raise TwilioPhoneNumberClaimError(
@@ -576,10 +585,13 @@ class TwilioService(metaclass=SingletonMeta):
             record_user_action(action=UserAction.UPDATED, org_id=channel.org_id, target=channel)
             return webhook_url
         except urllib.error.HTTPError as e:
-            body = e.read().decode()
-            logger.error(f"configure-webhook: Twilio HTTP error {e.code}: {body}")
-            raise TwilioServiceError(
-                "Failed to configure Twilio webhook", status_code=e.code
-            ) from e
+            # Twilio's status describes our request to Twilio, not the client's request to
+            # us, so every Twilio HTTP failure is a 502; its status and body go to the log.
+            logger.error(
+                "configure-webhook: Twilio HTTP error {status}: {body}",
+                status=e.code,
+                body=e.read().decode(),
+            )
+            raise TwilioServiceError("Failed to configure Twilio webhook") from e
         except Exception as e:
             raise _log_and_wrap_unexpected_twilio_error("configure-webhook", e) from e

@@ -9,6 +9,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from tables.models.knowledge_models import DocumentMetadata
+from tests.error_envelope import error_codes, error_text
 
 
 @pytest.mark.django_db
@@ -123,7 +124,8 @@ class TestDocumentUpload:
         response = auth_client.post(url, data, format="multipart")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "exceeds" in response.json()["error"].lower()
+        assert error_codes(response.json()) == ["upload_rejected"]
+        assert "exceeds" in error_text(response.json()).lower()
 
     def test_upload_invalid_file_type(
         self, auth_client, source_collection, invalid_file_type
@@ -135,7 +137,8 @@ class TestDocumentUpload:
         response = auth_client.post(url, data, format="multipart")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "invalid type" in response.json()["error"].lower()
+        assert error_codes(response.json()) == ["upload_rejected"]
+        assert "invalid type" in error_text(response.json()).lower()
 
     def test_upload_without_files(self, auth_client, source_collection):
         """Test uploading without providing files."""

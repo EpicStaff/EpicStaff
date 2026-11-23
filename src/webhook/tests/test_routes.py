@@ -1,11 +1,25 @@
+import httpx
 import pytest
 from app.core.settings import settings
+from app.main import create_app
 from foundation.cryptographer import FernetRotatedCryptographer
 from loguru import logger
 from src.shared.models import LocalhostConfigData, WebhookTriggerAuthData
 from transport_secrets import TRANSPORT_HKDF_INFO, seal
 
 PREVIOUS_TRANSPORT_KEY = "webhook-tests-previous-transport-key"
+
+AUTHENTICATION_FAILED = {
+    "type": "client_error",
+    "errors": [
+        {
+            "code": "unauthorized",
+            "detail": "Webhook authentication failed",
+            "attr": None,
+            "context": None,
+        }
+    ],
+}
 
 HEADER_BY_KIND = {
     "webhook": "EPICSTAFF_API_KEY",
@@ -93,6 +107,7 @@ async def test_unauthenticated_webhook_is_rejected_with_401(
     response = await client.post("/webhooks/authed-hook", json={"a": 1}, headers=headers)
 
     assert response.status_code == 401
+    assert response.json() == AUTHENTICATION_FAILED
     assert await received_events() == []
 
 
@@ -118,7 +133,7 @@ async def test_secret_that_cannot_be_decrypted_rejects_like_failed_auth(
         logger.remove(sink_id)
 
     assert response.status_code == 401
-    assert response.json() == {"detail": "Webhook authentication failed"}
+    assert response.json() == AUTHENTICATION_FAILED
     assert await received_events() == []
     assert any(config.unique_id in line and "could not be decrypted" in line for line in logged)
     assert all(stored_secret not in line for line in logged)
@@ -142,6 +157,17 @@ async def test_unregistered_path_returns_404(client, received_events):
     response = await client.post("/webhooks/never-registered", json={"a": 1})
 
     assert response.status_code == 404
+    assert response.json() == {
+        "type": "client_error",
+        "errors": [
+            {
+                "code": "not_found",
+                "detail": "No webhook registered for path 'never-registered'",
+                "attr": None,
+                "context": None,
+            }
+        ],
+    }
     assert await received_events() == []
 
 
@@ -159,6 +185,7 @@ async def test_path_registered_by_two_orgs_is_refused_rather_than_guessed(
     )
 
     assert response.status_code == 409
+    assert [error["code"] for error in response.json()["errors"]] == ["conflict"]
     assert await received_events() == []
 
 
@@ -189,3 +216,80 @@ async def test_returns_503_when_no_received_events_receives_the_event(client, tu
 
     assert response.status_code == 503
     assert response.headers["Retry-After"] == "30"
+    assert response.json() == {
+        "type": "server_error",
+        "errors": [
+            {
+                "code": "service_unavailable",
+                "detail": "Webhook receiver is temporarily unavailable",
+                "attr": None,
+                "context": None,
+            }
+        ],
+    }
+
+
+@pytest.mark.parametrize(
+    ("request_options", "expected_error"),
+    [
+        (
+            {"json": ["not", "an", "object"]},
+            {
+                "code": "bad_request",
+                "detail": "Webhook body must be a JSON object",
+                "attr": None,
+                "context": None,
+            },
+        ),
+        (
+            {"content": b'{"update_id": ', "headers": {"Content-Type": "application/json"}},
+            {"code": "bad_request", "detail": "Invalid JSON body", "attr": None, "context": None},
+        ),
+    ],
+    ids=["body-not-an-object", "unparseable-body"],
+)
+async def test_invalid_body_is_a_400_without_echoing_it(
+    client, tunnel_registry, received_events, request_options, expected_error
+):
+    # The body is read only after the path resolves and the caller is authenticated.
+    await _register(tunnel_registry, "any-hook", auth=_auth("webhook", "secret"))
+    options = dict(request_options)
+    headers = {**options.pop("headers", {}), HEADER_BY_KIND["webhook"]: "secret"}
+    response = await client.post("/webhooks/any-hook", headers=headers, **options)
+
+    assert response.status_code == 400
+    assert response.json() == {"type": "client_error", "errors": [expected_error]}
+    assert "update_id" not in response.text
+    assert await received_events() == []
+
+
+async def test_unknown_route_is_a_404_in_the_error_envelope(client):
+    response = await client.get("/no-such-route")
+
+    assert response.status_code == 404
+    assert response.json() == {
+        "type": "client_error",
+        "errors": [{"code": "not_found", "detail": "Not Found", "attr": None, "context": None}],
+    }
+
+
+async def test_an_unhandled_error_is_a_500_that_hides_its_text():
+    app = create_app()
+
+    @app.get("/boom")
+    async def boom():
+        raise RuntimeError("secret internal detail")
+
+    # Starlette re-raises after answering, so the server logs it; the client still gets the answer.
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url="http://webhook") as client:
+        response = await client.get("/boom")
+
+    assert response.status_code == 500
+    assert response.json() == {
+        "type": "server_error",
+        "errors": [
+            {"code": "unknown", "detail": "Internal server error.", "attr": None, "context": None}
+        ],
+    }
+    assert "secret internal detail" not in response.text

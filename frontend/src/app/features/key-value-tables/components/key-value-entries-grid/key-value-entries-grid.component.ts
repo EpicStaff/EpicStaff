@@ -30,7 +30,7 @@ import {
 } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
 import { TooltipOnOverflowDirective } from '@shared/directives';
-import { copyWithFeedback, deepEqual, extractHttpErrorMessage } from '@shared/utils';
+import { copyWithFeedback, deepEqual, extractApiErrors, extractHttpErrorMessage } from '@shared/utils';
 import { AgGridAngular } from 'ag-grid-angular';
 import {
     AgGridEvent,
@@ -179,13 +179,12 @@ function settledSearch(rawTerm$: Observable<string>): Observable<string> {
     ).pipe(distinctUntilChanged());
 }
 
-// The global exception handler flattens a DRF field error into `message: "key: <reason>"`, so the prefix is
-// the only field signal in the body. Several flattened errors ("key: …; value: …") are not one cell's error.
+// A refusal of one cell's field. Several errors at once are not one cell's error.
 function fieldError(error: HttpErrorResponse): { column: EditableColumn; reason: string } | null {
-    const message: unknown = error.error?.message;
-    if (error.status !== 400 || typeof message !== 'string' || message.includes('; ')) return null;
-    const match = /^(key|value): ([\s\S]*)$/.exec(message);
-    return match ? { column: match[1] as EditableColumn, reason: match[2] } : null;
+    const errors = error.status === 400 ? extractApiErrors(error) : [];
+    if (errors.length !== 1) return null;
+    const [{ attr, detail }] = errors;
+    return attr === 'key' || attr === 'value' ? { column: attr, reason: detail } : null;
 }
 
 // The value typed in the editor, as the old dialog read it: JSON text, parsed; null when it is not JSON.

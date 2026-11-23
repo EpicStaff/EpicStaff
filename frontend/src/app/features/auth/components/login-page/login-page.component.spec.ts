@@ -23,7 +23,10 @@ function throttledResponse(headers: Record<string, string>, message: string | nu
         status: 429,
         statusText: 'Too Many Requests',
         headers: new HttpHeaders(headers),
-        error: message === null ? null : { status_code: 429, code: 'throttled', message },
+        error:
+            message === null
+                ? null
+                : { type: 'client_error', errors: [{ code: 'throttled', detail: message, attr: null, context: null }] },
     });
 }
 
@@ -115,6 +118,46 @@ describe('LoginPageComponent throttled login', () => {
 
         expect(fixture.componentInstance.throttleSecondsLeft()).toBe(0);
         expect(serverErrorText()).toBe(THROTTLE_MESSAGE);
+    });
+
+    it('shows the server detail of a throttled envelope when the response has no Retry-After', () => {
+        submitRejectedWith(
+            new HttpErrorResponse({
+                status: 429,
+                error: { type: 'client_error', errors: [{ code: 'throttled', detail: THROTTLE_MESSAGE, attr: null }] },
+            })
+        );
+
+        expect(serverErrorText()).toBe(THROTTLE_MESSAGE);
+    });
+
+    it.each([
+        {
+            form: 'envelope',
+            body: {
+                type: 'client_error',
+                errors: [{ code: 'authentication_failed', detail: 'Invalid email or password.', attr: null }],
+            },
+        },
+    ])('shows a refused login above the form from the $form body', ({ body }) => {
+        submitRejectedWith(new HttpErrorResponse({ status: 401, error: body }));
+
+        expect(serverErrorText()).toBe('Invalid email or password.');
+    });
+
+    it.each([
+        {
+            form: 'envelope',
+            body: {
+                type: 'client_error',
+                errors: [{ code: 'invalid', detail: 'Enter a valid email.', attr: 'email', context: null }],
+            },
+        },
+    ])('puts a field error of the $form body on its field, not above the form', ({ body }) => {
+        submitRejectedWith(new HttpErrorResponse({ status: 400, error: body }));
+
+        expect(fixture.componentInstance.form.controls.email.errors).toEqual({ server: ['Enter a valid email.'] });
+        expect(serverErrorText()).toBeUndefined();
     });
 
     it('shows a generic throttle message when Retry-After is unreadable and the body has no message', () => {

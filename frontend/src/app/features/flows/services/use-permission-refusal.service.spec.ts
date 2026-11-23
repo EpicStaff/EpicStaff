@@ -13,9 +13,15 @@ const REFUSAL = new HttpErrorResponse({
     status: 403,
     statusText: 'Forbidden',
     error: {
-        status_code: 403,
-        code: 'flow_with_trigger_nodes_requires_use_permission',
-        message: 'This flow contains trigger nodes (webhook, Telegram, schedule).',
+        type: 'client_error',
+        errors: [
+            {
+                code: 'flow_with_trigger_nodes_requires_use_permission',
+                detail: 'This flow contains trigger nodes (webhook, Telegram, schedule).',
+                attr: null,
+                context: null,
+            },
+        ],
     },
 });
 
@@ -117,7 +123,20 @@ describe('UsePermissionRefusalService', () => {
     });
 
     it("explains the backend's refusal for the given operation and completes without emitting or erroring", () => {
-        const outcome = run(throwError(() => REFUSAL));
+        const refusal = new HttpErrorResponse({
+            status: 403,
+            error: {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'flow_with_trigger_nodes_requires_use_permission',
+                        detail: 'This flow contains trigger nodes (webhook, Telegram, schedule).',
+                        attr: null,
+                    },
+                ],
+            },
+        });
+        const outcome = run(throwError(() => refusal));
 
         expect(confirm).toHaveBeenCalledExactlyOnceWith(
             expect.objectContaining({
@@ -131,7 +150,17 @@ describe('UsePermissionRefusalService', () => {
     function secretsRefusal(message: string): HttpErrorResponse {
         return new HttpErrorResponse({
             status: 403,
-            error: { status_code: 403, code: 'code_with_secrets_requires_secrets_use_permission', message },
+            error: {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'code_with_secrets_requires_secrets_use_permission',
+                        detail: message,
+                        attr: null,
+                        context: null,
+                    },
+                ],
+            },
         });
     }
 
@@ -188,9 +217,21 @@ describe('UsePermissionRefusalService', () => {
         ],
         [
             'the bulk-save trigger node 403',
-            new HttpErrorResponse({ status: 403, error: { code: 'trigger_nodes_require_use_permission' } }),
+            new HttpErrorResponse({
+                status: 403,
+                error: {
+                    type: 'client_error',
+                    errors: [{ code: 'trigger_nodes_require_use_permission', detail: 'Refused.' }],
+                },
+            }),
         ],
-        ['another 403', new HttpErrorResponse({ status: 403, error: { code: 'permission_denied' } })],
+        [
+            'another 403',
+            new HttpErrorResponse({
+                status: 403,
+                error: { type: 'client_error', errors: [{ code: 'permission_denied', detail: 'Refused.' }] },
+            }),
+        ],
         ['the refusal code on another status', new HttpErrorResponse({ status: 400, error: REFUSAL.error })],
         ['a server error', new HttpErrorResponse({ status: 500 })],
     ])('passes %s through unchanged, without a dialog', (_case, failure) => {

@@ -1,11 +1,13 @@
-import { HttpErrorResponse } from '@angular/common/http';
 import { computed, inject, Injectable } from '@angular/core';
 import { StorageService } from '@shared/services';
+import { extractApiErrors } from '@shared/utils';
 import { EMPTY, Observable, throwError } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 
-import { TableDocument } from '../components/naive-rag-configuration/configuration-table/configuration-table.interface';
-import { normalizeBulkUpdateErrors } from '../helpers/normalize-bulk-update-errors.util';
+import {
+    NormalizedDocumentErrors,
+    TableDocument,
+} from '../components/naive-rag-configuration/configuration-table/configuration-table.interface';
 import {
     ChunkedWithParams,
     GetNaiveRagDocumentChunksResponse,
@@ -18,7 +20,6 @@ import {
     EstimateDocumentConfig,
     NaiveRagDocumentConfig,
     RunNaiveRagDocumentChunkingRequest,
-    UpdateNaiveRagDocumentConfigError,
     UpdateNaiveRagDocumentDtoRequest,
 } from '../models/naive-rag-document.model';
 import { NaiveRagService } from './naive-rag.service';
@@ -253,17 +254,14 @@ export class NaiveRagDocumentsStorageService implements StorageService {
         }
     }
 
+    // The refused settings, each under its field; an error that names no field is left to the caller.
     private handleRunChunkingError(documentId: number, err: unknown): void {
-        const errors = this.extractValidationErrors(err);
-        if (!errors) return;
-        this.catalog.setDocErrors(documentId, normalizeBulkUpdateErrors(errors));
-    }
-
-    private extractValidationErrors(err: unknown): UpdateNaiveRagDocumentConfigError[] | null {
-        if (!(err instanceof HttpErrorResponse)) return null;
-        const errors = err.error?.errors;
-        if (!Array.isArray(errors) || errors.length === 0) return null;
-        return errors as UpdateNaiveRagDocumentConfigError[];
+        const fieldErrors = extractApiErrors(err).filter(({ attr }) => attr !== null);
+        if (!fieldErrors.length) return;
+        const errors: NormalizedDocumentErrors = Object.fromEntries(
+            fieldErrors.map(({ attr, detail }) => [attr, { reason: detail }])
+        );
+        this.catalog.setDocErrors(documentId, errors);
     }
 
     private applyBulkDeleteToRelatedState(deletedIds: number[]): void {

@@ -24,6 +24,7 @@ from src.shared.models.plugin_nodes import DesiredState, database_names_for
 
 from tests.plugins_tests.conftest import mark_running, upload_file
 from tests.plugins_tests.package_builder import GEOCODING_HOST, TOKEN_SETTING, backend_manifest, build_package
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -70,7 +71,7 @@ def test_a_missing_or_wrong_node_key_is_refused(plugin_node, authorization):
     response = client.get(DESIRED_STATE_URL)
 
     assert response.status_code == 401
-    assert response.json()["code"] == "node_not_authenticated"
+    assert response.json()["errors"][0]["code"] == "node_not_authenticated"
 
 
 def test_the_right_node_key_is_accepted(plugin_node, node_client):
@@ -94,7 +95,7 @@ def test_without_a_signing_key_the_node_is_told_so(backend_plugin, plugin_node, 
     response = node_client.get(DESIRED_STATE_URL)
 
     assert response.status_code == 503
-    assert response.json()["code"] == "signing_key_missing"
+    assert response.json()["errors"][0]["code"] == "signing_key_missing"
 
 
 # ---- desired state ----
@@ -395,7 +396,7 @@ def test_another_node_s_package_is_not_found(backend_plugin, other_node, other_n
     response = other_node_client.get(_package_url(package.pk))
 
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_package_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_package_not_found"
 
 
 def test_a_package_that_is_not_placed_is_not_found(running_plugin, plugin_node, node_client):
@@ -537,8 +538,8 @@ def test_a_malformed_report_is_refused(plugin_node, node_client, change):
     response = node_client.post(REPORTS_URL, report, format="json")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_node_report"
-    assert all(error["loc"].startswith("report") for error in response.json()["errors"])
+    assert response.json()["errors"][0]["code"] == "invalid_node_report"
+    assert all(error["attr"].startswith("report") for error in attr_details(response.json()))
 
 
 def test_a_long_log_tail_is_refused(backend_plugin, plugin_node, node_client):

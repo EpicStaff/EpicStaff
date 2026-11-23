@@ -22,6 +22,7 @@ from tables.models.realtime_models import RealtimeAgent, RealtimeAgentDefinition
 from rbac.authorship import record_last_edit
 from rbac.models import Organization
 from tables.services.secrets import secret_resolver, secret_service
+from tests.error_envelope import attr_details, details_by_attr, error_codes, error_text
 from tests.sealed_values import open_sealed
 
 # Every fixture/test in this module needs a uniquely-named Secret (org-scoped
@@ -306,6 +307,30 @@ class TestTwilioChannelWebhookTrigger:
         assert "localhost" in str(response.json()).lower()
         assert not TwilioChannel.objects.filter(channel=rc).exists()
 
+    def test_a_linked_trigger_cannot_switch_to_a_local_only_provider(
+        self, auth_client, db, default_org
+    ):
+        rc = _make_realtime_channel(db, default_org)
+        trigger = _make_webhook_trigger_with_ngrok(default_org, path="switch-to-localhost")
+        _make_twilio_channel(rc, default_org, webhook_trigger=trigger)
+
+        response = auth_client.patch(
+            reverse("webhooktrigger-detail", args=[trigger.pk]),
+            {"provider_type": ProviderType.LOCALHOST},
+            format="json",
+        )
+
+        assert response.status_code == 400, response.json()
+        assert error_codes(response.json()) == ["invalid"]
+        assert details_by_attr(response.json()) == {
+            "provider_type": [
+                "Cannot switch to a local-only provider while this trigger "
+                "is linked to a Twilio channel."
+            ]
+        }
+        trigger.refresh_from_db()
+        assert trigger.provider_type == ProviderType.NGROK
+
     def test_configure_webhook_rejects_localhost_provider(
         self, auth_client, db, default_org
     ):
@@ -331,7 +356,8 @@ class TestTwilioChannelWebhookTrigger:
             format="json",
         )
         assert response.status_code == 400, response.json()
-        assert "localhost" in response.json()["error"].lower()
+        assert error_codes(response.json()) == ["twilio_invalid_request"]
+        assert "localhost" in error_text(response.json()).lower()
 
     @pytest.mark.parametrize(
         ("make_trigger", "error"),
@@ -575,6 +601,7 @@ class TestRealtimeChannelLookupByToken:
         response = api_client.get(self._url(), {"token": token(rc)})
 
         assert response.status_code == 404
+        assert error_codes(response.json()) == ["not_found"]
         assert response.content == unknown.content
 
     def test_lookup_by_token_missing_token_returns_400(
@@ -586,6 +613,10 @@ class TestRealtimeChannelLookupByToken:
         response = api_client.get(self._url())
 
         assert response.status_code == 400
+        assert error_codes(response.json()) == ["required"]
+        assert attr_details(response.json()) == [
+            {"attr": "token", "detail": "This field is required."}
+        ]
 
     @pytest.mark.parametrize(
         ("caller", "own_org", "expected_status"),
@@ -715,7 +746,7 @@ class TestRealtimeChannelLookupByToken:
         response = api_client.get(reverse("realtimechannel-list"))
 
         assert response.status_code == 400
-        assert response.json()["code"] == "org_context_required"
+        assert response.json()["errors"][0]["code"] == "org_context_required"
 
 
 # A syntactically valid Account SID: the action rejects anything else before
@@ -773,25 +804,45 @@ class TestTwilioChannelPhoneNumbersAction:
         assert called_auth_token == "auth_test"
 
     @pytest.mark.parametrize(
-        "query",
+        ("query", "expected_attr"),
         [
-            lambda foreign: {"sid": VALID_ACCOUNT_SID},
+            (lambda foreign: {"sid": VALID_ACCOUNT_SID}, "auth_token_secret_id"),
             # A secret id of another org resolves like any unknown id, and its token never leaks.
-            lambda foreign: {"sid": VALID_ACCOUNT_SID, "auth_token_secret_id": foreign.id},
-            lambda foreign: {"sid": VALID_ACCOUNT_SID, "auth_token_secret_id": "not-an-id"},
-            lambda foreign: {"sid": "not-a-valid-sid", "auth_token_secret_id": "1"},
+            (
+                lambda foreign: {"sid": VALID_ACCOUNT_SID, "auth_token_secret_id": foreign.id},
+                "auth_token_secret_id",
+            ),
+            (
+                lambda foreign: {"sid": VALID_ACCOUNT_SID, "auth_token_secret_id": "not-an-id"},
+                "auth_token_secret_id",
+            ),
+            (lambda foreign: {"sid": "not-a-valid-sid", "auth_token_secret_id": "1"}, None),
         ],
         ids=["no-secret", "other-orgs-secret", "non-integer-secret-id", "invalid-account-sid"],
     )
-    def test_bad_credentials_are_400_without_calling_twilio(self, auth_client, db, query):
+    def test_bad_credentials_are_400_without_calling_twilio(
+        self, auth_client, db, query, expected_attr
+    ):
         foreign_secret = _make_secret(Organization.objects.create(name="Other Org (phone-numbers)"), "foreign_auth_token")
 
         with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
             response = auth_client.get(reverse("twiliochannel-phone-numbers"), query(foreign_secret))
 
         assert response.status_code == 400, response.content
-        assert "error" in response.json()
+        assert [item["attr"] for item in response.json()["errors"]] == [expected_attr]
         assert "foreign_auth_token" not in response.content.decode()
+        mocked.assert_not_called()
+
+    def test_each_missing_query_parameter_is_named(self, auth_client, db):
+        with mock.patch("tables.services.twilio_service._twilio_request") as mocked:
+            response = auth_client.get(reverse("twiliochannel-phone-numbers"))
+
+        assert response.status_code == 400, response.content
+        assert error_codes(response.json()) == ["required", "required"]
+        assert details_by_attr(response.json()) == {
+            "sid": ["This query parameter is required."],
+            "auth_token_secret_id": ["This query parameter is required."],
+        }
         mocked.assert_not_called()
 
     def test_foreign_secret_rejection_matches_a_nonexistent_id(self, auth_client, db):
@@ -825,20 +876,20 @@ class TestTwilioConfigureWebhookInputValidation:
     raw upstream Twilio error body back to the caller."""
 
     @pytest.mark.parametrize(
-        ("account_sid", "phone_sid", "token", "enabled", "expected_status", "error"),
+        ("account_sid", "phone_sid", "token", "enabled", "expected_status", "code", "error"),
         [
-            ("AC" + "0" * 32, "PN_not_a_valid_sid", None, True, 400, "Invalid phone_sid"),
+            ("AC" + "0" * 32, "PN_not_a_valid_sid", None, True, 400, "twilio_invalid_request", "Invalid phone_sid"),
             # Not client-supplied here, but a malformed stored value must not reach the Twilio URL either.
-            ("AC_not_valid", "PN" + "0" * 32, None, True, 400, "Invalid account_sid"),
+            ("AC_not_valid", "PN" + "0" * 32, None, True, 400, "twilio_invalid_request", "Invalid account_sid"),
             # RealtimeChannel.token is a UUIDField: a malformed token is a 404, not a 500.
-            ("AC" + "0" * 32, "PN" + "0" * 32, "qwe", True, 404, "Channel not found"),
+            ("AC" + "0" * 32, "PN" + "0" * 32, "qwe", True, 404, "twilio_channel_not_found", "Channel not found"),
             # A disabled channel looks exactly like a missing one.
-            ("AC" + "0" * 32, "PN" + "0" * 32, None, False, 404, "Channel not found"),
+            ("AC" + "0" * 32, "PN" + "0" * 32, None, False, 404, "twilio_channel_not_found", "Channel not found"),
         ],
         ids=["invalid-phone-sid", "invalid-stored-account-sid", "malformed-token", "disabled-channel"],
     )
     def test_invalid_request_never_reaches_twilio(
-        self, auth_client, db, default_org, account_sid, phone_sid, token, enabled, expected_status, error
+        self, auth_client, db, default_org, account_sid, phone_sid, token, enabled, expected_status, code, error
     ):
         rc = _make_realtime_channel(db, default_org, is_enabled=enabled)
         trigger = _make_webhook_trigger_with_ngrok(default_org, path="cfg-invalid")
@@ -852,14 +903,18 @@ class TestTwilioConfigureWebhookInputValidation:
             )
 
         assert response.status_code == expected_status, response.json()
-        assert response.json() == {"error": error}
+        assert error_codes(response.json()) == [code]
+        assert details_by_attr(response.json()) == {None: [error]}
         mocked.assert_not_called()
 
+    # A passed-through 401 would read as our own auth failure and log the caller out.
+    @pytest.mark.parametrize("twilio_status", [401, 404, 500])
     def test_twilio_http_error_returns_generic_sanitized_body(
-        self, auth_client, db, default_org
+        self, auth_client, db, default_org, twilio_status
     ):
-        """A raw upstream Twilio error body (which can contain account
-        details) must never be reflected verbatim to the caller."""
+        """A Twilio HTTP failure is our 502, whatever status Twilio answered, and
+        Twilio's raw error body (which can contain account details) is never
+        reflected to the caller."""
         rc = _make_realtime_channel(db, default_org)
         trigger = _make_webhook_trigger_with_ngrok(
             default_org,
@@ -879,8 +934,8 @@ class TestTwilioConfigureWebhookInputValidation:
         )
         http_error = urllib.error.HTTPError(
             url="https://api.twilio.com/2010-04-01/Accounts/ACxxxx/IncomingPhoneNumbers/PNxxxx.json",
-            code=404,
-            msg="Not Found",
+            code=twilio_status,
+            msg="Twilio error",
             hdrs=None,
             fp=mock.mock_open(read_data=raw_twilio_body.encode())(),
         )
@@ -895,8 +950,9 @@ class TestTwilioConfigureWebhookInputValidation:
                 format="json",
             )
 
-        assert response.status_code == 404, response.json()
-        assert response.json() == {"error": "Failed to configure Twilio webhook"}
+        assert response.status_code == 502, response.json()
+        assert error_codes(response.json()) == ["twilio_request_failed"]
+        assert details_by_attr(response.json()) == {None: ["Failed to configure Twilio webhook"]}
         body_text = response.content.decode()
         assert "20404" not in body_text
         assert "ACxxxx" not in body_text
@@ -929,7 +985,8 @@ class TestTwilioConfigureWebhookInputValidation:
             )
 
         assert response.status_code == 502, response.json()
-        assert response.json() == {"error": "Failed to communicate with Twilio"}
+        assert error_codes(response.json()) == ["twilio_request_failed"]
+        assert details_by_attr(response.json()) == {None: ["Failed to communicate with Twilio"]}
         assert "egress-proxy" not in response.content.decode()
 
 

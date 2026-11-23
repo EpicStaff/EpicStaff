@@ -54,7 +54,7 @@ from tests.fixtures import _make_secret
 from tests.sealed_values import open_sealed
 from tests.services_tests.run_admission_fixtures import *  # noqa: F401,F403
 from tests.services_tests.run_admission_fixtures import (
-    REFUSAL_EXTRA,
+    REFUSAL_CONTEXT,
     REFUSAL_MESSAGE,
     RecordingCheck,
     RefusedForTestError,
@@ -83,10 +83,15 @@ def _refusal_lines(lines: list[str]) -> list[str]:
 def _assert_refusal_envelope(response) -> None:
     assert response.status_code == 409, response.content
     assert response.json() == {
-        **REFUSAL_EXTRA,
-        "status_code": 409,
-        "code": "test_refused",
-        "message": REFUSAL_MESSAGE,
+        "type": "client_error",
+        "errors": [
+            {
+                "code": "test_refused",
+                "detail": REFUSAL_MESSAGE,
+                "attr": None,
+                "context": REFUSAL_CONTEXT,
+            }
+        ],
     }
 
 

@@ -29,16 +29,13 @@ const API_PORT_REFUSAL = 'is the development API port (PLUGINS_DEV_API_PORT); us
 const NO_PORT_REFUSAL =
     'needs a backend port or a frontend dev server port; to route nothing, stop development instead';
 
-/** A save refused with the problems listed, as the server's InvalidDevelopmentPortsError answers it. */
-function refusedPorts(errors: { loc: string; message: string }[]): HttpErrorResponse {
-    const summary = errors.length === 1 ? errors[0].message : `${errors.length} problems found.`;
+/** A save refused with the problems listed, one item per port, as the server's InvalidDevelopmentPortsError answers it. */
+function refusedPorts(problems: { port: string; detail: string }[]): HttpErrorResponse {
     return new HttpErrorResponse({
         status: 400,
         error: {
-            status_code: 400,
-            code: 'invalid',
-            message: `The development ports are invalid. ${summary}`,
-            errors,
+            type: 'client_error',
+            errors: problems.map(({ port, detail }) => ({ code: 'invalid', detail, attr: port, context: null })),
         },
     });
 }
@@ -245,7 +242,7 @@ describe('PluginDevelopmentPanelComponent', () => {
 
     it("shows a refused save's error on the port it names, until that port is typed in again", async () => {
         storage.updateDevelopment.mockReturnValue(
-            throwError(() => refusedPorts([{ loc: 'backend_port', message: API_PORT_REFUSAL }]))
+            throwError(() => refusedPorts([{ port: 'backend_port', detail: API_PORT_REFUSAL }]))
         );
         await render();
 
@@ -266,9 +263,44 @@ describe('PluginDevelopmentPanelComponent', () => {
         expect(button('Save')!.disabled).toBe(false);
     });
 
+    it("shows a refused save's error from the error envelope on the port it names", async () => {
+        storage.updateDevelopment.mockReturnValue(
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 400,
+                        error: {
+                            type: 'client_error',
+                            errors: [
+                                { code: 'invalid', detail: API_PORT_REFUSAL, attr: 'backend_port', context: null },
+                            ],
+                        },
+                    })
+            )
+        );
+        await render();
+
+        await typePort('backend_port', '8082');
+        button('Save')!.click();
+        await settle();
+
+        expect(portMessage('backend_port')).toBe(API_PORT_REFUSAL);
+        expect(text(element.querySelector('.development__error > span'))).toBe('The request was not valid.');
+        expect(element.querySelector('.development__error-items')).toBeNull();
+    });
+
     it("lists a refused save's problems that name no port above the ports", async () => {
         storage.updateDevelopment.mockReturnValue(
-            throwError(() => refusedPorts([{ loc: 'non_field_errors', message: NO_PORT_REFUSAL }]))
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 400,
+                        error: {
+                            type: 'validation_error',
+                            errors: [{ code: 'invalid', detail: NO_PORT_REFUSAL, attr: null, context: null }],
+                        },
+                    })
+            )
         );
         await render();
 
@@ -290,9 +322,15 @@ describe('PluginDevelopmentPanelComponent', () => {
                     new HttpErrorResponse({
                         status: 409,
                         error: {
-                            status_code: 409,
-                            code: 'plugin_development_mode_off',
-                            message: 'Plugin development mode is off on this deployment.',
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'plugin_development_mode_off',
+                                    detail: 'Plugin development mode is off on this deployment.',
+                                    attr: null,
+                                    context: null,
+                                },
+                            ],
                         },
                     })
             )
@@ -473,7 +511,17 @@ describe('PluginDevelopmentPanelComponent', () => {
                 () =>
                     new HttpErrorResponse({
                         status: 409,
-                        error: { status_code: 409, code: 'plugin_not_running', message: 'The plugin is not running.' },
+                        error: {
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'plugin_not_running',
+                                    detail: 'The plugin is not running.',
+                                    attr: null,
+                                    context: null,
+                                },
+                            ],
+                        },
                     })
             )
         );

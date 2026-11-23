@@ -12,6 +12,7 @@ from rbac.models.role import RolePermission
 from tables.models import TransferJob
 from tables.services.secrets import secret_service
 from tests.transfer_job_helpers import FinishedExport, export_via_job
+from tests.error_envelope import error_text
 
 
 # ---- fixtures ----
@@ -279,7 +280,7 @@ def test_export_with_an_id_outside_the_org_is_not_found(request, client_a, org_b
 
     # The same 404 for another org's id and a missing one: nothing tells them apart.
     assert resp.status_code == 404
-    assert resp.json()["code"] == "export_entities_not_found"
+    assert resp.json()["errors"][0]["code"] == "export_entities_not_found"
     assert not TransferJob.objects.exists()
 
 
@@ -454,7 +455,7 @@ def test_mcptool_import_rejects_non_http_transport(client_a, mcp_tool_a, org_a):
     )
 
     assert resp.status_code == 400, resp.data
-    assert "transport" in resp.data["message"]
+    assert "transport" in error_text(resp.data)
     assert McpTool.objects.filter(org=org_a).count() == tool_count_before_import
 
 

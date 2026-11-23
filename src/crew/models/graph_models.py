@@ -87,7 +87,13 @@ class StartMessageData:
 
 @dataclass
 class ErrorMessageData:
-    details: object
+    """An error card of a running session.
+
+    `error` is a dumped foundation `ErrorDetailSchema` (`code`, `detail`, `attr`, `context`),
+    stored by django_app as is: a plain dict, because the stream encoder only knows dataclasses.
+    """
+
+    error: dict
     message_type: str = "error"
 
 

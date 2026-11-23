@@ -7,6 +7,7 @@ from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from rest_framework.test import APIClient
 
 from tests.plugins_tests.conftest import ROLE_MANAGER_PERMISSIONS
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -41,7 +42,7 @@ def _granted(response):
 
 
 def _error_locs(response):
-    return [error["loc"] for error in response.json()["errors"]]
+    return [error["attr"] for error in attr_details(response.json())]
 
 
 @pytest.fixture
@@ -142,28 +143,28 @@ def test_rows_of_another_organization_are_not_found(client_as, admin_acme, beta,
     response = client_as(admin_acme).get(ROWS_URL, {"org_id": beta.id})
 
     assert response.status_code == 404
-    assert response.json()["code"] == "organization_not_found"
+    assert response.json()["errors"][0]["code"] == "organization_not_found"
 
 
 def test_rows_of_an_unknown_organization_are_not_found(client_as, superadmin):
     response = client_as(superadmin).get(ROWS_URL, {"org_id": 999999})
 
     assert response.status_code == 404
-    assert response.json()["code"] == "organization_not_found"
+    assert response.json()["errors"][0]["code"] == "organization_not_found"
 
 
 def test_rows_need_an_organization(client_as, admin_acme):
     response = client_as(admin_acme).get(ROWS_URL)
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid"
+    assert response.json()["errors"][0]["code"] == "invalid"
 
 
 def test_a_member_who_cannot_read_roles_is_refused(client_as, member_only, acme, weather_grant):
     response = client_as(member_only).get(ROWS_URL, {"org_id": acme.id})
 
     assert response.status_code == 403
-    assert response.json()["code"] == "permission_denied"
+    assert response.json()["errors"][0]["code"] == "permission_denied"
 
 
 # ---- a custom role ----
@@ -277,7 +278,7 @@ def test_an_action_outside_the_caller_s_ceiling_is_refused(client_as, weather_gr
     response = _put(client_as(manager), forecasters, ("weather", ["read", "update"]))
 
     assert response.status_code == 403
-    assert response.json()["code"] == "permission_escalation_denied"
+    assert response.json()["errors"][0]["code"] == "permission_escalation_denied"
     assert not PluginRolePermission.objects.filter(role=forecasters).exists()
 
 
@@ -307,7 +308,7 @@ def test_removing_an_action_above_the_ceiling_is_refused(client_as, weather_gran
     response = _put(client_as(manager), forecasters, *entries)
 
     assert response.status_code == 403
-    assert response.json()["code"] == "permission_escalation_denied"
+    assert response.json()["errors"][0]["code"] == "permission_escalation_denied"
     assert _granted(client_as(manager).get(_role_url(forecasters))) == {"weather": ["read", "update"]}
 
 
@@ -361,7 +362,7 @@ def test_a_caller_who_may_read_but_not_update_roles_sees_a_read_only_role(client
 
     assert (shown["editable"], shown["rows"][0]["ceiling"]) == (False, [])
     assert written.status_code == 403
-    assert written.json()["code"] == "permission_denied"
+    assert written.json()["errors"][0]["code"] == "permission_denied"
 
 
 def test_a_write_without_read_grant_may_still_write(client_as, make_custom_role, make_member, acme, weather_grant, forecasters):
@@ -397,7 +398,7 @@ def test_an_invalid_write_names_the_problem(client_as, admin_acme, weather_grant
     response = _put(client_as(admin_acme), forecasters, *entries)
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_plugin_role_permissions"
+    assert response.json()["errors"][0]["code"] == "invalid_plugin_role_permissions"
     assert loc in _error_locs(response)
     assert not PluginRolePermission.objects.exists()
 
@@ -424,7 +425,7 @@ def test_a_malformed_body_is_refused(client_as, admin_acme, forecasters):
     response = client_as(admin_acme).put(_role_url(forecasters), {"plugins": [{"actions": ["read"]}]}, format="json")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid"
+    assert response.json()["errors"][0]["code"] == "invalid"
 
 
 # ---- built-in roles ----
@@ -481,14 +482,14 @@ def test_a_built_in_role_for_another_organization_is_not_found(client_as, admin_
     response = client_as(admin_acme).get(_role_url(role_member), {"org_id": beta.id})
 
     assert response.status_code == 404
-    assert response.json()["code"] == "organization_not_found"
+    assert response.json()["errors"][0]["code"] == "organization_not_found"
 
 
 def test_a_built_in_role_cannot_be_written(client_as, superadmin, role_member, weather_grant):
     response = _put(client_as(superadmin), role_member, ("weather", ["read"]))
 
     assert response.status_code == 403
-    assert response.json()["code"] == "built_in_role_immutable"
+    assert response.json()["errors"][0]["code"] == "built_in_role_immutable"
 
 
 # ---- other organizations ----
@@ -498,14 +499,14 @@ def test_a_custom_role_of_another_organization_is_not_found(client_as, admin_bet
     response = client_as(admin_beta).get(_role_url(forecasters))
 
     assert response.status_code == 404
-    assert response.json()["code"] == "role_not_found"
+    assert response.json()["errors"][0]["code"] == "role_not_found"
 
 
 def test_writing_a_custom_role_of_another_organization_is_not_found(client_as, admin_beta, weather_grant, forecasters):
     response = _put(client_as(admin_beta), forecasters, ("weather", ["read"]))
 
     assert response.status_code == 404
-    assert response.json()["code"] == "role_not_found"
+    assert response.json()["errors"][0]["code"] == "role_not_found"
     assert not PluginRolePermission.objects.exists()
 
 
@@ -513,7 +514,7 @@ def test_an_unknown_role_is_not_found(client_as, admin_acme):
     response = client_as(admin_acme).get("/api/admin/plugin-role-permissions/999999/")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "role_not_found"
+    assert response.json()["errors"][0]["code"] == "role_not_found"
 
 
 # ---- credentials ----
@@ -536,7 +537,7 @@ def test_an_api_key_cannot_write(issue_api_key, admin_acme, weather_grant, forec
     response = _put(client, forecasters, ("weather", ["read"]))
 
     assert response.status_code == 403
-    assert response.json()["code"] == "permission_denied"
+    assert response.json()["errors"][0]["code"] == "permission_denied"
     assert not PluginRolePermission.objects.exists()
 
 

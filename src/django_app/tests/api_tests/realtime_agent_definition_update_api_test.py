@@ -25,6 +25,7 @@ from django.urls import reverse
 from agents.models import AgentDefinition
 from tables.models.realtime_models import RealtimeAgentDefinition
 from tests.fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 
 @pytest.fixture
@@ -116,7 +117,7 @@ def test_patch_rejects_non_iso_639_1_language(auth_client, rt_agent_definition, 
     resp = auth_client.patch(url, {"language": language}, format="json")
 
     assert resp.status_code == 400, resp.data
-    assert "language" in resp.data["message"]
+    assert "language" in error_text(resp.data)
 
 
 @pytest.mark.django_db
@@ -143,4 +144,4 @@ def test_patch_voice_length_bounds(auth_client, rt_agent_definition, voice, stat
 
     assert resp.status_code == status_code, resp.data
     if status_code == 400:
-        assert "voice" in resp.data["message"]
+        assert "voice" in error_text(resp.data)

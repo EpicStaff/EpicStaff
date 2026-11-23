@@ -119,11 +119,17 @@ describe('EmbeddingModelConfigDialogComponent extra headers', () => {
 const SECRET_USE_REFUSAL = new HttpErrorResponse({
     status: 400,
     error: {
-        status_code: 400,
-        code: 'invalid',
-        message:
-            'extra_headers: Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
-            'The existing selection was left unchanged. Ask an organization admin to grant it.',
+        type: 'client_error',
+        errors: [
+            {
+                code: 'invalid',
+                detail:
+                    'Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
+                    'The existing selection was left unchanged. Ask an organization admin to grant it.',
+                attr: 'extra_headers',
+                context: null,
+            },
+        ],
     },
 });
 
@@ -134,7 +140,10 @@ const SHOWN_REFUSAL =
 
 const SERVER_ERROR = new HttpErrorResponse({
     status: 500,
-    error: { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
+    error: {
+        type: 'server_error',
+        errors: [{ code: 'Exception', detail: 'Unpredictable error', attr: null, context: null }],
+    },
 });
 
 // jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
@@ -230,10 +239,19 @@ describe('EmbeddingModelConfigDialogComponent save errors', () => {
         ['creating', {}],
         ['saving changes', { configId: EDITED_CONFIG.id }],
     ])('shows a duplicate name from the server in the banner, not in a toast, when %s', (_action, dialogData) => {
-        const message = 'custom_name: An embedding config with this name already exists.';
         const duplicateName = new HttpErrorResponse({
             status: 400,
-            error: { status_code: 400, code: 'invalid', message },
+            error: {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'unique',
+                        detail: 'An embedding config with this name already exists.',
+                        attr: 'custom_name',
+                        context: null,
+                    },
+                ],
+            },
         });
         const { fixture, toastError } = render(
             dialogData,

@@ -10,16 +10,20 @@ the context -- so a result is always produced and sent.
 import asyncio
 import shutil
 
+from foundation.schemas import ErrorDetailSchema
 from loguru import logger
 from src.shared.bench_log import BENCH_LEVEL
 
-from worker.application.context import ExecutionContext
+from worker.application.context import ExecutionContext, RunFailureCode
 from worker.application.pipeline import Pipeline
 from worker.application.ports.result_sink import AbstractResultSink
 from worker.application.secret_scrubber import scrub
 from worker.domain.models import ExecutionResult, Job, NotRunReason
 
 __all__ = ["ExecutionOrchestrator"]
+
+# The code of a job failed without running for no reason the manager reports itself.
+_SERVER_ERROR_CODE: RunFailureCode = "server_error"
 
 
 class ExecutionOrchestrator:
@@ -65,10 +69,11 @@ class ExecutionOrchestrator:
 
         Used when the job cannot or must not run -- it expired in the queue, or the
         worker failed around it -- so its producer still gets an outcome. The result is
-        marked as not run, so it does not count as a completed execution.
+        marked as not run, so it does not count as a completed execution. It carries the
+        failure as its error, coded with ``not_run_reason`` or else ``server_error``.
 
         Args:
-            message: Shown to the user as the run's stderr. A fixed text, never one
+            message: Shown to the user as the error's detail. A fixed text, never one
                 built from an exception, which could quote the job's secrets.
             session_id: The job's session, when known; names it in the manager's BENCH
                 checkpoint.
@@ -80,8 +85,8 @@ class ExecutionOrchestrator:
         await self._result_sink.send(
             ExecutionResult(
                 execution_id=execution_id,
-                stderr=message,
                 returncode=1,
+                error=ErrorDetailSchema(code=not_run_reason or _SERVER_ERROR_CODE, detail=message),
                 reply_to_crew_channel=reply_to_crew_channel,
                 ran=False,
                 session_id=session_id,
@@ -112,6 +117,7 @@ class ExecutionOrchestrator:
             stdout=stdout,
             stderr=stderr,
             returncode=context.returncode if context.returncode is not None else 1,
+            error=context.error,
             reply_to_crew_channel=context.job.reply_to_crew_channel,
             ran=True,
             session_id=context.job.session_id,

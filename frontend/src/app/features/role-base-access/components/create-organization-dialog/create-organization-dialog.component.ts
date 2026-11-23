@@ -32,6 +32,7 @@ import {
     OrganizationRetentionUpdate,
     RetentionDataType,
 } from '@shared/models';
+import { extractFieldErrors } from '@shared/utils';
 import { catchError, EMPTY, filter, finalize, map, Observable, of, switchMap, tap, throwError } from 'rxjs';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
@@ -287,9 +288,10 @@ export class CreateOrganizationDialogComponent implements OnInit {
         return this.organizationsApi.updateRetention(organizationId, update).pipe(
             tap((retention) => this.applyRetention(retention)),
             catchError((err: HttpErrorResponse) => {
-                const fieldErrors = err.validationErrors ?? [];
+                const fieldErrors = extractFieldErrors(err);
                 const isShownInline =
-                    fieldErrors.length > 0 && fieldErrors.every((error) => error.field in this.retentionForm.controls);
+                    fieldErrors.length > 0 &&
+                    fieldErrors.every((error) => error.attr !== null && error.attr in this.retentionForm.controls);
                 if (isShownInline) {
                     this.retentionErrorsRef.setErrors(fieldErrors);
                     return EMPTY;

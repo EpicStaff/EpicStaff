@@ -1,3 +1,5 @@
+import { ApiErrorDetail } from '@shared/models';
+
 import { AgentNodeTaskUi } from '../../core/models/agent-node.model';
 import { NodeModel } from '../../core/models/node.model';
 import { SNAPSHOT_NODE_LIST_KEY } from '../load/snapshot/map-snapshot-to-graph-dto';
@@ -38,11 +40,21 @@ const NODE_LIST_KEYS: ReadonlySet<string> = new Set(Object.values(SNAPSHOT_NODE_
 /** DRF's key for an error about the item as a whole. */
 const NON_FIELD_ERRORS = 'non_field_errors';
 
+/** A place in a sent list, as an `attr` path names it. */
+const LIST_POSITION = /^\d+$/;
+
 /** The child lists whose rows the editor tells apart, and how `buildBulkSavePayload` names a sent row. */
 const CHILD_ROW_KEY: Readonly<Record<string, (row: Record<string, unknown>) => unknown>> = {
     tasks: (task) => task['id'] ?? task['temp_id'],
     prompt_configs: (prompt) => prompt['prompt_key'],
 };
+
+/** Where on a canvas node an error goes: a field of the node, or of one of its child rows; null for the whole. */
+interface ErrorTarget {
+    readonly field: string | null;
+    readonly child?: SaveErrorChildRow;
+    readonly sentValue?: unknown;
+}
 
 /** The key a save error carries for this agent task: its `id` once saved, its `tempId` before (as the payload sends it). */
 export function agentTaskSaveErrorKey(task: Pick<AgentNodeTaskUi, 'id' | 'tempId'>): string {
@@ -50,52 +62,47 @@ export function agentTaskSaveErrorKey(task: Pick<AgentNodeTaskUi, 'id' | 'tempId
 }
 
 /**
- * Places the errors of a refused bulk save (`{<list key>: [{index, errors}]}`, `errors` a DRF detail or a plain
- * message) on the canvas nodes the payload sent at those indexes: a created item by its `temp_id` (the canvas id),
- * an updated one by its `id` (backend node ids are unique across node tables). Errors of an agent's `tasks` or a
- * classification table's `prompt_configs` rows keep the row. The messages of whatever cannot be placed come back
- * as `unplaced`: errors of an unknown shape, of edges, of the graph as a whole, of an item no canvas node matches.
+ * Places the errors of a refused bulk save on the canvas nodes the payload sent. An error's `attr` names the item
+ * as `<list key>.<index>` in the sent payload, then the field (`task_node_list.3.instructions`): a created item is
+ * found by its `temp_id` (the canvas id), an updated one by its `id` (backend node ids are unique across node
+ * tables). A deeper path counts for its first field, except in an agent's `tasks` or a classification table's
+ * `prompt_configs`, where the error keeps the row (`agent_node_list.0.tasks.1.name`). The messages of whatever
+ * cannot be placed come back as `unplaced`: errors of edges, of the graph as a whole, of an item no canvas node
+ * matches.
  */
 export function mapBulkSaveErrors(
     payload: Record<string, unknown>,
-    errors: unknown,
+    errors: readonly ApiErrorDetail[],
     nodes: readonly NodeModel[]
 ): MappedSaveErrors {
     const byNodeId = new Map<string, SaveFieldError[]>();
     const unplaced: string[] = [];
-    if (!isRecord(errors)) return { byNodeId, unplaced: collectMessages(errors) };
 
-    for (const [listKey, itemErrors] of Object.entries(errors)) {
-        const items = payload[listKey];
-        if (!NODE_LIST_KEYS.has(listKey) || !Array.isArray(items) || !Array.isArray(itemErrors)) {
-            unplaced.push(...collectMessages(itemErrors));
-            continue;
-        }
-
-        for (const itemError of itemErrors) {
-            const placed = placeItemError(itemError, items, nodes);
-            if (!placed) {
-                // The item's `index` is a number, which holds no message.
-                unplaced.push(...collectMessages(itemError));
-            } else if (placed.fieldErrors.length > 0) {
-                byNodeId.set(placed.nodeId, [...(byNodeId.get(placed.nodeId) ?? []), ...placed.fieldErrors]);
-            }
+    for (const { detail, attr } of errors) {
+        if (!detail.trim()) continue;
+        const placed = attr === null ? null : placeError(attr.split('.'), payload, nodes);
+        if (placed) {
+            byNodeId.set(placed.nodeId, withMessage(byNodeId.get(placed.nodeId) ?? [], placed.target, detail));
+        } else {
+            unplaced.push(detail);
         }
     }
     return { byNodeId, unplaced };
 }
 
-/** The canvas node a node list's `{index, errors}` is about, and its errors; null when no canvas node matches it. */
-function placeItemError(
-    itemError: unknown,
-    items: readonly unknown[],
+/** The canvas node an error's `attr` path is about, and where on it; null when no canvas node matches it. */
+function placeError(
+    path: readonly string[],
+    payload: Record<string, unknown>,
     nodes: readonly NodeModel[]
-): { nodeId: string; fieldErrors: SaveFieldError[] } | null {
-    if (!isRecord(itemError) || typeof itemError['index'] !== 'number') return null;
-    const item: unknown = items[itemError['index']];
+): { nodeId: string; target: ErrorTarget } | null {
+    const [listKey, position, ...fieldPath] = path;
+    const items = payload[listKey];
+    if (!NODE_LIST_KEYS.has(listKey) || !Array.isArray(items) || !isListPosition(position)) return null;
+    const item: unknown = items[Number(position)];
     if (!isRecord(item)) return null;
     const nodeId = canvasNodeIdOf(item, nodes);
-    return nodeId === null ? null : { nodeId, fieldErrors: toFieldErrors(item, itemError['errors']) };
+    return nodeId === null ? null : { nodeId, target: targetIn(item, fieldPath) };
 }
 
 function canvasNodeIdOf(item: Record<string, unknown>, nodes: readonly NodeModel[]): string | null {
@@ -110,54 +117,59 @@ function canvasNodeIdOf(item: Record<string, unknown>, nodes: readonly NodeModel
     return node?.id ?? null;
 }
 
-function toFieldErrors(item: Record<string, unknown>, detail: unknown): SaveFieldError[] {
-    if (!isRecord(detail)) return fieldError(null, undefined, detail);
-    return Object.entries(detail).flatMap(([field, value]) => {
-        if (field === NON_FIELD_ERRORS) return fieldError(null, undefined, value);
-        return childRowErrors(field, item[field], value) ?? fieldError(field, item[field], value);
-    });
+function targetIn(item: Record<string, unknown>, fieldPath: readonly string[]): ErrorTarget {
+    const [field, rowPosition, rowField] = fieldPath;
+    if (field === undefined || field === NON_FIELD_ERRORS) return { field: null };
+    return childRowTarget(field, item[field], rowPosition, rowField) ?? { field, sentValue: item[field] };
 }
 
-/** Errors of a child list's rows, one DRF detail per sent row; null when `list` has no rows the editor tells apart. */
-function childRowErrors(list: string, sentRows: unknown, value: unknown): SaveFieldError[] | null {
+/** A field of a sent child row; null when `list` has no rows the editor tells apart, or the row is not found. */
+function childRowTarget(
+    list: string,
+    sentRows: unknown,
+    rowPosition: string | undefined,
+    rowField: string | undefined
+): ErrorTarget | null {
     const rowKeyOf = CHILD_ROW_KEY[list];
-    if (!rowKeyOf || !Array.isArray(sentRows) || !Array.isArray(value)) return null;
+    if (!rowKeyOf || !Array.isArray(sentRows) || !isListPosition(rowPosition)) return null;
 
-    const leftOver: unknown[] = [];
-    const rowErrors = value.flatMap((rowError: unknown, position) => {
-        const row: unknown = sentRows[position];
-        const key = isRecord(row) ? rowKeyOf(row) : null;
-        if (!isRecord(rowError) || !isRecord(row) || (typeof key !== 'string' && typeof key !== 'number')) {
-            leftOver.push(rowError);
-            return [];
-        }
-        const child: SaveErrorChildRow = { list, key: String(key), position };
-        return Object.entries(rowError).flatMap(([field, rowValue]) =>
-            field === NON_FIELD_ERRORS
-                ? fieldError(null, undefined, rowValue, child)
-                : fieldError(field, row[field], rowValue, child)
-        );
-    });
-    return [...rowErrors, ...fieldError(list, sentRows, leftOver)];
+    const position = Number(rowPosition);
+    const row: unknown = sentRows[position];
+    if (!isRecord(row)) return null;
+    const key = rowKeyOf(row);
+    if (typeof key !== 'string' && typeof key !== 'number') return null;
+
+    const child: SaveErrorChildRow = { list, key: String(key), position };
+    return rowField === undefined || rowField === NON_FIELD_ERRORS
+        ? { field: null, child }
+        : { field: rowField, child, sentValue: row[rowField] };
 }
 
-function fieldError(
-    field: string | null,
-    sentValue: unknown,
-    value: unknown,
-    child?: SaveErrorChildRow
-): SaveFieldError[] {
-    const messages = collectMessages(value);
-    if (messages.length === 0) return [];
-    return [{ field, ...(child ? { child } : {}), ...(field !== null ? { sentValue } : {}), messages }];
+/** The node's errors with `message` added to those of the same place, or as a new place after them. */
+function withMessage(fieldErrors: SaveFieldError[], target: ErrorTarget, message: string): SaveFieldError[] {
+    const index = fieldErrors.findIndex((fieldError) => isSamePlace(fieldError, target));
+    if (index === -1) {
+        const { field, child, sentValue } = target;
+        return [
+            ...fieldErrors,
+            { field, ...(child ? { child } : {}), ...(field !== null ? { sentValue } : {}), messages: [message] },
+        ];
+    }
+    return fieldErrors.map((fieldError, at) =>
+        at === index ? { ...fieldError, messages: [...fieldError.messages, message] } : fieldError
+    );
 }
 
-/** Every message in a DRF detail, however nested. */
-function collectMessages(value: unknown): string[] {
-    if (typeof value === 'string') return value.trim() ? [value] : [];
-    if (Array.isArray(value)) return value.flatMap(collectMessages);
-    if (isRecord(value)) return Object.values(value).flatMap(collectMessages);
-    return [];
+function isSamePlace(fieldError: SaveFieldError, target: ErrorTarget): boolean {
+    return (
+        fieldError.field === target.field &&
+        fieldError.child?.list === target.child?.list &&
+        fieldError.child?.position === target.child?.position
+    );
+}
+
+function isListPosition(segment: string | undefined): segment is string {
+    return segment !== undefined && LIST_POSITION.test(segment);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

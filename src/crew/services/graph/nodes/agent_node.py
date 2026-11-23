@@ -4,6 +4,7 @@ from langgraph.types import StreamWriter
 from models.state import State
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
+from services.graph.exceptions import NodeConfigurationError
 from services.graph.nodes.agent_output_variable import agent_output_variable_value
 from services.graph.nodes.agent_stream_events import AgentStreamEventForwarder
 from services.graph.nodes.base_node import BaseNode
@@ -14,6 +15,7 @@ from src.shared.models.storage_scope import StorageCredentials
 
 class AgentNode(BaseNode):
     TYPE = "AGENT"
+    LABEL = "Agent node"
 
     def __init__(
         self,
@@ -41,11 +43,13 @@ class AgentNode(BaseNode):
     async def execute(self, state: State, writer: StreamWriter, execution_order: int, input_: Any):
         agent_definition = self.agent_node_data.agent_definition
         if agent_definition is None:
-            raise ValueError(f"AgentNode '{self.node_name}' requires an agent_definition")
+            raise NodeConfigurationError(f"{self._display_name()} has no agent chosen.")
         if agent_definition.llm is None:
-            raise ValueError(f"AgentNode '{self.node_name}' requires agent_definition.llm")
+            raise NodeConfigurationError(
+                f'Agent "{agent_definition.name}" in {self._display_name()} has no LLM.'
+            )
         if not self.agent_node_data.tasks:
-            raise ValueError(f"AgentNode '{self.node_name}' has no tasks to execute.")
+            raise NodeConfigurationError(f"{self._display_name()} has no tasks.")
 
         rendered_tasks = [
             task.model_copy(update={"instructions": render_instructions(task.instructions, input_)})

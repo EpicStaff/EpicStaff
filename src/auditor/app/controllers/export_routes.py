@@ -4,7 +4,7 @@ import uuid
 from app.core import settings
 from app.core.security import require_audit_action
 from app.domains.base import AuditDomain
-from app.services.export_job_service import ExportJobService, JobStatus
+from app.services.export_job_service import ExportJobFailedError, ExportJobService, JobStatus
 from app.services.export_write_service import ExportWriteService
 from app.services.search_pipeline import SearchPipeline
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -108,7 +108,7 @@ def build_export_router(domain: AuditDomain) -> APIRouter:
         job_service = request.app.state.export_job_service
         job = await _get_owned_job(job_service, job_id, claims, domain.name)
         if job["status"] == JobStatus.FAILED.value:
-            raise HTTPException(status_code=500, detail="Export job failed")
+            raise ExportJobFailedError
         if job["status"] != JobStatus.COMPLETED.value:
             return JSONResponse({"status": job["status"]}, status_code=202)
 

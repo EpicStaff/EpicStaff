@@ -19,7 +19,6 @@ import { blobErrorInterceptor } from './core/interceptors/blob-error.interceptor
 import { forbiddenInterceptor } from './core/interceptors/forbidden.interceptor';
 import { networkConnectionInterceptor } from './core/interceptors/network-connection.interceptor';
 import { preflightPermissionInterceptor } from './core/interceptors/preflight-permission.interceptor';
-import { validationErrorsInterceptor } from './core/interceptors/validation-errors.interceptor';
 import { TooltipAriaDescriber } from './core/services/tooltip-aria-describer';
 import { TooltipLastKeyboardDispatcher } from './core/services/tooltip-last-keyboard-dispatcher';
 import { provideAgentDefinitionsStorages } from './features/agent-definitions/agent-definitions.providers';
@@ -50,7 +49,6 @@ export const appConfig: ApplicationConfig = {
                 preflightPermissionInterceptor,
                 authInterceptor,
                 activeOrgInterceptor,
-                validationErrorsInterceptor,
                 forbiddenInterceptor,
                 networkConnectionInterceptor,
                 // Last, so every interceptor above reads a body and not a Blob.

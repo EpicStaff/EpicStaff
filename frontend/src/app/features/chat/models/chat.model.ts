@@ -298,20 +298,3 @@ export interface ChatTicket {
     ticket: string;
     expires_in: number;
 }
-
-// Every chat service error body; `retry_after` on 429, `contract_errors` and `contract_missing` on 400
-// `contract_failed` (resume), `field` and `max` on 400 `budget_above_cap` and `duration_above_cap` (`max` in the
-// field's own unit: tokens, seconds), `close_reason` on 409 `conversation_closed`.
-export interface ChatErrorBody {
-    code: string;
-    message: string;
-    retry_after?: number;
-    contract_errors?: string[];
-    // Null on a `contract_failed` built from stored errors only: then there is no fix to offer.
-    contract_missing?: ChatContractMissing | null;
-    field?: string;
-    max?: number;
-    close_reason?: ChatCloseReason;
-    // On 400 `validation_error`: what was refused, one entry per problem; `key` names a refused body field.
-    errors?: { message: string; key?: string }[];
-}

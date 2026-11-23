@@ -3925,7 +3925,7 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 <!-- AUTO-GENERATED — do not edit by hand -->
 <!-- generated: 2026-11-19T12:45:06Z UTC -->
 <!-- commit: UNKNOWN -->
-<!-- lock-hashes: agent:0c689df76182ac6e, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:cda89198106b5fd2, django_app:2dab19b63cdf77d8, es_plugins:dbaccc6cdbe28892, foundation:eb9639484fc6d726, knowledge_new:74be1125db67bcf7, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:eacb693cf9accb5e, sandbox:117c57af453053a0, sandbox_new:a43e19009b028dcd, shared:65c1a59f70ec0dc0, webhook:be4edcbb5252064a -->
+<!-- lock-hashes: agent:0c689df76182ac6e, auditor:95f43a3ab66cdd8b, chat:12069686ce0d3bf2, crew:cda89198106b5fd2, django_app:2dab19b63cdf77d8, es_plugins:dbaccc6cdbe28892, foundation:eb9639484fc6d726, knowledge_new:74be1125db67bcf7, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:eacb693cf9accb5e, sandbox:117c57af453053a0, sandbox_new:a43e19009b028dcd, shared:65c1a59f70ec0dc0, webhook:be4edcbb5252064a -->
 
 ## Backend (Python)
 

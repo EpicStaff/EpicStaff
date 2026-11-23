@@ -3,25 +3,36 @@
 Every error EpicStaff's plugin API returns uses EpicStaff's error envelope:
 
 ```json
-{ "status_code": 400, "code": "invalid_plugin", "message": "The plugin package is invalid. 2 problems found.",
-  "errors": [ { "loc": "manifest.limits.memory_mb", "message": "asks for 2048; this EpicStaff allows at most 1024" } ] }
+{
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "invalid_plugin",
+      "detail": "asks for 2048; this EpicStaff allows at most 1024",
+      "attr": "manifest.limits.memory_mb",
+      "context": null
+    }
+  ]
+}
 ```
 
-`code` is stable; `message` is for people and may change. `errors` is present on codes that list
-problems; each `loc` is a dotted path with list indexes, prefixed by the part it refers to
+`errors` always holds at least one item. `code` is stable; `detail` is for people and may
+change. A code that lists problems gives one item per problem, each with the same `code`; its
+`attr` (called `loc` below) is a dotted path with list indexes, prefixed by the part it refers to
 (`package.`, `contents.`, `signature.`, `manifest.`, `plugins[…]`, `values.`, `overrides.`,
-`report.`), or the name of a login parameter or body field. A submitted value is never echoed
-back.
+`report.`), or the name of a login parameter or body field. `attr` is null for an error of the
+request as a whole, and `context` carries the extra facts some codes give. A submitted value is
+never echoed back.
 
 ## Plugin API codes
 
 | Code | Status | When |
 |---|---|---|
-| `invalid_plugin` | 400 | The package breaks a format, layout or manifest rule, declares access this EpicStaff's permission catalog does not have, asks for more than the platform maximums, or holds nothing to install. `errors` lists each problem |
+| `invalid_plugin` | 400 | The package breaks a format, layout or manifest rule, declares access this EpicStaff's permission catalog does not have, asks for more than the platform maximums, or holds nothing to install. One item per problem |
 | `invalid_signature` | 400 | The package is signed, but the signature names another package or does not verify with the trusted key it claims |
 | `package_too_large` | 413 | The upload is larger than `PLUGINS_MAX_PACKAGE_MB` |
-| `plugin_upgrade_unavailable` | 409 | The package cannot upgrade the installed plugin: it drops the backend or the database, or changes a migration file that is already applied. `errors` says which, with `loc` `manifest.backend`, `manifest.database` or `package.database/migrations/<name>`. See [compatibility and versioning](compatibility-and-versioning.md) |
-| `plugin_version_not_newer` | 409 | Uploading or approving a version that is not newer than the plugin's latest approved version (the version being installed by an open upgrade, else the installed one): the same version, an older one, or one that differs only in build metadata. The body also has `installed_version` and `latest_version`; `message` names both |
+| `plugin_upgrade_unavailable` | 409 | The package cannot upgrade the installed plugin: it drops the backend or the database, or changes a migration file that is already applied. One item per problem says which, with `loc` `manifest.backend`, `manifest.database` or `package.database/migrations/<name>`. See [compatibility and versioning](compatibility-and-versioning.md) |
+| `plugin_version_not_newer` | 409 | Uploading or approving a version that is not newer than the plugin's latest approved version (the version being installed by an open upgrade, else the installed one): the same version, an older one, or one that differs only in build metadata. The item's `context` has `installed_version` and `latest_version`; `detail` names both |
 | `plugin_not_upgradable` | 409 | Approving a newer version while the plugin's state allows no upgrade: it is still provisioning, another upgrade is working, or a restore of its database runs |
 | `review_outdated` | 409 | Approving an upgrade without `reviewed_against_package_id`, or naming another package than the version the new one is now compared with. Load the review again |
 | `access_growth_not_acknowledged` | 400 | Approving an upgrade whose new version asks for new access without `access_growth_acknowledged: true` |
@@ -55,7 +66,7 @@ back.
 | `placement_not_found` | 404 | A plugin node asks for the runtime credentials of a placement that is not its own |
 | `invalid_node_report` | 400 | A plugin node report that does not follow the report format (fields this EpicStaff does not know are ignored). `loc` is under `report` |
 | `signing_key_missing` | 503 | No plugin signing key exists yet, so no context can be signed; EpicStaff creates the first one at start-up with plugins on (`manage.py seed_plugin_node`) |
-| `invalid` | 400 | A request body or query of the wrong shape, such as a missing `org_id`, a people lookup without 1 to 100 distinct positive user ids, or an unknown `action` filter on plugin activity. On the [token exchange](token-exchange.md), the body is not exactly `{"code", "code_verifier"}` with each value of its form, or is not JSON; `errors` lists each problem, `loc` being the field, an unknown key, or `body` |
+| `invalid` | 400 | A request body or query of the wrong shape, such as a missing `org_id`, a people lookup without 1 to 100 distinct positive user ids, or an unknown `action` filter on plugin activity. On the [token exchange](token-exchange.md), the body is not exactly `{"code", "code_verifier"}` with each value of its form, or is not JSON; one item per problem, `loc` being the field, an unknown key, or `body` |
 | `invalid_authorize_request` | 400 | A [plugin login](token-exchange.md) authorize request with a missing, repeated or malformed parameter, or one the protocol does not name (such as `redirect_uri` or `return_path`). Answered as JSON, never as a redirect; `loc` is the parameter's name |
 | `invalid_grant` | 400 | A token exchange whose code is unknown, expired (codes live 60 s) or already used, whose `code_verifier` does not match the code's challenge, that does not come from the plugin's own origin, or whose person changed their password after the code was issued. A failed exchange still uses up the code |
 | `plugin_access_denied` | 403 | A token exchange for a person who lost access to the plugin in that organization after the code was issued, or for a plugin that stopped running since |
@@ -76,7 +87,7 @@ back.
 | `removal_not_retryable` | 409 | Retrying the removal of a plugin whose plugin node has not reported the removal failed |
 | `org_removed_hook_not_retryable` | 409 | Retrying a data removal (an organization removed hook) that is running, finished, or due already |
 | `org_removed_hook_not_skippable` | 409 | Skipping a data removal that is running or finished |
-| `plugin_suspended` | 409 | A flow run, test run, realtime conversation, voice call or code test-run would use something a plugin owns in the organization, and the plugin is not active there: suspended, still installing, its install failed, being upgraded, its upgrade failed, or its grant is gone. Every run of the organization's own flows that uses one of the plugin's resources is refused too. A secret the plugin owns counts as used when an `epicstaff_secret(<name>)` marker in an LLM or embedding configuration's `extra_headers` names it. The body also has `plugin` (`identifier`, `name`) and `organization` (`id`); it never names the resource. See [the plugin lifecycle](../explanation/lifecycle.md) |
+| `plugin_suspended` | 409 | A flow run, test run, realtime conversation, voice call or code test-run would use something a plugin owns in the organization, and the plugin is not active there: suspended, still installing, its install failed, being upgraded, its upgrade failed, or its grant is gone. Every run of the organization's own flows that uses one of the plugin's resources is refused too. A secret the plugin owns counts as used when an `epicstaff_secret(<name>)` marker in an LLM or embedding configuration's `extra_headers` names it. The item's `context` has `plugin` (`identifier`, `name`) and `organization` (`id`); it never names the resource. See [the plugin lifecycle](../explanation/lifecycle.md) |
 | `hook_job_not_found` | 404 | A plugin node claims or reports a hook job that does not exist or belongs to another node; a SuperAdmin retries or skips a data removal that does not exist, is another plugin's, or is not a data removal |
 | `hook_job_not_claimable` | 409 | A plugin node claims a hook job that is not waiting or not due yet, or that its kind's rules do not let run now: an install hook whose plugin is not running or whose grant is gone or has moved on; an upgrade hook whose plugin is not running or whose grant is not upgrading; an organization removed hook whose plugin is not running, uninstalled or being deleted, or whose grant is neither gone nor being deleted |
 | `hook_job_not_running` | 409 | A plugin node reports the result of a hook job that is not running, or of another attempt than the running one |

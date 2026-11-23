@@ -4,6 +4,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from tables.models import Edge, PythonCode, PythonNode, Session, SessionCallback, StartNode
+from tests.error_envelope import details_by_attr
 from tests.fixtures import *
 
 SECRET = "x" * 32
@@ -112,7 +113,7 @@ def test_host_not_on_allowlist_is_refused(api_client, env_api_key, default_org, 
     response = client.post(reverse("run-session"), payload, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert "callback_url" in response.data
+    assert "callback_url" in details_by_attr(response.data)
     assert Session.objects.count() == 0
 
 
@@ -136,7 +137,7 @@ def test_short_secret_is_refused(api_client, env_api_key, default_org, redis_cli
     response = client.post(reverse("run-session"), payload, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert "callback_secret" in response.data
+    assert "callback_secret" in details_by_attr(response.data)
 
 
 @pytest.mark.django_db

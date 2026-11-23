@@ -8,6 +8,7 @@ from tables.models.graph_models import AgentNode, Edge
 from tables.models.graph_models import StartNode
 from tables.models.llm_models import LLMConfig, LLMModel
 from tables.models.provider import Provider
+from tests.error_envelope import error_text
 from tests.fixtures import *
 
 
@@ -33,5 +34,5 @@ def test_run_session_with_deleted_llm_provider_returns_400_naming_the_config(
     response = auth_client.post(reverse("run-session"), session_data, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert "LLM config 'Agent main LLM' has no model or provider" in response.data["error"]
+    assert "LLM config 'Agent main LLM' has no model or provider" in error_text(response.data)
     assert not Session.objects.filter(graph=graph, status="running").exists()

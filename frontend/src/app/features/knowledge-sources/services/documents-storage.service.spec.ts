@@ -1,16 +1,9 @@
-// Side-effect import: http-error.util.ts reads the `validationErrors` augmentation declared here.
-import '../../../core/interceptors/validation-errors.interceptor';
-
 import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { of, Subject, throwError } from 'rxjs';
 
 import { ToastService } from '../../../services/notifications';
-import {
-    ImportFromStorageErrorResponse,
-    ImportFromStorageResponse,
-    StorageImportCandidate,
-} from '../models/document.model';
+import { ImportFromStorageResponse, StorageImportCandidate, StorageImportSkippedFile } from '../models/document.model';
 import { CollectionsApiService } from './collections-api.service';
 import { CollectionsStorageService } from './collections-storage.service';
 import { DocumentsApiService } from './documents-api.service';
@@ -25,10 +18,13 @@ function errorEnvelope(
     status: number,
     code: string,
     message: string,
-    extra: Partial<ImportFromStorageErrorResponse> = {}
+    extra: { skipped?: StorageImportSkippedFile[] } = {}
 ): HttpErrorResponse {
-    const error: ImportFromStorageErrorResponse = { status_code: status, code, message, ...extra };
-    return new HttpErrorResponse({ status, error });
+    const context = Object.keys(extra).length ? extra : null;
+    return new HttpErrorResponse({
+        status,
+        error: { type: 'client_error', errors: [{ code, detail: message, attr: null, context }] },
+    });
 }
 
 describe('DocumentsStorageService.importFromStorage', () => {
@@ -163,6 +159,38 @@ describe('DocumentsStorageService.importFromStorage', () => {
         expect(collectionsStorage.getFullCollection).not.toHaveBeenCalled();
     });
 
+    it('reports why each file was skipped from the context of the error envelope', () => {
+        documentsApi.importFromStorage.mockReturnValue(
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 400,
+                        error: {
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'nothing_to_import',
+                                    detail: 'None of the selected storage files can be imported',
+                                    attr: null,
+                                    context: {
+                                        skipped: [
+                                            { storage_file_id: 1, path: 'a.exe', reason: 'unsupported_type' },
+                                            { storage_file_id: 3, path: 'c.pdf', reason: 'duplicate' },
+                                        ],
+                                    },
+                                },
+                            ],
+                        },
+                    })
+            )
+        );
+
+        expect(importResult()).toBeNull();
+        expect(toast.error).toHaveBeenCalledWith(
+            'None of the selected storage files can be imported (skipped: 1 unsupported type, 1 already in the collection)'
+        );
+    });
+
     it.each([
         {
             case: 'nothing to import, with no file to name',
@@ -209,7 +237,13 @@ describe('DocumentsStorageService.importFromStorage', () => {
 
     it('leaves a 403 to the forbidden interceptor instead of toasting twice', () => {
         documentsApi.importFromStorage.mockReturnValue(
-            throwError(() => new HttpErrorResponse({ status: 403, error: { message: 'Forbidden' } }))
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 403,
+                        error: { type: 'client_error', errors: [{ code: 'permission_denied', detail: 'Forbidden' }] },
+                    })
+            )
         );
 
         expect(importResult()).toBeNull();

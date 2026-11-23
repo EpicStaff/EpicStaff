@@ -103,7 +103,7 @@ def test_a_request_without_the_org_header_gets_400_org_context_required(org_user
     resp = _client_for(org_user.user).get(UPLOAD_LIMITS_URL)
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.json()["code"] == "org_context_required"
+    assert resp.json()["errors"][0]["code"] == "org_context_required"
 
 
 def test_a_viewer_may_read_the_upload_limits(viewer_org_user):
@@ -133,5 +133,5 @@ def test_a_caller_outside_the_header_org_is_refused_like_on_list(org_user, secon
     listing = client.get("/api/storage/list/", {"path": ""})
 
     assert limits.status_code == listing.status_code == status.HTTP_403_FORBIDDEN
-    assert limits.json()["code"] == listing.json()["code"]
+    assert limits.json()["errors"][0]["code"] == listing.json()["errors"][0]["code"]
     assert "free_bytes" not in limits.json()

@@ -50,7 +50,11 @@ class Command(BaseCommand):
         except FormValidationError as exc:
             raise CommandError(
                 "Password validation failed:\n  "
-                + "\n  ".join(f"{item['field']}: {item['reason']}" for item in exc.errors)
+                + "\n  ".join(
+                    f"{field}: {reason}"
+                    for field, reasons in exc.field_errors.items()
+                    for reason in reasons
+                )
             ) from exc
         except UserNotFoundError as exc:
             raise CommandError(f"No user with email '{email}'.") from exc

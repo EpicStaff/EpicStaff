@@ -30,7 +30,10 @@ function forbidden(): Observable<never> {
         () =>
             new HttpErrorResponse({
                 status: 403,
-                error: { status_code: 403, code: 'permission_denied', message: 'Forbidden.' },
+                error: {
+                    type: 'client_error',
+                    errors: [{ code: 'permission_denied', detail: 'Forbidden.', attr: null, context: null }],
+                },
             })
     );
 }

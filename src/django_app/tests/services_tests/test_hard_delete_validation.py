@@ -26,14 +26,12 @@ def test_non_object_body_raises_on_the_phrase_field(validator, data):
     with pytest.raises(FormValidationError) as caught:
         validator.extract_verification_phrase(data)
 
-    assert caught.value.errors[0]["field"] == "verification_phrase"
+    assert list(caught.value.field_errors) == ["verification_phrase"]
 
 
 @pytest.mark.parametrize("value", [1, True, ["delete-a@x.com"], {"a": "delete-a@x.com"}])
-def test_non_string_phrase_raises_with_the_value_redacted(validator, value):
+def test_non_string_phrase_raises_without_echoing_the_value(validator, value):
     with pytest.raises(FormValidationError) as caught:
         validator.extract_verification_phrase({"verification_phrase": value})
 
-    assert caught.value.errors == [
-        {"field": "verification_phrase", "value": "***", "reason": "Must be a string."}
-    ]
+    assert caught.value.field_errors == {"verification_phrase": ["Must be a string."]}

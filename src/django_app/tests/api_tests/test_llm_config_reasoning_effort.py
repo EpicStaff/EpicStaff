@@ -83,12 +83,7 @@ def _unsupported_level_reason(model_name, effort, supported):
 
 def _assert_reasoning_effort_refused(response, value, reason):
     assert response.status_code == 400, response.data
-    assert response.data == {
-        "status_code": 400,
-        "code": "unsupported_reasoning_effort",
-        "message": reason,
-        "errors": [{"field": "reasoning_effort", "value": value, "reason": reason}],
-    }
+    assert response.data == {"type": "client_error", "errors": [{"code": "unsupported_reasoning_effort", "detail": reason, "attr": "reasoning_effort", "context": None}]}
 
 
 def _config(org, model, reasoning_effort=None, name="config"):
@@ -118,8 +113,10 @@ class TestCreate:
         )
 
         assert response.status_code == 400
-        # A value outside the choices is a plain field error, flattened to "<field>: <message>".
-        assert response.data["message"].startswith("reasoning_effort: ")
+        # A value outside the choices is a plain field error, named by its attr.
+        assert [(item["code"], item["attr"]) for item in response.data["errors"]] == [
+            ("invalid_choice", "reasoning_effort")
+        ]
 
     def test_non_reasoning_model_with_effort_is_rejected(self, client, plain_model):
         response = client.post(

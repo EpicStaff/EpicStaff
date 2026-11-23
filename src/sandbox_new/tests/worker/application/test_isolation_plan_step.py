@@ -6,6 +6,8 @@ services, and either records the plan or fails the context. A refusal must leave
 """
 
 import pytest
+from foundation.schemas import ErrorDetailSchema
+from loguru import logger
 
 from worker.application.steps import BuildIsolationPlan
 from worker.domain.enums import NetworkPolicy
@@ -13,6 +15,7 @@ from tests.builders import make_context, make_worker_job
 from tests.fakes import FakeIsolationProbe
 
 STORAGE_PORT = 9000
+UNSAFE = "This server can't run code safely right now, so the code wasn't run."
 
 
 def build_step(abi: int, **flags) -> BuildIsolationPlan:
@@ -24,6 +27,14 @@ def build_step(abi: int, **flags) -> BuildIsolationPlan:
     }
     settings.update(flags)
     return BuildIsolationPlan(FakeIsolationProbe(abi), **settings)
+
+
+@pytest.fixture
+def logged():
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="DEBUG")
+    yield lines
+    logger.remove(sink_id)
 
 
 @pytest.fixture
@@ -54,13 +65,17 @@ async def test_the_jail_is_rooted_at_the_execution_workspace_and_the_venv(contex
     assert str(tmp_path / "venvs" / "venv-1abc") in jail.read_exec
 
 
-async def test_a_kernel_without_landlock_refuses_when_isolation_is_required(context):
+async def test_a_kernel_without_landlock_refuses_when_isolation_is_required(context, logged):
     await build_step(0)(context)
 
     assert context.isolation is None
     assert context.completed is True
     assert context.returncode == 1
-    assert "kernel lacks Landlock" in context.stderr
+    assert context.error == ErrorDetailSchema(
+        code="isolation_unavailable", detail=UNSAFE
+    )
+    assert context.stderr == ""
+    assert "SANDBOX_REQUIRE_ISOLATION" in "".join(logged)
 
 
 async def test_a_kernel_without_landlock_runs_unconfined_when_isolation_is_optional(context):
@@ -72,22 +87,30 @@ async def test_a_kernel_without_landlock_runs_unconfined_when_isolation_is_optio
     assert context.isolation.network.policy is NetworkPolicy.BLOCK_ALL
 
 
-async def test_required_signal_isolation_on_an_old_kernel_refuses(context):
+async def test_required_signal_isolation_on_an_old_kernel_refuses(context, logged):
     await build_step(3)(context)
 
     assert context.isolation is None
     assert context.completed is True
-    assert "Landlock ABI 6+" in context.stderr
+    assert context.error == ErrorDetailSchema(
+        code="isolation_unavailable", detail=UNSAFE
+    )
+    assert context.stderr == ""
+    assert "SANDBOX_REQUIRE_SIGNAL_ISOLATION=false" in "".join(logged)
 
 
-async def test_storage_on_a_kernel_too_old_for_the_port_carve_out_refuses(context):
+async def test_storage_on_a_kernel_too_old_for_the_port_carve_out_refuses(context, logged):
     context.job = make_worker_job(use_storage=True, storage_org_prefix="org1")
 
     await build_step(3, require_signal_isolation=False)(context)
 
     assert context.isolation is None
     assert context.completed is True
-    assert "Landlock ABI 4+" in context.stderr
+    assert context.error == ErrorDetailSchema(
+        code="isolation_unavailable", detail=UNSAFE
+    )
+    assert context.stderr == ""
+    assert "SANDBOX_BLOCK_NETWORK=false" in "".join(logged)
 
 
 async def test_storage_on_a_new_enough_kernel_allows_only_the_storage_port(context):

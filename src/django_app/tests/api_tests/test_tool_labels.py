@@ -5,6 +5,7 @@ from tables.models.label_models import Label
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization, OrganizationUser, Role
+from tests.error_envelope import error_text
 
 
 # ---- fixtures ----
@@ -142,7 +143,7 @@ def test_tool_label_cannot_be_parented_under_flow_label(client_a, org_a):
     assert resp.status_code == 400
     # The RBAC exception handler wraps serializer errors into
     # {status_code, code, message}; the field name still appears in message.
-    assert "parent" in resp.data["message"]
+    assert "parent" in error_text(resp.data)
 
 
 @pytest.mark.django_db
@@ -156,7 +157,7 @@ def test_flow_label_cannot_be_parented_under_tool_label(client_a, org_a):
     assert resp.status_code == 400
     # The RBAC exception handler wraps serializer errors into
     # {status_code, code, message}; the field name still appears in message.
-    assert "parent" in resp.data["message"]
+    assert "parent" in error_text(resp.data)
 
 
 # ---- org scoping ----

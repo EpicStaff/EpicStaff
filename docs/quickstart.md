@@ -115,7 +115,10 @@ Creates configs for the given provider and API key. Does **not** apply them to t
 
 ```json
 {
-  "provider": ["Provider 'xyz' does not exist."]
+  "type": "client_error",
+  "errors": [
+    {"code": "invalid", "detail": "Provider 'xyz' does not exist.", "attr": "provider", "context": null}
+  ]
 }
 ```
 
@@ -123,14 +126,32 @@ Creates configs for the given provider and API key. Does **not** apply them to t
 
 ```json
 {
-  "detail": "Error quickstart",
-  "error": "The organization's custom model \"gpt-4o-mini\" sends requests to a custom URL, so quickstart will not attach a key to it."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "quickstart_refused",
+      "detail": "The organization's custom model \"gpt-4o-mini\" sends requests to a custom URL, so quickstart will not attach a key to it.",
+      "attr": null,
+      "context": null
+    }
+  ]
+}
+```
+
+**Response `500 Internal Server Error`** — quickstart failed unexpectedly. Nothing is created, and the cause is only in the server log:
+
+```json
+{
+  "type": "server_error",
+  "errors": [
+    {"code": "quickstart_failed", "detail": "Quickstart failed. Please try again or contact support.", "attr": null, "context": null}
+  ]
 }
 ```
 
 **Notes:**
 - Quickstart attaches the key to the built-in catalog model of the provider when one exists. It only falls back to an organization's own model of the same name when that model has no `base_url` of its own; with one, the request is refused as above, so a key is never sent to a URL somebody else chose.
-- Instead of `api_key`, the body may carry `api_key_secret_id` to reuse an existing secret. Referencing a secret this way needs the `Use` permission on Secrets (a plain `api_key` does not); without it the response is a `400` whose `message` names `api_key_secret_id`.
+- Instead of `api_key`, the body may carry `api_key_secret_id` to reuse an existing secret. Referencing a secret this way needs the `Use` permission on Secrets (a plain `api_key` does not); without it the response is a `400` whose error item has `attr` `api_key_secret_id`.
 - After this call, `GET /api/quickstart/` will show `is_synced: false` until apply is called.
 - Each call creates a new set of configs with a unique name (see [Running Quickstart Multiple Times](#running-quickstart-multiple-times)).
 
@@ -172,7 +193,10 @@ This sets the following fields on `DefaultModels`:
 
 ```json
 {
-  "detail": "No quickstart config found. Run POST /quickstart/ first."
+  "type": "client_error",
+  "errors": [
+    {"code": "quickstart_not_found", "detail": "No quickstart config found. Run POST /quickstart/ first.", "attr": null, "context": null}
+  ]
 }
 ```
 

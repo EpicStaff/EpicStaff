@@ -7,7 +7,12 @@ from models.state import State
 from services.graph.events import StopEvent
 from services.graph.exceptions import ReturnCodeError
 from services.graph.nodes.base_node import BaseNode
-from services.run_python_code_service import RunPythonCodeService, build_state_globals
+from services.run_python_code_service import (
+    RunPythonCodeService,
+    build_state_globals,
+    code_failure_text,
+    streamed_execution_data,
+)
 from src.shared.models import PythonCodeData
 from src.shared.models.storage_scope import StorageCredentials
 
@@ -47,7 +52,7 @@ class WebhookTriggerNode(BaseNode):
         )
 
         python_message_data = PythonMessageData(
-            python_code_execution_data=python_code_execution_data,
+            python_code_execution_data=streamed_execution_data(python_code_execution_data),
         )
         graph_message = GraphMessage(
             session_id=self.session_id,
@@ -58,6 +63,6 @@ class WebhookTriggerNode(BaseNode):
         writer(graph_message)
 
         if python_code_execution_data["returncode"] != 0:
-            raise ReturnCodeError(python_code_execution_data["stderr"])
+            raise ReturnCodeError(code_failure_text(python_code_execution_data))
 
         return json.loads(python_code_execution_data["result_data"])

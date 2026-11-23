@@ -73,7 +73,7 @@ def test_run_session_with_flows_read_only_gets_403(
     response = _run(client, acme_graph)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-    assert response.data["code"] == "permission_denied"
+    assert response.data["errors"][0]["code"] == "permission_denied"
     assert not Session.objects.filter(graph=acme_graph).exists()
     redis_client_mock.publish.assert_not_called()
 
@@ -126,7 +126,7 @@ def test_run_session_on_foreign_flow_gets_404(
     response = _run(client, beta_graph)
 
     assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
-    assert response.data["code"] == "graph_not_found"
+    assert response.data["errors"][0]["code"] == "graph_not_found"
     assert not Session.objects.filter(graph=beta_graph).exists()
     redis_client_mock.publish.assert_not_called()
 
@@ -143,7 +143,7 @@ def test_run_session_built_in_viewer_cannot_run(
     response = _run(client_as(viewer), acme_graph)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-    assert response.data["code"] == "permission_denied"
+    assert response.data["errors"][0]["code"] == "permission_denied"
     assert not Session.objects.filter(graph=acme_graph).exists()
     redis_client_mock.publish.assert_not_called()
 
@@ -162,7 +162,7 @@ def test_stop_session_with_flows_read_only_gets_403(
     response = _stop(client, session)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-    assert response.data["code"] == "permission_denied"
+    assert response.data["errors"][0]["code"] == "permission_denied"
     redis_client_mock.publish.assert_not_called()
     session.refresh_from_db()
     assert session.status == Session.SessionStatus.RUN

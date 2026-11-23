@@ -458,7 +458,7 @@ folder name for an archive could be claimed in it (`storage_unavailable`).
 An aborted upload leaves no object and no row behind.
 
 ```json
-{"status_code": 400, "code": "invalid", "message": "'setup.exe' has a blocked executable extension"}
+{"type": "client_error", "errors": [{"code": "invalid", "detail": "'setup.exe' has a blocked executable extension", "attr": null, "context": null}]}
 ```
 
 ---
@@ -508,7 +508,7 @@ Creates a new folder at the specified path, including any intermediate directori
 
 **Error:** `409 Conflict`
 ```json
-{"detail": "Path already exists: reports/2026"}
+{"type": "client_error", "errors": [{"code": "storage_path_exists", "detail": "Path already exists: reports/2026", "attr": null, "context": null}]}
 ```
 
 ---
@@ -598,12 +598,12 @@ Renames a file or folder in-place. Cannot rename to a blocked executable extensi
 
 **Error (destination exists):** `400 Bad Request`
 ```json
-{"to": "Destination already exists: ..."}
+{"type": "client_error", "errors": [{"code": "invalid", "detail": "Destination already exists: ...", "attr": "to", "context": null}]}
 ```
 
 **Error (blocked extension):** `400 Bad Request`
 ```json
-{"detail": "..."}
+{"type": "client_error", "errors": [{"code": "invalid", "detail": "...", "attr": null, "context": null}]}
 ```
 
 ---

@@ -26,6 +26,7 @@ from tables.services.trigger_spec import TriggerSpec
 from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 URL = reverse("run-session-test")
 WEBHOOK_PAYLOAD = {"order_id": 42, "items": [{"sku": "A-1"}]}
@@ -253,8 +254,8 @@ class TestTriggerTestRunThatFailsToStart:
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert set(response.data) == {"status_code", "code", "message"}
-        assert response.data["code"] == "undeclared_secret"
+        assert set(response.data) == {"type", "errors"}
+        assert response.data["errors"][0]["code"] == "undeclared_secret"
         redis_client_mock.publish.assert_not_called()
 
         session = Session.objects.get(graph=acme_graph)
@@ -348,7 +349,7 @@ class TestTriggerTestRunAccess:
         )
 
         assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-        assert response.data["code"] == "permission_denied"
+        assert response.data["errors"][0]["code"] == "permission_denied"
         assert not Session.objects.exists()
         redis_client_mock.publish.assert_not_called()
 
@@ -527,7 +528,7 @@ class TestTriggerTestRunAccess:
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert response.data["code"] == "org_context_required"
+        assert response.data["errors"][0]["code"] == "org_context_required"
         assert not Session.objects.exists()
 
     def test_missing_org_header_with_malformed_body_is_still_org_context_required(
@@ -536,7 +537,7 @@ class TestTriggerTestRunAccess:
         response = client_as(admin_acme).post(URL, MALFORMED_BODY, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert response.data["code"] == "org_context_required"
+        assert response.data["errors"][0]["code"] == "org_context_required"
 
     def test_viewer_with_malformed_body_gets_403_not_a_validation_error(
         self, viewer_client, redis_client_mock
@@ -571,8 +572,9 @@ class TestTriggerTestRunAccess:
         response = client.post(URL, MALFORMED_BODY, format="json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert set(response.data) == {"status_code", "code", "message"}
-        assert response.data["status_code"] == 400
+        assert set(response.data) == {"type", "errors"}
+        assert response.data["type"] == "client_error"
+        assert response.data["errors"]
         assert not Session.objects.exists()
 
 
@@ -587,15 +589,21 @@ class TestTriggerTestRunRequestValidation:
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        expected_reason = (
-            "This field may not be null."
+        expected_code, expected_reason = (
+            ("null", "This field may not be null.")
             if payload is None
-            else "Test payload must be a JSON object."
+            else ("invalid", "Test payload must be a JSON object.")
         )
         assert response.data == {
-            "status_code": 400,
-            "code": "invalid",
-            "message": f"payload: {expected_reason}",
+            "type": "client_error",
+            "errors": [
+                {
+                    "code": expected_code,
+                    "detail": expected_reason,
+                    "attr": "payload",
+                    "context": None,
+                }
+            ],
         }
         assert not Session.objects.exists()
 
@@ -613,10 +621,10 @@ class TestTriggerTestRunRequestValidation:
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert response.data["code"] == "invalid"
-        assert response.data["message"] == (
-            "payload: Test payload must not exceed 16 bytes of compact JSON (got 36)."
-        )
+        assert response.data["errors"][0]["code"] == "invalid"
+        assert [(item["attr"], item["detail"]) for item in response.data["errors"]] == [
+            ("payload", "Test payload must not exceed 16 bytes of compact JSON (got 36).")
+        ]
         assert not Session.objects.exists()
 
     def test_unknown_node_type_is_400(self, acme_client, webhook_node, redis_client_mock):
@@ -625,9 +633,9 @@ class TestTriggerTestRunRequestValidation:
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert response.data["code"] == "invalid"
-        assert response.data["message"].startswith("node_type: ")
-        assert "errors" not in response.data
+        assert [(item["code"], item["attr"]) for item in response.data["errors"]] == [
+            ("invalid_choice", "node_type")
+        ]
         assert not Session.objects.exists()
 
     @pytest.mark.parametrize(
@@ -643,8 +651,8 @@ class TestTriggerTestRunRequestValidation:
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert response.data["code"] == "invalid"
-        assert "NUL character" in response.data["message"]
+        assert response.data["errors"][0]["code"] == "invalid"
+        assert "NUL character" in error_text(response.data)
         assert not Session.objects.exists()
 
     def test_literal_backslash_u0000_text_is_not_mistaken_for_nul(
@@ -668,7 +676,7 @@ class TestTriggerTestRunRequestValidation:
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert "NUL character" in response.data["message"]
+        assert "NUL character" in error_text(response.data)
 
     def test_unpaired_surrogate_is_400_not_a_server_error(
         self, acme_client, webhook_node, redis_client_mock
@@ -678,7 +686,7 @@ class TestTriggerTestRunRequestValidation:
         response = acme_client.post(URL, raw_body, content_type="application/json")
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert "unpaired Unicode surrogates" in response.data["message"]
+        assert "unpaired Unicode surrogates" in error_text(response.data)
         assert not Session.objects.exists()
 
     def test_size_cap_counts_real_utf8_bytes_not_ascii_escapes(
@@ -713,7 +721,7 @@ class TestTriggerTestRunRequestValidation:
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert f"(got {utf8_size})" in response.data["message"]
+        assert f"(got {utf8_size})" in error_text(response.data)
         assert not Session.objects.exists()
 
 
@@ -785,10 +793,10 @@ class TestTelegramTriggerTestRun:
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert response.data["code"] == "test_run_payload_invalid"
-        assert response.data["errors"] == [
-            "'message.photo': field not selected on this node",
-            "'edited_message': not a field parent selected on this node",
+        assert response.data["errors"][0]["code"] == "test_run_payload_invalid"
+        assert [(item["attr"], item["detail"]) for item in response.data["errors"]] == [
+            ("payload", "'message.photo': field not selected on this node"),
+            ("payload", "'edited_message': not a field parent selected on this node"),
         ]
         assert not Session.objects.exists()
         redis_client_mock.publish.assert_not_called()

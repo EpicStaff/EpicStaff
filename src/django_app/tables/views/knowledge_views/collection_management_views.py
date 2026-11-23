@@ -12,7 +12,6 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from tables.exceptions import CollectionNotFoundException
 from tables.import_export.enums import EntityType
 from tables.models import TransferJob
 from tables.models.knowledge_models.collection_models import SourceCollection
@@ -173,45 +172,36 @@ class SourceCollectionViewSet(
         serializer = self.get_serializer(instance, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
 
-        try:
-            updated_collection = CollectionManagementService.update_collection(
-                collection_id=instance.collection_id,
-                collection_name=serializer.validated_data.get("collection_name"),
-                description=serializer.validated_data.get("description"),
-                user=request.user,
-            )
+        updated_collection = CollectionManagementService.update_collection(
+            collection_id=instance.collection_id,
+            collection_name=serializer.validated_data.get("collection_name"),
+            description=serializer.validated_data.get("description"),
+            user=request.user,
+        )
 
-            output_serializer = SourceCollectionDetailSerializer(
-                updated_collection, context=self.get_serializer_context()
-            )
-            return Response(output_serializer.data)
-
-        except CollectionNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        output_serializer = SourceCollectionDetailSerializer(
+            updated_collection, context=self.get_serializer_context()
+        )
+        return Response(output_serializer.data)
 
     @extend_schema(**SOURCE_COLLECTION_DELETE)
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
 
-        try:
-            result = CollectionManagementService.delete_collection(
-                collection_id=instance.collection_id, deleted_by=request.user
-            )
+        result = CollectionManagementService.delete_collection(
+            collection_id=instance.collection_id, deleted_by=request.user
+        )
 
-            return Response(
-                {"message": "Collection deleted successfully", **result},
-                status=status.HTTP_200_OK,
-            )
-
-        except CollectionNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {"message": "Collection deleted successfully", **result},
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(**SOURCE_COLLECTION_BULK_DELETE_POST)
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
         body = SourceCollectionBulkDeleteSerializer(data=request.data)
-        if not body.is_valid():
-            return Response({"error": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        body.is_valid(raise_exception=True)
 
         # Narrow to ids the active org actually owns — ids in another org are
         # silently ignored (no cross-org delete, no existence leak).
@@ -241,64 +231,54 @@ class SourceCollectionViewSet(
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        try:
-            new_collection = CollectionManagementService.copy_collection(
-                source_collection_id=collection.collection_id,
-                new_collection_name=serializer.validated_data.get("new_collection_name"),
-                org_id=self.get_active_org_id(),
-                user=request.user,
-            )
-            record_copy(collection, new_collection)
+        new_collection = CollectionManagementService.copy_collection(
+            source_collection_id=collection.collection_id,
+            new_collection_name=serializer.validated_data.get("new_collection_name"),
+            org_id=self.get_active_org_id(),
+            user=request.user,
+        )
+        record_copy(collection, new_collection)
 
-            output_serializer = SourceCollectionDetailSerializer(
-                new_collection, context=self.get_serializer_context()
-            )
+        output_serializer = SourceCollectionDetailSerializer(
+            new_collection, context=self.get_serializer_context()
+        )
 
-            return Response(
-                {
-                    "message": "Collection copied successfully",
-                    "collection": output_serializer.data,
-                },
-                status=status.HTTP_201_CREATED,
-            )
-
-        except CollectionNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {
+                "message": "Collection copied successfully",
+                "collection": output_serializer.data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
     @extend_schema(**SOURCE_COLLECTION_AVAILABLE_RAGS_GET)
     @action(detail=True, methods=["get"], url_path="available-rags")
     def available_rags(self, request, pk=None):
         # get_object() is org-scoped (404 for another org's collection).
         collection = self.get_object()
-        try:
-            # Get all RAG configurations for this collection
-            rag_configs = CollectionManagementService.get_rag_configurations(
-                collection.collection_id
+        # Get all RAG configurations for this collection
+        rag_configs = CollectionManagementService.get_rag_configurations(collection.collection_id)
+
+        # Get status filter from query params (default to completed,new)
+        status_filter = request.query_params.get("status", "completed,new")
+        allowed_statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
+
+        # Filter by status
+        filtered_configs = [
+            config for config in rag_configs if config.get("status") in allowed_statuses
+        ]
+
+        response_data = []
+        for config in filtered_configs:
+            response_data.append(
+                {
+                    "rag_id": config.get("rag_id"),
+                    "rag_type": config.get("rag_type"),
+                    "rag_status": config.get("status"),
+                    "collection_id": int(pk),
+                    "created_at": config.get("created_at"),
+                    "updated_at": config.get("updated_at"),
+                }
             )
 
-            # Get status filter from query params (default to completed,new)
-            status_filter = request.query_params.get("status", "completed,new")
-            allowed_statuses = [s.strip() for s in status_filter.split(",") if s.strip()]
-
-            # Filter by status
-            filtered_configs = [
-                config for config in rag_configs if config.get("status") in allowed_statuses
-            ]
-
-            response_data = []
-            for config in filtered_configs:
-                response_data.append(
-                    {
-                        "rag_id": config.get("rag_id"),
-                        "rag_type": config.get("rag_type"),
-                        "rag_status": config.get("status"),
-                        "collection_id": int(pk),
-                        "created_at": config.get("created_at"),
-                        "updated_at": config.get("updated_at"),
-                    }
-                )
-
-            return Response(response_data, status=status.HTTP_200_OK)
-
-        except CollectionNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(response_data, status=status.HTTP_200_OK)

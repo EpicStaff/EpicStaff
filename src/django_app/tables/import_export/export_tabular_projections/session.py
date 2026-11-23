@@ -126,6 +126,20 @@ def _python_columns(rest: dict) -> tuple[dict, dict]:
     return columns, {**rest, **execution}
 
 
+def _error_card_detail(rest: dict) -> str | None:
+    """Pop an error card's text from its current or an older, not yet migrated shape."""
+    error = rest.pop("error", None)
+    if isinstance(error, dict):
+        return error.get("detail")
+    # Cards saved before the error item carried free text in a plain `error` or in
+    # `details`. A non-string `details` stays in `rest` and lands in the details column.
+    if isinstance(error, str) and error:
+        return error
+    if isinstance(rest.get("details"), str):
+        return rest.pop("details")
+    return None
+
+
 def _message_columns(message_type: str | None, data: dict) -> tuple[dict, dict]:
     """Split message_data into mapped columns and the leftover keys that go to `details`."""
     rest = dict(data)
@@ -151,7 +165,7 @@ def _message_columns(message_type: str | None, data: dict) -> tuple[dict, dict]:
             **_token_columns(rest.pop("usage", None)),
         }, rest
     if message_type == "error":
-        return {"error": rest.pop("details", None) or rest.pop("error", None)}, rest
+        return {"error": _error_card_detail(rest)}, rest
     if message_type == "python_stream":
         return {"output": rest.pop("text", None)}, rest
     if message_type == "graph_end":

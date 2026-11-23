@@ -2,11 +2,14 @@
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS builder
 
 # Wheels only (UV_NO_BUILD=1): no sdist build backend ever runs at install time.
+# foundation is the one audited exception: a first-party, pure-Python local path
+# dependency with no wheel of its own, carved out via UV_NO_BINARY_PACKAGE below.
 # UV_PYTHON_DOWNLOADS=never keeps the digest-pinned interpreter above in use.
 RUN pip install --no-cache-dir uv==0.11.21
 
 # The venv lives at /app/.venv, beside the app dir (/app/src/chat), not inside it.
 ENV UV_NO_BUILD=1 \
+    UV_NO_BINARY_PACKAGE=foundation \
     UV_PROJECT_ENVIRONMENT=/app/.venv \
     UV_PYTHON_DOWNLOADS=never \
     UV_LINK_MODE=copy \
@@ -20,6 +23,9 @@ WORKDIR /app/src/chat
 # Dependency descriptors first, for layer caching. The build context is src/, so
 # src/.dockerignore keeps tests, pytest.ini, venvs, caches and .env out.
 COPY ./chat/pyproject.toml ./chat/uv.lock ./
+# foundation is a local path dependency ("../foundation" from /app/src/chat resolves to
+# /app/src/foundation), so its source must exist before uv sync installs it.
+COPY ./foundation /app/src/foundation
 
 RUN uv sync --frozen --no-install-project --all-groups --no-group dev
 

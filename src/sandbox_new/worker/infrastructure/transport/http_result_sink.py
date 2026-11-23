@@ -23,6 +23,7 @@ from collections.abc import Callable
 
 from common.contracts import ExecutionResultMessage
 from common.runner import terminate_process
+from foundation.schemas import ErrorDetailSchema
 from foundation.transport.http import AsyncClient
 from foundation.transport.http.errors import (
     ClientError,
@@ -32,6 +33,7 @@ from foundation.transport.http.errors import (
 )
 from loguru import logger
 
+from worker.application.context import RunFailureCode
 from worker.application.ports.result_sink import AbstractResultSink
 from worker.domain.models import ExecutionResult, StorageMutations
 from worker.infrastructure.transport.codec import encode_result
@@ -39,6 +41,7 @@ from worker.infrastructure.transport.codec import encode_result
 __all__ = ["HttpResultSink"]
 
 _UNDELIVERABLE_MESSAGE = "Sandbox could not deliver the execution result."
+_UNDELIVERABLE_CODE: RunFailureCode = "result_undeliverable"
 
 # Longer than the manager's HEARTBEAT_SILENCE_SECONDS (60 s): by the time this runs
 # out, the manager has declared this run lost and failed its jobs anyway.
@@ -85,8 +88,8 @@ class HttpResultSink(AbstractResultSink):
             )
             replacement = ExecutionResultMessage(
                 execution_id=result.execution_id,
-                stderr=_UNDELIVERABLE_MESSAGE,
                 returncode=1,
+                error=ErrorDetailSchema(code=_UNDELIVERABLE_CODE, detail=_UNDELIVERABLE_MESSAGE),
                 ran=True,
                 session_id=result.session_id,
                 reply_to_crew_channel=result.reply_to_crew_channel,

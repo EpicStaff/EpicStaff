@@ -26,6 +26,7 @@ from tests.plugins_tests.package_builder import (
     menu_manifest,
     sample_manifest,
 )
+from tests.error_envelope import attr_details
 
 pytestmark = pytest.mark.django_db
 
@@ -72,7 +73,7 @@ def test_the_api_asks_for_the_acknowledgement_once_the_key_is_gone(superadmin_cl
     response = superadmin_client.post(f"{PACKAGES_URL}{review['id']}/approve/", {}, format="json")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "untrusted_not_acknowledged"
+    assert response.json()["errors"][0]["code"] == "untrusted_not_acknowledged"
     again = superadmin_client.get(f"{PACKAGES_URL}{review['id']}/review/").json()
     assert (again["trust"], again["signature"]) == ("untrusted", "unknown_key")
     assert [warning["code"] for warning in again["warnings"]] == ["untrusted_package"]
@@ -113,7 +114,7 @@ def test_a_stored_file_that_is_gone_or_changed_is_a_conflict(superadmin_client, 
     )
 
     assert response.status_code == 409
-    assert response.json()["code"] == "package_file_mismatch"
+    assert response.json()["errors"][0]["code"] == "package_file_mismatch"
     assert PluginPackage.objects.get().review_state == ReviewState.PENDING
     logged = logger.error.call_args.kwargs
     assert logged["package_id"] == review["id"]
@@ -139,8 +140,8 @@ def test_approval_checks_the_menu_icons_of_the_stored_file_again(superadmin_clie
 
     assert response.status_code == 400
     body = response.json()
-    assert body["code"] == "invalid_plugin"
-    assert body["errors"] == [{"loc": "package.icons/forecast.svg", "message": f"is larger than {lowered_cap} bytes"}]
+    assert body["errors"][0]["code"] == "invalid_plugin"
+    assert attr_details(body) == [{"attr": "package.icons/forecast.svg", "detail": f"is larger than {lowered_cap} bytes"}]
     assert PluginPackage.objects.get().review_state == ReviewState.PENDING
     assert not Plugin.objects.filter(state=PluginState.RUNNING).exists()
 

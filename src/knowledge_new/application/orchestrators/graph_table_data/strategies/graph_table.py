@@ -111,9 +111,7 @@ class GraphTableDataOrchestrator(AbstractGraphTableDataOrchestrator):
 
         columns = _TABLE_COLUMNS[command.table_name]
         if (command.filter_column is None) != (command.filter_value is None):
-            raise UnsupportedError(
-                that="filter pair", got="filter_column and filter_value must be set together"
-            )
+            raise UnsupportedError("The filter column and the filter value must be set together.")
         if command.filter_column is not None and command.filter_column not in columns:
             raise UnsupportedError(that="filter column", got=command.filter_column)
         storage = await open_graph_output_storage(self.uow, command.rag_id)

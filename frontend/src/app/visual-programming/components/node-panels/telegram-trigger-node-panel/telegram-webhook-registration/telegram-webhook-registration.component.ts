@@ -3,6 +3,7 @@ import { HttpErrorResponse, HttpStatusCode } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, input, linkedSignal, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
+import { extractErrorCode, extractErrorContext } from '@shared/utils';
 import { concat, defer, EMPTY, merge, Observable, of, Subject } from 'rxjs';
 import { catchError, filter, map, pairwise, startWith, switchMap } from 'rxjs/operators';
 
@@ -87,16 +88,9 @@ function loaded(info: TelegramWebhookInfo, registerAttempt: TelegramRegisterAtte
     return { state: 'loaded', info, registerAttempt };
 }
 
-function errorCode(error: HttpErrorResponse): string | null {
-    const body: unknown = error.error;
-    if (typeof body !== 'object' || body === null || !('code' in body)) return null;
-    return typeof body.code === 'string' ? body.code : null;
-}
-
+/** The blocker a 409 `telegram_registration_blocked` carries in its error's context. */
 function registrationBlocker(error: HttpErrorResponse): TelegramRegistrationBlocker | null {
-    const body: unknown = error.error;
-    if (typeof body !== 'object' || body === null || !('registration_blocker' in body)) return null;
-    const blocker: unknown = body.registration_blocker;
+    const blocker: unknown = extractErrorContext(error)?.['registration_blocker'];
     if (typeof blocker !== 'object' || blocker === null || !('code' in blocker) || !('message' in blocker)) {
         return null;
     }
@@ -104,12 +98,15 @@ function registrationBlocker(error: HttpErrorResponse): TelegramRegistrationBloc
     return { code: blocker.code, message: blocker.message };
 }
 
-/** Maps the backend's `{ status_code, code, message }` error envelope to a check state. */
+/** Maps a failed `webhook-info` call to a check state, keyed on the error's code. */
 function toFailedCheck(error: unknown): TelegramWebhookCheck {
     if (!(error instanceof HttpErrorResponse)) return { state: 'error' };
     if (error.status === HttpStatusCode.BadGateway) return { state: 'telegram-unreachable' };
     if (isBotKeyRejected(error)) return { state: 'bot-key-rejected' };
-    if (error.status === HttpStatusCode.BadRequest && errorCode(error) === TELEGRAM_BOT_KEY_NOT_CONFIGURED_CODE) {
+    if (
+        error.status === HttpStatusCode.BadRequest &&
+        extractErrorCode(error) === TELEGRAM_BOT_KEY_NOT_CONFIGURED_CODE
+    ) {
         return { state: 'no-bot-key' };
     }
     return { state: 'error' };
@@ -121,7 +118,7 @@ function toFailedCheck(error: unknown): TelegramWebhookCheck {
  */
 function toFailedRegistration(error: unknown, currentInfo: TelegramWebhookInfo): TelegramWebhookCheck {
     if (!(error instanceof HttpErrorResponse)) return loaded(currentInfo, 'failed-other');
-    const code = errorCode(error);
+    const code = extractErrorCode(error);
     if (error.status === HttpStatusCode.Conflict && code === TELEGRAM_REGISTRATION_BLOCKED_CODE) {
         const blocker = registrationBlocker(error);
         if (blocker) return loaded({ ...currentInfo, registration_blocker: blocker }, 'blocked');
@@ -144,7 +141,10 @@ function toFailedRegistration(error: unknown, currentInfo: TelegramWebhookInfo):
 
 /** Telegram answered 401/404 for the saved bot key (malformed, unknown or revoked token). */
 function isBotKeyRejected(error: HttpErrorResponse): boolean {
-    return error.status === HttpStatusCode.UnprocessableEntity && errorCode(error) === TELEGRAM_BOT_KEY_REJECTED_CODE;
+    return (
+        error.status === HttpStatusCode.UnprocessableEntity &&
+        extractErrorCode(error) === TELEGRAM_BOT_KEY_REJECTED_CODE
+    );
 }
 
 /**

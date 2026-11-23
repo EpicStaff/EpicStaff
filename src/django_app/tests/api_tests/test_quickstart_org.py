@@ -296,7 +296,7 @@ def _api_key_client(raw_key, org):
 def _assert_denied_without_quickstart_data(response):
     assert response.status_code == 403, response.content
     body = response.json()
-    assert body["code"] == "permission_denied"
+    assert body["errors"][0]["code"] == "permission_denied"
     assert QUICKSTART_STATUS_KEYS.isdisjoint(body)
     content = response.content.decode()
     assert "quickstart_openai" not in content

@@ -338,10 +338,10 @@ async def test_no_extra_headers_leaves_call_args_without_headers(
 @pytest.mark.parametrize(
     ("field", "overrides"),
     [
-        ("embedding_api_key", {"embedding_api_key": "sk-never-sealed"}),
-        ("llm_api_key", {"llm_api_key": "sk-never-sealed"}),
+        ("embedding API key", {"embedding_api_key": "sk-never-sealed"}),
+        ("LLM API key", {"llm_api_key": "sk-never-sealed"}),
         (
-            "llm_extra_headers",
+            "LLM request headers",
             {"llm_extra_headers": {"X-Key": "epicstaff_secret(sk-never-sealed)"}},
         ),
     ],

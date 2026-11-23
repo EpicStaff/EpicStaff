@@ -129,7 +129,7 @@ def test_permissions_me_needs_an_org_the_caller_belongs_to(auth_client, member_u
     response = auth_client(member_user).get("/api/permissions/me/", **headers)
 
     assert response.status_code == status_code
-    assert response.json()["code"] == code
+    assert response.json()["errors"][0]["code"] == code
 
 
 @pytest.mark.django_db

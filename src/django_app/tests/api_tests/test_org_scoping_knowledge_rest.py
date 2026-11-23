@@ -12,9 +12,11 @@ from tables.models import SourceCollection, DocumentMetadata, StorageFile
 from tables.services.storage_service.manager import StorageManager
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 from tables.models.embedding_models import EmbeddingConfig
+from tables.models.llm_models import LLMConfig
 from tables.models.knowledge_models import BaseRagType, GraphRag, NaiveRag
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
+from tests.error_envelope import attr_details, error_codes
 
 
 # ---- fixtures ----
@@ -110,6 +112,21 @@ def test_graph_rag_create_cross_org_collection_404(client_admin, org_b):
 
 
 @pytest.mark.django_db
+def test_graph_rag_by_collection_names_the_missing_rag_but_not_another_orgs_collection(
+    client_admin, org_a, org_b
+):
+    own = _collection(org_a, "mine")
+    foreign = _collection(org_b, "theirs")
+
+    without_rag = client_admin.get(f"/api/graph-rag/collections/{own.collection_id}/graph-rag/")
+    cross_org = client_admin.get(f"/api/graph-rag/collections/{foreign.collection_id}/graph-rag/")
+
+    assert without_rag.status_code == cross_org.status_code == 404
+    assert error_codes(without_rag.json()) == ["graph_rag_not_found"]
+    assert error_codes(cross_org.json()) == ["not_found"]
+
+
+@pytest.mark.django_db
 def test_graph_rag_create_rejects_cross_org_embedder(client_admin, org_a, org_b):
     coll = _collection(org_a, "mine")
     other_embedder = EmbeddingConfig.objects.create(custom_name="e", org=org_b)
@@ -118,7 +135,31 @@ def test_graph_rag_create_rejects_cross_org_embedder(client_admin, org_a, org_b)
         {"embedder_id": other_embedder.id, "llm_id": 1},
         format="json",
     )
-    assert resp.status_code == 404
+    # The body names the embedder, so it is a 400 on that field, worded as for a missing one.
+    assert resp.status_code == 400
+    assert error_codes(resp.json()) == ["embedder_not_found"]
+    assert attr_details(resp.json()) == [
+        {"attr": "embedder_id", "detail": f"Embedder with id {other_embedder.id} not found"}
+    ]
+    assert not GraphRag.objects.filter(base_rag_type__source_collection=coll).exists()
+
+
+@pytest.mark.django_db
+def test_graph_rag_create_rejects_cross_org_llm_config(client_admin, org_a, org_b):
+    coll = _collection(org_a, "mine")
+    own_embedder = EmbeddingConfig.objects.create(custom_name="e", org=org_a)
+    other_llm = LLMConfig.objects.create(custom_name="l", org=org_b)
+    resp = client_admin.post(
+        f"/api/graph-rag/collections/{coll.collection_id}/graph-rag/",
+        {"embedder_id": own_embedder.id, "llm_id": other_llm.id},
+        format="json",
+    )
+    assert resp.status_code == 400
+    assert error_codes(resp.json()) == ["llm_config_not_found"]
+    assert attr_details(resp.json()) == [
+        {"attr": "llm_id", "detail": f"LLM config with id {other_llm.id} not found"}
+    ]
+    assert not GraphRag.objects.filter(base_rag_type__source_collection=coll).exists()
 
 
 @pytest.mark.django_db
@@ -218,7 +259,7 @@ def test_process_rag_indexing_denied_for_member(client_member, org_a):
 # ---- Import from storage ----
 
 # A foreign id answers exactly like a missing one: no id, path or org in the body.
-NOT_FOUND_BODY = {"status_code": 404, "code": "not_found", "message": "Not found."}
+NOT_FOUND_BODY = {"type": "client_error", "errors": [{"code": "not_found", "detail": "Not found.", "attr": None, "context": None}]}
 PREVIOUS_EDIT_AT = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
 
 
@@ -397,7 +438,7 @@ def test_import_from_storage_denied_without_knowledge_create(
     resp = _import(client, coll, [stored.id])
 
     assert resp.status_code == 403
-    assert resp.data["code"] == "permission_denied"
+    assert resp.data["errors"][0]["code"] == "permission_denied"
     assert not DocumentMetadata.objects.exists()
 
 
@@ -545,11 +586,7 @@ def test_import_from_storage_header_naming_an_org_the_caller_is_not_in_is_403(
     resp = _import(_client(admin_of_a, org_b), their_collection, [their_file.id])
 
     assert resp.status_code == 403
-    assert resp.data == {
-        "status_code": 403,
-        "code": "org_membership_required",
-        "message": "You are not a member of this organization.",
-    }
+    assert resp.data == {"type": "client_error", "errors": [{"code": "org_membership_required", "detail": "You are not a member of this organization.", "attr": None, "context": None}]}
     assert not DocumentMetadata.objects.exists()
 
 
@@ -580,7 +617,7 @@ def test_import_from_storage_without_org_header_400(django_user_model, storage_m
     resp = _import(client, coll, [stored.id])
 
     assert resp.status_code == 400
-    assert resp.data["code"] == "org_context_required"
+    assert resp.data["errors"][0]["code"] == "org_context_required"
     assert not DocumentMetadata.objects.exists()
 
 

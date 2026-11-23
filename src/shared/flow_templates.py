@@ -74,6 +74,8 @@ class RenderedTemplate:
 class RefusedPlaceholderError(Exception):
     """A template holds a placeholder that is never allowed; the text is safe to show."""
 
+    code = "refused_placeholder"
+
     def __init__(self, placeholder: Placeholder):
         super().__init__(placeholder.reason)
         self.placeholder = placeholder

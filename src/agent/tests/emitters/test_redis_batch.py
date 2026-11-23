@@ -13,6 +13,8 @@ import json
 from unittest.mock import MagicMock
 
 from app.emitters.redis_batch import RedisStreamBatchEmitter
+from app.exceptions import AgentServiceError
+from foundation.schemas import ErrorDetailSchema
 from shared.models.agent_service import LoopResult, TaskRunSummary, TokenUsage
 from tests.log_capture import log_line_starting_with, capture_logs_at
 
@@ -341,6 +343,7 @@ async def test_on_final_masks_error_text_in_logs_but_not_published_payload():
     result = LoopResult(
         final_text=None,
         error=error_marker,
+        error_code="llm_failed",
         tool_invocations=0,
         iterations=1,
         stop_reason="llm_error",
@@ -355,11 +358,11 @@ async def test_on_final_masks_error_text_in_logs_but_not_published_payload():
     assert "<redacted" in result_line
     assert "llm_error" in result_line, "stop_reason must stay readable"
 
-    assert _decode_payload(published[0])["error"] == error_marker
+    assert _decode_payload(published[0])["error"]["detail"] == error_marker
 
 
-async def test_on_error_masks_error_text_in_logs_but_not_published_payload():
-    """str(exception) can echo prompt content; the ERROR line must not carry it."""
+async def test_on_error_keeps_the_exception_text_out_of_the_log_and_the_payload():
+    """str(exception) can echo prompt content: the ERROR line digests it and crew gets a fixed fact."""
     emitter, published = _make_emitter()
     error_marker = "ERROR_ECHOING_USER_PROMPT_271"
 
@@ -372,4 +375,62 @@ async def test_on_error_masks_error_text_in_logs_but_not_published_payload():
     assert "RuntimeError" in error_line
     assert "<redacted" in error_line
 
-    assert _decode_payload(published[0])["error"] == f"call failed: {error_marker}"
+    assert _decode_payload(published[0])["error"] == {
+        "code": "agent_failed",
+        "detail": "The agent failed.",
+        "attr": None,
+        "context": None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# The error crew shows is {code, detail}
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("error", "error_code", "expected"),
+    [
+        (None, None, None),
+        (
+            "The provider's rate limit for model \"gpt-4o\" was reached.",
+            "llm_rate_limit",
+            {
+                "code": "llm_rate_limit",
+                "detail": "The provider's rate limit for model \"gpt-4o\" was reached.",
+                "attr": None,
+                "context": None,
+            },
+        ),
+    ],
+    ids=["success", "llm-failure"],
+)
+async def test_on_final_publishes_the_loop_error_as_code_and_detail(error, error_code, expected):
+    emitter, published = _make_emitter()
+    result = LoopResult(
+        final_text=None,
+        error=error,
+        error_code=error_code,
+        tool_invocations=0,
+        iterations=1,
+        stop_reason="completed" if error is None else "llm_error",
+        token_usage=TokenUsage(),
+    )
+
+    await emitter.on_final(result)
+
+    assert _decode_payload(published[0])["error"] == expected
+
+
+async def test_on_error_publishes_the_detail_an_agent_service_error_carries():
+    emitter, published = _make_emitter()
+    detail = ErrorDetailSchema(code="llm_auth", detail='The provider rejected the API key for model "gpt-4o".')
+
+    await emitter.on_error(AgentServiceError("task 'a' failed: raw provider text", error=detail))
+
+    assert _decode_payload(published[0])["error"] == {
+        "code": "llm_auth",
+        "detail": 'The provider rejected the API key for model "gpt-4o".',
+        "attr": None,
+        "context": None,
+    }

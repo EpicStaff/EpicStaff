@@ -1,14 +1,9 @@
-// Side-effect import: this module's `declare module '@angular/common/http'` augmentation
-// (adding `validationErrors` to HttpErrorResponse) only applies to files TypeScript actually
-// compiles together. ProfileService's dependency graph pulls in shared/utils/http-error.util.ts,
-// which reads that property, so without this import the whole spec program fails to type-check.
-import './validation-errors.interceptor';
-
 import { HttpClient, HttpErrorResponse, provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
 import { GetMeResponse } from '@shared/models';
+import { extractErrorCode } from '@shared/utils';
 import { of } from 'rxjs';
 
 import { ProfileService } from '../../services/auth/profile.service';
@@ -66,9 +61,15 @@ describe('forbiddenInterceptor', () => {
             const req = httpMock.expectOne('/api/llm-models/1/');
             req.flush(
                 {
-                    status_code: 403,
-                    code: 'built_in_model_immutable',
-                    message: 'BuiltInModelImmutableError: Built-in models cannot be edited or deleted.',
+                    type: 'client_error',
+                    errors: [
+                        {
+                            code: 'built_in_model_immutable',
+                            detail: 'BuiltInModelImmutableError: Built-in models cannot be edited or deleted.',
+                            attr: null,
+                            context: null,
+                        },
+                    ],
                 },
                 { status: 403, statusText: 'Forbidden' }
             );
@@ -91,12 +92,13 @@ describe('forbiddenInterceptor', () => {
                 },
             });
 
-            httpMock
-                .expectOne('/api/pythonnodes/7/')
-                .flush(
-                    { status_code: 403, code: 'storage_grant_denied', message: 'Needs Files: Read.' },
-                    { status: 403, statusText: 'Forbidden' }
-                );
+            httpMock.expectOne('/api/pythonnodes/7/').flush(
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'storage_grant_denied', detail: 'Needs Files: Read.', attr: null, context: null }],
+                },
+                { status: 403, statusText: 'Forbidden' }
+            );
         }));
 
     it('does not force a session refresh or toast for an in_use_restricted 403 (bulk-delete single-item block)', () =>
@@ -119,9 +121,15 @@ describe('forbiddenInterceptor', () => {
             const req = httpMock.expectOne('/api/flows/1/');
             req.flush(
                 {
-                    status_code: 403,
-                    code: 'in_use_restricted',
-                    message: 'InUseRestrictedError: This flow is in use and cannot be deleted.',
+                    type: 'client_error',
+                    errors: [
+                        {
+                            code: 'in_use_restricted',
+                            detail: 'InUseRestrictedError: This flow is in use and cannot be deleted.',
+                            attr: null,
+                            context: null,
+                        },
+                    ],
                 },
                 { status: 403, statusText: 'Forbidden' }
             );
@@ -147,19 +155,30 @@ describe('forbiddenInterceptor', () => {
             const req = httpMock.expectOne('/api/graphs/1/save-flow/');
             req.flush(
                 {
-                    status_code: 403,
-                    code: 'key_value_mode_denied',
-                    message:
-                        "You need Key-Value Tables Create and Edit permission to configure a write node on the table 'profiles'.",
+                    type: 'client_error',
+                    errors: [
+                        {
+                            code: 'key_value_mode_denied',
+                            detail: "You need Key-Value Tables Create and Edit permission to configure a write node on the table 'profiles'.",
+                            attr: null,
+                            context: null,
+                        },
+                    ],
                 },
                 { status: 403, statusText: 'Forbidden' }
             );
         }));
 
     const TRIGGER_NODES_REFUSAL = {
-        status_code: 403,
-        code: 'trigger_nodes_require_use_permission',
-        message: 'Trigger nodes require the Flows Use permission.',
+        type: 'client_error',
+        errors: [
+            {
+                code: 'trigger_nodes_require_use_permission',
+                detail: 'Trigger nodes require the Flows Use permission.',
+                attr: null,
+                context: null,
+            },
+        ],
     };
 
     it.each([
@@ -175,7 +194,7 @@ describe('forbiddenInterceptor', () => {
                     error: (err: HttpErrorResponse) => {
                         try {
                             expect(err.status).toBe(403);
-                            expect(err.error.code).toBe(code);
+                            expect(extractErrorCode(err)).toBe(code);
                             expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
                             expect(profileService.bootstrapUser).not.toHaveBeenCalled();
                             expect(router.navigateByUrl).not.toHaveBeenCalled();
@@ -189,7 +208,10 @@ describe('forbiddenInterceptor', () => {
 
                 httpMock
                     .expectOne('/api/graphs/1/copy/')
-                    .flush({ status_code: 403, code, message }, { status: 403, statusText: 'Forbidden' });
+                    .flush(
+                        { type: 'client_error', errors: [{ code, detail: message, attr: null, context: null }] },
+                        { status: 403, statusText: 'Forbidden' }
+                    );
             })
     );
 
@@ -202,7 +224,9 @@ describe('forbiddenInterceptor', () => {
                         expect(err.status).toBe(403);
                         expect(profileService.clearCurrentUser).toHaveBeenCalled();
                         expect(profileService.bootstrapUser).toHaveBeenCalled();
-                        expect(toastService.error).toHaveBeenCalledWith(TRIGGER_NODES_REFUSAL.message);
+                        expect(toastService.error).toHaveBeenCalledWith(
+                            'Trigger nodes require the Flows Use permission.'
+                        );
                         resolve();
                     } catch (e) {
                         reject(e as Error);
@@ -215,8 +239,18 @@ describe('forbiddenInterceptor', () => {
                 .flush(TRIGGER_NODES_REFUSAL, { status: 403, statusText: 'Forbidden' });
         }));
 
-    it('still forces a session refresh for an unrelated 403 (e.g. stale permissions)', () =>
-        new Promise<void>((resolve, reject) => {
+    it('still forces a session refresh for an unrelated 403 (e.g. stale permissions)', () => {
+        const body = {
+            type: 'client_error',
+            errors: [
+                {
+                    code: 'permission_denied',
+                    detail: 'PermissionDenied: You do not have access to this resource.',
+                    attr: null,
+                },
+            ],
+        };
+        return new Promise<void>((resolve, reject) => {
             httpClient.get('/api/llm-models/1/').subscribe({
                 next: () => reject(new Error('expected the request to error')),
                 error: (err: HttpErrorResponse) => {
@@ -233,14 +267,24 @@ describe('forbiddenInterceptor', () => {
                 },
             });
 
-            const req = httpMock.expectOne('/api/llm-models/1/');
-            req.flush(
-                {
-                    status_code: 403,
-                    code: 'permission_denied',
-                    message: 'PermissionDenied: You do not have access to this resource.',
+            httpMock.expectOne('/api/llm-models/1/').flush(body, { status: 403, statusText: 'Forbidden' });
+        });
+    });
+
+    it('says "Forbidden" for a 403 whose body names no reason', () =>
+        new Promise<void>((resolve, reject) => {
+            httpClient.get('/api/llm-models/1/').subscribe({
+                next: () => reject(new Error('expected the request to error')),
+                error: () => {
+                    try {
+                        expect(toastService.error).toHaveBeenCalledWith('Forbidden');
+                        resolve();
+                    } catch (e) {
+                        reject(e as Error);
+                    }
                 },
-                { status: 403, statusText: 'Forbidden' }
-            );
+            });
+
+            httpMock.expectOne('/api/llm-models/1/').flush(null, { status: 403, statusText: 'Forbidden' });
         }));
 });

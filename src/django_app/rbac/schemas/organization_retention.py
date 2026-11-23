@@ -49,8 +49,8 @@ ORGANIZATION_RETENTION_PATCH = {
         400: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description=(
-                "FormValidationError: `errors` lists each rejected field as "
-                "{field, value, reason}. Sent when no retention field is present, or a "
+                "FormValidationError: one error item per rejected field, its `attr` the "
+                "field. Sent when no retention field is present (`attr` null), or a "
                 "value is not null, not in the allowed list and not the stored value."
             ),
         ),

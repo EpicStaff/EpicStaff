@@ -6,6 +6,7 @@ authors = [{ name = "EpicStaff" }]
 requires-python = "==3.12.10"
 dependencies = [
     "alembic==1.20.0",
+    "foundation[litestar]",
     "httpx==0.28.1",
     "litestar==2.24.0",
     "loguru==0.7.3",
@@ -30,3 +31,6 @@ transitive-pins = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+foundation = { path = "../foundation", editable = true }

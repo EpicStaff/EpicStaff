@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 
 from rbac.access.gates import DenyApiKeyAuth
 from tables.models import Provider
+from tests.error_envelope import error_text
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 PROVIDERS_URL = "/api/providers/"
@@ -83,7 +84,7 @@ class TestApiKeysCannotWriteTheCatalog:
         response = _write(key_client, method, provider)
 
         assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert response.json()["message"] == DenyApiKeyAuth.message
+        assert error_text(response.json()) == DenyApiKeyAuth.message
         assert _catalog() == catalog_before
 
     @pytest.mark.parametrize("key_client", KEY_CLIENTS, indirect=True)

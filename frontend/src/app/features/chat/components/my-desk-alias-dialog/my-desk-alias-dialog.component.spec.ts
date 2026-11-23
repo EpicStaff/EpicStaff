@@ -321,9 +321,14 @@ describe('MyDeskAliasDialogComponent', () => {
         }
 
         it('says another operator on the desk uses the name, keeps the dialog open and the focus on the field', () => {
-            expect(refusedWith(refusal(409, { code: 'alias_taken', message: 'taken' }))).toBe(
-                'Another operator on this desk already uses this name'
-            );
+            expect(
+                refusedWith(
+                    refusal(409, {
+                        type: 'client_error',
+                        errors: [{ code: 'alias_taken', detail: 'taken', attr: null, context: null }],
+                    })
+                )
+            ).toBe('Another operator on this desk already uses this name');
             expect(dialogRef.close).not.toHaveBeenCalled();
             expect(document.activeElement).toBe(field());
             expect(button('Save').closest('app-button')).not.toBeNull();
@@ -334,23 +339,63 @@ describe('MyDeskAliasDialogComponent', () => {
         });
 
         it("says when the name is the desk's bot name", () => {
-            expect(refusedWith(refusal(409, { code: 'alias_reserved', message: 'reserved' }))).toBe(
-                "That's the bot's name on this desk"
-            );
+            expect(
+                refusedWith(
+                    refusal(409, {
+                        type: 'client_error',
+                        errors: [{ code: 'alias_reserved', detail: 'reserved', attr: null, context: null }],
+                    })
+                )
+            ).toBe("That's the bot's name on this desk");
         });
 
         it('says what a validation error refused, else the message of any other failure', () => {
             expect(
                 refusedWith(
                     refusal(400, {
-                        code: 'validation_error',
-                        message: 'Validation failed',
-                        errors: [{ message: 'Value error, Must be plain text: U+2800 is not allowed.', key: 'alias' }],
+                        type: 'client_error',
+                        errors: [
+                            {
+                                code: 'validation_error',
+                                detail: 'Value error, Must be plain text: U+2800 is not allowed.',
+                                attr: 'alias',
+                                context: null,
+                            },
+                        ],
                     })
                 )
             ).toBe('Must be plain text: U+2800 is not allowed.');
 
-            expect(refusedWith(refusal(404, { code: 'not_found', message: 'This desk no longer exists.' }))).toBe(
+            expect(
+                refusedWith(
+                    refusal(404, {
+                        type: 'client_error',
+                        errors: [
+                            { code: 'not_found', detail: 'This desk no longer exists.', attr: null, context: null },
+                        ],
+                    })
+                )
+            ).toBe('This desk no longer exists.');
+        });
+
+        it('reads the error envelope the same way', () => {
+            const envelope = (code: string, detail: string, attr: string | null = null) => ({
+                type: 'client_error',
+                errors: [{ code, detail, attr, context: null }],
+            });
+
+            expect(refusedWith(refusal(409, envelope('alias_taken', 'taken', 'alias')))).toBe(
+                'Another operator on this desk already uses this name'
+            );
+            expect(
+                refusedWith(
+                    refusal(
+                        400,
+                        envelope('validation_error', 'Value error, Must be plain text: U+2800 is not allowed.')
+                    )
+                )
+            ).toBe('Must be plain text: U+2800 is not allowed.');
+            expect(refusedWith(refusal(404, envelope('not_found', 'This desk no longer exists.')))).toBe(
                 'This desk no longer exists.'
             );
         });

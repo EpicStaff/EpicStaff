@@ -285,17 +285,12 @@ export class QuickstartSectionComponent implements OnInit {
             .subscribe();
     }
 
-    /**
-     * A refusal of the request (4xx) goes to the banner in the server's words; anything else keeps a generic toast.
-     * The quickstart endpoint answers its own refusals as `{detail: 'Error quickstart', error: <reason>}`, so the
-     * reason is read from `error` before the generic extraction, which would show only the `detail`.
-     */
+    /** A refusal of the request (4xx) goes to the banner in the server's words; anything else keeps a generic toast. */
     private showError(error: HttpErrorResponse, fallback: string): void {
         if (!isClientError(error)) {
             this.toast.error(fallback);
             return;
         }
-        const reason: unknown = error.error?.error;
-        this.errorMessage.set(typeof reason === 'string' && reason ? reason : extractHttpErrorMessage(error, fallback));
+        this.errorMessage.set(extractHttpErrorMessage(error, fallback));
     }
 }

@@ -18,6 +18,7 @@ from tables.models.graph_models import AgentNode, Graph, TaskNode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization, OrganizationUser, Role
+from tests.error_envelope import details_by_attr, error_codes
 
 PYTHON_USAGE_URL = "/api/python-code-tool/usage/"
 MCP_USAGE_URL = "/api/mcp-tools/usage/"
@@ -261,19 +262,19 @@ def test_omitted_or_empty_ids_return_every_visible_row(client_a, used_setup, bod
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ("cap", "body", "message"),
+    ("cap", "body", "code", "message"),
     [
         # Over the cap without ids: refused rather than silently truncated.
-        (0, None, "ids"),
-        (200, {"ids": list(range(1, 202))}, "maximum 200 allowed, got 201"),
-        (None, {"ids": "not-a-list"}, None),
+        (0, None, "required", None),
+        (200, {"ids": list(range(1, 202))}, "max_length", "Must have at most 200 items, got 201."),
+        (None, {"ids": "not-a-list"}, "invalid", "Must be a list of integers."),
         # bool is an int subclass: [true] would otherwise pass as tool id 1.
-        (None, {"ids": [True]}, None),
-        (None, {"ids": ["abc"]}, None),
+        (None, {"ids": [True]}, "invalid", "Must be a list of integers."),
+        (None, {"ids": ["abc"]}, "invalid", "Must be a list of integers."),
     ],
     ids=["over-cap-without-ids", "too-many-ids", "ids-not-a-list", "ids-bool", "ids-not-integers"],
 )
-def test_invalid_ids_request_is_400(client_a, used_setup, monkeypatch, cap, body, message):
+def test_invalid_ids_request_is_400(client_a, used_setup, monkeypatch, cap, body, code, message):
     from tables.views.mixins import ToolUsageActionsMixin
 
     if cap is not None:
@@ -283,8 +284,11 @@ def test_invalid_ids_request_is_400(client_a, used_setup, monkeypatch, cap, body
     resp = client_a.post(MCP_USAGE_URL, body, format="json") if body is not None else client_a.post(PYTHON_USAGE_URL)
 
     assert resp.status_code == 400
+    assert error_codes(resp.data) == [code]
+    [(attr, details)] = details_by_attr(resp.data).items()
+    assert attr == "ids"
     if message is not None:
-        assert message in str(resp.data)
+        assert details == [message]
 
 
 # ---- bucket classification: agent_surface vs shared_surface ----

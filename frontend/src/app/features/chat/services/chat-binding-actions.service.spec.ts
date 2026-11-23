@@ -160,7 +160,16 @@ describe('ChatBindingActionsService', () => {
         expect(confirmation.confirm).not.toHaveBeenCalled();
 
         chatApi.resumeBinding.mockReturnValueOnce(
-            throwError(() => new HttpErrorResponse({ status: 400, error: { code: 'contract_failed', message: 'No.' } }))
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 400,
+                        error: {
+                            type: 'client_error',
+                            errors: [{ code: 'contract_failed', detail: 'No.', attr: null, context: null }],
+                        },
+                    })
+            )
         );
         expect(collect(service.resume(binding))).toEqual([true]);
         expect(toast.error).toHaveBeenCalled();
@@ -168,6 +177,23 @@ describe('ChatBindingActionsService', () => {
         chatApi.resumeBinding.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 500 })));
         expect(collect(service.resume(binding))).toEqual([]);
         expect(toast.error).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports a refused resume as a change when the error envelope names a contract refusal', () => {
+        chatApi.resumeBinding.mockReturnValueOnce(
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 400,
+                        error: {
+                            type: 'validation_error',
+                            errors: [{ code: 'contract_failed', detail: 'No.', attr: null }],
+                        },
+                    })
+            )
+        );
+        expect(collect(service.resume(binding))).toEqual([true]);
+        expect(toast.error).toHaveBeenCalledWith('No.');
     });
 
     it('deletes after confirmDelete with the raw name, and toasts a failure without reporting a change', () => {

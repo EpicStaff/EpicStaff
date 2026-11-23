@@ -87,9 +87,17 @@ async def test_field_without_a_value_list_is_404(field):
         response = await client.get(f"/api/audit/user_actions/values/{field}")
 
     assert response.status_code == 404
-    assert response.json()["detail"] == (
-        f"Field {field!r} has no value list in the user_actions audit domain"
-    )
+    assert response.json() == {
+        "type": "client_error",
+        "errors": [
+            {
+                "code": "not_found",
+                "detail": f"Field {field!r} has no value list in the user_actions audit domain",
+                "attr": None,
+                "context": None,
+            }
+        ],
+    }
 
 
 @pytest.mark.parametrize(
@@ -127,5 +135,9 @@ async def test_sessions_domain_has_no_values_route(monkeypatch):
         sessions = await client.get("/auditor/api/audit/sessions/values/status")
         user_actions = await client.get(f"/auditor{VALUES_PATH}")
 
-    assert (sessions.status_code, sessions.json()) == (404, {"detail": "Not Found"})
+    assert sessions.status_code == 404
+    assert sessions.json() == {
+        "type": "client_error",
+        "errors": [{"code": "not_found", "detail": "Not Found", "attr": None, "context": None}],
+    }
     assert user_actions.status_code == 200

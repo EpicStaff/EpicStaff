@@ -30,7 +30,7 @@ type SettingControlValue = PluginSettingControlValue;
 /** Shown in front of a stored secret's last characters. */
 export const SECRET_MASK = '••••';
 
-/** `values.<key>` in an `errors[]` item's `loc`. */
+/** `values.<key>` in an error item's `attr`. */
 const SETTING_LOC_PREFIX = 'values.';
 
 /**
@@ -104,7 +104,7 @@ export class PluginSettingsFormComponent {
     });
     /** Problems of a refused save that belong to no field. */
     protected readonly otherErrorItems = computed<PluginErrorItem[]>(
-        () => this.saveError()?.items.filter((item) => !item.loc.startsWith(SETTING_LOC_PREFIX)) ?? []
+        () => this.saveError()?.items.filter((item) => !item.attr?.startsWith(SETTING_LOC_PREFIX)) ?? []
     );
     private readonly reloads = signal(0);
     private readonly request = computed(() => ({ identifier: this.identifier(), reload: this.reloads() }));
@@ -337,9 +337,9 @@ function toStoredValue(setting: PluginSettingState, current: SettingControlValue
 function fieldErrorsOf(items: PluginErrorItem[]): Record<string, string> {
     const errors: Record<string, string> = {};
     for (const item of items) {
-        if (!item.loc.startsWith(SETTING_LOC_PREFIX)) continue;
-        const key = item.loc.slice(SETTING_LOC_PREFIX.length);
-        errors[key] = errors[key] ? `${errors[key]} ${item.message}` : item.message;
+        if (!item.attr?.startsWith(SETTING_LOC_PREFIX)) continue;
+        const key = item.attr.slice(SETTING_LOC_PREFIX.length);
+        errors[key] = errors[key] ? `${errors[key]} ${item.detail}` : item.detail;
     }
     return errors;
 }

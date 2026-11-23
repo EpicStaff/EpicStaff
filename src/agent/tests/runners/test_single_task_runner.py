@@ -18,6 +18,7 @@ from app.llm.client import LLMChunk
 from app.loop.agent_loop import AgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import StopPolicy
+from foundation.schemas import ErrorDetailSchema
 from app.resources.resolver import ResolvedAgent
 from app.runners.deps import RunnerDependencies
 from app.runners.single_task import SingleTaskRunner
@@ -448,9 +449,10 @@ async def test_no_output_schema_uses_single_plain_loop():
 class FailureLoop(AgentLoop):
     """Returns a failure LoopResult on the first call; tracks call count."""
 
-    def __init__(self, stop_reason: str, error: str) -> None:
+    def __init__(self, stop_reason: str, error: str, error_code: str | None = None) -> None:
         self._stop_reason = stop_reason
         self._error = error
+        self._error_code = error_code
         self.call_count = 0
 
     async def run(
@@ -468,22 +470,26 @@ class FailureLoop(AgentLoop):
             stop_reason=self._stop_reason,
             token_usage=TokenUsage(),
             error=self._error,
+            error_code=self._error_code,
         )
 
 
 @pytest.mark.parametrize(
-    ("stop_reason", "error"),
-    [("llm_error", "rate limited"), ("timeout", "execution exceeded 60s")],
+    ("stop_reason", "error_code", "error"),
+    [
+        ("llm_error", "llm_rate_limit", 'The provider\'s rate limit for model "gpt-4o" was reached.'),
+        ("timeout", "agent_timeout", 'Agent "researcher" didn\'t finish within 60 seconds.'),
+    ],
 )
-async def test_failed_main_loop_is_reported_without_enforcing_the_schema(stop_reason, error):
+async def test_failed_main_loop_is_reported_without_enforcing_the_schema(stop_reason, error_code, error):
     emitter = FakeEmitter()
     schema = {"type": "object", "properties": {"x": {"type": "string"}}, "required": ["x"]}
-    loop = FailureLoop(stop_reason=stop_reason, error=error)
+    loop = FailureLoop(stop_reason=stop_reason, error=error, error_code=error_code)
     runner = _runner(resolver=FakeResolverWithTools(), loop=loop)
 
     await runner.execute(_request({"task_instructions": "Do X", "output_schema": schema}), emitter, is_cancelled=never_cancelled)
 
-    assert [str(raised) for raised in emitter.errors] == [error]
+    assert [raised.error for raised in emitter.errors] == [ErrorDetailSchema(code=error_code, detail=error)]
     assert emitter.finals == []
     assert loop.call_count == 1
 

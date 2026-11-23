@@ -284,7 +284,7 @@ state_before=$(grant_state "$grant_id")
 phrase_body "${expected_phrase} "
 status=$(api DELETE "/api/admin/plugins/$plugin/grants/$grant_id/" -H 'Content-Type: application/json' \
   --data-binary "@$work_dir/phrase.json")
-expect "a DELETE with a wrong phrase is refused" 400 "$status" "body['code'] == 'invalid_purge_phrase'"
+expect "a DELETE with a wrong phrase is refused" 400 "$status" "body['errors'][0]['code'] == 'invalid_purge_phrase'"
 if [ "$(grant_state "$grant_id")" = "$state_before" ]; then
   pass "the refused DELETE left the grant $state_before"
 else

@@ -5,6 +5,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterOutlet } from '@angular/router';
 import { ButtonComponent, RouteTab, RouteTabsComponent, UserAvatarComponent } from '@shared/components';
 import { HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
+import { extractServerMessage } from '@shared/utils';
 import { EMPTY } from 'rxjs';
 import { catchError, filter, switchMap } from 'rxjs/operators';
 
@@ -69,7 +70,8 @@ export class ProfilePageComponent implements OnInit {
                 takeUntilDestroyed(this.destroyRef)
             )
             .subscribe({
-                error: (err: HttpErrorResponse) => this.toast.error(err.error?.message ?? 'Failed to reload API keys'),
+                error: (err: HttpErrorResponse) =>
+                    this.toast.error(extractServerMessage(err) ?? 'Failed to reload API keys'),
             });
     }
 

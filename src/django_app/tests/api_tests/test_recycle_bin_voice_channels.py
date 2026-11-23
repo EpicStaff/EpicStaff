@@ -10,6 +10,7 @@ from unittest import mock
 import pytest
 from tables.models import RealtimeChannel, TwilioChannel
 from tables.services.secrets import secret_service
+from tests.error_envelope import error_text
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 pytestmark = pytest.mark.django_db
@@ -162,7 +163,7 @@ def test_a_taken_number_still_asks_twilio_so_twilio_down_fails_the_restore(
         response = _restore(acme_admin_client, channel)
 
     assert response.status_code == 503
-    assert response.json()["message"] == COULD_NOT_VERIFY_ON_RESTORE
+    assert error_text(response.json()) == COULD_NOT_VERIFY_ON_RESTORE
     binned = TwilioChannel.all_objects.get(pk=channel.pk)
     assert (binned.active, binned.phone_number) == (False, NUMBER)
 
@@ -225,7 +226,7 @@ def test_a_binned_auth_token_fails_the_restore_and_keeps_the_number(acme_admin_c
         response = _restore(acme_admin_client, channel)
 
     assert response.status_code == 409, response.json()
-    assert response.json()["message"] == RESTORE_THE_AUTH_TOKEN_FIRST
+    assert error_text(response.json()) == RESTORE_THE_AUTH_TOKEN_FIRST
     twilio.assert_not_called()
     binned = TwilioChannel.all_objects.get(pk=channel.pk)
     assert (binned.active, binned.phone_number) == (False, NUMBER)
@@ -258,7 +259,7 @@ def test_twilio_down_fails_the_restore_and_keeps_the_channel_in_the_bin(acme_adm
         response = _restore(acme_admin_client, channel)
 
     assert response.status_code == 503
-    assert response.json()["message"] == COULD_NOT_VERIFY_ON_RESTORE
+    assert error_text(response.json()) == COULD_NOT_VERIFY_ON_RESTORE
     binned = TwilioChannel.all_objects.get(pk=channel.pk)
     assert (binned.active, binned.phone_number) == (False, NUMBER)
     assert RealtimeChannel.deleted_objects.filter(pk=channel.pk).exists()

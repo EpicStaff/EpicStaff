@@ -482,18 +482,27 @@ describe('AgentsPageStore duplicateAgent', () => {
         expect(store.surfaces().filter((row) => row.owner_agent === 8)).toEqual([clone]);
     });
 
+    const COPY_REFUSAL = 'A copy with that name was just created; please retry.';
+
     it('shows the server message and adds nothing when the copy fails', () => {
+        const body = { type: 'validation_error', errors: [{ code: 'invalid', detail: COPY_REFUSAL }] };
         loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
-        const message = 'A copy with that name was just created; please retry.';
 
         store.duplicateAgent(3);
-        backend
-            .expectOne({ method: 'POST', url: COPY_URL })
-            .flush({ message }, { status: 400, statusText: 'Bad Request' });
+        backend.expectOne({ method: 'POST', url: COPY_URL }).flush(body, { status: 400, statusText: 'Bad Request' });
 
-        expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith(COPY_REFUSAL);
         expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader']);
         expect(store.saving()).toBe(false);
+    });
+
+    it('falls back to its own words when the failed copy says nothing', () => {
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+
+        store.duplicateAgent(3);
+        backend.expectOne({ method: 'POST', url: COPY_URL }).flush(null, { status: 500, statusText: 'Server Error' });
+
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith('Failed to duplicate agent');
     });
 
     it('shows the server message and adds nothing when the agent owns surfaces the user may not create', () => {
@@ -504,9 +513,15 @@ describe('AgentsPageStore duplicateAgent', () => {
         store.duplicateAgent(3);
         backend.expectOne({ method: 'POST', url: COPY_URL }).flush(
             {
-                status_code: 403,
-                code: 'agent_with_owned_surfaces_requires_surfaces_create_permission',
-                message,
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'agent_with_owned_surfaces_requires_surfaces_create_permission',
+                        detail: message,
+                        attr: null,
+                        context: null,
+                    },
+                ],
             },
             { status: 403, statusText: 'Forbidden' }
         );
@@ -520,16 +535,79 @@ describe('AgentsPageStore duplicateAgent', () => {
         loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
 
         store.duplicateAgent(3);
-        backend
-            .expectOne({ method: 'POST', url: COPY_URL })
-            .flush(
-                { detail: 'You do not have permission to perform this action.' },
-                { status: 403, statusText: 'Forbidden' }
-            );
+        backend.expectOne({ method: 'POST', url: COPY_URL }).flush(
+            {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'unknown',
+                        detail: 'You do not have permission to perform this action.',
+                        attr: null,
+                        context: null,
+                    },
+                ],
+            },
+            { status: 403, statusText: 'Forbidden' }
+        );
 
         expect(toast.error).not.toHaveBeenCalled();
         expect(store.agents().map((row) => row.name)).toEqual(['Invoice Reader']);
         expect(store.saving()).toBe(false);
+    });
+});
+
+describe('AgentsPageStore instruction list save errors', () => {
+    const AGENT_URL = `${AGENTS_URL}3/`;
+    const DUPLICATE_NAME = 'Instruction names must be unique.';
+    let store: AgentsPageStore;
+    let backend: HttpTestingController;
+    let toast: ToastService;
+
+    beforeEach(() => {
+        ({ store, backend } = storeOverFakeBackend());
+        toast = TestBed.inject(ToastService);
+        vi.spyOn(toast, 'error');
+        loadPage(store, backend, [agentOf(3, 'Invoice Reader')]);
+        store.selectAgent(3);
+        store.updateInstructionList(3, [
+            { name: 'Qualify', content: 'a' },
+            { name: 'Qualify', content: 'b' },
+        ] as AgentDefinition['instruction_list']);
+    });
+
+    afterEach(() => backend.verify());
+
+    it.each([
+        [
+            'the error envelope, on the list',
+            {
+                type: 'validation_error',
+                errors: [{ code: 'invalid', detail: DUPLICATE_NAME, attr: 'instruction_list' }],
+            },
+        ],
+        [
+            'the error envelope, on one item',
+            {
+                type: 'validation_error',
+                errors: [{ code: 'invalid', detail: DUPLICATE_NAME, attr: 'instruction_list.1.name' }],
+            },
+        ],
+    ])('shows a refusal of the list read from %s under the list, not in a toast', (_shape, body) => {
+        backend.expectOne({ method: 'PATCH', url: AGENT_URL }).flush(body, { status: 400, statusText: 'Bad Request' });
+
+        expect(store.selectedAgentInstructionListError()).toBe(DUPLICATE_NAME);
+        expect(toast.error).not.toHaveBeenCalled();
+    });
+
+    it('toasts a refusal of anything else with its field in front', () => {
+        const body = {
+            type: 'validation_error',
+            errors: [{ code: 'locked', detail: 'The agent is locked.', attr: 'name' }],
+        };
+        backend.expectOne({ method: 'PATCH', url: AGENT_URL }).flush(body, { status: 400, statusText: 'Bad Request' });
+
+        expect(store.selectedAgentInstructionListError()).toBeNull();
+        expect(toast.error).toHaveBeenCalledExactlyOnceWith('name: The agent is locked.');
     });
 });
 
@@ -647,7 +725,7 @@ describe('AgentsPageStore agent export', () => {
         expect(start.request.body).toEqual({ ids: [2], include_knowledge: false });
         // Refused, so no job is polled after the test.
         start.flush(
-            { status_code: 429, code: 'too_many_jobs', message: 'Busy.' },
+            { type: 'client_error', errors: [{ code: 'too_many_jobs', detail: 'Busy.', attr: null, context: null }] },
             { status: 429, statusText: 'Too Many Requests' }
         );
     });
@@ -707,7 +785,10 @@ describe('AgentsPageStore agent export', () => {
             store.confirmAgentExport();
             backend
                 .expectOne({ method: 'POST', url: EXPORT_JOBS_URL })
-                .flush({ status_code: status, code, message }, { status, statusText });
+                .flush(
+                    { type: 'client_error', errors: [{ code, detail: message, attr: null, context: null }] },
+                    { status, statusText }
+                );
             backend.match((request) => request.method === 'GET');
 
             expect(toast.error).toHaveBeenCalledExactlyOnceWith(message);
@@ -719,12 +800,13 @@ describe('AgentsPageStore agent export', () => {
 
     it('loads the agents again when an agent to export is gone', () => {
         store.exportAgent(2);
-        backend
-            .expectOne({ method: 'POST', url: EXPORT_JOBS_URL })
-            .flush(
-                { status_code: 404, code: 'export_entities_not_found', message: 'Not found.' },
-                { status: 404, statusText: 'Not Found' }
-            );
+        backend.expectOne({ method: 'POST', url: EXPORT_JOBS_URL }).flush(
+            {
+                type: 'client_error',
+                errors: [{ code: 'export_entities_not_found', detail: 'Not found.', attr: null, context: null }],
+            },
+            { status: 404, statusText: 'Not Found' }
+        );
 
         backend.expectOne(isGet(AGENTS_URL)).flush(page([agentOf(1, 'Alpha'), agentOf(3, 'Gamma')]));
         backend.expectOne(isGet(SURFACES_URL)).flush(page([]));

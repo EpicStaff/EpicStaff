@@ -259,10 +259,9 @@ def test_a_payload_repeating_a_prompt_key_is_refused(client_a, graph, acme_llm_c
     )
 
     assert resp.status_code == 400, resp.content
-    assert (
-        resp.json()["message"]
-        == "prompt_configs: p2: prompt_key: Each prompt name can appear only once."
-    )
+    assert [(item["attr"], item["detail"]) for item in resp.json()["errors"]] == [
+        ("prompt_configs.p2.prompt_key", "Each prompt name can appear only once.")
+    ]
     assert not ClassificationDecisionTablePrompt.objects.filter(
         prompt_key__in=["p1", "p2"]
     ).exists()

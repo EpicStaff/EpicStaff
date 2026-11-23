@@ -43,7 +43,7 @@ def test_going_over_the_rate_is_throttled_until_the_minute_ends(slow_client, fro
     response = slow_client.get(ME_URL)
 
     assert response.status_code == 429
-    assert response.json()["code"] == "throttled"
+    assert response.json()["errors"][0]["code"] == "throttled"
     assert response["Retry-After"] == "50"
 
 

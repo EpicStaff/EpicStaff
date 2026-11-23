@@ -30,8 +30,14 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { notWhitespaceValidator } from '@shared/form-validators';
-import { ActionCode, ResourceCode } from '@shared/models';
-import { escapeHtml, extractHttpErrorMessage } from '@shared/utils';
+import { ActionCode, ApiErrorDetail, ResourceCode } from '@shared/models';
+import {
+    escapeHtml,
+    extractApiErrors,
+    extractErrorCode,
+    extractHttpErrorMessage,
+    extractServerMessage,
+} from '@shared/utils';
 import { catchError, EMPTY, filter, map, Observable, of, switchMap, tap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -48,7 +54,6 @@ import {
     ChatBudgetExhaustedBehaviour,
     ChatContractMissing,
     ChatConversationStyle,
-    ChatErrorBody,
     ChatIdentityMode,
     ChatResponseTimeoutAction,
 } from '../../models/chat.model';
@@ -499,9 +504,9 @@ export class ChatBindingsDialogComponent {
             },
             error: (error: HttpErrorResponse) => {
                 this.isSubmitting.set(false);
-                const body = error.error as ChatErrorBody | null;
-                if (this.showCapRefusal(body)) return;
-                const { byField, rest } = fieldRefusals(body);
+                const errors = extractApiErrors(error);
+                if (this.showCapRefusal(errors[0])) return;
+                const { byField, rest } = fieldRefusals(errors);
                 if (byField.size) {
                     this.showFieldRefusals(byField);
                     // Refusals the dialog cannot place on a field still show, in the banner.
@@ -586,19 +591,20 @@ export class ChatBindingsDialogComponent {
      * duration's in its unit); false for any other body, and for a malformed one (unknown field, no numeric max), which
      * the banner says instead. A control error clears itself on the next edit of that field; touched, so it shows.
      */
-    private showCapRefusal(body: ChatErrorBody | null): boolean {
-        if (typeof body?.max !== 'number') return false;
-        const budgetField = BUDGET_FIELDS.find((field) => field === body.field);
-        const durationField = DURATION_FIELDS.find((field) => field === body.field);
-        if (body.code === 'budget_above_cap' && budgetField) {
+    private showCapRefusal(error: ApiErrorDetail | undefined): boolean {
+        const max = error?.context?.['max'];
+        if (!error || typeof max !== 'number') return false;
+        const budgetField = BUDGET_FIELDS.find((field) => field === error.attr);
+        const durationField = DURATION_FIELDS.find((field) => field === error.attr);
+        if (error.code === 'budget_above_cap' && budgetField) {
             const control = this.form.controls[budgetField];
-            control.setErrors({ budgetAboveCap: this.budgetCapError(body.max) });
+            control.setErrors({ budgetAboveCap: this.budgetCapError(max) });
             control.markAsTouched();
-        } else if (body.code === 'duration_above_cap' && durationField) {
+        } else if (error.code === 'duration_above_cap' && durationField) {
             const { control: name, seconds } = DURATION_UNITS[durationField];
             const control = this.form.controls[name];
             control.setErrors({
-                durationAboveCap: this.durationCapError(durationField, Math.floor(body.max / seconds)),
+                durationAboveCap: this.durationCapError(durationField, Math.floor(max / seconds)),
             });
             control.markAsTouched();
         } else {
@@ -695,9 +701,8 @@ export class ChatBindingsDialogComponent {
                 gaps: hasContractGaps(contract_missing) ? { graphId, missing: contract_missing } : null,
             })),
             catchError((error: HttpErrorResponse) => {
-                const body = error.error as ChatErrorBody | null;
-                if (body?.code === 'unknown_flow') {
-                    return of({ errors: [body.message || 'The flow no longer exists.'], gaps: null });
+                if (extractErrorCode(error) === 'unknown_flow') {
+                    return of({ errors: [extractServerMessage(error) ?? 'The flow no longer exists.'], gaps: null });
                 }
                 this.toastService.error(extractHttpErrorMessage(error));
                 return EMPTY;
@@ -794,17 +799,16 @@ function toUnits(seconds: number, unitSeconds: number): number {
  * alias on the desk) and the `validation_error` entries keyed by a field (a refused character, a name too long).
  * `rest` is every other validation entry, to say in the banner.
  */
-function fieldRefusals(body: ChatErrorBody | null): { byField: Map<TextField, string>; rest: string[] } {
+function fieldRefusals(errors: readonly ApiErrorDetail[]): { byField: Map<TextField, string>; rest: string[] } {
     const byField = new Map<TextField, string>();
     const rest: string[] = [];
-    if (body?.code === 'bot_name_taken' && body.field === 'bot_display_name') {
-        byField.set('bot_display_name', body.message);
-    }
-    if (body?.code === 'validation_error') {
-        for (const { message, key } of body.errors ?? []) {
-            // Keyed by the field, or by a path ending in it ("data.bot_display_name").
-            const field = TEXT_FIELDS.find((name) => name === key?.split('.').at(-1));
-            const text = validationReason(message);
+    for (const { code, detail, attr } of errors) {
+        if (code === 'bot_name_taken' && attr === 'bot_display_name') {
+            byField.set('bot_display_name', detail);
+        } else if (code === 'validation_error') {
+            // Named by the field, or by a path ending in it ("data.bot_display_name").
+            const field = TEXT_FIELDS.find((name) => name === attr?.split('.').at(-1));
+            const text = validationReason(detail);
             if (field && !byField.has(field)) byField.set(field, text);
             else if (!field && text) rest.push(text);
         }

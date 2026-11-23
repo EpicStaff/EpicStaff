@@ -1,9 +1,10 @@
 """Publishes finished executions to Redis for the producers to consume.
 
 Results go to the result channel in the shape the existing consumers already read
-(``result_data``/``stdout``/``stderr``/``returncode``), so no consumer-side change is
-needed. A result whose job asked for it goes to crew's own result channel instead, so
-crew never has to sift through results meant for django_app, agent or realtime. Both
+(``result_data``/``stdout``/``stderr``/``returncode``/``error``); ``error`` is
+``{code, detail}`` for a job the sandbox failed itself and None otherwise. A result
+whose job asked for it goes to crew's own result channel instead, so crew never has to
+sift through results meant for django_app, agent or realtime. Both
 channel names are configured here from the sandbox's own settings, never taken from a
 submission. Storage mutations, when present, go to their own channel as the mutation
 event the storage consumer expects, whichever result channel was used.
@@ -42,6 +43,12 @@ class RedisResultPublisher(AbstractResultPublisher):
             "stdout": result.stdout,
             "stderr": result.stderr,
             "returncode": result.returncode,
+            # Only code and detail: the producers' contract is a dict of strings.
+            "error": (
+                result.error.model_dump(include={"code", "detail"})
+                if result.error is not None
+                else None
+            ),
         }
         channel = (
             self._crew_result_channel if result.reply_to_crew_channel else self._result_channel

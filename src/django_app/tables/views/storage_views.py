@@ -21,6 +21,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 from src.shared.models import UserAction
+from tables.exceptions import StoragePathExists
 from tables.models import GraphStorageFile, StorageFile
 from tables.models.graph_models import Graph
 from tables.serializers.recycle_bin_serializers import (
@@ -299,14 +300,12 @@ class StorageAPIView(OrgScopedResolverMixin, ViewSet):
 
         try:
             self.manager.info(org_id, path)
-            return Response(
-                {"detail": f"Path already exists: {path}"},
-                status=status.HTTP_409_CONFLICT,
-            )
         except FileNotFoundError:
             pass
         except ValueError as e:
             raise ValidationError({"detail": str(e)}) from e
+        else:
+            raise StoragePathExists(path)
 
         try:
             self.manager.mkdir(org_id, path, user=request.user)

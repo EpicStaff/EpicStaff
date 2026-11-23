@@ -324,7 +324,7 @@ echo "# $plugin runs $installed; the smoke installs $first, then $second; active
 echo "# 1. a version that is not newer"
 same=$(pack "$installed")
 status=$(upload "$same")
-expect "an upload of $installed again is refused" 409 "$status" "body['code'] == 'plugin_version_not_newer'"
+expect "an upload of $installed again is refused" 409 "$status" "body['errors'][0]['code'] == 'plugin_version_not_newer'"
 
 echo "# 2. $first: a migration that applies, then one that fails"
 package=$(pack "$first" "$notes=CREATE TABLE public.smoke_notes (note text);" "$broken=SELECT 1 / 0;")
@@ -335,7 +335,7 @@ baseline=$(json "body['upgrade']['baseline_package_id']")
 printf '{"untrusted_acknowledged": true}' > "$work_dir/approve.json"
 status=$(api POST "/api/admin/plugins/packages/$first_package/approve/" -H 'Content-Type: application/json' \
   --data-binary "@$work_dir/approve.json")
-expect "approving without the reviewed baseline is refused" 409 "$status" "body['code'] == 'review_outdated'"
+expect "approving without the reviewed baseline is refused" 409 "$status" "body['errors'][0]['code'] == 'review_outdated'"
 printf '{"untrusted_acknowledged": true, "reviewed_against_package_id": %s}' "$baseline" > "$work_dir/approve.json"
 status=$(api POST "/api/admin/plugins/packages/$first_package/approve/" -H 'Content-Type: application/json' \
   --data-binary "@$work_dir/approve.json")
@@ -367,7 +367,7 @@ status=$(call member GET /api/plugins/available/ -H "X-Organization-Id: $org_id"
 expect "the organization's available list shows the plugin in maintenance" 200 "$status" \
   "any(item['identifier'] == '$plugin' and item['availability'] == 'maintenance' for item in (body if isinstance(body, list) else body.get('results', [])))"
 status=$(api POST "/api/admin/plugins/$plugin/upgrade/cancel/")
-expect "Cancel is refused: the database holds a change of $first" 409 "$status" "body['code'] == 'upgrade_not_cancellable'"
+expect "Cancel is refused: the database holds a change of $first" 409 "$status" "body['errors'][0]['code'] == 'upgrade_not_cancellable'"
 
 echo "# 4. $second keeps the applied file and fixes the other"
 package=$(pack "$second" "$notes=CREATE TABLE public.smoke_notes (note text);" "$fixed=SELECT 1;")

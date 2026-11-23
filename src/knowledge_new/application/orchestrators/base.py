@@ -23,7 +23,11 @@ class AbstractOrchestrator[TCommand, TResult](abc.ABC):
             logger.exception("{} failed during DB access: {}", type(self).__name__, e)
             raise
         except Exception as e:
-            logger.exception("{} failed during execution: {}", type(self).__name__, e)
+            # The command names the RAG and documents; on_error may store only a fixed
+            # fact for users, so this line is where the raw error is kept.
+            logger.exception(
+                "{} failed during execution of {}: {}", type(self).__name__, command, e
+            )
             await asyncio.shield(self.on_error(command, e))
             raise
 

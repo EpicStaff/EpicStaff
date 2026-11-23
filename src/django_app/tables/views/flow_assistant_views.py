@@ -24,7 +24,7 @@ from rbac.identity.tickets import sse_ticket_service
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import resolve_active_org_id
 from rest_framework import status
-from rest_framework.exceptions import APIException, PermissionDenied
+from rest_framework.exceptions import APIException, NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -495,6 +495,6 @@ class FlowAssistantCancelView(APIView):
             deleted_at__isnull=True,
         ).first()
         if conv is None:
-            return Response({"detail": "Conversation not found."}, status=404)
+            raise NotFound("Conversation not found.")
         async_to_sync(request_cancel)(conv.id)
         return Response({"cancelled": True}, status=status.HTTP_202_ACCEPTED)

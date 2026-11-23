@@ -52,6 +52,7 @@ def encode_result(
         stdout=result.stdout,
         stderr=result.stderr,
         returncode=result.returncode,
+        error=result.error,
         mutations=mutations_message,
         reply_to_crew_channel=result.reply_to_crew_channel,
         ran=result.ran,

@@ -6,6 +6,7 @@ from loguru import logger
 
 from clients.errors import (
     ClientBadGatewayError,
+    ClientError,
     ClientNotAvailableError,
     ClientTimeoutError,
     ClientValidationError,
@@ -26,7 +27,13 @@ _RETRYABLE_ERRORS = (httpx.NetworkError, httpx.RemoteProtocolError)
 
 
 class KeyValueClient:
-    """Async client for Django's session-scoped internal key-value route."""
+    """Async client for Django's session-scoped internal key-value route.
+
+    Every call fails with a `ClientError`. Only a `ClientValidationError` carries text for
+    the user: Django refused with a 4xx and its `detail` is Django's own `message`. Every
+    other error's `detail` is raw (a 5xx body, a proxy page, a connection failure) and is
+    only for the log.
+    """
 
     def __init__(
         self,
@@ -103,7 +110,10 @@ class KeyValueClient:
         if response.status_code >= 500:
             raise ClientBadGatewayError(response.text)
         if response.status_code >= 400:
-            raise ClientValidationError(self._error_message(response))
+            reason = _django_reason(response)
+            if reason is None:
+                raise ClientError(response.text)
+            raise ClientValidationError(reason)
         return response.json()
 
     async def _send(self, url: str, payload: dict) -> httpx.Response:
@@ -130,9 +140,25 @@ class KeyValueClient:
                 await asyncio.sleep(wait)
         return await self._client.post(url, json=payload)
 
-    @staticmethod
-    def _error_message(response: httpx.Response) -> str:
-        try:
-            return response.json().get("message", response.text)
-        except ValueError:
-            return response.text
+
+def _django_reason(response: httpx.Response) -> str | None:
+    """Return the reason in Django's error envelope, or None when the body isn't one.
+
+    Django answers an error with `{"type", "errors": [{"code", "detail", "attr", "context"}]}`;
+    the reason is every item's `detail`, led by its `attr` when it names a field, joined with
+    `; `. Any other body, such as a proxy's HTML page, is not Django's reason and is never
+    shown.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    items = body.get("errors") if isinstance(body, dict) else None
+    if not isinstance(items, list):
+        return None
+    reasons = [
+        f"{item['attr']}: {item['detail']}" if item.get("attr") else item["detail"]
+        for item in items
+        if isinstance(item, dict) and isinstance(item.get("detail"), str) and item["detail"]
+    ]
+    return "; ".join(reasons) or None

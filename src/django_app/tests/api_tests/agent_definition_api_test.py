@@ -35,8 +35,8 @@ def _assert_invalid(response, field_name, code="invalid"):
     body = response.json()
     assert response.status_code == 400, body
     assert body["status_code"] == 400
-    assert body["code"] == code
-    assert field_name in body["message"]
+    assert body["errors"][0]["code"] == code
+    assert field_name in body["errors"][0]["detail"]
 
 
 @pytest.mark.django_db

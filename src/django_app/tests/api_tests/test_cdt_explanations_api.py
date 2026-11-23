@@ -27,6 +27,7 @@ from tables.models.graph_models import ClassificationDecisionTableNode
 from utils.logger import logger
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 
 def _url(node_id) -> str:
@@ -288,8 +289,8 @@ def test_stale_save_version_returns_bulk_save_conflict_and_writes_nothing(
 
     assert response.status_code == status.HTTP_409_CONFLICT, response.content
     assert response.json() == bulk_save_response.json()
-    assert response.json()["code"] == "graph_version_conflict"
-    assert "current_version: 5" in response.json()["message"]
+    assert response.json()["errors"][0]["code"] == "graph_version_conflict"
+    assert "current_version: 5" in error_text(response.json())
     cdt_node.refresh_from_db()
     graph_acme.refresh_from_db()
     assert cdt_node.metadata["explanations"] == {"old-step": _explanation(text="old")}
@@ -505,7 +506,7 @@ def test_missing_org_header_returns_400(client_as, admin_acme, cdt_node, graph_a
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.json()["code"] == "org_context_required"
+    assert response.json()["errors"][0]["code"] == "org_context_required"
     _assert_untouched(cdt_node, graph_acme)
 
 
@@ -563,7 +564,7 @@ def test_bulk_save_from_before_a_put_is_a_version_conflict(
 
     assert put.json()["save_version"] == 2
     assert stale_bulk_save.status_code == status.HTTP_409_CONFLICT, stale_bulk_save.content
-    assert stale_bulk_save.json()["code"] == "graph_version_conflict"
+    assert stale_bulk_save.json()["errors"][0]["code"] == "graph_version_conflict"
     cdt_node.refresh_from_db()
     graph_acme.refresh_from_db()
     assert cdt_node.metadata["explanations"] == {"k": _explanation()}

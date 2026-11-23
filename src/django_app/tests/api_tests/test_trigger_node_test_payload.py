@@ -94,7 +94,13 @@ def _bulk_save(client, graph: Graph, kind: str, entry: dict):
 
 
 def _node_errors(response, kind: str) -> dict:
-    return response.data["errors"][NODE_LISTS[kind]][0]["errors"]
+    """The node's error details by field, the node list and position taken off each `attr`."""
+    prefix = f"{NODE_LISTS[kind]}.0."
+    return {
+        item["attr"].removeprefix(prefix): [item["detail"]]
+        for item in response.data["errors"]
+        if item["attr"].startswith(prefix)
+    }
 
 
 def _without_test_payload(data):

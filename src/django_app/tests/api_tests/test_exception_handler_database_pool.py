@@ -32,9 +32,15 @@ def test_pool_timeout_renders_as_503_with_retry_after(exc):
     assert response.status_code == 503
     assert response["Retry-After"] == "5"
     assert response.data == {
-        "status_code": 503,
-        "code": "database_pool_exhausted",
-        "message": "The server is busy. Please retry shortly.",
+        "type": "server_error",
+        "errors": [
+            {
+                "code": "database_pool_exhausted",
+                "detail": "The server is busy. Please retry shortly.",
+                "attr": None,
+                "context": None,
+            }
+        ],
     }
 
 

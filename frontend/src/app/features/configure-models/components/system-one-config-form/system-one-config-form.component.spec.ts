@@ -382,9 +382,15 @@ describe('SystemOneConfigFormComponent', () => {
         fixture.componentInstance.submit();
         http.expectOne('/api/system-one-configs/11/').flush(
             {
-                status_code: 400,
-                code: 'invalid',
-                message: 'custom_name: A System One config with this name already exists.',
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'invalid',
+                        detail: 'custom_name: A System One config with this name already exists.',
+                        attr: null,
+                        context: null,
+                    },
+                ],
             },
             { status: 400, statusText: 'Bad Request' }
         );

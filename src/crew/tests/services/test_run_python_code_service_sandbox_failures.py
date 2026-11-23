@@ -2,7 +2,8 @@
 
 The sandbox can stay full, be unreachable, or lose an execution it accepted (a
 restart, an undelivered result). Each ends the wait with a returncode-1 result whose
-stderr tells the user why; only the backstop keeps the timeout returncode. A session
+`error` tells the user why, coded by the failure, and whose stderr stays empty; only the
+backstop keeps the timeout returncode. A session
 stop ends a submit that is still retrying a full sandbox instead of waiting out its
 retry budget.
 """
@@ -17,8 +18,12 @@ from clients import sandbox as sandbox_client_module
 from clients.sandbox import SandboxClient
 from services.graph.events import STOP_CHECK_INTERVAL_S, StopEvent
 from services.graph.exceptions import StopSession
-from services.run_python_code_service import RunPythonCodeService
-from tests.services.conftest import REJECTED_RETRY_AFTER_S, SANDBOX_BASE_URL
+from services.run_python_code_service import RunPythonCodeService, code_failure_text
+from tests.services.conftest import (
+    CREW_RESULT_CHANNEL,
+    REJECTED_RETRY_AFTER_S,
+    SANDBOX_BASE_URL,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -29,14 +34,20 @@ def fast_status_checks(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("sandbox_state", "expected_stderr"),
+    ("sandbox_state", "expected_error"),
     [
-        ("full", "Sandbox overloaded: no free capacity within 0 s."),
-        ("unreachable", "The sandbox is unreachable."),
+        (
+            "full",
+            {"code": "overloaded", "detail": "The server was too busy to run the code in time."},
+        ),
+        (
+            "unreachable",
+            {"code": "sandbox_unreachable", "detail": "The code couldn't run because of a server error."},
+        ),
     ],
 )
 async def test_submit_the_sandbox_does_not_take_fails_the_execution(
-    run_python_code_service, sandbox, make_python_code_data, sandbox_state, expected_stderr
+    run_python_code_service, sandbox, make_python_code_data, sandbox_state, expected_error
 ):
     setattr(sandbox, sandbox_state, True)
 
@@ -46,7 +57,8 @@ async def test_submit_the_sandbox_does_not_take_fails_the_execution(
     )
 
     assert result["returncode"] == 1
-    assert result["stderr"] == expected_stderr
+    assert result["error"] == expected_error
+    assert result["stderr"] == ""
     assert result["result_data"] is None
 
 
@@ -63,8 +75,73 @@ async def test_execution_the_sandbox_lost_fails_instead_of_waiting_for_the_backs
 
     assert result["execution_id"] == sandbox.submitted["execution_id"]
     assert result["returncode"] == 1
-    assert result["stderr"] == (
-        "The sandbox lost the execution (it restarted, or its result was not delivered)."
+    assert result["error"] == {
+        "code": "execution_lost",
+        "detail": "The code couldn't run because of a server error.",
+    }
+    assert result["stderr"] == ""
+
+
+HTML_BAD_GATEWAY = "<html><body>502 Bad Gateway from internal-proxy:8080</body></html>"
+SERVER_TRACEBACK = '{"type": "server_error", "errors": [{"code": "unknown", "detail": "/app/x.py"}]}'
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected_error"),
+    [
+        (
+            httpx.Response(
+                409,
+                json={
+                    "type": "client_error",
+                    "errors": [{"code": "venv_failed", "detail": "Venv 3 failed to build."}],
+                },
+            ),
+            {"code": "venv_failed", "detail": "Venv 3 failed to build."},
+        ),
+        (
+            httpx.Response(500, text=SERVER_TRACEBACK),
+            {"code": "server_error", "detail": "The code couldn't run because of a server error."},
+        ),
+        (
+            httpx.Response(500, text=HTML_BAD_GATEWAY),
+            {"code": "server_error", "detail": "The code couldn't run because of a server error."},
+        ),
+        (
+            httpx.Response(500),
+            {"code": "server_error", "detail": "The code couldn't run because of a server error."},
+        ),
+    ],
+    ids=["4xx-envelope", "5xx-envelope", "5xx-html", "5xx-empty"],
+)
+async def test_a_refused_submit_shows_only_a_fact_the_sandbox_meant_for_the_user(
+    run_python_code_service, sandbox, make_python_code_data, answer, expected_error
+):
+    sandbox.submit_answer = answer
+
+    result = await asyncio.wait_for(
+        run_python_code_service.run_code(python_code_data=make_python_code_data(), inputs={}),
+        timeout=5,
+    )
+
+    assert (result["returncode"], result["error"], result["stderr"]) == (1, expected_error, "")
+
+
+async def test_a_status_check_the_sandbox_refuses_fails_the_execution_with_the_generic_fact(
+    run_python_code_service, sandbox, make_python_code_data, fast_status_checks, monkeypatch
+):
+    monkeypatch.setattr(settings, "CODE_RESULT_TIMEOUT", None)
+    sandbox.status_answer = httpx.Response(401, text=HTML_BAD_GATEWAY)
+
+    result = await asyncio.wait_for(
+        run_python_code_service.run_code(python_code_data=make_python_code_data(), inputs={}),
+        timeout=5,
+    )
+
+    assert (result["returncode"], result["error"], result["stderr"]) == (
+        1,
+        {"code": "server_error", "detail": "The code couldn't run because of a server error."},
+        "",
     )
 
 
@@ -184,3 +261,27 @@ async def test_an_execution_the_sandbox_lost_is_logged_as_sandbox_lost(
             "execution_id": sandbox.submitted["execution_id"],
         }
     ]
+
+
+async def test_a_sandbox_error_with_an_extra_field_still_reaches_the_node(
+    run_python_code_service, sandbox, make_python_code_data
+):
+    running = asyncio.ensure_future(
+        run_python_code_service.run_code(python_code_data=make_python_code_data(), inputs={})
+    )
+    [task] = await sandbox.wait_for_tasks(1)
+    await sandbox.pubsub.apublish(
+        CREW_RESULT_CHANNEL,
+        {
+            "execution_id": task["execution_id"],
+            "result_data": None,
+            "stdout": "",
+            "stderr": "",
+            "returncode": 1,
+            "error": {"code": "worker_lost", "detail": "Sandbox worker was lost; the job may not have finished.", "attr": None},
+        },
+    )
+
+    result = await asyncio.wait_for(running, timeout=5)
+
+    assert code_failure_text(result) == "Sandbox worker was lost; the job may not have finished."

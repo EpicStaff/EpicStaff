@@ -8,6 +8,7 @@ back into an ``ExecutionResultMessage``.
 import asyncio
 
 import pytest
+from foundation.schemas import ErrorDetailSchema
 
 from common.contracts import (
     ExecutionJobMessage,
@@ -101,6 +102,18 @@ async def test_a_result_without_mutations_encodes_onto_the_wire():
     assert message.session_id == 7
     assert message.mutations is None
     assert message.not_run_reason is None
+    assert message.error is None
+
+
+async def test_a_worker_error_is_carried_onto_the_wire():
+    queue: asyncio.Queue[ExecutionResultMessage] = asyncio.Queue()
+    error = ErrorDetailSchema(code="overloaded", detail="The server was too busy.")
+
+    await QueueResultSink(queue).send(ExecutionResult(execution_id="exec-1", returncode=1, error=error))
+
+    assert queue.get_nowait().error == ErrorDetailSchema(
+        code="overloaded", detail="The server was too busy."
+    )
 
 
 async def test_mutations_are_carried_onto_the_wire():

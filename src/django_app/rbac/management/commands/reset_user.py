@@ -25,7 +25,11 @@ class Command(BaseCommand):
         except FormValidationError as exc:
             raise CommandError(
                 "Validation failed:\n  "
-                + "\n  ".join(f"{item['field']}: {item['reason']}" for item in exc.errors)
+                + "\n  ".join(
+                    f"{field}: {reason}"
+                    for field, reasons in exc.field_errors.items()
+                    for reason in reasons
+                )
             ) from exc
 
         user = ResetUserService().reset(email=email, password=password)

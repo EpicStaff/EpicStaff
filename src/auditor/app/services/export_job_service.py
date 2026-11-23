@@ -19,6 +19,16 @@ class JobStatus(StrEnum):
     FAILED = "failed"
 
 
+class ExportJobFailedError(Exception):
+    """A download asked for a job whose export ended in `JobStatus.FAILED`.
+
+    The cause was logged when the job failed; the caller only learns that it did.
+    """
+
+    code = "export_failed"
+    detail = "Export job failed."
+
+
 class ExportJobService:
     def __init__(self, redis_client: Redis):
         self._redis = redis_client

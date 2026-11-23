@@ -14,6 +14,7 @@ from tables.serializers.knowledge_serializers import (
 from tables.swagger_schemas.common_schemas import (
     INTERNAL_SERVER_ERROR_500_RESPONSE,
     UNAUTHORIZED_401_RESPONSE,
+    error_example,
 )
 
 DOCUMENTS_LIST_GET = {
@@ -27,7 +28,9 @@ DOCUMENTS_LIST_GET = {
             examples=[
                 OpenApiExample(
                     name="Invalid collection_id",
-                    value={"error": "Invalid collection_id parameter."},
+                    value=error_example(
+                        "error", "Invalid collection_id: 'abc'. Must be a valid integer."
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 )
@@ -40,7 +43,9 @@ DOCUMENTS_LIST_GET = {
             examples=[
                 OpenApiExample(
                     name="Collection not found",
-                    value={"error": "Collection not found."},
+                    value=error_example(
+                        "not_found", "No SourceCollection matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -61,7 +66,9 @@ DOCUMENTS_RETRIEVE_GET = {
             examples=[
                 OpenApiExample(
                     name="Document not found",
-                    value={"detail": "No DocumentMetadata matches the given query."},
+                    value=error_example(
+                        "not_found", "No DocumentMetadata matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -97,7 +104,9 @@ DOCUMENTS_DESTROY_DELETE = {
             examples=[
                 OpenApiExample(
                     name="Document not found",
-                    value={"error": "Document not found."},
+                    value=error_example(
+                        "not_found", "No DocumentMetadata matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -147,7 +156,10 @@ DOCUMENTS_UPLOAD_POST = {
             examples=[
                 OpenApiExample(
                     name="Validation error",
-                    value={"error": "Invalid file type."},
+                    value=error_example(
+                        "upload_rejected",
+                        "[0] File 'notes.exe' has invalid type '.exe'. Allowed types: pdf, csv, docx, txt, json, html, md",
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 )
@@ -160,7 +172,9 @@ DOCUMENTS_UPLOAD_POST = {
             examples=[
                 OpenApiExample(
                     name="Collection not found",
-                    value={"error": "Collection not found."},
+                    value=error_example(
+                        "not_found", "No SourceCollection matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -211,7 +225,9 @@ DOCUMENTS_BULK_DELETE_POST = {
             examples=[
                 OpenApiExample(
                     name="Document not found",
-                    value={"error": "Document not found."},
+                    value=error_example(
+                        "not_found", "No DocumentMetadata matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -247,7 +263,7 @@ DOCUMENTS_DOWNLOAD_GET = {
             examples=[
                 OpenApiExample(
                     name="Missing parameter",
-                    value={"error": "document_ids query parameter is required"},
+                    value=error_example("invalid", "document_ids query parameter is required"),
                     response_only=True,
                     status_codes=["400"],
                 )
@@ -260,7 +276,9 @@ DOCUMENTS_DOWNLOAD_GET = {
             examples=[
                 OpenApiExample(
                     name="Documents not found",
-                    value={"error": "Documents not found: 5, 6"},
+                    value=error_example(
+                        "documents_not_found", "Documents not found: 5, 6", "document_ids"
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -289,7 +307,9 @@ DOCUMENTS_PREVIEW_GET = {
             examples=[
                 OpenApiExample(
                     name="Document not found",
-                    value={"detail": "No DocumentMetadata matches the given query."},
+                    value=error_example(
+                        "not_found", "No DocumentMetadata matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -361,13 +381,19 @@ DOCUMENTS_COPY_POST = {
             examples=[
                 OpenApiExample(
                     name="Collection not found",
-                    value={"error": "Source collection with id 15 not found"},
+                    value=error_example(
+                        "collection_not_found",
+                        "Source collection with id 15 not found",
+                        "collection_id",
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 ),
                 OpenApiExample(
                     name="Documents not found",
-                    value={"error": "Documents not found: 5, 6"},
+                    value=error_example(
+                        "documents_not_found", "Documents not found: 5, 6", "document_ids"
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 ),
@@ -439,15 +465,22 @@ DOCUMENTS_IMPORT_FROM_STORAGE_POST = {
                 OpenApiExample(
                     name="Nothing importable",
                     value={
-                        "status_code": 400,
-                        "code": NothingToImportException.default_code,
-                        "message": NothingToImportException.default_detail,
-                        "skipped": [
+                        "type": "client_error",
+                        "errors": [
                             {
-                                "storage_file_id": 42,
-                                "path": "reports/data.xlsx",
-                                "reason": "unsupported_type",
-                            },
+                                "code": NothingToImportException.default_code,
+                                "detail": NothingToImportException.default_detail,
+                                "attr": None,
+                                "context": {
+                                    "skipped": [
+                                        {
+                                            "storage_file_id": 42,
+                                            "path": "reports/data.xlsx",
+                                            "reason": "unsupported_type",
+                                        },
+                                    ]
+                                },
+                            }
                         ],
                     },
                     response_only=True,
@@ -456,9 +489,15 @@ DOCUMENTS_IMPORT_FROM_STORAGE_POST = {
                 OpenApiExample(
                     name="Limit exceeded",
                     value={
-                        "status_code": 400,
-                        "code": StorageImportLimitExceededException.default_code,
-                        "message": "Cannot import 2500 files at once; the limit is 2000",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": StorageImportLimitExceededException.default_code,
+                                "detail": "Cannot import 2500 files at once; the limit is 2000",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -466,12 +505,16 @@ DOCUMENTS_IMPORT_FROM_STORAGE_POST = {
                 OpenApiExample(
                     name="Files rejected by upload validation",
                     value={
-                        "status_code": 400,
-                        "code": UploadRejectedException.default_code,
-                        "message": (
-                            "Upload rejected. Archive 'report.docx' expands to more than "
-                            "52428800 bytes"
-                        ),
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": UploadRejectedException.default_code,
+                                "detail": "Upload rejected. Archive 'report.docx' expands to more than "
+                                "52428800 bytes",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -492,7 +535,17 @@ DOCUMENTS_IMPORT_FROM_STORAGE_POST = {
             examples=[
                 OpenApiExample(
                     name="Not found",
-                    value={"status_code": 404, "code": "not_found", "message": "Not found."},
+                    value={
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "not_found",
+                                "detail": "Not found.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
+                    },
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -541,7 +594,9 @@ COLLECTION_DOCUMENTS_LIST_GET = {
             examples=[
                 OpenApiExample(
                     name="Invalid collection_id",
-                    value={"error": "Invalid collection_id parameter."},
+                    value=error_example(
+                        "error", "Invalid collection_id: 'abc'. Must be a valid integer."
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 )
@@ -554,7 +609,9 @@ COLLECTION_DOCUMENTS_LIST_GET = {
             examples=[
                 OpenApiExample(
                     name="Collection not found",
-                    value={"error": "Collection not found."},
+                    value=error_example(
+                        "not_found", "No SourceCollection matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )

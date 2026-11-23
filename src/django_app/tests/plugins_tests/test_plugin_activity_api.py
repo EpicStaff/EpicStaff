@@ -219,7 +219,7 @@ def test_another_organization_s_event_is_not_found(org_admin_client, beta):
     response = org_admin_client.get(f"{ACTIVITY_URL}{event.pk}/")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "not_found"
+    assert response.json()["errors"][0]["code"] == "not_found"
 
 
 def test_a_member_without_audit_read_is_refused(client_as, member_only, acme):
@@ -229,7 +229,7 @@ def test_a_member_without_audit_read_is_refused(client_as, member_only, acme):
     for url in (ACTIVITY_URL, SERVICE_ACCOUNTS_URL):
         response = client.get(url)
         assert response.status_code == 403
-        assert response.json()["code"] == "permission_denied"
+        assert response.json()["errors"][0]["code"] == "permission_denied"
 
 
 def test_a_non_member_is_refused(client_as, member_only, beta):
@@ -373,7 +373,7 @@ def test_an_unknown_plugin_without_events_is_not_found(superadmin_client, servic
     response = superadmin_client.get("/api/admin/plugins/missing/activity/")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_not_found"
 
 
 def test_events_outlive_the_plugin_row(client, superadmin_client, weather):

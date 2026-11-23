@@ -11,6 +11,7 @@ from tables.models.realtime_models import OpenAIRealtimeConfig
 from tables.services.secrets import secret_service
 from tables.utils.litellm_model_info import validate_reasoning_effort
 
+from tests.error_envelope import error_codes
 from tests.fixtures import *
 from tests.rbac_cross_org_fixtures import beta  # noqa: F401
 
@@ -364,6 +365,7 @@ def test_post_apply_returns_404_when_no_quickstart(auth_client, quickstart_apply
     response = auth_client.post(quickstart_apply_url, format="json")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
+    assert error_codes(response.json()) == ["quickstart_not_found"]
 
 
 @pytest.mark.django_db

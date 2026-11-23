@@ -1,5 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { provideHttpClient, withInterceptors } from '@angular/common/http';
+import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -8,7 +8,6 @@ import { AdminCreateUserResponse, GetOrganizationResponse, OrganizationRetention
 import { EMPTY, of, Subject } from 'rxjs';
 import type { Mock } from 'vitest';
 
-import { validationErrorsInterceptor } from '../../../../core/interceptors/validation-errors.interceptor';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ConfigService } from '../../../../services/config';
@@ -104,7 +103,7 @@ describe('CreateOrganizationDialogComponent saving an organization', () => {
         TestBed.configureTestingModule({
             imports: [CreateOrganizationDialogComponent],
             providers: [
-                provideHttpClient(withInterceptors([validationErrorsInterceptor])),
+                provideHttpClient(),
                 provideHttpClientTesting(),
                 { provide: ConfigService, useValue: { apiUrl: API_URL } },
                 { provide: DialogRef, useValue: dialogRef },
@@ -222,7 +221,7 @@ describe('CreateOrganizationDialogComponent saving an organization', () => {
         clickSave();
         flushOrganizationUpdate();
         http.expectOne({ method: 'PATCH', url: RETENTION_URL }).flush(
-            { message: 'Server error' },
+            { type: 'server_error', errors: [{ code: 'unknown', detail: 'Server error', attr: null, context: null }] },
             { status: 500, statusText: 'Internal Server Error' }
         );
         settle();
@@ -240,7 +239,12 @@ describe('CreateOrganizationDialogComponent saving an organization', () => {
         clickSave();
         flushOrganizationUpdate();
         http.expectOne({ method: 'PATCH', url: RETENTION_URL }).flush(
-            { errors: [{ field: 'sessions_days', value: 365, reason: 'Exceeds the instance maximum.' }] },
+            {
+                type: 'client_error',
+                errors: [
+                    { code: 'invalid', detail: 'Exceeds the instance maximum.', attr: 'sessions_days', context: null },
+                ],
+            },
             { status: 400, statusText: 'Bad Request' }
         );
         settle();
@@ -252,6 +256,30 @@ describe('CreateOrganizationDialogComponent saving an organization', () => {
         expectNoMembersRequest();
         expect(dialogRef.close).not.toHaveBeenCalled();
         expect(saveIsBlocked()).toBe(false);
+    });
+
+    it('shows retention field errors of the error envelope inline under their select, without a toast', () => {
+        chooseRetention('Sessions', '1 year');
+        removeMember();
+
+        clickSave();
+        flushOrganizationUpdate();
+        http.expectOne({ method: 'PATCH', url: RETENTION_URL }).flush(
+            {
+                type: 'client_error',
+                errors: [
+                    { code: 'invalid', detail: 'Exceeds the instance maximum.', attr: 'sessions_days', context: null },
+                ],
+            },
+            { status: 400, statusText: 'Bad Request' }
+        );
+        settle();
+
+        expect(retentionColumn('Sessions').querySelector('app-validation-errors')?.textContent).toContain(
+            'Exceeds the instance maximum.'
+        );
+        expect(toast.error).not.toHaveBeenCalled();
+        expect(dialogRef.close).not.toHaveBeenCalled();
     });
 
     it('re-enables Save and sends nothing when the retention lowering is cancelled', () => {

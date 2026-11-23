@@ -12,6 +12,7 @@ from tables.models.knowledge_models import (
 from tables.models.knowledge_models.collection_models import DocumentMetadata
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
+from tests.error_envelope import attr_details, error_codes
 
 
 # ---- fixtures ----
@@ -139,7 +140,13 @@ def test_create_or_update_rejects_cross_org_embedder(client_admin, org_a, org_b)
         {"embedder_id": other_embedder.id},
         format="json",
     )
-    assert resp.status_code == 404  # embedder belongs to another org
+    # The body names the embedder, so it is a 400 on that field, worded as for a missing one.
+    assert resp.status_code == 400
+    assert error_codes(resp.json()) == ["embedder_not_found"]
+    assert attr_details(resp.json()) == [
+        {"attr": "embedder_id", "detail": f"Embedder with id {other_embedder.id} not found"}
+    ]
+    assert not NaiveRag.objects.filter(base_rag_type__source_collection=coll).exists()
 
 
 # ---- NaiveRagDocumentConfig (get_object via scoped queryset) ----

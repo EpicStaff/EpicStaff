@@ -2,7 +2,7 @@
 
 The storage scope is validated by sandbox_new now, which answers 400 when an
 execution asks for storage it may not have. run_code() turns that rejection into
-a returncode-1 result; the stderr it returns and the line it logs both reach
+a returncode-1 result; the error it returns and the line it logs both reach
 places the execution's `secrets` plaintext and `storage_credentials.secret_key`
 must never appear in.
 """
@@ -46,13 +46,14 @@ async def test_rejected_submit_fails_the_execution_without_waiting_for_a_result(
 
     assert result["returncode"] == 1
     assert result["result_data"] is None
-    assert REJECTION in result["stderr"]
+    assert result["error"] == {"code": "invalid", "detail": REJECTION}
+    assert result["stderr"] == ""
     assert result["execution_id"] == sandbox.submitted["execution_id"]
     assert run_python_code_service._pending_results == {}
 
 
 @pytest.mark.asyncio
-async def test_rejected_submit_keeps_secrets_out_of_stderr_and_logs(
+async def test_rejected_submit_keeps_secrets_out_of_the_error_and_logs(
     captured_logs, run_python_code_service, sandbox, make_python_code_data
 ):
     sandbox.rejects_with = REJECTION
@@ -71,5 +72,5 @@ async def test_rejected_submit_keeps_secrets_out_of_stderr_and_logs(
 
     logged = "\n".join(captured_logs)
     for forbidden in (SECRET_VALUE, STORAGE_SECRET_KEY, "MY_SECRET", "input_value"):
-        assert forbidden not in result["stderr"]
+        assert forbidden not in result["error"]["detail"]
         assert forbidden not in logged

@@ -18,7 +18,7 @@ def test_first_setup_is_refused_before_anything_is_written_in_cli_only_mode(api_
     )
 
     assert r.status_code == 403
-    assert r.json()["code"] == "first_setup_disabled"
+    assert r.json()["errors"][0]["code"] == "first_setup_disabled"
     assert get_user_model().objects.count() == 0
 
 

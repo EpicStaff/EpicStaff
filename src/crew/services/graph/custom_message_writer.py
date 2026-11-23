@@ -1,5 +1,6 @@
 from typing import Any
 
+from foundation.schemas import ErrorDetailSchema
 from langgraph.types import StreamWriter
 from loguru import logger
 from models.graph_models import (
@@ -12,11 +13,8 @@ from models.graph_models import (
     StartMessageData,
 )
 from models.state import State
-from src.shared.public_error import (
-    PublicErrorMessage,
-    build_public_error_message,
-    new_error_correlation_id,
-)
+from services.graph.exceptions import NODE_FAILED_CODE
+from utils.node_label import runtime_node_name_to_label
 
 
 class CustomSessionMessageWriter:
@@ -123,48 +121,43 @@ class CustomSessionMessageWriter:
         node_type: str = "",
         *,
         error: Exception | str | None = None,
-        public_details: str | None = None,
+        public_error: ErrorDetailSchema | None = None,
     ):
         """
         Add an error message to the graph.
 
-        When no `public_details` is supplied, the raw error text is logged, not
-        streamed, since it can carry sensitive data. `public_details`, when supplied, is
-        streamed verbatim instead, and nothing extra is logged here: it is the
-        caller's responsibility to only pass text that is already safe to show.
-        Most such callers log the raw error themselves before calling this
-        method; where one doesn't, the raw text still reaches the logs once
-        the exception reaches a handler further up that does - just under a
-        different correlation id than the one this call would have minted.
+        When no `public_error` is supplied, the raw error is logged with the
+        session and node, and the stream gets the `node_failed` item with the fixed
+        fact `Node "<name>" failed.`: raw text can carry credentials or internal
+        hosts. `public_error`, when supplied, is streamed verbatim instead, and
+        nothing extra is logged here: it is the caller's responsibility to only pass
+        an item that is already safe to show and to log the raw error itself if it
+        needs to.
 
         Args:
             writer (StreamWriter): A stream writer to write the message to.
             execution_order (int): The order of execution of the node.
             node_type (str): The emitting node's BaseNode.TYPE, audit-only.
             error (Exception | str | None): The exception or error text that
-                was raised. Required when `public_details` is omitted (it is
-                what gets logged and sanitized); ignored otherwise.
-            public_details (str | None): Already-safe text to stream instead of
-                the generic message. Callers pass this for domain errors whose
-                wording is meant for the user. Not sanitized by this method.
+                was raised. Required when `public_error` is omitted (it is
+                what gets logged); ignored otherwise.
+            public_error (ErrorDetailSchema | None): Already-safe item to stream
+                instead of the fixed fact. Callers pass this for domain errors whose
+                code and wording are meant for the user. Not sanitized by this method.
         """
-        if public_details is None:
-            correlation_id = new_error_correlation_id()
+        if public_error is None:
             logger.opt(exception=error if isinstance(error, Exception) else None).error(
-                "Node execution failed: {error} (correlation_id={correlation_id}, "
-                "session_id={session_id}, node_name={node_name})",
+                "Node execution failed: {error} (session_id={session_id}, node_name={node_name})",
                 error=str(error),
-                correlation_id=correlation_id,
                 session_id=session_id,
                 node_name=node_name,
             )
-            details = build_public_error_message(
-                PublicErrorMessage.NODE_EXECUTION_FAILED, correlation_id
+            public_error = ErrorDetailSchema(
+                code=NODE_FAILED_CODE,
+                detail=f'Node "{runtime_node_name_to_label(node_name)}" failed.',
             )
-        else:
-            details = public_details
         error_message_data = ErrorMessageData(
-            details=details,
+            error=public_error.model_dump(),
         )
         graph_message = GraphMessage(
             session_id=session_id,

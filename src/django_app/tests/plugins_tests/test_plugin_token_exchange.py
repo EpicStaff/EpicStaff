@@ -23,6 +23,7 @@ from tests.plugins_tests.login_helpers import (
     pkce_pair,
     session_cookie,
 )
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("login_platform")]
 
@@ -119,8 +120,8 @@ def test_a_wrong_verifier_burns_the_code(client, login):
     wrong = exchange(client, code, pkce_pair()[0])
     right_afterwards = exchange(client, code, verifier)
 
-    assert (wrong.status_code, wrong.json()["code"]) == (400, "invalid_grant")
-    assert (right_afterwards.status_code, right_afterwards.json()["code"]) == (400, "invalid_grant")
+    assert (wrong.status_code, wrong.json()["errors"][0]["code"]) == (400, "invalid_grant")
+    assert (right_afterwards.status_code, right_afterwards.json()["errors"][0]["code"]) == (400, "invalid_grant")
 
 
 def test_a_code_works_once(client, login):
@@ -129,7 +130,7 @@ def test_a_code_works_once(client, login):
     assert exchange(client, code, verifier).status_code == 200
     again = exchange(client, code, verifier)
 
-    assert (again.status_code, again.json()["code"]) == (400, "invalid_grant")
+    assert (again.status_code, again.json()["errors"][0]["code"]) == (400, "invalid_grant")
 
 
 def test_an_expired_code_is_refused(client, login):
@@ -139,7 +140,7 @@ def test_an_expired_code_is_refused(client, login):
 
     response = exchange(client, code, verifier)
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid_grant")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid_grant")
 
 
 def test_a_password_change_after_the_code_was_issued_burns_it(client, login, member_only):
@@ -149,15 +150,15 @@ def test_a_password_change_after_the_code_was_issued_burns_it(client, login, mem
 
     response = exchange(client, code, verifier)
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid_grant")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid_grant")
     assert not get_redis_connection("default").exists(_code_key(code))
-    assert exchange(client, code, verifier).json()["code"] == "invalid_grant"
+    assert exchange(client, code, verifier).json()["errors"][0]["code"] == "invalid_grant"
 
 
 def test_an_unknown_code_is_refused(client, grant):
     response = exchange(client, "c" * 43, pkce_pair()[0])
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid_grant")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid_grant")
     _assert_no_store_and_no_cookie(response)
 
 
@@ -171,7 +172,7 @@ def test_the_exchange_must_come_from_the_plugin_s_own_origin(client, login, orig
 
     response = exchange(client, code, verifier, origin=origin)
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid_grant")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid_grant")
     assert exchange(client, code, verifier).status_code == 400
 
 
@@ -184,7 +185,7 @@ def test_text_plain_is_refused_before_the_code_is_touched(client, login, body):
 
     response = client.post(TOKEN_URL, body, content_type="text/plain", HTTP_ORIGIN=WEATHER_ORIGIN)
 
-    assert (response.status_code, response.json()["code"]) == (415, "unsupported_media_type")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (415, "unsupported_media_type")
     _assert_no_store_and_no_cookie(response)
     assert exchange(client, code, verifier).status_code == 200
 
@@ -225,8 +226,8 @@ def test_a_body_of_the_wrong_shape_is_refused_without_echoing_it_and_leaves_the_
     )
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid"
-    assert sorted(error["loc"] for error in response.json()["errors"]) == locs
+    assert response.json()["errors"][0]["code"] == "invalid"
+    assert sorted(error["attr"] for error in attr_details(response.json())) == locs
     assert code not in response.content.decode()
     assert verifier not in response.content.decode()
     assert exchange(client, code, verifier).status_code == 200
@@ -274,7 +275,7 @@ def test_access_lost_before_the_exchange_is_refused(client, login, member_only, 
 
     response = exchange(client, code, verifier)
 
-    assert (response.status_code, response.json()["code"]) == (403, "plugin_access_denied")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (403, "plugin_access_denied")
     _assert_no_store_and_no_cookie(response)
 
 
@@ -341,6 +342,6 @@ def test_the_exchange_is_throttled_per_client_address(client, grant, monkeypatch
     response = client.post(TOKEN_URL, "", content_type="text/plain", HTTP_ORIGIN=WEATHER_ORIGIN)
 
     assert statuses == [415, 415, 429]
-    assert (response.status_code, response.json()["code"]) == (429, "throttled")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (429, "throttled")
     assert "Retry-After" in response.headers
     _assert_no_store_and_no_cookie(response)

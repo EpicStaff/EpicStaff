@@ -343,7 +343,7 @@ def test_entry_rename_keeps_value_and_clears_run_attribution(admin_client, org_a
 
 
 KEY_RULE_MESSAGE = (
-    "key: use only letters, digits and _, don't start with a digit, and keep it to at most "
+    "use only letters, digits and _, don't start with a digit, and keep it to at most "
     "512 characters"
 )
 
@@ -553,7 +553,7 @@ def test_lookup_entries(member_client, table_a):
 
 # --- rejected writes and other organizations ------------------------------
 
-KEY_TAKEN = "key: An entry with this key already exists in this table."
+KEY_TAKEN = "An entry with this key already exists in this table."
 
 
 def _entry(table, key="mine", value=2):
@@ -582,8 +582,9 @@ def test_invalid_write_is_400_and_changes_nothing(admin_client, table_a, table_b
 
     assert response.status_code == 400, response.content
     if message is not None:
-        # The global exception handler flattens field errors into `message`.
-        assert response.data["message"] == message
+        assert [(item["attr"], item["detail"]) for item in response.data["errors"]] == [
+            ("key", message)
+        ]
     # Only the seeded rows exist, unchanged and in their own table.
     assert set(KeyValueTableEntry.objects.values_list("table_id", "key", "value")) <= {
         (table_a.id, "taken", 1),

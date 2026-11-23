@@ -128,7 +128,7 @@ def _is_binned(row):
 
 def _assert_refused(response):
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-    assert response.data["code"] == DENIED_CODE
+    assert response.data["errors"][0]["code"] == DENIED_CODE
 
 
 def _binned_flow(org, secret):
@@ -229,7 +229,7 @@ class TestSingleRestore:
         response = _bin_restore(neither_use_client, FLOWS_URL, flow)
 
         assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-        assert response.data["code"] == FlowWithTriggerNodesRequiresUsePermissionError.default_code
+        assert response.data["errors"][0]["code"] == FlowWithTriggerNodesRequiresUsePermissionError.default_code
         assert _is_binned(flow)
 
 

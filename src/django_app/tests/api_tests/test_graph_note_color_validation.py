@@ -10,6 +10,7 @@ from rest_framework import serializers, status
 
 from tables.models.graph_models import GraphNote
 from tables.validators.note_metadata import drop_invalid_note_color, validate_note_metadata
+from tests.error_envelope import attr_details, error_text
 from tests.fixtures import *  # noqa: F401,F403
 
 # Every colour the frontend note colour picker offers.
@@ -85,7 +86,7 @@ def test_rest_create_rejects_unsafe_colour(auth_client, graph, color):
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["message"] == f"metadata: {COLOR_ERROR}"
+    assert error_text(response.data) == f"metadata: {COLOR_ERROR}"
     assert not GraphNote.objects.filter(graph=graph).exists()
 
 
@@ -142,9 +143,9 @@ def test_bulk_save_rejects_unsafe_colour(auth_client, graph):
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"] == {
-        "graph_note_list": [{"index": 1, "errors": {"metadata": [COLOR_ERROR]}}]
-    }
+    assert attr_details(response.data) == [
+        {"attr": "graph_note_list.1.metadata", "detail": COLOR_ERROR}
+    ]
     assert not GraphNote.objects.filter(graph=graph).exists()
 
 

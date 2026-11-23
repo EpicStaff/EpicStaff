@@ -30,7 +30,7 @@ from tables.models.knowledge_models import (
     KNOWLEDGE_NODE_SEARCH_CONFIG_MODELS,
     SourceCollection,
 )
-from utils.exception_handler import flatten_error_detail
+from tables.import_export.utils import flatten_error_detail
 
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F403
@@ -369,8 +369,7 @@ def test_the_flow_import_endpoint_answers_400_naming_the_node_and_field(
     response = client.post("/api/graphs/import/", {"file": upload}, format="multipart")
 
     assert response.status_code == 400, response.content
-    message = response.json()["message"]
-    assert 'Knowledge node "Lookup"' in message
-    assert "graph_local_search_config" in message
-    assert "top_k_entities" in message
+    attrs = [error["attr"] for error in response.json()["errors"]]
+    assert all(attr.startswith('Knowledge node "Lookup".graph_local_search_config.') for attr in attrs)
+    assert any(attr.endswith(".top_k_entities") for attr in attrs)
     assert Graph.objects.filter(org=acme).count() == 1

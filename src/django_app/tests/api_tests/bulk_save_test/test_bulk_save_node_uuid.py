@@ -34,6 +34,7 @@ from tables.services.graph_bulk_save_service.node_uuid_validator import (
     NodeUuidValidator,
 )
 from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
+from tests.error_envelope import details_by_attr
 from tests.fixtures import *  # noqa: F401,F403
 from tests.graph_node_builders import NODE_MODELS, create_node
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -83,8 +84,7 @@ def _save(client, graph: Graph, **lists):
 
 
 def _uuid_error(response, list_key: str, index: int = 0) -> list:
-    item_errors = [item for item in response.data["errors"][list_key] if item["index"] == index]
-    return item_errors[0]["errors"]["uuid"]
+    return details_by_attr(response.data)[f"{list_key}.{index}.uuid"]
 
 
 def _all_active_node_count(graph: Graph) -> int:
@@ -170,9 +170,7 @@ def test_create_with_malformed_uuid_returns_400(auth_client, graph, malformed_uu
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
     # The exact body proves the malformed value is not echoed back.
-    assert response.data["errors"] == {
-        "graph_note_list": [{"index": 1, "errors": {"uuid": [message]}}]
-    }
+    assert details_by_attr(response.data) == {"graph_note_list.1.uuid": [message]}
     assert not GraphNote.objects.filter(graph=graph).exists()
 
 
@@ -315,9 +313,7 @@ def test_uuid_of_an_existing_node_in_any_table_returns_400(auth_client, graph, e
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"] == {
-        "python_node_list": [{"index": 0, "errors": {"uuid": [TAKEN_UUID_MESSAGE]}}]
-    }
+    assert details_by_attr(response.data) == {"python_node_list.0.uuid": [TAKEN_UUID_MESSAGE]}
     assert _all_active_node_count(graph) == 1
     graph.refresh_from_db()
     assert graph.save_version == save_version
@@ -431,7 +427,7 @@ def test_conflict_found_only_at_write_time_returns_400(auth_client, graph):
     save_version = graph.save_version
 
     # Bypass the Pass 1 check so the insert hits the database constraint.
-    with mock.patch.object(NodeUuidValidator, "find_errors", return_value={}):
+    with mock.patch.object(NodeUuidValidator, "find_errors", return_value=[]):
         response = _save(
             auth_client,
             graph,
@@ -442,7 +438,7 @@ def test_conflict_found_only_at_write_time_returns_400(auth_client, graph):
         )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"] == {"nodes": [TAKEN_UUID_MESSAGE]}
+    assert details_by_attr(response.data) == {None: [TAKEN_UUID_MESSAGE]}
     assert list(GraphNote.objects.filter(graph=graph)) == [existing_note]
     graph.refresh_from_db()
     assert graph.save_version == save_version

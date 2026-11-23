@@ -5,6 +5,7 @@ from typing import Any
 from core import config
 from domain.ports.i_python_code_executor_service import IPythonCodeExecutorService
 from domain.ports.i_redis_messaging_service import IRedisMessagingService
+from foundation.schemas import ErrorDetailSchema
 from foundation.transport.http import ClientError
 from loguru import logger
 from pydantic import ValidationError
@@ -58,12 +59,11 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
                 "Storage tool called with no files attached (execution_id={})",
                 unique_task_id,
             )
-            return CodeResultData(
-                execution_id=unique_task_id,
-                stderr="No files are attached to this agent, so this tool can't use storage.",
-                stdout="",
-                returncode=1,
-            ).model_dump()
+            return _failed_result(
+                unique_task_id,
+                code="no_files_attached",
+                detail="No files are attached to this agent, so this tool can't use storage.",
+            )
         try:
             code_task_data = CodeTaskData(
                 venv_id=python_code_data.venv_id,
@@ -88,12 +88,11 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
             logger.error(
                 "Invalid storage scope for code execution (execution_id={})", unique_task_id
             )
-            return CodeResultData(
-                execution_id=unique_task_id,
-                stderr="Invalid storage scope for code execution.",
-                stdout="",
-                returncode=1,
-            ).model_dump()
+            return _failed_result(
+                unique_task_id,
+                code="invalid_storage_scope",
+                detail="Invalid storage scope for code execution.",
+            )
 
         # Subscribe before submitting so a fast result is never missed. Every exit
         # closes it: one subscription per execution would otherwise outlive the call.
@@ -107,20 +106,30 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
                 backstop=config.REALTIME_CODE_RESULT_TIMEOUT,
             )
         except (SandboxError, ClientError) as error:
-            # The class name only: the message is for the user, who gets it as stderr.
+            # The class name only: the message is for the user, who gets it as the error's detail.
             logger.error(
                 "Code execution failed (execution_id={}, {})",
                 unique_task_id,
                 type(error).__name__,
             )
-            return CodeResultData(
-                execution_id=unique_task_id,
-                stderr=str(error),
-                stdout="",
-                returncode=1,
-            ).model_dump()
+            return _failed_result(
+                unique_task_id,
+                code=error.code if isinstance(error, SandboxError) else "server_error",
+                detail=str(error),
+            )
         finally:
             await pubsub.aclose()
+
+
+def _failed_result(execution_id: str, *, code: str, detail: str) -> dict:
+    """A result for an execution the sandbox never ran, the failure as its `error`."""
+    return CodeResultData(
+        execution_id=execution_id,
+        stderr="",
+        stdout="",
+        returncode=1,
+        error=ErrorDetailSchema(code=code, detail=detail).model_dump(include={"code", "detail"}),
+    ).model_dump()
 
 
 async def _read_result(pubsub, execution_id: str) -> dict:

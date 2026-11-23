@@ -116,7 +116,7 @@ class TestBinningTheFlow:
         everything = acme_admin_client.post(f"{SESSIONS_URL}export-jobs/", {}, format="json")
 
         assert picked.status_code == 404
-        assert picked.json()["code"] == "export_entities_not_found"
+        assert picked.json()["errors"][0]["code"] == "export_entities_not_found"
         assert everything.status_code == 404
 
     def test_bulk_delete_leaves_the_session_alone(self, acme_admin_client, binned_flow, session):

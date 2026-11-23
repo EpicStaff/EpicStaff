@@ -3,7 +3,7 @@ import time
 from dataclasses import dataclass
 
 from domain.errors import InvalidTokenError, NotFoundError, NotMemberError
-from litestar.exceptions import ClientException
+from litestar.exceptions import ValidationException
 
 from application.ports import AbstractIdentityProvider
 
@@ -37,7 +37,8 @@ class OperatorIdentity:
         if not jwt:
             raise InvalidTokenError("Bearer token required.")
         if not org_header or not (org_header.isascii() and org_header.isdigit()):
-            raise ClientException("X-Organization-Id header is required.")
+            message = "X-Organization-Id header is required."
+            raise ValidationException(message, extra=[{"message": message}])
         org_id = int(org_header)
         key = (hashlib.sha256(jwt.encode("utf-8")).hexdigest(), org_id)
         cached = self._cache.get(key)

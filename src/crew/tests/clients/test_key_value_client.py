@@ -7,6 +7,7 @@ import pytest
 from clients import key_value as key_value_module
 from clients.errors import (
     ClientBadGatewayError,
+    ClientError,
     ClientNotAvailableError,
     ClientTimeoutError,
     ClientValidationError,
@@ -71,12 +72,33 @@ def waits(monkeypatch):
     yield recorded
 
 
+def _django_error(*items):
+    return {
+        "type": "client_error",
+        "errors": [{"code": "x", "detail": detail, "attr": attr, "context": None} for attr, detail in items],
+    }
+
+
 def _respond_404(request):
-    return httpx.Response(404, json={"status_code": 404, "code": "x", "message": "Key-value table 3 not found."})
+    return httpx.Response(404, json=_django_error((None, "Key-value table 3 not found.")))
+
+
+def _respond_400_field_errors(request):
+    return httpx.Response(
+        400, json=_django_error(("keys", "This list may not be empty."), (None, "Table is read-only."))
+    )
 
 
 def _respond_500(request):
     return httpx.Response(500, text="boom")
+
+
+def _respond_400_html(request):
+    return httpx.Response(400, text="<html>Bad Request</html>")
+
+
+def _respond_400_without_envelope(request):
+    return httpx.Response(400, text='{"detail": "Bad Request"}')
 
 
 def _time_out(request):
@@ -88,11 +110,15 @@ def _time_out(request):
     ("respond", "error", "message"),
     [
         (_respond_404, ClientValidationError, "Key-value table 3 not found."),
-        (_respond_500, ClientBadGatewayError, None),
+        (_respond_400_field_errors, ClientValidationError, "keys: This list may not be empty.; Table is read-only."),
+        (_respond_500, ClientBadGatewayError, "boom"),
+        # Only Django's error envelope is a reason; any other 4xx body is not one.
+        (_respond_400_html, ClientError, "<html>Bad Request</html>"),
+        (_respond_400_without_envelope, ClientError, '{"detail": "Bad Request"}'),
         # After a read timeout Django may still be running the request, so it is not repeated.
-        (_time_out, ClientTimeoutError, None),
+        (_time_out, ClientTimeoutError, "Django did not respond in time."),
     ],
-    ids=["4xx", "5xx", "timeout"],
+    ids=["4xx", "4xx-several-errors", "5xx", "4xx-html", "4xx-without-envelope", "timeout"],
 )
 async def test_failure_is_reported_without_retrying(waits, respond, error, message):
     calls = []
@@ -102,8 +128,10 @@ async def test_failure_is_reported_without_retrying(waits, respond, error, messa
         return respond(request)
 
     client = await _started(handler)
-    with pytest.raises(error, match=message):
+    with pytest.raises(ClientError) as raised:
         await client.read(7, 3, ["a"])
+    assert type(raised.value) is error
+    assert raised.value.detail == message
     assert len(calls) == 1
     assert waits == []
 

@@ -155,11 +155,63 @@ async def test_sandbox_task_carries_the_tool_configuration(python_code_overrides
             "partial output", True,
         ),
         (ConnectionError("SandboxClient stopped"), "SandboxClient stopped", True),
-        (SandboxOverloadedError(120), "Sandbox overloaded: no free capacity within 120 s.", True),
-        (SandboxExecutionLostError(), "The sandbox lost the execution (it restarted, or its result was not delivered).", True),
-        (SandboxResultTimeoutError(2100), "Timed out waiting for the result after 2100 s.", True),
+        (SandboxOverloadedError(120), "The server was too busy to run the code in time.", True),
+        (SandboxExecutionLostError(), "The code couldn't run because of a server error.", True),
+        (SandboxResultTimeoutError(2100), "The code's result didn't arrive in time.", True),
+        (
+            CodeResultData(
+                execution_id="exec-1",
+                stderr="",
+                stdout="",
+                returncode=1,
+                error={"code": "worker_lost", "detail": "Sandbox worker was lost; the job may not have finished."},
+            ),
+            "Sandbox worker was lost; the job may not have finished.", True,
+        ),
+        (
+            CodeResultData(
+                execution_id="exec-1",
+                stderr="",
+                stdout="",
+                returncode=1,
+                error={"code": "worker_lost", "reason": "/opt/sandbox/worker.py line 3"},
+            ),
+            "The code couldn't run because of a server error.", True,
+        ),
+        (
+            CodeResultData(
+                execution_id="exec-1",
+                stderr="child wrote this",
+                stdout="",
+                returncode=1,
+                error={"code": "result_too_large", "detail": "The function's return value is too big to save."},
+            ),
+            "child wrote this\nThe function's return value is too big to save.", True,
+        ),
+        (
+            CodeResultData(
+                execution_id="exec-1",
+                stderr="",
+                stdout="",
+                returncode=1,
+                error={"code": "worker_lost", "detail": "Sandbox worker was lost; the job may not have finished.", "attr": None},
+            ),
+            "Sandbox worker was lost; the job may not have finished.", True,
+        ),
     ],
-    ids=["success", "stderr", "nonzero-uses-stdout", "client-stopped", "sandbox-full", "execution-lost", "backstop"],
+    ids=[
+        "success",
+        "stderr",
+        "nonzero-uses-stdout",
+        "client-stopped",
+        "sandbox-full",
+        "execution-lost",
+        "backstop",
+        "sandbox-error-detail",
+        "malformed-sandbox-error",
+        "code-wrote-then-sandbox-failed",
+        "sandbox-error-with-an-extra-field",
+    ],
 )
 async def test_sandbox_result_becomes_the_tool_result(sandbox_result, expected_content, expected_error):
     result = await PythonCodeToolExecutor(FakeSandbox(sandbox_result), _make_tool_data())({})

@@ -7,6 +7,7 @@ from django.utils.module_loading import import_string
 from tables.models.embedding_models import EmbeddingConfig
 from tables.models.llm_models import LLMConfig
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 CONFIG_ENDPOINTS = [
     ("/api/embedding-configs/", EmbeddingConfig),
@@ -93,7 +94,7 @@ def test_malformed_extra_headers_are_rejected(client, endpoint, model, extra_hea
 
     assert response.status_code == 400
     # The global exception handler folds field errors into the "message" string.
-    assert "extra_headers" in response.json()["message"]
+    assert "extra_headers" in error_text(response.json())
     assert not model.objects.filter(custom_name="bad-headers").exists()
 
 
@@ -114,7 +115,7 @@ def test_rejection_message_names_the_offending_header(client, extra_headers, off
     )
 
     assert response.status_code == 400
-    assert f"'{offending}'" in response.json()["message"]
+    assert f"'{offending}'" in error_text(response.json())
 
 
 @pytest.mark.django_db

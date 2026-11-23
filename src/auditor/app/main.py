@@ -1,3 +1,6 @@
+from collections.abc import Mapping
+from http import HTTPStatus
+
 from app.controllers import health_routes
 from app.controllers.domain_router import build_domain_router
 from app.core import settings
@@ -7,15 +10,27 @@ from app.domains.registry import DOMAINS
 from app.filtering.ast import FilterError
 from app.repositories.base import AuditRepository
 from app.repositories.factory import build_audit_repository
-from app.services.export_job_service import ExportJobService
+from app.services.export_job_service import ExportJobFailedError, ExportJobService
 from app.swagger_schemas import OPENAPI_TAGS
 from fastapi import FastAPI, Request
 from fastapi.concurrency import asynccontextmanager
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from foundation.schemas import (
+    INTERNAL_ERROR_DETAIL,
+    UNKNOWN_ERROR_CODE,
+    ErrorDetailSchema,
+    ErrorResponseSchema,
+)
 from loguru import logger
 from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
 from opensearchpy.exceptions import RequestError as OpenSearchRequestError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+# The first `loc` entry of a request validation error names the part of the request the
+# value came from, not a field, so it never belongs in `attr`.
+_REQUEST_PARTS = frozenset({"body", "query", "path", "header", "cookie"})
 
 
 def _extract_opensearch_reason(exc: OpenSearchRequestError) -> str:
@@ -97,40 +112,120 @@ def is_client_input_error(exc: OpenSearchRequestError) -> bool:
     return bool(error_types & _CLIENT_INPUT_ERROR_TYPES)
 
 
+def _error_response(
+    status_code: int,
+    errors: list[ErrorDetailSchema],
+    headers: Mapping[str, str] | None = None,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorResponseSchema.for_status(status_code, errors).model_dump(mode="json"),
+        headers=headers,
+    )
+
+
+def _internal_error_response() -> JSONResponse:
+    return _error_response(
+        500, [ErrorDetailSchema(code=UNKNOWN_ERROR_CODE, detail=INTERNAL_ERROR_DETAIL)]
+    )
+
+
+def _validation_error_attr(error: dict) -> str | None:
+    # An unparseable body reports the character offset where parsing stopped; that is
+    # not a field of the request.
+    if error["type"] == "json_invalid":
+        return None
+    location = error["loc"]
+    if location and location[0] in _REQUEST_PARTS:
+        location = location[1:]
+    return ".".join(str(part) for part in location) or None
+
+
 def register_exception_handlers(app: FastAPI) -> None:
+    """Answer every handled error with foundation's error envelope.
+
+    A server-side failure never answers with the exception's text: the error goes to the
+    log with its traceback and the caller reads a fixed sentence.
+    """
+
     @app.exception_handler(FilterError)
     async def _filter_error_handler(request: Request, exc: FilterError) -> JSONResponse:
-        return JSONResponse(status_code=400, content={"detail": str(exc)})
+        return _error_response(400, [ErrorDetailSchema(code="invalid_filter", detail=str(exc))])
 
     @app.exception_handler(OpenSearchRequestError)
     async def _opensearch_request_error_handler(
         request: Request, exc: OpenSearchRequestError
     ) -> JSONResponse:
         if is_client_input_error(exc):
-            return JSONResponse(
-                status_code=400, content={"detail": _extract_opensearch_reason(exc)}
+            return _error_response(
+                400,
+                [ErrorDetailSchema(code="invalid_query", detail=_extract_opensearch_reason(exc))],
             )
-        logger.error(
+        logger.opt(exception=exc).error(
             "OpenSearch rejected a server-built query: {}", _extract_opensearch_reason(exc)
         )
-        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+        return _internal_error_response()
 
     @app.exception_handler(OpenSearchConnectionError)
     async def _opensearch_connection_error_handler(
         request: Request, exc: OpenSearchConnectionError
     ) -> JSONResponse:
-        logger.warning("OpenSearch unreachable: {}", exc)
-        return JSONResponse(
-            status_code=503,
-            content={"detail": "Audit search backend is temporarily unavailable"},
+        logger.opt(exception=exc).error("OpenSearch unreachable")
+        return _error_response(
+            503,
+            [
+                ErrorDetailSchema(
+                    code="search_unavailable",
+                    detail="Audit search backend is temporarily unavailable.",
+                )
+            ],
         )
+
+    @app.exception_handler(Exception)
+    async def _server_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        # The fallback for any exception no more specific handler claims. Not logged here:
+        # Starlette re-raises it after this answer, and the server logs it with its traceback.
+        return _internal_error_response()
 
     @app.exception_handler(MissingScopeError)
     async def _missing_scope_error_handler(
         request: Request, exc: MissingScopeError
     ) -> JSONResponse:
-        logger.exception("MissingScopeError (tenancy gate failure):")
-        return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+        logger.opt(exception=exc).error("MissingScopeError (tenancy gate failure)")
+        return _internal_error_response()
+
+    @app.exception_handler(ExportJobFailedError)
+    async def _export_job_failed_handler(
+        request: Request, exc: ExportJobFailedError
+    ) -> JSONResponse:
+        # The export task logged the cause when the job failed; this only reports it.
+        return _error_response(500, [ErrorDetailSchema(code=exc.code, detail=exc.detail)])
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_exception_handler(
+        request: Request, exc: StarletteHTTPException
+    ) -> JSONResponse:
+        code = HTTPStatus(exc.status_code).phrase.lower().replace(" ", "_")
+        return _error_response(
+            exc.status_code,
+            [ErrorDetailSchema(code=code, detail=exc.detail)],
+            headers=exc.headers,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def _request_validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        # Built from `type`, `msg` and `loc` only: `input` would echo the caller's value.
+        return _error_response(
+            422,
+            [
+                ErrorDetailSchema(
+                    code=error["type"], detail=error["msg"], attr=_validation_error_attr(error)
+                )
+                for error in exc.errors()
+            ],
+        )
 
 
 @asynccontextmanager

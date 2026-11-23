@@ -24,6 +24,7 @@ from tables.models.webhook_models import (
 )
 from tables.services.secrets import secret_service
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 #: WebhookTriggerService.AUTH_SECRET_MIN_LENGTH -- the plaintext must clear this.
 _LONG_ENOUGH = "x" * 40
@@ -127,7 +128,7 @@ class TestWebhookTriggerAuthSecretIsGated:
         )
 
         assert response.status_code == 400, response.json()
-        assert "auth_secret_id" in response.json()["message"]
+        assert "auth_secret_id" in error_text(response.json())
 
     def test_use_holder_can_change_the_value(self, use_client, trigger, other_secret):
         response = use_client.patch(
@@ -215,7 +216,7 @@ class TestAuthKindOmittedSecretIdPreservesExistingSecret:
         )
 
         assert response.status_code == 400, response.json()
-        assert "auth_secret_id" in response.json()["message"]
+        assert "auth_secret_id" in error_text(response.json())
         trigger.refresh_from_db()
         assert trigger.auth.secret_id == secret.id
 
@@ -247,7 +248,7 @@ class TestTwilioBareReservationNowRejectsResendingKindOverAClaimedSecret:
         )
 
         assert response.status_code == 400, response.json()
-        assert "bare reservation" in response.json()["message"]
+        assert "bare reservation" in error_text(response.json())
         twilio_trigger.refresh_from_db()
         assert twilio_trigger.auth.secret_id == twilio_secret.id
 
@@ -288,7 +289,7 @@ class TestEditFormRoundTripOfTheReturnedSecretId:
         )
 
         assert response.status_code == 400, response.json()
-        assert "auth_secret_id" in response.json()["message"]
+        assert "auth_secret_id" in error_text(response.json())
         trigger.refresh_from_db()
         assert trigger.auth.secret_id == secret.id
 

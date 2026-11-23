@@ -252,7 +252,10 @@ describe('WebhookTriggersSectionComponent "Edit"', () => {
         if (status === 0) {
             request.error(new ProgressEvent('error'));
         } else {
-            request.flush({ detail: 'failed' }, { status, statusText: 'Failed' });
+            request.flush(
+                { type: 'client_error', errors: [{ code: 'unknown', detail: 'failed', attr: null, context: null }] },
+                { status, statusText: 'Failed' }
+            );
         }
         fixture.detectChanges();
     }

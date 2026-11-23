@@ -13,6 +13,10 @@ ACME_KEY = service_account_key()
 API = "http://epicstaff-api:8081/api/"
 
 
+def _envelope(code, detail):
+    return {"type": "client_error", "errors": [{"code": code, "detail": detail, "attr": None, "context": None}]}
+
+
 def _person(user_id, **changes):
     return {
         "user": {"id": user_id, "email": f"user{user_id}@acme.test", "name": f"User {user_id}"},
@@ -34,7 +38,7 @@ class FakeEpicStaff:
         self.requests.append(request)
         answer = self.routes.get((request.method, request.url.path))
         if answer is None:
-            return httpx.Response(404, json={"status_code": 404, "code": "not_found", "message": "Not found."})
+            return httpx.Response(404, json=_envelope("not_found", "Not found."))
         return answer(request) if callable(answer) else answer
 
 
@@ -160,7 +164,7 @@ def test_a_401_with_a_key_the_node_has_since_replaced_is_retried_once_with_the_n
         if request.headers["authorization"] == f"PluginKey {ACME_KEY}":
             # The node fetched new credentials while this call was on its way.
             write_runtime_file(runtime_path, signer=signer, service_accounts={"3": {"key": rotated, "org_name": "Acme", "grant_state": "active"}})
-            return httpx.Response(401, json={"status_code": 401, "code": "service_account_not_authenticated", "message": "x"})
+            return httpx.Response(401, json=_envelope("service_account_not_authenticated", "x"))
         return httpx.Response(200, json={"ok": True})
 
     fake.routes[("GET", "/api/graphs/")] = answer
@@ -171,7 +175,7 @@ def test_a_401_with_a_key_the_node_has_since_replaced_is_retried_once_with_the_n
 
 def test_a_401_with_the_current_key_is_raised_without_a_retry(epicstaff, fake):
     fake.routes[("GET", "/api/graphs/")] = httpx.Response(
-        401, json={"status_code": 401, "code": "service_account_not_authenticated", "message": "Not authenticated."}
+        401, json=_envelope("service_account_not_authenticated", "Not authenticated.")
     )
 
     with pytest.raises(EpicStaffApiError) as raised:
@@ -184,7 +188,7 @@ def test_a_401_with_the_current_key_is_raised_without_a_retry(epicstaff, fake):
 def test_a_rotated_key_is_retried_only_once(epicstaff, fake, runtime_path, signer):
     def answer(request):
         write_runtime_file(runtime_path, signer=signer, service_accounts={"3": {"key": service_account_key(), "org_name": "Acme", "grant_state": "active"}})
-        return httpx.Response(401, json={"status_code": 401, "code": "service_account_not_authenticated", "message": "x"})
+        return httpx.Response(401, json=_envelope("service_account_not_authenticated", "x"))
 
     fake.routes[("GET", "/api/graphs/")] = answer
 
@@ -197,7 +201,7 @@ def test_a_rotated_key_is_retried_only_once(epicstaff, fake, runtime_path, signe
 def test_an_organization_dropped_from_the_runtime_file_after_a_401_is_unavailable(epicstaff, fake, runtime_path, signer):
     def answer(request):
         write_runtime_file(runtime_path, signer=signer, service_accounts={})
-        return httpx.Response(401, json={"status_code": 401, "code": "service_account_not_authenticated", "message": "x"})
+        return httpx.Response(401, json=_envelope("service_account_not_authenticated", "x"))
 
     fake.routes[("GET", "/api/graphs/")] = answer
 
@@ -209,6 +213,24 @@ def test_an_organization_dropped_from_the_runtime_file_after_a_401_is_unavailabl
 
 
 def test_epicstaffs_error_envelope_becomes_the_error(epicstaff, fake):
+    items = [
+        {"code": "required", "detail": "This field is required.", "attr": "name", "context": None},
+        {"code": "invalid", "detail": "A flow with this name exists.", "attr": None, "context": {"graph_id": 4}},
+    ]
+    fake.routes[("POST", "/api/graphs/")] = httpx.Response(400, json={"type": "client_error", "errors": items})
+
+    with pytest.raises(EpicStaffApiError) as raised:
+        run(epicstaff.for_org(3).post("graphs/", {}))
+
+    error = raised.value
+    assert (error.status, error.code) == (400, "required")
+    assert error.message == "name: This field is required.; A flow with this name exists."
+    assert error.errors == items
+    assert str(error) == "EpicStaff refused POST graphs/: 400 required: name: This field is required.; A flow with this name exists."
+    assert ACME_KEY not in str(error)
+
+
+def test_the_error_body_of_an_older_epicstaff_is_still_read(epicstaff, fake):
     fake.routes[("POST", "/api/graphs/")] = httpx.Response(
         400,
         json={"status_code": 400, "code": "invalid", "message": "name: required", "errors": [{"loc": "name", "message": "required"}]},
@@ -220,8 +242,25 @@ def test_epicstaffs_error_envelope_becomes_the_error(epicstaff, fake):
     error = raised.value
     assert (error.status, error.code, error.message) == (400, "invalid", "name: required")
     assert error.errors == [{"loc": "name", "message": "required"}]
-    assert str(error) == "EpicStaff refused POST graphs/: 400 invalid: name: required"
-    assert ACME_KEY not in str(error)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"type": "client_error", "errors": []},
+        {"type": "client_error", "errors": [{"code": "invalid"}]},
+        {"type": "client_error", "errors": "invalid"},
+    ],
+    ids=["no items", "items without a detail", "errors not a list"],
+)
+def test_an_envelope_with_nothing_to_show_keeps_the_body_as_text(epicstaff, fake, body):
+    fake.routes[("POST", "/api/graphs/")] = httpx.Response(400, json=body)
+
+    with pytest.raises(EpicStaffApiError) as raised:
+        run(epicstaff.for_org(3).post("graphs/", {}))
+
+    assert (raised.value.code, raised.value.errors) == (None, None)
+    assert json.loads(raised.value.message) == body
 
 
 def test_an_answer_in_another_shape_keeps_its_text(epicstaff, fake):
@@ -279,7 +318,7 @@ def test_a_person_who_may_use_the_plugin_is_read_and_cached(epicstaff, fake, clo
 
 def test_a_person_who_may_not_use_the_plugin_is_none(epicstaff, fake):
     fake.routes[("GET", "/api/plugin-runtime/people/43/")] = httpx.Response(
-        404, json={"status_code": 404, "code": "person_not_found", "message": "No such person."}
+        404, json=_envelope("person_not_found", "No such person.")
     )
 
     assert run(epicstaff.for_org(3).person(43)) is None
@@ -341,7 +380,7 @@ def test_the_cache_is_per_organization(runtime_path, fake, signer):
     fake.routes[("GET", "/api/plugin-runtime/people/42/")] = lambda request: (
         httpx.Response(200, json=_person(42))
         if request.headers["x-organization-id"] == "3"
-        else httpx.Response(404, json={"status_code": 404, "code": "person_not_found", "message": "x"})
+        else httpx.Response(404, json=_envelope("person_not_found", "x"))
     )
     epicstaff = EpicStaffClient(RuntimeConfig.load(runtime_path), transport=httpx.MockTransport(fake))
 

@@ -65,7 +65,7 @@
                             @if (otherErrorItems().length > 0) {
                                 <ul class="development__error-items">
                                     @for (item of otherErrorItems(); track $index) {
-                                        <li>{{ item.message }}</li>
+                                        <li>{{ item.detail }}</li>
                                     }
                                 </ul>
                             }

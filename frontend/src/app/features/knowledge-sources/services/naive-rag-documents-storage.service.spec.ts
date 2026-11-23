@@ -77,3 +77,63 @@ describe('NaiveRagDocumentsStorageService bulkPartialUpdate', () => {
         ]);
     });
 });
+
+describe('NaiveRagDocumentsStorageService runChunking refusals', () => {
+    const CHUNKING_URL = 'http://api/naive-rag/7/document-configs/1/process-chunking/';
+    let storage: NaiveRagDocumentsStorageService;
+    let http: HttpTestingController;
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ConfigService, useValue: { apiUrl: 'http://api/' } },
+            ],
+        });
+        storage = TestBed.inject(NaiveRagDocumentsStorageService);
+        http = TestBed.inject(HttpTestingController);
+
+        storage.fetchDocumentConfigs(7).subscribe();
+        http.expectOne('http://api/naive-rag/7/document-configs/').flush({
+            naive_rag_id: 7,
+            total_configs: 1,
+            configs: [buildConfig(1)],
+        });
+    });
+
+    afterEach(() => http.verify());
+
+    function refuseChunking(body: object): void {
+        storage.runChunking(7, 1).subscribe({ error: () => undefined });
+        http.expectOne(CHUNKING_URL).flush(body, { status: 400, statusText: 'Bad Request' });
+    }
+
+    const errorsOfDocument = () => storage.documents().find((doc) => doc.naive_rag_document_id === 1)?.errors;
+
+    it('puts a refused setting under its field', () => {
+        refuseChunking({
+            type: 'validation_error',
+            errors: [
+                {
+                    code: 'invalid_chunk_parameters',
+                    detail: 'Must be smaller than the chunk size.',
+                    attr: 'chunk_overlap',
+                },
+            ],
+        });
+
+        expect(errorsOfDocument()?.chunk_overlap?.reason).toBe('Must be smaller than the chunk size.');
+    });
+
+    it('marks no field for a refusal that names none', () => {
+        refuseChunking({
+            type: 'client_error',
+            errors: [
+                { code: 'invalid_chunk_parameters', detail: 'Invalid chunk parameters.', attr: null, context: null },
+            ],
+        });
+
+        expect(errorsOfDocument() ?? {}).toEqual({});
+    });
+});

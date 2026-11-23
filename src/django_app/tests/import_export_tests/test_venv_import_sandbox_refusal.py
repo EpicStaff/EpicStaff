@@ -88,7 +88,7 @@ class TestSynchronousImport:
         response = client.post(IMPORT_URL, {"file": upload(export_data)}, format="multipart")
 
         assert response.status_code == 400
-        assert response.data["message"] == refusal
+        assert [item["detail"] for item in response.data["errors"]] == [refusal]
         # The venv created before the refusal is compensated upstream, its binding
         # rolled back with the import.
         [removed_id] = sandbox.removed
@@ -119,7 +119,7 @@ class TestSynchronousImport:
         response = client.post(IMPORT_URL, {"file": upload(export_data)}, format="multipart")
 
         assert response.status_code == 400
-        assert response.data["message"] == refusal
+        assert [item["detail"] for item in response.data["errors"]] == [refusal]
         assert not SandboxVenvBinding.objects.filter(org_id=acme.id).exists()
         assert not PythonCodeTool.objects.filter(org=acme).exists()
 

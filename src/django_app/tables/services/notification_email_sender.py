@@ -15,11 +15,12 @@ class NotificationEmailSender:
 
     Unlike PasswordResetEmailSender this is NOT fail-silent: the caller
     (NotifyEmailView, called by notification_tool over REST) needs to know
-    whether delivery succeeded so it can report a readable error back to the
-    calling agent instead of silently swallowing an SMTP failure.
+    whether delivery succeeded so it can report a failure back to the calling
+    agent instead of silently swallowing an SMTP failure. The transport's error
+    text is logged here and never returned: it can name the mail host or account.
     """
 
-    def send(self, to: str, subject: str, message: str) -> tuple[bool, str | None]:
+    def send(self, to: str, subject: str, message: str) -> bool:
         try:
             send_mail(
                 subject=subject,
@@ -28,7 +29,7 @@ class NotificationEmailSender:
                 recipient_list=[to],
                 fail_silently=False,
             )
-            return True, None
-        except Exception as e:
+            return True
+        except Exception:
             logger.exception(f"notification_email_send_failed to={to}")
-            return False, str(e)
+            return False

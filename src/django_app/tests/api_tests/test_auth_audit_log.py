@@ -138,9 +138,7 @@ def test_failed_swagger_token_logs_account_and_address(
         REMOTE_ADDR="203.0.113.8",
     )
 
-    # 403, not the 401 the view intends: a known separate defect (see
-    # test_auth_throttles.py). Only the log line is under test here.
-    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
     (line,) = _lines_with(captured_log_messages, "login_failed")
     assert f"account='{regular_user.email}'" in line
     assert "address='203.0.113.8'" in line

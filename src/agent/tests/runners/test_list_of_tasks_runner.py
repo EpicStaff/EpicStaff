@@ -8,9 +8,11 @@ possible; otherwise defines minimal task-list-specific fakes.
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock
 
 import pytest
 from app.emitters.base import Emitter
+from app.emitters.redis_batch import RedisStreamBatchEmitter
 from app.exceptions import AgentServiceError, InvalidOutputSchemaError
 from app.llm.client import LLMChunk
 from app.loop.agent_loop import AgentLoop
@@ -316,6 +318,35 @@ async def test_mid_sequence_failure_stops_run_and_never_runs_next_task():
     assert "task_a" in str(emitter.errors[0])
     assert emitter.finals == []
     assert loop.call_count == 1
+
+
+async def test_failed_task_publishes_the_llm_fact_as_the_agent_error():
+    published: list[dict] = []
+    client = MagicMock()
+
+    async def capture_publish(stream, fields, maxlen=None, approximate=True, ttl_s=None) -> None:
+        published.append(fields)
+
+    client.publish = capture_publish
+    emitter = RedisStreamBatchEmitter(
+        client=client, result_stream_prefix="agent.results", correlation_id="test-corr", result_stream_ttl_s=60
+    )
+    fact = 'The provider rejected the API key for model "gpt-4o".'
+    loop = ScriptedLoop(
+        [_result(None, stop_reason="llm_error", error=fact, error_code="llm_auth"), _result("B done")]
+    )
+    request = _request(
+        [
+            {"name": "task_a", "instructions": "Do A"},
+            {"name": "task_b", "instructions": "Do B"},
+        ]
+    )
+
+    await _runner(loop=loop).execute(request, emitter, is_cancelled=never_cancelled)
+
+    (fields,) = published
+    assert fields["type"] == "agent.error"
+    assert json.loads(fields["payload"])["error"] == {"code": "llm_auth", "detail": fact, "attr": None, "context": None}
 
 
 async def test_aggregation_sums_usage_and_uses_last_final_text():

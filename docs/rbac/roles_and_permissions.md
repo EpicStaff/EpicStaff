@@ -690,9 +690,15 @@ authorization or validation runs:
 
 ```json
 {
-  "status_code": 403,
-  "code": "built_in_role_immutable",
-  "message": "Built-in roles cannot be edited or deleted."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "built_in_role_immutable",
+      "detail": "Built-in roles cannot be edited or deleted.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -714,9 +720,15 @@ change to that file — see [DEV_rbac_backend_guide.md](DEV_rbac_backend_guide.m
 
 ```json
 {
-  "status_code": 400,
-  "code": "org_context_required",
-  "message": "X-Organization-Id header is required for this endpoint."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "org_context_required",
+      "detail": "X-Organization-Id header is required for this endpoint.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -727,9 +739,15 @@ that is not a positive integer.
 
 ```json
 {
-  "status_code": 403,
-  "code": "org_membership_required",
-  "message": "You are not a member of the requested organization."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "org_membership_required",
+      "detail": "You are not a member of the requested organization.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -741,9 +759,15 @@ and redirect to the org picker.
 
 ```json
 {
-  "status_code": 403,
-  "code": "permission_denied",
-  "message": "You do not have permission to perform this action."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "permission_denied",
+      "detail": "You do not have permission to perform this action.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -758,9 +782,15 @@ organization at all, and `?org_ids=` raises it for a forbidden org id.
 
 ```json
 {
-  "status_code": 403,
-  "code": "permission_escalation_denied",
-  "message": "You cannot grant permissions you do not have in this organization."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "permission_escalation_denied",
+      "detail": "You cannot grant permissions you do not have in this organization.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -778,9 +808,15 @@ Superadmin bypasses both. See "The ceiling rule" below.
 
 ```json
 {
-  "status_code": 403,
-  "code": "cannot_delete_own_role",
-  "message": "You cannot delete the role you currently hold."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "cannot_delete_own_role",
+      "detail": "You cannot delete the role you currently hold.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -793,9 +829,15 @@ Superadmins never hit it: they hold no membership rows.
 
 ```json
 {
-  "status_code": 400,
-  "code": "role_name_conflict",
-  "message": "A role with this name already exists in this organization."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "role_name_conflict",
+      "detail": "A role with this name already exists in this organization.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -808,9 +850,15 @@ overwritten.
 
 ```json
 {
-  "status_code": 404,
-  "code": "role_not_found",
-  "message": "Role not found."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "role_not_found",
+      "detail": "Role not found.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -824,9 +872,15 @@ are attempting. All of these are indistinguishable by design; see
 
 ```json
 {
-  "status_code": 404,
-  "code": "organization_not_found",
-  "message": "Organization not found."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "organization_not_found",
+      "detail": "Organization not found.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -935,9 +989,15 @@ like running the flow. Trigger-node writes refused for a missing `use` answer:
 
 ```json
 {
-  "status_code": 403,
-  "code": "trigger_nodes_require_use_permission",
-  "message": "Trigger nodes (webhook, Telegram, schedule) start flow runs, so creating or editing them requires the Use permission on flows."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "trigger_nodes_require_use_permission",
+      "detail": "Trigger nodes (webhook, Telegram, schedule) start flow runs, so creating or editing them requires the Use permission on flows.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -959,9 +1019,15 @@ Each of these answers, and writes nothing:
 
 ```json
 {
-  "status_code": 403,
-  "code": "flow_with_trigger_nodes_requires_use_permission",
-  "message": "This flow contains trigger nodes (webhook, Telegram, schedule). Copying, importing or restoring it requires the Use permission on flows."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "flow_with_trigger_nodes_requires_use_permission",
+      "detail": "This flow contains trigger nodes (webhook, Telegram, schedule). Copying, importing or restoring it requires the Use permission on flows.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 

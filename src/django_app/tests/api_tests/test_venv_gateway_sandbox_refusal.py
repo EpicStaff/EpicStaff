@@ -66,7 +66,7 @@ def test_create_answers_the_sandbox_refusal_unchanged(client, acme, venv_sandbox
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["message"] == REFUSAL
+    assert [item["detail"] for item in response.data["errors"]] == [REFUSAL]
     assert not SandboxVenvBinding.objects.filter(org_id=acme.id).exists()
 
 
@@ -81,7 +81,7 @@ def test_update_answers_the_sandbox_refusal_unchanged(client, acme, venv_sandbox
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["message"] == REFUSAL
+    assert [item["detail"] for item in response.data["errors"]] == [REFUSAL]
 
 
 def test_update_of_another_orgs_venv_is_not_found_and_never_reaches_the_sandbox(

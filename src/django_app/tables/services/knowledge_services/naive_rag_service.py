@@ -2,6 +2,7 @@ from typing import Any
 
 from django.db import transaction
 from loguru import logger
+from rest_framework.exceptions import ValidationError
 from src.shared.models import UserAction
 from src.shared.models.knowledge_new import ChunkingConfig
 from tables.constants.knowledge_constants import (
@@ -29,6 +30,17 @@ from tables.services.knowledge_services.collection_last_edit import (
     record_rag_change,
 )
 from user_audit.recorder import record_user_action
+
+
+def _field_reasons(error: InvalidChunkParametersException) -> list[dict[str, Any]]:
+    """List a config's chunking problems as `{field, reason}`, the shape a bulk update reports."""
+    if not isinstance(error.detail, dict):
+        return [{"field": None, "reason": str(error.detail)}]
+    return [
+        {"field": field, "reason": str(message)}
+        for field, messages in error.detail.items()
+        for message in messages
+    ]
 
 
 class NaiveRagService:
@@ -228,9 +240,7 @@ class NaiveRagService:
         chunk_overlap = data.get("chunk_overlap", config.chunk_overlap)
         if chunk_overlap >= chunk_size:
             reason = "'chunk_overlap' must be less than 'chunk_size'"
-            raise InvalidChunkParametersException(
-                errors=[{"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}],
-            )
+            raise InvalidChunkParametersException({"chunk_overlap": [reason]})
 
         chunk_strategy = data.get("chunk_strategy", "")
         is_allowed_strategy = cls.is_strategy_allowed_for_file_type(
@@ -243,15 +253,7 @@ class NaiveRagService:
                 f" for file type '{config.document.file_type}."
                 f" Allowed: {', '.join(sorted(allowed))}"
             )
-            raise InvalidChunkParametersException(
-                errors=[
-                    {
-                        "field": "chunk_strategy",
-                        "value": chunk_strategy,
-                        "reason": reason,
-                    }
-                ],
-            )
+            raise InvalidChunkParametersException({"chunk_strategy": [reason]})
 
         updated_fields = set()
         for field, value in data.items():
@@ -494,6 +496,10 @@ class NaiveRagService:
                 - failed_count: Number of failed configs
                 - configs: List of all configs with their current DB values
                 - config_errors: Dict mapping config_id to list of error dicts
+
+        Raises:
+            ValidationError: An item's config is missing or belongs to another RAG; the
+                detail names each such item as `<position>.id`. Nothing is saved.
         """
         rag = cls.get_naive_rag(naive_rag_id)
 
@@ -506,9 +512,22 @@ class NaiveRagService:
         config_map = {c.naive_rag_document_id: c for c in config_query}
         missing_ids = config_ids - set(config_map.keys())
         if missing_ids:
-            raise DocumentConfigNotFoundException(
-                f"Configs not found or don't belong to"
-                f" NaiveRag {naive_rag_id}: {sorted(missing_ids)}"
+            # The body is a list of configs, so each refusal is named by the item's
+            # position and its `id` field.
+            raise ValidationError(
+                {
+                    str(index): {
+                        "id": [
+                            (
+                                f"Config {item['id']} not found or doesn't belong to"
+                                f" NaiveRag {naive_rag_id}."
+                            )
+                        ]
+                    }
+                    for index, item in enumerate(data)
+                    if item["id"] in missing_ids
+                },
+                code=DocumentConfigNotFoundException.default_code,
             )
 
         errors = {}
@@ -529,7 +548,7 @@ class NaiveRagService:
                     total_unupdated_configs.append(config)
 
             except InvalidChunkParametersException as e:
-                errors[config.naive_rag_document_id] = e.errors
+                errors[config.naive_rag_document_id] = _field_reasons(e)
                 total_failed_configs.append(config)
 
         if total_updated_configs:
@@ -587,9 +606,9 @@ class NaiveRagService:
             expects. Nothing is saved.
 
         Raises:
-            DocumentConfigNotFoundException: A config is missing or belongs to another RAG.
-            InvalidChunkParametersException: A merged config breaks a chunking rule; every
-                error item carries the `document_config_id` it belongs to.
+            ValidationError: A config is missing or belongs to another RAG.
+            InvalidChunkParametersException: A merged config breaks a chunking rule; the
+                detail nests each config's problems under its position in `overrides`.
         """
         config_ids = {item["document_config_id"] for item in overrides}
         configs = {
@@ -600,31 +619,26 @@ class NaiveRagService:
         }
         missing_ids = config_ids - set(configs)
         if missing_ids:
-            raise DocumentConfigNotFoundException(
+            raise ValidationError(
                 f"Configs not found or don't belong to"
-                f" NaiveRag {naive_rag_id}: {sorted(missing_ids)}"
+                f" NaiveRag {naive_rag_id}: {sorted(missing_ids)}",
+                code=DocumentConfigNotFoundException.default_code,
             )
 
-        errors: list[dict[str, Any]] = []
-        for item in overrides:
+        errors: dict[str, Any] = {}
+        for index, item in enumerate(overrides):
             config_id = item["document_config_id"]
             fields = {key: value for key, value in item.items() if key != "document_config_id"}
             try:
                 if not isinstance(fields.get("additional_params", {}), dict):
                     raise InvalidChunkParametersException(
-                        errors=[
-                            {
-                                "field": "additional_params",
-                                "value": fields["additional_params"],
-                                "reason": "'additional_params' must be an object",
-                            }
-                        ],
+                        {"additional_params": ["'additional_params' must be an object"]}
                     )
                 cls._update_document_config(configs[config_id], fields, commit=False)
             except InvalidChunkParametersException as error:
-                errors += [{"document_config_id": config_id, **entry} for entry in error.errors]
+                errors[str(index)] = error.detail
         if errors:
-            raise InvalidChunkParametersException(errors=errors)
+            raise InvalidChunkParametersException(errors)
 
         return {
             config_id: ChunkingConfig(

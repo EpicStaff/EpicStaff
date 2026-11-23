@@ -27,6 +27,7 @@ from tables.models import AgentNode, Graph, GraphStorageFile, StorageFile, TaskN
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.manager import StorageManager
 from tables.services.storage_service.usage import find_storage_usage
+from tests.error_envelope import details_by_attr, error_codes
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend
 from tests.storage_tests.storage_writes import store_object
@@ -271,7 +272,7 @@ def test_a_superadmin_api_key_may_not_transfer_across_orgs(
     )
 
     assert resp.status_code == status.HTTP_403_FORBIDDEN, resp.data
-    assert resp.data["code"] == "permission_denied"
+    assert resp.data["errors"][0]["code"] == "permission_denied"
     assert store.list_all_keys(f"org_{other_org.id}") == []
     assert _exists(store, default_org, "a.txt")
 
@@ -319,7 +320,7 @@ def test_a_transfer_naming_not_two_different_orgs_is_a_400_and_touches_nothing(
     )
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.data["message"].startswith(f"{rejected_field}: ")
+    assert resp.data["errors"][0]["attr"] == rejected_field
     for org in (default_org, other_org):
         assert (_exists(store, org, "a.txt"), _exists(store, org, "moved.txt")) == (True, False)
 
@@ -339,6 +340,16 @@ def test_mkdir_creates_the_folder(auth_client, store, default_org):
 
     assert resp.status_code == status.HTTP_201_CREATED
     assert _exists(store, default_org, "new_folder/")
+
+
+def test_mkdir_on_an_existing_path_is_409(auth_client, store, default_org):
+    assert auth_client.post("/api/storage/mkdir/", {"path": "taken"}, format="json").status_code == 201
+
+    resp = auth_client.post("/api/storage/mkdir/", {"path": "taken"}, format="json")
+
+    assert resp.status_code == status.HTTP_409_CONFLICT
+    assert error_codes(resp.json()) == ["storage_path_exists"]
+    assert details_by_attr(resp.json()) == {None: ["Path already exists: taken"]}
 
 
 def test_graph_links_are_added_listed_and_removed(auth_client, put, default_org):

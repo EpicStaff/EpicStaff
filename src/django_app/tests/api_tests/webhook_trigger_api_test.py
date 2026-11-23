@@ -19,6 +19,7 @@ from tables.models import PythonCode
 from tables.services.secrets import secret_service
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from rest_framework.test import APIClient
+from tests.error_envelope import error_text
 
 # `NgrokWebhookConfig.auth_token` is now a Secret reference
 # (`auth_token_secret`) rather than a plaintext CharField — every place this
@@ -769,7 +770,7 @@ def test_a_path_with_a_slash_cannot_shadow_another_orgs_trigger(
     )
 
     assert response.status_code == 400, response.json()
-    assert _FORMAT_ERROR in response.json()["message"]
+    assert _FORMAT_ERROR in error_text(response.json())
     assert list(WebhookTrigger.objects.values_list("path", flat=True)) == ["foo"]
 
 
@@ -783,7 +784,7 @@ def test_creating_a_trigger_with_a_malformed_path_is_a_400(auth_client, path):
     )
 
     assert response.status_code == 400, response.json()
-    assert _FORMAT_ERROR in response.json()["message"]
+    assert _FORMAT_ERROR in error_text(response.json())
     assert not WebhookTrigger.objects.exists()
 
 
@@ -795,7 +796,7 @@ def test_renaming_a_trigger_to_a_malformed_path_is_a_400(auth_client, default_or
     response = auth_client.patch(_trigger_detail(trigger), {"path": path}, format="json")
 
     assert response.status_code == 400, response.json()
-    assert _FORMAT_ERROR in response.json()["message"]
+    assert _FORMAT_ERROR in error_text(response.json())
     trigger.refresh_from_db()
     assert trigger.path == "my-own-path"
 
