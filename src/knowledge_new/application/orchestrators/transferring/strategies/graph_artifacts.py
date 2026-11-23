@@ -94,7 +94,7 @@ class GraphArtifactRestoreOrchestrator(AbstractArtifactRestoreOrchestrator):
         rag_prefix = _rag_prefix(command.rag_id)
         slot_prefix = _slot_prefix(command.rag_id, _RESTORE_SLOT)
         # tarfile reads the temp file synchronously inside the event loop. Accepted:
-        # the endpoint is internal and rare, and miniopy reads `source` synchronously too.
+        # the endpoint is internal and rare; the upload itself reads `source` in a worker thread.
         try:
             with open_artifact_tar(command.archive_path) as tar:
                 # Validate every member before deleting or writing anything.

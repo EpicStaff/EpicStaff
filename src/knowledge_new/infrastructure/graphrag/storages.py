@@ -1,15 +1,12 @@
-import io
 import re
 from collections.abc import Iterator
 from typing import Any
 
 import settings
-from common.utils import run_async_to_sync
+from foundation.s3_file_storage import S3BucketNotExistError, S3ObjectNotExistError
 from graphrag_storage import Storage, StorageConfig, register_storage
 from graphrag_storage.storage import get_timestamp_formatted_with_local_tz
-from infrastructure.graphrag.s3_client import open_s3_client
-from miniopy_async import S3Error
-from miniopy_async.deleteobjects import DeleteObject
+from infrastructure.graphrag.s3_bucket import open_bucket
 
 
 def create_storage_config(
@@ -31,7 +28,9 @@ def create_storage_config(
 
 
 class S3Storage(Storage):
-    _MISSING_CODES = frozenset(("NoSuchKey", "NoSuchObject", "NoSuchBucket"))
+    """graphrag's storage for one prefix of the knowledge bucket."""
+
+    _MISSING = (S3ObjectNotExistError, S3BucketNotExistError)
 
     def __init__(
         self,
@@ -43,12 +42,15 @@ class S3Storage(Storage):
         secret_key: str,
         **kwargs: Any,
     ) -> None:
-        self._endpoint = endpoint
-        self._bucket = bucket
+        self._connection = {
+            "endpoint": endpoint,
+            "bucket": bucket,
+            "access_key": access_key,
+            "secret_key": secret_key,
+        }
+        self._bucket = open_bucket(endpoint, bucket, access_key, secret_key)
         self._prefix = prefix
         self._encoding = encoding
-        self._access_key = access_key
-        self._secret_key = secret_key
 
     def _full_key(self, key: str) -> str:
         return f"{self._prefix}/{key}"
@@ -63,166 +65,49 @@ class S3Storage(Storage):
         return object_name
 
     def find(self, file_pattern: re.Pattern[str]) -> Iterator[str]:
-        async def _collect() -> list[str]:
-            matches: list[str] = []
-            async with open_s3_client(
-                endpoint=self._endpoint,
-                bucket=self._bucket,
-                access_key=self._access_key,
-                secret_key=self._secret_key,
-            ) as client:
-                async for obj in client.list_objects(
-                    bucket_name=self._bucket,
-                    prefix=self._list_prefix(),
-                    recursive=True,
-                ):
-                    name = obj.object_name
-                    if name and not obj.is_dir and file_pattern.search(name):
-                        matches.append(self._strip_prefix(name))
-                return matches
-
-        return iter(run_async_to_sync(_collect()))
+        keys = [stored.key for stored in self._bucket.objects(prefix=self._list_prefix())]
+        return iter([self._strip_prefix(key) for key in keys if file_pattern.search(key)])
 
     async def get(self, key: str, as_bytes: bool | None = None, encoding: str | None = None) -> Any:
-        async with open_s3_client(
-            endpoint=self._endpoint,
-            bucket=self._bucket,
-            access_key=self._access_key,
-            secret_key=self._secret_key,
-        ) as client:
-            try:
-                response = await client.get_object(
-                    bucket_name=self._bucket,
-                    object_name=self._full_key(key),
-                )
-            except S3Error as e:
-                if e.code in self._MISSING_CODES:
-                    return None
-                raise
-            else:
-                data = await response.read()
-            if as_bytes:
-                return data
-            return data.decode(encoding or self._encoding)
+        try:
+            data = await self._bucket.object(self._full_key(key)).aread()
+        except self._MISSING:
+            return None
+        if as_bytes:
+            return data
+        return data.decode(encoding or self._encoding)
 
     async def set(self, key: str, value: Any, encoding: str | None = None) -> None:
         data = value if isinstance(value, bytes) else value.encode(encoding or self._encoding)
-
-        async with open_s3_client(
-            endpoint=self._endpoint,
-            bucket=self._bucket,
-            access_key=self._access_key,
-            secret_key=self._secret_key,
-        ) as client:
-            await client.put_object(
-                bucket_name=self._bucket,
-                object_name=self._full_key(key),
-                data=io.BytesIO(data),
-                length=len(data),
-                content_type="application/octet-stream",
-            )
+        await self._bucket.object(self._full_key(key)).awrite(data)
 
     async def has(self, key: str) -> bool:
-        async with open_s3_client(
-            endpoint=self._endpoint,
-            bucket=self._bucket,
-            access_key=self._access_key,
-            secret_key=self._secret_key,
-        ) as client:
-            try:
-                await client.stat_object(
-                    bucket_name=self._bucket,
-                    object_name=self._full_key(key),
-                )
-            except S3Error as e:
-                if e.code in self._MISSING_CODES:
-                    return False
-                raise
-            return True
+        return await self._bucket.object(self._full_key(key)).aexist()
 
     async def delete(self, key: str) -> None:
-        async with open_s3_client(
-            endpoint=self._endpoint,
-            bucket=self._bucket,
-            access_key=self._access_key,
-            secret_key=self._secret_key,
-        ) as client:
-            await client.remove_object(
-                bucket_name=self._bucket,
-                object_name=self._full_key(key),
-            )
+        await self._bucket.object(self._full_key(key)).adelete()
 
     async def clear(self) -> None:
-        async with open_s3_client(
-            endpoint=self._endpoint,
-            bucket=self._bucket,
-            access_key=self._access_key,
-            secret_key=self._secret_key,
-        ) as client:
-            objects = await client.list_objects(
-                bucket_name=self._bucket,
-                prefix=self._list_prefix(),
-                recursive=True,
-            )
-            delete_list = [DeleteObject(o.object_name) for o in objects]
-            if not delete_list:
-                return
-            await client.remove_objects(
-                bucket_name=self._bucket,
-                delete_object_list=delete_list,
-            )
+        stored = await self._bucket.aobjects(prefix=self._list_prefix())
+        await self._bucket.adelete_objects(stored_object.key for stored_object in stored)
 
     def child(self, name: str | None) -> "Storage":
         if name is None:
             return self
-
-        return S3Storage(
-            endpoint=self._endpoint,
-            bucket=self._bucket,
-            prefix=self._full_key(name),
-            encoding=self._encoding,
-            access_key=self._access_key,
-            secret_key=self._secret_key,
-        )
+        return S3Storage(**self._connection, prefix=self._full_key(name), encoding=self._encoding)
 
     def keys(self) -> list[str]:
-        async def _collect() -> list[str]:
-            async with open_s3_client(
-                endpoint=self._endpoint,
-                bucket=self._bucket,
-                access_key=self._access_key,
-                secret_key=self._secret_key,
-            ) as client:
-                objects = await client.list_objects(
-                    bucket_name=self._bucket,
-                    prefix=self._list_prefix(),
-                    recursive=True,
-                )
-                return [
-                    self._strip_prefix(obj.object_name)
-                    for obj in objects
-                    if obj.object_name and not obj.is_dir
-                ]
-
-        return run_async_to_sync(_collect())
+        return [
+            self._strip_prefix(stored.key)
+            for stored in self._bucket.objects(prefix=self._list_prefix())
+        ]
 
     async def get_creation_date(self, key: str) -> str:
-        async with open_s3_client(
-            endpoint=self._endpoint,
-            bucket=self._bucket,
-            access_key=self._access_key,
-            secret_key=self._secret_key,
-        ) as client:
-            try:
-                stat = await client.stat_object(
-                    bucket_name=self._bucket,
-                    object_name=self._full_key(key),
-                )
-            except S3Error as e:
-                if e.code in self._MISSING_CODES:
-                    return ""
-                raise
-        return get_timestamp_formatted_with_local_tz(stat.last_modified)
+        try:
+            last_modified = await self._bucket.object(self._full_key(key)).alast_modified()
+        except self._MISSING:
+            return ""
+        return get_timestamp_formatted_with_local_tz(last_modified)
 
 
 register_storage("s3", S3Storage)
