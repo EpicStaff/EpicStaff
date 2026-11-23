@@ -29,14 +29,34 @@ function dataArgument(command: string): string {
 }
 
 describe('buildCurlCommand', () => {
-    const apiUrl = 'http://localhost/api/';
+    const apiUrl = '/api/';
+    const origin = 'https://epicstaff.example.com';
 
     it('keeps a variable that tries to break out of the quotes as plain data', () => {
         const variables = { name: "x' ; touch /tmp/pwned ; echo '", note: "it's $(whoami) `id`" };
 
-        const command = buildCurlCommand('flow-uuid', variables, apiUrl);
+        const command = buildCurlCommand('flow-uuid', variables, apiUrl, origin);
 
         const payload = readSingleQuotedWord(dataArgument(command));
         expect(JSON.parse(payload)).toEqual({ graph_uuid: 'flow-uuid', variables });
+    });
+
+    it('posts to an absolute URL built from the page origin when the API URL is relative', () => {
+        const command = buildCurlCommand('flow-uuid', {}, apiUrl, origin);
+
+        expect(command.endsWith(' https://epicstaff.example.com/api/run-session/')).toBe(true);
+    });
+
+    it('keeps an absolute API URL as it is', () => {
+        const command = buildCurlCommand('flow-uuid', {}, 'http://api.internal:8000/api/', origin);
+
+        expect(command.endsWith(' http://api.internal:8000/api/run-session/')).toBe(true);
+    });
+
+    it('offers a Bearer token and an API key placeholder', () => {
+        const command = buildCurlCommand('flow-uuid', {}, apiUrl, origin);
+
+        expect(command).toContain('-H "Authorization: Bearer <YOUR_ACCESS_TOKEN>"');
+        expect(command).toContain('-H "X-Api-Key: <YOUR_API_KEY>"');
     });
 });
