@@ -16,13 +16,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.exceptions import (
     CollectionNotFoundException,
-    DocumentNotFoundException,
-    DocumentsNotFoundException,
-    DocumentUploadException,
-    FileSizeExceededException,
     InvalidFieldType,
-    InvalidFileTypeException,
-    NoFilesProvidedException,
 )
 from tables.models import DocumentMetadata, SourceCollection
 from tables.serializers.knowledge_serializers import (
@@ -125,31 +119,21 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
 
         files = serializer.validated_data["files"]
 
-        try:
-            # Use service to handle all business logic
-            created_documents = DocumentManagementService.upload_files_batch(
-                collection_id=collection_id, uploaded_files=files, user=request.user
-            )
+        # Use service to handle all business logic
+        created_documents = DocumentManagementService.upload_files_batch(
+            collection_id=collection_id, uploaded_files=files, user=request.user
+        )
 
-            # Serialize response
-            response_serializer = DocumentMetadataSerializer(created_documents, many=True)
+        # Serialize response
+        response_serializer = DocumentMetadataSerializer(created_documents, many=True)
 
-            return Response(
-                {
-                    "message": f"Successfully uploaded {len(created_documents)} file(s)",
-                    "documents": response_serializer.data,
-                },
-                status=status.HTTP_201_CREATED,
-            )
-
-        except CollectionNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except NoFilesProvidedException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except (FileSizeExceededException, InvalidFileTypeException) as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except DocumentUploadException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": f"Successfully uploaded {len(created_documents)} file(s)",
+                "documents": response_serializer.data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
     # NOTE: this ViewSet is not router-registered; the only URL is the explicit
     # path() in tables/urls.py. url_path mirrors that route for readability.
@@ -224,24 +208,16 @@ class DocumentManagementViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericVi
             ).values_list("document_id", flat=True)
         )
 
-        try:
-            # Use service to handle deletion
-            result = DocumentManagementService.delete_documents_batch(
-                document_ids, user=request.user
-            )
+        # Use service to handle deletion
+        result = DocumentManagementService.delete_documents_batch(document_ids, user=request.user)
 
-            return Response(
-                {
-                    "message": f"Successfully deleted {result['deleted_count']} document(s)",
-                    "deleted_documents": result["documents"],
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except DocumentNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except DocumentUploadException as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "message": f"Successfully deleted {result['deleted_count']} document(s)",
+                "deleted_documents": result["documents"],
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class DocumentViewSet(
@@ -318,21 +294,17 @@ class DocumentViewSet(
         instance = self.get_object()
         document_id = instance.document_id
 
-        try:
-            # Use service for deletion
-            result = DocumentManagementService.delete_document(document_id, user=request.user)
+        # Use service for deletion
+        result = DocumentManagementService.delete_document(document_id, user=request.user)
 
-            return Response(
-                {
-                    "message": "Document deleted successfully",
-                    "document_id": result["document_id"],
-                    "file_name": result["file_name"],
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        except DocumentNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {
+                "message": "Document deleted successfully",
+                "document_id": result["document_id"],
+                "file_name": result["file_name"],
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(**DOCUMENTS_DOWNLOAD_GET)
     @action(detail=False, methods=["get"], url_path="download")
@@ -345,12 +317,9 @@ class DocumentViewSet(
         if not document_ids:
             raise ValidationError("document_ids query parameter is required")
 
-        try:
-            documents = DocumentManagementService.get_documents_with_content(
-                document_ids, org_id=self.get_active_org_id()
-            )
-        except DocumentsNotFoundException as e:
-            raise NotFound(str(e)) from e
+        documents = DocumentManagementService.get_documents_with_content(
+            document_ids, org_id=self.get_active_org_id()
+        )
 
         if len(documents) == 1:
             return build_file_response(documents[0])
@@ -365,33 +334,29 @@ class DocumentViewSet(
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        try:
-            copied_documents, skipped_documents = (
-                DocumentManagementService.copy_documents_to_collection(
-                    collection_id=serializer.validated_data["collection_id"],
-                    document_ids=serializer.validated_data["document_ids"],
-                    org_id=self.get_active_org_id(),
-                    user=request.user,
-                )
+        copied_documents, skipped_documents = (
+            DocumentManagementService.copy_documents_to_collection(
+                collection_id=serializer.validated_data["collection_id"],
+                document_ids=serializer.validated_data["document_ids"],
+                org_id=self.get_active_org_id(),
+                user=request.user,
+            )
+        )
+
+        message = f"Successfully copied {len(copied_documents)} document(s)"
+        if skipped_documents:
+            message += (
+                f", skipped {len(skipped_documents)} already present in the target collection"
             )
 
-            message = f"Successfully copied {len(copied_documents)} document(s)"
-            if skipped_documents:
-                message += (
-                    f", skipped {len(skipped_documents)} already present in the target collection"
-                )
-
-            return Response(
-                {
-                    "message": message,
-                    "documents": DocumentMetadataSerializer(copied_documents, many=True).data,
-                    "skipped": DocumentMetadataSerializer(skipped_documents, many=True).data,
-                },
-                status=status.HTTP_201_CREATED,
-            )
-
-        except (CollectionNotFoundException, DocumentsNotFoundException) as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            {
+                "message": message,
+                "documents": DocumentMetadataSerializer(copied_documents, many=True).data,
+                "skipped": DocumentMetadataSerializer(skipped_documents, many=True).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
     @staticmethod
     def _parse_document_ids(raw_value: str) -> list:

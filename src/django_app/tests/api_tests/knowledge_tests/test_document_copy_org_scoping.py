@@ -1,4 +1,8 @@
-"""Document copy, download and bulk delete never cross an organization boundary."""
+"""Document copy, download and bulk delete never cross an organization boundary.
+
+A copy or download names its documents and target collection in the request body or query,
+so another organization's row is refused as a 400 on that field, worded like a missing one.
+"""
 
 import pytest
 from django.urls import reverse
@@ -41,25 +45,38 @@ def _copy(client, collection, documents):
 
 
 @pytest.mark.django_db
-def test_copy_into_another_orgs_collection_is_404(
+def test_copy_into_another_orgs_collection_is_400_on_collection_id(
     acme_admin_client, own_collection, foreign_collection
 ):
     response = _copy(acme_admin_client, foreign_collection, [_document(own_collection)])
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["errors"] == [
+        {
+            "code": "collection_not_found",
+            "detail": f"Source collection with id {foreign_collection.collection_id} not found",
+            "attr": "collection_id",
+            "context": None,
+        }
+    ]
     assert not foreign_collection.documents.exists()
 
 
 @pytest.mark.django_db
-def test_copy_of_another_orgs_documents_is_404(acme_admin_client, own_collection, foreign_collection):
+def test_copy_of_another_orgs_documents_is_400_on_document_ids(
+    acme_admin_client, own_collection, foreign_collection
+):
     response = _copy(acme_admin_client, own_collection, [_document(foreign_collection)])
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert [(item["code"], item["attr"]) for item in response.json()["errors"]] == [
+        ("documents_not_found", "document_ids")
+    ]
     assert not own_collection.documents.exists()
 
 
 @pytest.mark.django_db
-def test_copy_mixing_own_and_foreign_documents_is_404_and_copies_nothing(
+def test_copy_mixing_own_and_foreign_documents_is_400_and_copies_nothing(
     acme_admin_client, acme, own_collection, foreign_collection
 ):
     source = SourceCollection.objects.create(collection_name="Source", org=acme)
@@ -68,7 +85,7 @@ def test_copy_mixing_own_and_foreign_documents_is_404_and_copies_nothing(
         acme_admin_client, own_collection, [_document(source), _document(foreign_collection)]
     )
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert not own_collection.documents.exists()
 
 
@@ -90,19 +107,24 @@ def _download(client, documents):
 
 
 @pytest.mark.django_db
-def test_download_of_another_orgs_document_is_404(acme_admin_client, foreign_collection):
+def test_download_of_another_orgs_document_is_400_on_document_ids(
+    acme_admin_client, foreign_collection
+):
     response = _download(acme_admin_client, [_document(foreign_collection)])
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert [(item["code"], item["attr"]) for item in response.json()["errors"]] == [
+        ("documents_not_found", "document_ids")
+    ]
 
 
 @pytest.mark.django_db
-def test_download_mixing_own_and_foreign_documents_is_404(
+def test_download_mixing_own_and_foreign_documents_is_400(
     acme_admin_client, own_collection, foreign_collection
 ):
     response = _download(acme_admin_client, [_document(own_collection), _document(foreign_collection)])
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
 @pytest.mark.django_db
@@ -113,11 +135,11 @@ def test_download_answers_a_foreign_document_like_a_missing_one(acme_admin_clien
     foreign_response = _download(acme_admin_client, [foreign_document])
     missing_response = acme_admin_client.get(reverse("document-download"), {"document_ids": str(missing_id)})
 
-    assert foreign_response.status_code == missing_response.status_code == status.HTTP_404_NOT_FOUND
+    assert foreign_response.status_code == missing_response.status_code == status.HTTP_400_BAD_REQUEST
     # Only the id the caller sent differs; nothing tells a foreign document from a missing one.
-    assert foreign_response.json()["message"].replace(
+    assert foreign_response.json()["errors"][0]["detail"].replace(
         str(foreign_document.document_id), "<id>"
-    ) == missing_response.json()["message"].replace(str(missing_id), "<id>")
+    ) == missing_response.json()["errors"][0]["detail"].replace(str(missing_id), "<id>")
 
 
 @pytest.mark.django_db

@@ -84,20 +84,20 @@ def test_download_own_document_returns_its_content(acme_admin_client, acme_docum
 
 
 @pytest.mark.django_db
-def test_download_another_org_document_is_404(acme_admin_client, beta_document):
+def test_download_another_org_document_is_400_like_a_missing_one(acme_admin_client, beta_document):
     response = _download(acme_admin_client, beta_document)
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert BETA_CONTENT not in response.content
 
 
 @pytest.mark.django_db
-def test_download_mixing_own_and_another_org_document_is_404(
+def test_download_mixing_own_and_another_org_document_is_400(
     acme_admin_client, acme_document, beta_document
 ):
     response = _download(acme_admin_client, acme_document, beta_document)
 
-    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.get("Content-Type") != "application/zip"
 
 
