@@ -909,6 +909,8 @@ services:
     container_name: ${INSTANCE_PREFIX?}opensearch
     profiles: ["auditor"]
     entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
+    # Reaps the internal-users sync that opensearch-entrypoint.sh runs in the background.
+    init: true
     environment:
       SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
       USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
@@ -928,14 +930,22 @@ services:
     volumes:
       - opensearch_data:/usr/share/opensearch/data
       - ./auditor/opensearch-entrypoint.sh:/opensearch-entrypoint.sh:ro
+    tmpfs:
+      # The TLS keys and certificates opensearch-entrypoint.sh generates on every start. In memory and
+      # owned by opensearch (uid 1000), so no step has to hand the directory over, and the admin key,
+      # a superuser login without a password, never reaches a disk or a volume.
+      - /usr/share/opensearch/config/tls:uid=1000,gid=1000,mode=0700
     healthcheck:
       # The password comes from the environment (--variable %NAME), not the command line, which every
-      # user on the host can read in the process list.
-      test: ["CMD-SHELL", "curl -sk --variable %OPENSEARCH_INITIAL_ADMIN_PASSWORD --expand-user 'admin:{{OPENSEARCH_INITIAL_ADMIN_PASSWORD}}' https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      # user on the host can read in the process list. The marker file is written by
+      # opensearch-entrypoint.sh once only EpicStaff's own users are left in the security index.
+      test: ["CMD-SHELL", "test -f /tmp/internal-users-synced && curl -s --cacert /usr/share/opensearch/config/tls/root-ca.pem --variable %OPENSEARCH_INITIAL_ADMIN_PASSWORD --expand-user 'admin:{{OPENSEARCH_INITIAL_ADMIN_PASSWORD}}' https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 30s
+      # The first start on a new or upgraded data volume boots OpenSearch twice (see
+      # opensearch-entrypoint.sh) and took up to 6 minutes on a busy host.
+      start_period: 300s
 
   auditor:
     logging: *bounded-logs

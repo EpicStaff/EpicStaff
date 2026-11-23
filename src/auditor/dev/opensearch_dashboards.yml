@@ -22,8 +22,8 @@ server.name: epicstaff-audit-dashboards
 opensearch.hosts: ["https://opensearch:9200"]
 opensearch.username: "${OPENSEARCH_USERNAME}"
 opensearch.password: "${OPENSEARCH_PASSWORD}"
-# The dev OpenSearch node uses the security plugin's self-signed demo
-# certificates, so chain verification cannot succeed against `opensearch`.
+# The OpenSearch node's certificate is signed by a CA generated on every start,
+# which this container does not have, so chain verification cannot succeed.
 opensearch.ssl.verificationMode: none
 opensearch.requestHeadersAllowlist: ["authorization", "securitytenant"]
 
