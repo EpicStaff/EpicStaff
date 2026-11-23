@@ -216,6 +216,63 @@ SERVER_SIZE_VALUES = {
     "medium": {"DJANGO_SGI_WORKERS": "3", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "2"},
     "large": {"DJANGO_SGI_WORKERS": "6", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "4"},
 }
+
+class MemoryLimit(NamedTuple):
+    variable: str
+    services: tuple[str, ...]
+    default_mb: int
+    floor_mb: int
+    profile: str | None
+
+
+# The limits the wizard scales to the host. Defaults are benchmark peaks with headroom; floors are
+# the memory each service used at the lightest load plus about 20%.
+MEMORY_LIMITS = (
+    MemoryLimit("CREW_MEMORY", ("crew",), 2048, 384, None),
+    MemoryLimit("CREWDB_MEMORY", ("crewdb",), 2048, 384, None),
+    MemoryLimit("SANDBOX_MEMORY", ("sandbox_new",), 1024, 256, None),
+    MemoryLimit("SANDBOX_WORKER_MEMORY", ("sandbox_worker",), 2048, 512, None),
+    MemoryLimit("KNOWLEDGE_MEMORY", ("knowledge_new",), 2048, 512, None),
+    MemoryLimit("AGENT_MEMORY", ("agent",), 1024, 256, None),
+    MemoryLimit("REDIS_MEMORY", ("redis",), 512, 128, None),
+    MemoryLimit("OPENSEARCH_MEMORY", ("opensearch",), 2048, 1536, "auditor"),
+)
+# Limit variable -> (worker variable, MiB per worker, base MiB, profile). Never scaled down:
+# below this the workers themselves run out of memory.
+WORKER_MEMORY = {
+    "DJANGO_MEMORY": ("DJANGO_SGI_WORKERS", 512, 1024, None),
+    "CHAT_MEMORY": ("CHAT_WORKERS", 256, 512, "chat"),
+}
+# Compose service -> (memory MiB, pids, profile). Written in docker-compose.yaml, not in `.env`.
+FIXED_LIMITS = {
+    "epicstaff-nginx": (128, 256, None),
+    "frontend": (64, 64, None),
+    "storage": (256, 512, None),
+    "storage-init": (64, 64, None),
+    "volume-permissions": (64, 64, None),
+    "webhook": (128, 128, None),
+    "manager": (128, 128, None),
+    "realtime": (256, 256, None),
+    "mailpit": (128, 64, "dev"),
+    "auditor": (512, 256, "auditor"),
+    "chatdb": (512, 512, "chat"),
+    "plugins_db": (512, 512, "plugins"),
+    "plugins_egress": (256, 128, "plugins"),
+}
+# They get limits but are left out of the total: they exit after startup.
+ONE_SHOT_SERVICES = ("storage-init", "volume-permissions")
+MEMORY_ROUNDING_MB = 64
+DEFAULT_ES_PLUGINS_MEMORY_MB = 4096
+
+
+class MemoryFit(NamedTuple):
+    values: dict[str, str]
+    ram_mb: int
+    reserve_mb: int
+    total_mb: int
+    fits: bool
+    largest: list[str]
+
 # Sandbox limit -> (description, how long crew waits for the result). Crew must wait longer than
 # the sandbox may run, with room for library installation.
 CODE_TIME_LIMITS = {
@@ -794,6 +851,100 @@ def detect_cpu_count() -> int | None:
             # Some sandboxes refuse the call; the wizard must not fail after all its questions.
             pass
     return os.cpu_count()
+
+
+def detect_memory_mb() -> int | None:
+    """Return the physical RAM in MiB, or None when the OS cannot say (Windows has no sysconf)."""
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // 2**20
+    except (ValueError, OSError, AttributeError):
+        return None
+
+
+def memory_reserve_mb(ram_mb: int) -> int:
+    """Room kept for the OS, SSH and Docker itself: 1 GiB or 10% of RAM, whichever is larger."""
+    return max(1024, ram_mb // 10)
+
+
+def worker_memory_values(values: dict[str, str]) -> dict[str, str]:
+    """Return the Django / chat limits that follow the worker counts held in `values`."""
+    return {
+        variable: f"{per_worker * int(values[workers_variable]) + base}m"
+        for variable, (workers_variable, per_worker, base, _) in WORKER_MEMORY.items()
+        if workers_variable in values
+    }
+
+
+def _plugins_memory_mb(values: dict[str, str]) -> int:
+    raw = values.get("ES_PLUGINS_MEMORY")
+    if raw is None:
+        return DEFAULT_ES_PLUGINS_MEMORY_MB
+    # Docker writes 4g / 512m; humanize only knows gb / mb.
+    raw = raw.strip().lower()
+    if raw[-1:] in ("k", "m", "g"):
+        raw += "b"
+    return humanize.to_byte_size(raw) // 2**20
+
+
+def fit_memory_limits(ram_mb: int, profiles: list[str], values: dict[str, str]) -> MemoryFit:
+    """Scale the sized services down together until they fit the RAM left after the reserve.
+
+    `values` holds the chosen settings: worker counts and ES_PLUGINS_MEMORY. Django, chat and
+    the plugin node are counted as fixed; the rest shrink by one factor, never below a floor.
+    """
+
+    def active(profile: str | None) -> bool:
+        return profile is None or profile in profiles
+
+    worker_values = {
+        variable: value
+        for variable, value in worker_memory_values(values).items()
+        if active(WORKER_MEMORY[variable][3])
+    }
+    fixed = (
+        sum(
+            memory
+            for service, (memory, _, profile) in FIXED_LIMITS.items()
+            if active(profile) and service not in ONE_SHOT_SERVICES
+        )
+        + sum(int(value[:-1]) for value in worker_values.values())
+        + (_plugins_memory_mb(values) if "plugins" in profiles else 0)
+    )
+    reserve = memory_reserve_mb(ram_mb)
+    budget = ram_mb - reserve - fixed
+    scaled = [limit for limit in MEMORY_LIMITS if active(limit.profile)]
+
+    pinned: set[str] = set()
+    while True:
+        free = [limit for limit in scaled if limit.variable not in pinned]
+        pinned_floor = sum(limit.floor_mb for limit in scaled if limit.variable in pinned)
+        factor = (budget - pinned_floor) / sum(limit.default_mb for limit in free) if free else 1
+        newly_pinned = {limit.variable for limit in free if limit.default_mb * factor < limit.floor_mb}
+        if not newly_pinned:
+            break
+        pinned |= newly_pinned
+
+    sized = {}
+    for limit in scaled:
+        mb = limit.floor_mb if limit.variable in pinned else min(limit.default_mb, int(limit.default_mb * factor))
+        sized[limit.variable] = mb // MEMORY_ROUNDING_MB * MEMORY_ROUNDING_MB
+    fit_values = {**worker_values, **{variable: f"{mb}m" for variable, mb in sized.items()}}
+    in_mb = {variable: int(value[:-1]) for variable, value in fit_values.items()}
+    return MemoryFit(
+        values=fit_values,
+        ram_mb=ram_mb,
+        reserve_mb=reserve,
+        total_mb=fixed + sum(sized.values()),
+        fits=sum(sized.values()) <= budget,
+        largest=sorted(in_mb, key=in_mb.get, reverse=True)[:3],
+    )
+
+
+def memory_note(fit: MemoryFit) -> str:
+    return (
+        f"Memory limits: {fit.total_mb / 1024:.1f} GB for containers, "
+        f"{fit.reserve_mb / 1024:.1f} GB kept free for the system ({fit.ram_mb / 1024:.0f} GB detected)."
+    )
 
 
 def server_size_for(cpu_count: int | None) -> str:

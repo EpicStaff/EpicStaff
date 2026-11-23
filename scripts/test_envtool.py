@@ -1058,5 +1058,61 @@ class MainTest(unittest.TestCase):
         self.assertTrue(env_file.read_text(encoding="utf-8").endswith("\nCREW_HOST=crew\n"))
 
 
+class MemoryFitTests(unittest.TestCase):
+    def test_reserve_is_one_gib_or_ten_percent(self):
+        self.assertEqual(envtool.memory_reserve_mb(4096), 1024)
+        self.assertEqual(envtool.memory_reserve_mb(65536), 6553)
+
+    def test_worker_memory_follows_the_worker_counts(self):
+        self.assertEqual(
+            envtool.worker_memory_values({"DJANGO_SGI_WORKERS": "6", "CHAT_WORKERS": "2"}),
+            {"DJANGO_MEMORY": "4096m", "CHAT_MEMORY": "1024m"},
+        )
+
+    def test_a_big_host_keeps_every_default(self):
+        fit = envtool.fit_memory_limits(65536, [], {"DJANGO_SGI_WORKERS": "6"})
+        self.assertTrue(fit.fits)
+        self.assertEqual(fit.values["CREW_MEMORY"], "2048m")
+        self.assertEqual(fit.values["DJANGO_MEMORY"], "4096m")
+        self.assertNotIn("OPENSEARCH_MEMORY", fit.values)  # auditor profile off
+
+    def test_a_small_host_scales_down_but_never_below_a_floor(self):
+        fit = envtool.fit_memory_limits(8192, [], {"DJANGO_SGI_WORKERS": "1"})
+        self.assertTrue(fit.fits)
+        self.assertLessEqual(fit.total_mb, 8192 - 1024)
+        for limit in envtool.MEMORY_LIMITS:
+            if limit.profile is None:
+                self.assertGreaterEqual(int(fit.values[limit.variable][:-1]), limit.floor_mb)
+            self.assertEqual(int(fit.values.get(limit.variable, "0m")[:-1]) % 64, 0)
+
+    def test_a_6gb_host_fits_at_small_size(self):
+        # 6144 - 1024 reserve - 960 fixed - 1536 Django = 2624 left; floors need 2432.
+        fit = envtool.fit_memory_limits(6144, [], {"DJANGO_SGI_WORKERS": "1"})
+        self.assertTrue(fit.fits)
+        self.assertLessEqual(fit.total_mb, 6144 - 1024)
+        scaled = sum(int(fit.values[limit.variable][:-1]) for limit in envtool.MEMORY_LIMITS if limit.profile is None)
+        self.assertEqual(fit.total_mb - scaled, 960 + 1536)  # one-shot containers not counted
+
+    def test_too_small_when_the_floors_do_not_fit(self):
+        # 6 GiB at Medium: 3 Django workers leave 1600 for floors that need 2432.
+        fit = envtool.fit_memory_limits(6144, [], {"DJANGO_SGI_WORKERS": "3"})
+        self.assertFalse(fit.fits)
+        self.assertEqual(fit.largest[0], "DJANGO_MEMORY")
+
+    def test_plugins_memory_counts_but_is_never_written(self):
+        small = envtool.fit_memory_limits(32768, ["plugins"], {"DJANGO_SGI_WORKERS": "1", "ES_PLUGINS_MEMORY": "4g"})
+        big = envtool.fit_memory_limits(32768, ["plugins"], {"DJANGO_SGI_WORKERS": "1", "ES_PLUGINS_MEMORY": "6144m"})
+        self.assertNotIn("ES_PLUGINS_MEMORY", small.values)
+        self.assertEqual(big.total_mb - small.total_mb, 2048)
+
+    def test_detect_memory_returns_none_when_the_os_cannot_say(self):
+        with mock.patch.object(envtool.os, "sysconf", side_effect=ValueError):
+            self.assertIsNone(envtool.detect_memory_mb())
+
+    def test_memory_note_reads_in_gigabytes(self):
+        fit = envtool.fit_memory_limits(65536, [], {"DJANGO_SGI_WORKERS": "6"})
+        self.assertRegex(envtool.memory_note(fit), r"^Memory limits: \d+\.\d GB for containers, 6\.4 GB kept free for the system \(64 GB detected\)\.$")
+
+
 if __name__ == "__main__":
     unittest.main()
