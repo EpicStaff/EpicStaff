@@ -73,7 +73,7 @@ def test_key_stops_when_owner_leaves_its_org(issue_api_key, member_of_both, acme
     response = client.get(GRAPHS_URL)
 
     assert response.status_code == 401, response.content
-    assert response.json()["message"] == DEAD_KEY_MESSAGE
+    assert response.json()["errors"][0]["detail"] == DEAD_KEY_MESSAGE
 
 
 @pytest.mark.django_db
@@ -86,7 +86,7 @@ def test_key_stops_when_its_org_is_deactivated(request, issue_api_key, owner, ac
     response = client.get(GRAPHS_URL)
 
     assert response.status_code == 401, response.content
-    assert response.json()["message"] == DEAD_KEY_MESSAGE
+    assert response.json()["errors"][0]["detail"] == DEAD_KEY_MESSAGE
 
 
 @pytest.mark.django_db
@@ -176,7 +176,7 @@ def test_orgs_permissions_with_key_of_a_deactivated_org_is_401(request, issue_ap
     response = client.get(ORGS_PERMISSIONS_URL)
 
     assert response.status_code == 401, response.content
-    assert response.json()["message"] == DEAD_KEY_MESSAGE
+    assert response.json()["errors"][0]["detail"] == DEAD_KEY_MESSAGE
 
 
 @pytest.mark.django_db

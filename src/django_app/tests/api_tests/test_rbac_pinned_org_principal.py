@@ -300,7 +300,7 @@ def test_another_orgs_header_answers_404_organization_not_found(plugin_client, p
     response = plugin_client(principal, org_id=beta.id).get("/api/graphs/")
 
     assert response.status_code == 404, response.content
-    assert response.json()["code"] == "organization_not_found"
+    assert response.json()["errors"][0]["code"] == "organization_not_found"
 
 
 def test_inactive_pinned_org_answers_403(plugin_client, principal, acme):
@@ -310,7 +310,7 @@ def test_inactive_pinned_org_answers_403(plugin_client, principal, acme):
     response = plugin_client(principal).get("/api/graphs/")
 
     assert response.status_code == 403, response.content
-    assert response.json()["code"] == "org_membership_required"
+    assert response.json()["errors"][0]["code"] == "org_membership_required"
 
 
 # ---- Gates ----
@@ -385,8 +385,8 @@ def test_person_only_surfaces_refuse_a_plugin_credential(plugin_client, principa
     response = getattr(plugin_client(principal), method)(path, {}, format="json")
 
     assert response.status_code == 403, response.content
-    assert response.json()["code"] == "permission_denied"
-    assert response.json()["message"] == PLUGIN_REFUSED
+    assert response.json()["errors"][0]["code"] == "permission_denied"
+    assert response.json()["errors"][0]["detail"] == PLUGIN_REFUSED
 
 
 def test_purges_refuse_a_plugin_credential(plugin_client, principal):
@@ -395,7 +395,7 @@ def test_purges_refuse_a_plugin_credential(plugin_client, principal):
     )
 
     assert response.status_code == 403, response.content
-    assert response.json()["message"] == PLUGIN_REFUSED
+    assert response.json()["errors"][0]["detail"] == PLUGIN_REFUSED
 
 
 def test_plugin_credential_creates_a_secret_without_reading_it_back(plugin_client, principal, acme):
@@ -481,7 +481,7 @@ def test_user_api_key_is_still_refused_on_secrets(member_only, acme, issue_api_k
     response = client.get("/api/secrets/")
 
     assert response.status_code == 403, response.content
-    assert response.json()["message"] == DenyPersonalAndSystemApiKeys.message
+    assert response.json()["errors"][0]["detail"] == DenyPersonalAndSystemApiKeys.message
 
 
 # ---- Tables code a pinned principal reaches ----

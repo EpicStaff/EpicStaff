@@ -66,7 +66,7 @@ def test_every_person_only_surface_refuses_a_service_account(plugin_client, surf
         response = getattr(plugin_client, method)(url, body, format="json")
 
         assert response.status_code == 403, (name, response.status_code, response.content)
-        assert response.json() == {"status_code": 403, "code": "permission_denied", "message": PLUGIN_REFUSAL}, name
+        assert response.json() == {"type": "client_error", "errors": [{"code": "permission_denied", "detail": PLUGIN_REFUSAL, "attr": None, "context": None}]}, name
 
 
 def test_the_flow_assistant_stream_never_reads_a_plugin_key(plugin_client, acme):
@@ -75,7 +75,7 @@ def test_the_flow_assistant_stream_never_reads_a_plugin_key(plugin_client, acme)
     response = plugin_client.get(f"/api/flow-assistants/{graph.pk}/conversations/1/stream/")
 
     assert response.status_code == 401
-    assert response.json()["code"] == "invalid_sse_ticket"
+    assert response.json()["errors"][0]["code"] == "invalid_sse_ticket"
 
 
 def test_a_person_is_not_refused_by_the_gate(person_client, surfaces):
