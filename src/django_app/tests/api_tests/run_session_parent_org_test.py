@@ -121,7 +121,7 @@ def test_cross_org_parent_session_id_is_rejected(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["code"] == "parent_session_not_found"
+    assert response.data["errors"][0]["code"] == "parent_session_not_found"
     assert not Session.objects.filter(parent_session_id=session_in_org_b.pk).exists()
 
 
@@ -166,7 +166,7 @@ def test_nonexistent_parent_session_id_is_rejected(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["code"] == "parent_session_not_found"
+    assert response.data["errors"][0]["code"] == "parent_session_not_found"
     assert not Session.objects.filter(graph=graph_in_org_a).exists()
 
 
@@ -192,11 +192,7 @@ def test_cross_org_and_nonexistent_parent_get_the_same_response(
 
     assert cross_org_response.status_code == status.HTTP_400_BAD_REQUEST
     assert nonexistent_response.status_code == status.HTTP_400_BAD_REQUEST
-    assert cross_org_response.data == nonexistent_response.data == {
-        "status_code": 400,
-        "code": "parent_session_not_found",
-        "message": "Parent session not found.",
-    }
+    assert cross_org_response.data == nonexistent_response.data == {"type": "client_error", "errors": [{"code": "parent_session_not_found", "detail": "Parent session not found.", "attr": None, "context": None}]}
 
 
 @pytest.mark.django_db
@@ -220,5 +216,5 @@ def test_parent_session_of_a_binned_flow_is_rejected(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["code"] == "parent_session_not_found"
+    assert response.data["errors"][0]["code"] == "parent_session_not_found"
     assert not Session.objects.filter(parent_session_id=parent_session.pk).exists()

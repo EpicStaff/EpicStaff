@@ -394,7 +394,7 @@ def test_a_suspended_grant_is_not_counted_and_granting_again_conflicts(grant, su
 
     assert superadmin_client.get("/api/admin/plugins/weather/").json()["grant_count"] == 0
     response = superadmin_client.post("/api/admin/plugins/weather/grants/", {"organization_id": acme.pk}, format="json")
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_already_granted")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_already_granted")
 
 
 def test_suspending_twice_conflicts(grant, superadmin_client):
@@ -402,13 +402,13 @@ def test_suspending_twice_conflicts(grant, superadmin_client):
 
     response = _suspend(superadmin_client, grant)
 
-    assert (response.status_code, response.json()["code"]) == (409, "grant_not_suspendable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "grant_not_suspendable")
 
 
 def test_resuming_an_active_grant_conflicts(grant, superadmin_client):
     response = _resume(superadmin_client, grant)
 
-    assert (response.status_code, response.json()["code"]) == (409, "grant_not_suspended")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "grant_not_suspended")
 
 
 @pytest.mark.parametrize("action", ["suspend", "resume"])
@@ -417,7 +417,7 @@ def test_an_unknown_grant_or_one_of_another_plugin_is_not_found(grant, superadmi
 
     for url in (_url(grant.pk + 1000, action), _url(grant.pk, action, identifier="almanac"), _url(grant.pk, action, identifier="missing")):
         response = superadmin_client.post(url)
-        assert (response.status_code, response.json()["code"]) == (404, "grant_not_found"), url
+        assert (response.status_code, response.json()["errors"][0]["code"]) == (404, "grant_not_found"), url
 
 
 @pytest.mark.parametrize("action", ["suspend", "resume"])

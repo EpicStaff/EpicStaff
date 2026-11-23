@@ -5,8 +5,10 @@ from typing import ClassVar
 
 from agents.models import AgentDefinition
 from django.conf import settings
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
+from django.http import Http404
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_view
@@ -26,7 +28,7 @@ from rbac.scoping.mixins import (
     OrgScopedChildViewSetMixin,
     OrgScopedServiceViewSetMixin,
 )
-from rest_framework import filters, mixins, viewsets
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
@@ -35,11 +37,14 @@ from src.shared.bench_log import BENCH_LEVEL
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models import UserAction
 from tables.clients import KnowledgeClient
-from tables.clients.errors import ClientError, ClientResourceNotFoundError
+from tables.clients.errors import ClientResourceNotFoundError
 from tables.exceptions import (
     CodeRunTargetNotFoundError,
-    DocumentConfigNotFoundException,
     InvalidChunkParametersException,
+    NotificationEmailNotSentError,
+    QuickstartFailedError,
+    QuickstartNotFoundError,
+    QuickstartRefusedError,
 )
 from tables.filters import SessionFilter
 from tables.models import (
@@ -284,8 +289,7 @@ class SessionViewSet(
     @action(detail=False, methods=["post"], url_path="bulk_delete")
     def bulk_delete(self, request):
         body = BulkIdsSerializer(data=request.data)
-        if not body.is_valid():
-            return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        body.is_valid(raise_exception=True)
         ids = body.validated_data["ids"]
 
         # Count the requested sessions before deleting: delete() also counts the
@@ -344,15 +348,14 @@ class RunSession(APIView):
         got_mb = round(total_size / 1024 / 1024, 2)
 
         if got_mb > max_mb:
-            return Response(
-                {"files": [f"Total files size exceeds {max_mb:.2f} MB (got {got_mb:.2f} MB)"]},
-                status=400,
+            raise ValidationError(
+                {"files": [f"Total files size exceeds {max_mb:.2f} MB (got {got_mb:.2f} MB)"]}
             )
 
         serializer = RunSessionSerializer(data=request.data)
         if not serializer.is_valid():
             logger.warning(f"Invalid data received in request: {serializer.errors}")
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            raise ValidationError(serializer.errors)
 
         callback_url = serializer.validated_data.get("callback_url")
         callback_secret = serializer.validated_data.get("callback_secret")
@@ -432,13 +435,13 @@ class RunSession(APIView):
         except APIException as error:
             # The run path raises its domain errors as APIExceptions. Any 4xx one (such as a
             # flow without an entry point, an undeclared secret or a deleted LLM provider)
-            # keeps the existing 400 with its message in `error`. A 5xx one, like any other
-            # exception, goes to the global handler, which answers without the internal text
-            # (503 for an exhausted database pool).
+            # is answered as a 400 that keeps the error's own code and text. A 5xx one, like
+            # any other exception, goes to the global handler, which answers without the
+            # internal text (503 for an exhausted database pool).
             if status.is_server_error(error.status_code):
                 raise
             logger.warning("Session for graph_id {} not started: {}", graph_id, error)
-            return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(error)})
+            raise ValidationError(error.detail) from error
 
         return Response(
             data={"session_id": session_id},
@@ -553,19 +556,14 @@ class NotifyEmailView(APIView):
     @not_a_user_change
     def post(self, request, *args, **kwargs):
         serializer = NotifyEmailSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.is_valid(raise_exception=True)
 
         to_email = serializer.validated_data["to"]
         subject = serializer.validated_data["subject"]
         message = serializer.validated_data["message"]
 
-        sent, error = notification_email_sender.send(to=to_email, subject=subject, message=message)
-        if not sent:
-            return Response(
-                {"message": f"Failed to send notification email: {error}"},
-                status=status.HTTP_502_BAD_GATEWAY,
-            )
+        if not notification_email_sender.send(to=to_email, subject=subject, message=message):
+            raise NotificationEmailNotSentError()
 
         return Response({"sent": True}, status=status.HTTP_200_OK)
 
@@ -663,10 +661,7 @@ class InitRealtimeAPIView(APIView):
         serializer = InitRealtimeSerializer(data=request.data)
         if not serializer.is_valid():
             logger.warning(f"Invalid data received in request: {serializer.errors}")
-            return Response(
-                data={"error": str(serializer.errors)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise ValidationError(serializer.errors)
 
         agent_definition_id = serializer.validated_data["agent_definition_id"]
         config = serializer.validated_data.get("config", {})
@@ -738,7 +733,6 @@ class InitRealtimeAPIView(APIView):
                     "agent_definition_id": f'Invalid pk "{agent_definition_id}" - object does not exist.'
                 }
             )
-        # Outside the try below, whose generic handler would turn the 409 into a 400.
         assert_run_admitted(RunSubject(RunKind.REALTIME, agent_definition_id, org_id))
 
         try:
@@ -748,13 +742,18 @@ class InitRealtimeAPIView(APIView):
                 user_id=user_id,
                 org_id=org_id,
             )
-        except Exception as e:
-            logger.exception(
-                f"Error occurred while creating realtime agent for agent_definition_id {agent_definition_id}"
-            )
-            return Response(status=status.HTTP_400_BAD_REQUEST, data={"error": str(e)})
-        else:
-            return Response(data={"connection_key": connection_key}, status=status.HTTP_201_CREATED)
+        except Http404 as error:
+            # The agent is the caller's own, but it has no realtime part to start.
+            raise ValidationError(
+                {"agent_definition_id": ["This agent has no realtime configuration."]},
+                code="realtime_agent_not_configured",
+            ) from error
+        except DjangoValidationError as error:
+            # The realtime part has no usable provider config: the caller's to fix.
+            raise ValidationError(
+                {"agent_definition_id": error.messages}, code="realtime_agent_not_configured"
+            ) from error
+        return Response(data={"connection_key": connection_key}, status=status.HTTP_201_CREATED)
 
 
 class QuickstartView(APIView):
@@ -781,29 +780,21 @@ class QuickstartView(APIView):
             resource_type=self.rbac_resource_type,
             action=Permission.READ,
         )
-        try:
-            supported_providers = list(quickstart_service.get_supported_providers())
-            last_config = quickstart_service.get_last_quickstart(org_id)
-            is_synced = (
-                quickstart_service.is_synced(last_config, org_id=org_id) if last_config else False
-            )
+        supported_providers = list(quickstart_service.get_supported_providers())
+        last_config = quickstart_service.get_last_quickstart(org_id)
+        is_synced = (
+            quickstart_service.is_synced(last_config, org_id=org_id) if last_config else False
+        )
 
-            data = QuickstartStatusSerializer(
-                {
-                    "supported_providers": supported_providers,
-                    "last_config": last_config,
-                    "is_synced": is_synced,
-                },
-                context={"request": request},
-            ).data
-            return Response(data, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            logger.error(f"Error getting quickstart status: {e!s}")
-            return Response(
-                data={"detail": "Failed to retrieve quickstart status"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        data = QuickstartStatusSerializer(
+            {
+                "supported_providers": supported_providers,
+                "last_config": last_config,
+                "is_synced": is_synced,
+            },
+            context={"request": request},
+        ).data
+        return Response(data, status=status.HTTP_200_OK)
 
     @extend_schema(**QUICKSTART_POST)
     def post(self, request):
@@ -837,14 +828,9 @@ class QuickstartView(APIView):
         if not result.get("success", False):
             # A curated refusal is the caller's to fix (400); anything else is a
             # server failure, and its message is already the generic one.
-            return Response(
-                data={"detail": "Error quickstart", "error": result.get("error")},
-                status=(
-                    status.HTTP_500_INTERNAL_SERVER_ERROR
-                    if result.get("unexpected", False)
-                    else status.HTTP_400_BAD_REQUEST
-                ),
-            )
+            if result.get("unexpected", False):
+                raise QuickstartFailedError(result["error"])
+            raise QuickstartRefusedError(result["error"])
 
         config_name = result["config_name"]
         configs = QuickstartConfigSerializer(
@@ -891,10 +877,7 @@ class QuickstartApplyView(APIView):
             )
         last = quickstart_service.get_last_quickstart(org_id)
         if not last:
-            return Response(
-                {"detail": "No quickstart config found. Run POST /quickstart/ first."},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            raise QuickstartNotFoundError()
 
         dm = quickstart_service.apply_to_default_models(last["config_name"], org_id=org_id)
         return Response(
@@ -919,8 +902,7 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
     @extend_schema(**PROCESS_RAG_INDEXING_POST)
     def post(self, request):
         serializer = ProcessRagIndexingSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.is_valid(raise_exception=True)
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
         document_config_ids = serializer.validated_data["document_config_ids"]
@@ -928,10 +910,7 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
         org_id = self.get_active_org_id()
         model = self._RAG_MODELS.get(rag_type)
         if model is None:
-            return Response(
-                {"error": f"Unknown rag_type '{rag_type}'."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise ValidationError({"rag_type": [f"Unknown rag_type '{rag_type}'."]})
         rag = self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
         assert_org_permission(
             request.user,
@@ -977,19 +956,16 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
             context="LLMConfig.extra_headers",
         )
 
-        try:
-            with KnowledgeClient() as client:
-                client.index(
-                    strategy=RAGStrategy(rag_type),
-                    rag_id=rag_id,
-                    document_ids=frozenset(document_config_ids),
-                    embedding_api_key=embedding_api_key,
-                    llm_api_key=llm_api_key,
-                    embedding_extra_headers=embedding_extra_headers,
-                    llm_extra_headers=llm_extra_headers,
-                )
-        except ClientError as e:
-            return Response({"error": str(e)}, status=e.status_code)
+        with KnowledgeClient() as client:
+            client.index(
+                strategy=RAGStrategy(rag_type),
+                rag_id=rag_id,
+                document_ids=frozenset(document_config_ids),
+                embedding_api_key=embedding_api_key,
+                llm_api_key=llm_api_key,
+                embedding_extra_headers=embedding_extra_headers,
+                llm_extra_headers=llm_extra_headers,
+            )
         record_rag_change(rag.base_rag_type.source_collection, changed=True)
 
         return Response(
@@ -1020,8 +996,7 @@ class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetM
     @reads_only
     def post(self, request):
         serializer = ProcessRagIndexingEstimateSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.is_valid(raise_exception=True)
         rag_id = serializer.validated_data["rag_id"]
         rag_type = serializer.validated_data["rag_type"]
         document_config_ids = serializer.validated_data["document_config_ids"]
@@ -1038,30 +1013,26 @@ class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetM
         )
 
         if rag_type == "graph":
-            return Response(
-                {"error": "Estimate is not available for GraphRAG."},
-                status=status.HTTP_400_BAD_REQUEST,
+            raise ValidationError(
+                {"rag_type": ["Estimate is not available for GraphRAG."]},
+                code="estimate_not_available",
             )
 
         try:
             chunking_overrides = NaiveRagService.resolve_effective_document_configs(
                 rag_id, document_configs
             )
-        except DocumentConfigNotFoundException as e:
-            return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except InvalidChunkParametersException:
-            raise
+        except (ValidationError, InvalidChunkParametersException) as error:
+            # The service names positions in `document_configs`, the body field they came from.
+            raise ValidationError({"document_configs": error.detail}) from error
 
-        try:
-            with KnowledgeClient(timeout=self._KNOWLEDGE_TIMEOUT_SECONDS) as client:
-                estimate = client.index_estimate(
-                    strategy=RAGStrategy(rag_type),
-                    rag_id=rag_id,
-                    document_ids=frozenset(document_config_ids),
-                    chunking_overrides=chunking_overrides,
-                )
-        except ClientError as e:
-            return Response({"error": str(e)}, status=e.status_code)
+        with KnowledgeClient(timeout=self._KNOWLEDGE_TIMEOUT_SECONDS) as client:
+            estimate = client.index_estimate(
+                strategy=RAGStrategy(rag_type),
+                rag_id=rag_id,
+                document_ids=frozenset(document_config_ids),
+                chunking_overrides=chunking_overrides,
+            )
 
         return Response(estimate, status=status.HTTP_200_OK)
 
@@ -1074,10 +1045,7 @@ class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
     def delete(self, request, rag_type: str, rag_id: int):
         model = self._RAG_MODELS.get(rag_type)
         if model is None:
-            return Response(
-                {"error": f"Unknown rag_type '{rag_type}'."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise ValidationError({"rag_type": [f"Unknown rag_type '{rag_type}'."]})
         rag = self.get_in_active_org_or_404(model, rag_id, self._RAG_ORG_PATH)
         assert_org_permission(
             request.user,
@@ -1091,8 +1059,6 @@ class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
                 client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
         except ClientResourceNotFoundError:
             cancelled = False  # No indexing was running.
-        except ClientError as e:
-            return Response({"error": str(e)}, status=e.status_code)
         record_rag_change(rag.base_rag_type.source_collection, changed=cancelled)
         return Response(status=status.HTTP_204_NO_CONTENT)
 

@@ -11,6 +11,7 @@ from tables.models.knowledge_models import (
     NaiveRagDocumentConfig,
 )
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import details_by_attr, error_codes
 
 URL = "/api/process-rag-indexing/estimate/"
 
@@ -112,6 +113,7 @@ def test_estimate_rejects_invalid_body(acme_client, admin_acme, knowledge_calls)
     response = acme_client(admin_acme).post(URL, {"rag_type": "naive"}, format="json")
 
     assert response.status_code == 400
+    assert details_by_attr(response.json())["rag_id"] == ["This field is required."]
     assert knowledge_calls == []
 
 
@@ -135,6 +137,9 @@ def test_estimate_surfaces_knowledge_service_errors(
     )
 
     assert response.status_code == 404
+    # The upstream's own text stays in the log; the caller gets the fixed one.
+    assert error_codes(response.json()) == ["upstream_resource_not_found"]
+    assert "rag not found" not in response.content.decode()
 
 
 @pytest.mark.django_db
@@ -150,7 +155,10 @@ def test_graph_estimate_is_rejected_without_calling_knowledge(
     )
 
     assert response.status_code == 400
-    assert response.json() == {"error": "Estimate is not available for GraphRAG."}
+    assert error_codes(response.json()) == ["estimate_not_available"]
+    assert details_by_attr(response.json()) == {
+        "rag_type": ["Estimate is not available for GraphRAG."]
+    }
     assert knowledge_calls == []
 
 
@@ -278,7 +286,7 @@ def test_estimate_without_overrides_forwards_an_empty_override_list(acme_client,
 
 
 @pytest.mark.django_db
-def test_estimate_override_of_a_config_in_another_orgs_rag_is_404(
+def test_estimate_override_of_a_config_in_another_orgs_rag_is_400_like_a_missing_one(
     acme_client, admin_acme, acme, beta, knowledge_calls
 ):
     rag_id, _ = _naive_rag_with_config(acme)
@@ -297,14 +305,20 @@ def test_estimate_override_of_a_config_in_another_orgs_rag_is_404(
         format="json",
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 400
+    assert details_by_attr(response.json()) == {
+        "document_configs": [
+            f"Configs not found or don't belong to NaiveRag {rag_id}: "
+            f"[{foreign_config.naive_rag_document_id}]"
+        ]
+    }
     assert knowledge_calls == []
     foreign_config.refresh_from_db()
     assert foreign_config.chunk_size == 1000
 
 
 @pytest.mark.django_db
-def test_estimate_override_for_a_missing_config_in_the_same_org_is_404(
+def test_estimate_override_for_a_missing_config_in_the_same_org_is_400(
     acme_client, admin_acme, acme, knowledge_calls
 ):
     rag_id, config = _naive_rag_with_config(acme)
@@ -315,8 +329,11 @@ def test_estimate_override_for_a_missing_config_in_the_same_org_is_404(
 
     response = acme_client(admin_acme).post(URL, body, format="json")
 
-    assert response.status_code == 404
-    assert str(missing_id) in response.json()["error"]
+    assert response.status_code == 400
+    assert error_codes(response.json()) == ["document_config_not_found"]
+    assert details_by_attr(response.json()) == {
+        "document_configs": [f"Configs not found or don't belong to NaiveRag {rag_id}: [{missing_id}]"]
+    }
     assert knowledge_calls == []
 
 
@@ -357,10 +374,9 @@ def test_estimate_names_the_invalid_document_when_only_one_override_is_invalid(
     )
 
     assert response.status_code == 400
-    body = response.json()
-    assert body["error"] == "'chunk_overlap' must be less than 'chunk_size'"
-    assert [item["document_config_id"] for item in body["errors"]] == [invalid_id]
-    assert body["errors"][0]["field"] == "chunk_overlap"
+    assert details_by_attr(response.json()) == {
+        "document_configs.1.chunk_overlap": ["'chunk_overlap' must be less than 'chunk_size'"]
+    }
     assert knowledge_calls == []
 
 
@@ -375,14 +391,12 @@ def test_estimate_non_object_additional_params_override_is_400_naming_field_and_
     )
 
     assert response.status_code == 400
-    body = response.json()
-    assert body["error"] == "'additional_params' must be an object"
-    assert body["errors"] == [
+    assert response.json()["errors"] == [
         {
-            "document_config_id": config.naive_rag_document_id,
-            "field": "additional_params",
-            "value": [1, 2],
-            "reason": "'additional_params' must be an object",
+            "code": "invalid_chunk_parameters",
+            "detail": "'additional_params' must be an object",
+            "attr": "document_configs.0.additional_params",
+            "context": None,
         }
     ]
     assert knowledge_calls == []
@@ -400,7 +414,9 @@ def test_estimate_override_breaking_overlap_rule_against_stored_value_is_400(
     )
 
     assert response.status_code == 400
-    assert response.json()["error"] == "'chunk_overlap' must be less than 'chunk_size'"
+    assert details_by_attr(response.json()) == {
+        "document_configs.0.chunk_overlap": ["'chunk_overlap' must be less than 'chunk_size'"]
+    }
     assert knowledge_calls == []
 
 
@@ -415,7 +431,8 @@ def test_estimate_override_with_strategy_not_allowed_for_the_file_type_is_400(
     )
 
     assert response.status_code == 400
-    assert "chunk_strategy 'markdown' is not valid" in response.json()["error"]
+    [message] = details_by_attr(response.json())["document_configs.0.chunk_strategy"]
+    assert "chunk_strategy 'markdown' is not valid" in message
     assert knowledge_calls == []
 
 
@@ -491,5 +508,8 @@ def test_graph_estimate_with_overrides_is_still_rejected(
     )
 
     assert response.status_code == 400
-    assert response.json() == {"error": "Estimate is not available for GraphRAG."}
+    assert error_codes(response.json()) == ["estimate_not_available"]
+    assert details_by_attr(response.json()) == {
+        "rag_type": ["Estimate is not available for GraphRAG."]
+    }
     assert knowledge_calls == []

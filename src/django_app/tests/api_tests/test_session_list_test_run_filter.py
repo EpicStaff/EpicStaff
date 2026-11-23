@@ -172,4 +172,4 @@ class TestSessionListIsTestRunFilter:
         response = acme_client.get(LIST_URL, {"is_test_run": raw_value})
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert response.data["message"].startswith("is_test_run:")
+        assert response.data["errors"][0]["attr"] == "is_test_run"

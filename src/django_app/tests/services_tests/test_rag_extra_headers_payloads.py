@@ -323,7 +323,7 @@ def test_indexing_refuses_a_marker_naming_another_orgs_secret(
 
     # SecretResolutionError is a 500 today, the same as an unresolvable api key.
     assert response.status_code == 500
-    assert response.data["code"] == "secret_resolution_error"
+    assert response.data["errors"][0]["code"] == "secret_resolution_error"
     assert "beta-plain" not in str(response.data)
     knowledge_client.index.assert_not_called()
 

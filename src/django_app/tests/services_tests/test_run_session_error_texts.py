@@ -21,6 +21,7 @@ from tables.models import (
     SubGraphNode,
 )
 from tests.fixtures import redis_client_mock  # noqa: F401
+from tests.error_envelope import details_by_attr
 
 
 def _flow(org, name: str) -> tuple[Graph, StartNode]:
@@ -240,4 +241,4 @@ def test_run_refused_with_the_fact(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.json() == {"error": expected_text}
+    assert details_by_attr(response.json()) == {None: [expected_text]}

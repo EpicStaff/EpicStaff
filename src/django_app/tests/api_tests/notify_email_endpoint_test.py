@@ -4,6 +4,7 @@ rather than mocking send_mail directly, since that's the standard Django way
 to assert on dispatched mail without touching a real SMTP server.
 """
 
+from smtplib import SMTPException
 from unittest.mock import patch
 
 import pytest
@@ -13,6 +14,7 @@ from django.urls import reverse
 from rest_framework import status
 
 from tables.throttles import NotifyEmailThrottle
+from tests.error_envelope import details_by_attr, error_codes
 from tests.fixtures import *  # noqa: F401,F403
 
 
@@ -50,6 +52,24 @@ def test_defaults_subject_when_not_supplied(auth_client, mailoutbox):
 
 
 @pytest.mark.django_db
+def test_a_mail_transport_failure_is_502_without_the_transports_text(auth_client):
+    transport_text = "535 authentication failed for relay@smtp.internal.example"
+
+    with patch(
+        "tables.services.notification_email_sender.send_mail",
+        side_effect=SMTPException(transport_text),
+    ):
+        response = auth_client.post(
+            _url(), {"to": "ops@example.com", "message": "Build is done."}, format="json"
+        )
+
+    assert response.status_code == status.HTTP_502_BAD_GATEWAY, response.content
+    assert error_codes(response.json()) == ["notification_email_not_sent"]
+    assert details_by_attr(response.json()) == {None: ["The notification email could not be sent."]}
+    assert "smtp.internal.example" not in response.content.decode()
+
+
+@pytest.mark.django_db
 def test_invalid_email_address_rejected(auth_client, mailoutbox):
     response = auth_client.post(
         _url(),
@@ -57,6 +77,7 @@ def test_invalid_email_address_rejected(auth_client, mailoutbox):
         format="json",
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert [item["attr"] for item in response.json()["errors"]] == ["to"]
 
 
 @pytest.mark.django_db
