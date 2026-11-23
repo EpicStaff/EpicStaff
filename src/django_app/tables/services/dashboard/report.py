@@ -1,8 +1,10 @@
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from datetime import datetime
 from decimal import Decimal
 
 from agents.models import AgentDefinition
-from django.db import transaction
+from django.db import connection, transaction
 from django.db.models import Count, Exists, OuterRef, Q, Sum
 from django.utils import timezone
 from loguru import logger
@@ -32,6 +34,9 @@ from tables.models import (
 )
 from tables.models.knowledge_models import GraphRag, NaiveRag
 from tables.services.dashboard.rollup import roll_up_since_last_build
+from tables.services.dashboard.schedule import is_build_due
+
+DASHBOARD_BUILD_LOCK = 4684
 
 _plugin_counter: Callable[[int], int] | None = None
 
@@ -213,3 +218,42 @@ def build_all_reports() -> tuple[list[int], list[int]]:
             logger.exception(f"Dashboard report build failed for org {org_id}")
             failed.append(org_id)
     return built, failed
+
+
+def build_due_reports(now: datetime) -> tuple[list[int], list[int]]:
+    schedules = Organization.objects.filter(is_active=True).values_list(
+        "id",
+        "dashboard_report__built_at",
+        "config__dashboard_refresh_minutes",
+        "config__dashboard_refresh_daily_at",
+    )
+    built, failed = [], []
+    for org_id, built_at, chosen_minutes, daily_at in schedules:
+        if not is_build_due(built_at, now, chosen_minutes, daily_at):
+            continue
+        try:
+            with _org_build_lock(org_id) as locked:
+                if locked and _built_at(org_id) == built_at:
+                    build_report(org_id)
+                    built.append(org_id)
+        except Exception:
+            logger.exception(f"Dashboard report build failed for org {org_id}")
+            failed.append(org_id)
+    return built, failed
+
+
+def _built_at(org_id: int) -> datetime | None:
+    return DashboardReport.objects.filter(org_id=org_id).values_list("built_at", flat=True).first()
+
+
+@contextmanager
+def _org_build_lock(org_id: int) -> Iterator[bool]:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT pg_try_advisory_lock(%s, %s)", [DASHBOARD_BUILD_LOCK, org_id])
+        locked = cursor.fetchone()[0]
+    try:
+        yield locked
+    finally:
+        if locked:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_unlock(%s, %s)", [DASHBOARD_BUILD_LOCK, org_id])

@@ -1,4 +1,10 @@
 from .client import RedisStreamClient, StreamMessage
+from .dashboard_build_stream import (
+    DASHBOARD_BUILD_CONSUMER_GROUP,
+    DASHBOARD_BUILD_REQUESTED_AT_FIELD,
+    DASHBOARD_BUILD_STREAM,
+    DASHBOARD_BUILD_STREAM_MAXLEN,
+)
 from .envelope import StreamEnvelope
 from .graph_message_stream import (
     GRAPH_MESSAGE_CONSUMER_GROUP,
@@ -24,6 +30,10 @@ from .transfer_job_stream import (
 )
 
 __all__ = [
+    "DASHBOARD_BUILD_CONSUMER_GROUP",
+    "DASHBOARD_BUILD_REQUESTED_AT_FIELD",
+    "DASHBOARD_BUILD_STREAM",
+    "DASHBOARD_BUILD_STREAM_MAXLEN",
     "GRAPH_MESSAGE_CONSUMER_GROUP",
     "GRAPH_MESSAGE_ENVELOPE_TYPE",
     "GRAPH_MESSAGE_STREAM",

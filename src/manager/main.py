@@ -13,6 +13,7 @@ from services.audit_export_cleanup_service import (
     ExportCleanupService,
     build_export_redis_client,
 )
+from services.dashboard_build_service import DashboardBuildService
 from services.recycle_bin_purge_service import RecycleBinPurgeService
 from services.redis_service import RedisService
 from services.retention_service import RetentionService
@@ -56,6 +57,10 @@ recycle_bin_purge_service = RecycleBinPurgeService(
     timezone=ZoneInfo(settings.TIMEZONE),
 )
 transfer_job_sweep_service = TransferJobSweepService(
+    redis_service=redis_service,
+    timezone=ZoneInfo(settings.TIMEZONE),
+)
+dashboard_build_service = DashboardBuildService(
     redis_service=redis_service,
     timezone=ZoneInfo(settings.TIMEZONE),
 )
@@ -134,6 +139,9 @@ async def main():
         await transfer_job_sweep_service.start()
         logger.info("TransferJobSweepService started successfully.")
 
+        await dashboard_build_service.start()
+        logger.info("DashboardBuildService started successfully.")
+
     except Exception as e:
         logger.error(f"Error during initialization: {e}")
 
@@ -150,6 +158,7 @@ async def shutdown():
     storage_account_cleanup_service.stop()
     recycle_bin_purge_service.stop()
     transfer_job_sweep_service.stop()
+    dashboard_build_service.stop()
     retention_service.stop()
     if redis_service.aioredis_client:
         await redis_service.aioredis_client.close()

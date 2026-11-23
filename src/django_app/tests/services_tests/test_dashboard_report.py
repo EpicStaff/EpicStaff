@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from django.db import DEFAULT_DB_ALIAS, connections
 from django.utils import timezone
 from rbac.models import Organization, Role
 from tables.models import (
@@ -19,7 +20,12 @@ from tables.models import (
 )
 from tables.models.knowledge_models import NaiveRag
 from tables.services.dashboard import report as report_service
-from tables.services.dashboard.report import build_all_reports, build_report
+from tables.services.dashboard.report import (
+    DASHBOARD_BUILD_LOCK,
+    build_all_reports,
+    build_due_reports,
+    build_report,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -173,3 +179,44 @@ def test_one_failing_org_does_not_stop_the_others(org, other_org, monkeypatch):
     assert failed == [org.id]
     assert other_org.id in built
     assert DashboardReport.objects.filter(org=other_org).exists()
+
+
+def test_due_build_skips_fresh_and_inactive_orgs(org, other_org):
+    build_report(org.id)
+    sleeping = Organization.objects.create(name="Initech", is_active=False)
+
+    built, _ = build_due_reports(timezone.now())
+
+    assert other_org.id in built
+    assert org.id not in built
+    assert sleeping.id not in built
+
+
+def test_due_build_skips_org_locked_by_another_build(org):
+    other_connection = connections.create_connection(DEFAULT_DB_ALIAS)
+    try:
+        with other_connection.cursor() as cursor:
+            cursor.execute("SELECT pg_advisory_lock(%s, %s)", [DASHBOARD_BUILD_LOCK, org.id])
+
+        built, _ = build_due_reports(timezone.now())
+    finally:
+        other_connection.close()
+
+    assert org.id not in built
+    assert not DashboardReport.objects.filter(org=org).exists()
+
+
+def test_due_build_keeps_going_after_one_org_fails(org, other_org, monkeypatch):
+    real_build = report_service.build_report
+
+    def build_or_fail(org_id):
+        if org_id == org.id:
+            raise RuntimeError("boom")
+        return real_build(org_id)
+
+    monkeypatch.setattr(report_service, "build_report", build_or_fail)
+
+    built, failed = build_due_reports(timezone.now())
+
+    assert failed == [org.id]
+    assert other_org.id in built

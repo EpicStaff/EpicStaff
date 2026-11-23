@@ -1,3 +1,6 @@
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
+from rbac.models import OrganizationConfig
 from rest_framework import serializers
 from tables.models import (
     DashboardActiveTrigger,
@@ -5,6 +8,7 @@ from tables.models import (
     DashboardLiveSession,
     DashboardReport,
 )
+from tables.services.dashboard.schedule import next_build_at
 
 TOTAL_FIELDS = (
     "agents",
@@ -71,8 +75,16 @@ class DashboardReportSerializer(serializers.ModelSerializer):
             "knowledge_usage",
         )
 
+    @extend_schema_field(OpenApiTypes.DATETIME)
     def get_next_build_at(self, report):
-        return None
+        config = OrganizationConfig.objects.filter(org_id=report.org_id).first()
+        return serializers.DateTimeField().to_representation(
+            next_build_at(
+                report.built_at,
+                config and config.dashboard_refresh_minutes,
+                config and config.dashboard_refresh_daily_at,
+            )
+        )
 
     def get_totals(self, report):
         return {field: getattr(report, field) for field in TOTAL_FIELDS}

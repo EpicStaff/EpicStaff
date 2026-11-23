@@ -12,12 +12,16 @@ def refresh_minutes(chosen_minutes: int | None) -> int:
     )
 
 
+def next_build_at(
+    built_at: datetime, chosen_minutes: int | None, daily_at: time | None
+) -> datetime:
+    if daily_at is not None:
+        scheduled = datetime.combine(built_at.astimezone(UTC).date(), daily_at, tzinfo=UTC)
+        return scheduled if scheduled > built_at else scheduled + timedelta(days=1)
+    return built_at + timedelta(minutes=refresh_minutes(chosen_minutes))
+
+
 def is_build_due(
     built_at: datetime | None, now: datetime, chosen_minutes: int | None, daily_at: time | None
 ) -> bool:
-    if built_at is None:
-        return True
-    if daily_at is not None:
-        scheduled = datetime.combine(now.astimezone(UTC).date(), daily_at, tzinfo=UTC)
-        return built_at < scheduled <= now
-    return now - built_at >= timedelta(minutes=refresh_minutes(chosen_minutes))
+    return built_at is None or now >= next_build_at(built_at, chosen_minutes, daily_at)

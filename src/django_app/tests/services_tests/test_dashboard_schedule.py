@@ -4,7 +4,7 @@ import pytest
 from django.db import IntegrityError
 from django.test import override_settings
 from rbac.models import Organization, OrganizationConfig
-from tables.services.dashboard.schedule import is_build_due, refresh_minutes
+from tables.services.dashboard.schedule import is_build_due, next_build_at, refresh_minutes
 
 NOW = datetime(2026, 11, 23, 6, 10, tzinfo=UTC)
 
@@ -54,6 +54,25 @@ def test_chosen_interval_below_min_waits_for_min():
 )
 def test_daily_due_once_time_has_passed_today(built_at, now, expected):
     assert is_build_due(built_at, now, None, time(6, 0)) is expected
+
+
+def test_daily_build_catches_up_after_missed_days():
+    built_at = datetime(2026, 11, 21, 6, 5, tzinfo=UTC)
+    now = datetime(2026, 11, 23, 5, 50, tzinfo=UTC)
+    assert is_build_due(built_at, now, None, time(6, 0))
+
+
+@pytest.mark.parametrize(
+    ("built_at", "chosen", "daily_at", "expected"),
+    [
+        (NOW, None, None, NOW + timedelta(minutes=60)),
+        (NOW, 30, None, NOW + timedelta(minutes=30)),
+        (NOW, None, time(6, 0), datetime(2026, 11, 24, 6, 0, tzinfo=UTC)),
+        (NOW, None, time(18, 0), datetime(2026, 11, 23, 18, 0, tzinfo=UTC)),
+    ],
+)
+def test_next_build_at(built_at, chosen, daily_at, expected):
+    assert next_build_at(built_at, chosen, daily_at) == expected
 
 
 @pytest.mark.django_db
