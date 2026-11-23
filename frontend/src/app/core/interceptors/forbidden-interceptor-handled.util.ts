@@ -1,4 +1,5 @@
 import { HttpContext, HttpErrorResponse } from '@angular/common/http';
+import { extractErrorCode } from '@shared/utils';
 
 import { SKIP_FORBIDDEN_RELOAD } from './skip-forbidden-reload.context';
 
@@ -45,6 +46,6 @@ export function wasHandledByForbiddenInterceptor(
         error instanceof HttpErrorResponse &&
         error.status === 403 &&
         !requestContext.get(SKIP_FORBIDDEN_RELOAD) &&
-        !BUSINESS_RULE_FORBIDDEN_CODES.has(error.error?.code)
+        !BUSINESS_RULE_FORBIDDEN_CODES.has(extractErrorCode(error) ?? '')
     );
 }

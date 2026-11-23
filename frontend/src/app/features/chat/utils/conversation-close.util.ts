@@ -1,7 +1,8 @@
 import { formatDate } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
+import { extractErrorCode } from '@shared/utils';
 
-import { ChatCloseReason, ChatConversation, ChatConversationStyle, ChatErrorBody } from '../models/chat.model';
+import { ChatCloseReason, ChatConversation, ChatConversationStyle } from '../models/chat.model';
 import { operatorName } from './conversation-row.util';
 
 type ClosedRow = Pick<ChatConversation, 'close_reason' | 'closed_at' | 'closed_by_user_id' | 'closed_by_name'>;
@@ -13,7 +14,7 @@ export function isClosed(row: Pick<ChatConversation, 'status'> | null | undefine
 
 /** The server refused an action because the conversation is closed (409): what is shown of it is stale. */
 export function isConversationClosed(error: HttpErrorResponse): boolean {
-    return (error.error as ChatErrorBody | null)?.code === 'conversation_closed';
+    return extractErrorCode(error) === 'conversation_closed';
 }
 
 /**

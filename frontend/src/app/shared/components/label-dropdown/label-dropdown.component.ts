@@ -28,6 +28,7 @@ import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { LabelColor, LabelTreeNode } from '@shared/models';
 import { LABELS_STORE } from '@shared/services';
+import { extractHttpErrorMessage } from '@shared/utils';
 import { filter } from 'rxjs';
 
 import { TooltipOnOverflowDirective } from '../../directives/tooltip-on-overflow.directive';
@@ -543,7 +544,7 @@ export class LabelDropdownComponent implements OnInit {
     }
 
     private parseError(err: HttpErrorResponse): string {
-        const msg: string = err?.error?.message ?? err?.message ?? '';
+        const msg = extractHttpErrorMessage(err, '');
         if (
             msg.includes('Top-level label with this name already exists') ||
             msg.includes('name, parent must make a unique set')

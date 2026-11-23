@@ -22,6 +22,7 @@ import {
     StepperComponent,
 } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { extractFieldErrors, extractServerMessage } from '@shared/utils';
 import { EMPTY, filter, Observable, of } from 'rxjs';
 import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 
@@ -295,11 +296,14 @@ export class CreateCollectionDialogComponent {
                 }
                 return strategy.startIndexing({ ...componentData, configIds, shouldSave, pendingDeleteIds }).pipe(
                     catchError((err: HttpErrorResponse) => {
-                        if (err?.validationErrors?.length) {
-                            componentInstance.setServerValidationErrors?.(err.validationErrors);
+                        const fieldErrors = extractFieldErrors(err);
+                        const isShownInline =
+                            fieldErrors.length > 0 && !!componentInstance.showsServerErrorsInline?.(fieldErrors);
+                        if (isShownInline) {
+                            componentInstance.setServerValidationErrors?.(fieldErrors);
                             return of(false);
                         }
-                        this.toastService.error('Indexing failed');
+                        this.toastService.error(extractServerMessage(err) ?? 'Indexing failed');
                         return of(false);
                     })
                 );

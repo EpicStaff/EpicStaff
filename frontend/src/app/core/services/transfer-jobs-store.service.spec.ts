@@ -218,7 +218,13 @@ describe('TransferJobsStoreService', () => {
             answerLoad(COMPLETED_EXPORT);
 
             store.download(COMPLETED_EXPORT as ExportTransferJob);
-            httpMock.expectOne(TICKET_URL).flush({ detail: 'Not found.' }, { status: 404, statusText: 'Not Found' });
+            httpMock.expectOne(TICKET_URL).flush(
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'unknown', detail: 'Not found.', attr: null, context: null }],
+                },
+                { status: 404, statusText: 'Not Found' }
+            );
 
             expect(errorToasts()).toEqual([UNAVAILABLE_MESSAGE]);
             answerLoad();
@@ -229,9 +235,13 @@ describe('TransferJobsStoreService', () => {
             answerLoad(COMPLETED_EXPORT);
 
             store.download(COMPLETED_EXPORT as ExportTransferJob);
-            httpMock
-                .expectOne(TICKET_URL)
-                .flush({ detail: 'The archive was removed.' }, { status: 410, statusText: 'Gone' });
+            httpMock.expectOne(TICKET_URL).flush(
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'unknown', detail: 'The archive was removed.', attr: null, context: null }],
+                },
+                { status: 410, statusText: 'Gone' }
+            );
 
             expect(errorToasts()).toEqual(['The archive was removed.']);
             answerLoad(COMPLETED_EXPORT);
@@ -243,7 +253,13 @@ describe('TransferJobsStoreService', () => {
             TestBed.inject(TransferJobsService)
                 .downloadExport({ id: 'job-1', kind: 'export', orgId: 7 }, 'Orders.zip')
                 .subscribe({ error: () => undefined });
-            httpMock.expectOne(TICKET_URL).flush({ detail: 'Not found.' }, { status: 404, statusText: 'Not Found' });
+            httpMock.expectOne(TICKET_URL).flush(
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'unknown', detail: 'Not found.', attr: null, context: null }],
+                },
+                { status: 404, statusText: 'Not Found' }
+            );
 
             answerLoad();
             expect(store.jobs()).toEqual([]);
@@ -323,9 +339,13 @@ describe('TransferJobsStoreService', () => {
         it('announces no start the server refused', () => {
             transferJobs.startExport('mcpTools', { ids: [4] }).subscribe({ error: () => undefined });
 
-            httpMock
-                .expectOne('/api/mcp-tools/export-jobs/')
-                .flush({ message: 'No tools to export.' }, { status: 400, statusText: 'Bad Request' });
+            httpMock.expectOne('/api/mcp-tools/export-jobs/').flush(
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'unknown', detail: 'No tools to export.', attr: null, context: null }],
+                },
+                { status: 400, statusText: 'Bad Request' }
+            );
 
             expect(toasts).toEqual([]);
             expectNoListRequest();
@@ -477,7 +497,10 @@ describe('TransferJobsStoreService', () => {
     });
 
     it('reports that nothing could be loaded', () => {
-        expectFullList().flush({ message: 'Down' }, { status: 500, statusText: 'Server Error' });
+        expectFullList().flush(
+            { type: 'server_error', errors: [{ code: 'unknown', detail: 'Down', attr: null, context: null }] },
+            { status: 500, statusText: 'Server Error' }
+        );
         expectUnfinishedCheck();
 
         expect(store.loadFailed()).toBe(true);
@@ -514,12 +537,13 @@ describe('TransferJobsStoreService', () => {
             answerLoad(queued);
 
             store.clearJob(queued);
-            httpMock
-                .expectOne('/api/transfer-jobs/job-1/')
-                .flush(
-                    { code: 'job_running', message: 'The job is running.' },
-                    { status: 409, statusText: 'Conflict' }
-                );
+            httpMock.expectOne('/api/transfer-jobs/job-1/').flush(
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'job_running', detail: 'The job is running.', attr: null, context: null }],
+                },
+                { status: 409, statusText: 'Conflict' }
+            );
 
             expect(store.jobs()).toHaveLength(1);
             expect(toasts.map((toast) => toast.message)).toEqual(['The job is running.']);
@@ -586,7 +610,13 @@ describe('TransferJobsStoreService', () => {
             answerLoad(COMPLETED_EXPORT);
 
             store.clearAll();
-            expectClear().flush({ message: 'The server is busy.' }, { status: 500, statusText: 'Server Error' });
+            expectClear().flush(
+                {
+                    type: 'server_error',
+                    errors: [{ code: 'unknown', detail: 'The server is busy.', attr: null, context: null }],
+                },
+                { status: 500, statusText: 'Server Error' }
+            );
 
             expect(toasts.map((toast) => [toast.type, toast.message])).toEqual([['error', 'The server is busy.']]);
             expect(store.isClearingAll()).toBe(false);

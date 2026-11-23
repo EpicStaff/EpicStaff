@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { ConfirmationDialogService } from '@shared/components';
+import { extractErrorCode } from '@shared/utils';
 import { EMPTY, MonoTypeOperatorFunction, throwError } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
@@ -47,7 +48,7 @@ const ACTION_REFUSAL_COPY: Record<UsePermissionAction, string> = {
 /** The refusal code of a 403 that refuses bringing something in, else null. */
 function refusalCode(error: unknown): string | null {
     if (!(error instanceof HttpErrorResponse) || error.status !== 403) return null;
-    const code = (error.error as { code?: unknown } | null)?.code;
+    const code = extractErrorCode(error);
     return code === FLOW_WITH_TRIGGER_NODES_REQUIRES_USE_PERMISSION ||
         code === CODE_WITH_SECRETS_REQUIRES_SECRETS_USE_PERMISSION
         ? code

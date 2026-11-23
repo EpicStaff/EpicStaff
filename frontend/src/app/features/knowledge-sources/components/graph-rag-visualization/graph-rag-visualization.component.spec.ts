@@ -225,12 +225,13 @@ describe('GraphRagVisualizationComponent', () => {
 
     describe('errors', () => {
         it('tells the user to run indexing when the graph is not indexed yet (409 graph_not_indexed)', () => {
-            httpMock
-                .expectOne(INITIAL_REQUEST_URL)
-                .flush(
-                    { status_code: 409, code: 'graph_not_indexed', message: 'Any backend wording' },
-                    { status: 409, statusText: 'Conflict' }
-                );
+            httpMock.expectOne(INITIAL_REQUEST_URL).flush(
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'graph_not_indexed', detail: 'Any backend wording', attr: null, context: null }],
+                },
+                { status: 409, statusText: 'Conflict' }
+            );
             fixture.detectChanges();
 
             expect(textContent()).toContain('run indexing first');
@@ -239,8 +240,22 @@ describe('GraphRagVisualizationComponent', () => {
         });
 
         it.each<[string, number, object]>([
-            ['a 409 with another code', 409, { status_code: 409, code: 'upstream_resource_conflict', message: 'x' }],
-            ['a 404', 404, { status_code: 404, code: 'not_found', message: 'GraphRag not found' }],
+            [
+                'a 409 with another code',
+                409,
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'upstream_resource_conflict', detail: 'x', attr: null, context: null }],
+                },
+            ],
+            [
+                'a 404',
+                404,
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'not_found', detail: 'GraphRag not found', attr: null, context: null }],
+                },
+            ],
         ])('shows an error with retry, not the indexing hint, for %s', (_label, status, body) => {
             httpMock.expectOne(INITIAL_REQUEST_URL).flush(body, { status, statusText: 'Error' });
             fixture.detectChanges();
@@ -250,9 +265,13 @@ describe('GraphRagVisualizationComponent', () => {
         });
 
         it('says GraphRAG is unavailable on a 503', () => {
-            httpMock
-                .expectOne(INITIAL_REQUEST_URL)
-                .flush({ message: 'unavailable' }, { status: 503, statusText: 'Service Unavailable' });
+            httpMock.expectOne(INITIAL_REQUEST_URL).flush(
+                {
+                    type: 'server_error',
+                    errors: [{ code: 'unknown', detail: 'unavailable', attr: null, context: null }],
+                },
+                { status: 503, statusText: 'Service Unavailable' }
+            );
             fixture.detectChanges();
 
             expect(query('app-fetch-error-state')).not.toBeNull();

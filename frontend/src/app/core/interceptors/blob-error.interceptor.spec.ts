@@ -33,9 +33,17 @@ describe('blobErrorInterceptor', () => {
 
     it('hands the error on with the body the backend sent', async () => {
         const error = await failedDownload(
-            new Blob([JSON.stringify({ status_code: 400, code: 'invalid', message: REFUSAL })], {
-                type: 'application/json',
-            })
+            new Blob(
+                [
+                    JSON.stringify({
+                        type: 'client_error',
+                        errors: [{ code: 'invalid', detail: REFUSAL, attr: null, context: null }],
+                    }),
+                ],
+                {
+                    type: 'application/json',
+                }
+            )
         );
 
         expect(error.status).toBe(400);
@@ -52,7 +60,12 @@ describe('blobErrorInterceptor', () => {
         const failure = new Promise<HttpErrorResponse>((resolve) =>
             http.get(DOWNLOAD_URL).subscribe({ error: resolve })
         );
-        backend.expectOne(DOWNLOAD_URL).flush({ message: REFUSAL }, { status: 400, statusText: 'Bad Request' });
+        backend
+            .expectOne(DOWNLOAD_URL)
+            .flush(
+                { type: 'client_error', errors: [{ code: 'invalid', detail: REFUSAL, attr: null, context: null }] },
+                { status: 400, statusText: 'Bad Request' }
+            );
 
         expect(extractHttpErrorMessage(await failure)).toBe(REFUSAL);
     });

@@ -111,7 +111,10 @@ describe('PluginRestoreDialogComponent', () => {
                 () =>
                     new HttpErrorResponse({
                         status: 409,
-                        error: { status_code: 409, code: 'restore_not_allowed', message: 'Refused.' },
+                        error: {
+                            type: 'client_error',
+                            errors: [{ code: 'restore_not_allowed', detail: 'Refused.', attr: null, context: null }],
+                        },
                     })
             )
         );

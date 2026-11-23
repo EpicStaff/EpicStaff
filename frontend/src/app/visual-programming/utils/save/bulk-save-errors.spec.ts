@@ -1,4 +1,5 @@
-import { NodeType } from '@shared/models';
+import { ApiErrorDetail, NodeType } from '@shared/models';
+import { toApiErrors } from '@shared/utils';
 
 import { PromptConfig } from '../../core/models/classification-decision-table.model';
 import { FlowModel } from '../../core/models/flow.model';
@@ -85,7 +86,15 @@ const payload = buildBulkSavePayload(
     1
 );
 
-/** Where the payload sent the item `matches` picks, as the backend's `index` would name it. */
+/** The errors of a refused save in the error envelope, one `{code, detail, attr}` per message. */
+function envelopeBody(...errors: [attr: string | null, detail: string][]): ApiErrorDetail[] {
+    return toApiErrors({
+        type: 'client_error',
+        errors: errors.map(([attr, detail]) => ({ code: 'invalid', detail, attr, context: null })),
+    });
+}
+
+/** Where the payload sent the item `matches` picks, as an error's `attr` names its index. */
 function indexIn(listKey: string, matches: (item: Record<string, unknown>) => boolean): number {
     const index = (payload[listKey] as Record<string, unknown>[]).findIndex(matches);
     expect(index).toBeGreaterThanOrEqual(0);
@@ -95,19 +104,19 @@ function indexIn(listKey: string, matches: (item: Record<string, unknown>) => bo
 describe('mapBulkSaveErrors', () => {
     let createdTaskIndex: number;
     let updatedTaskIndex: number;
+    let agentIndex: number;
 
     beforeAll(() => {
         createdTaskIndex = indexIn('task_node_list', (item) => item['temp_id'] === newTask.id);
         updatedTaskIndex = indexIn('task_node_list', (item) => item['id'] === LIVE_NODE_ID.task);
+        agentIndex = indexIn('agent_node_list', (item) => item['id'] === LIVE_NODE_ID.agent);
     });
 
     it('places a created item on the node it was built from, and an updated one on the node holding its backend id', () => {
-        const errors = {
-            task_node_list: [
-                { index: createdTaskIndex, errors: { output_variable_path: ["Path 'variables._x' is not allowed."] } },
-                { index: updatedTaskIndex, errors: { instructions: ["Placeholder '{context._x}' is not allowed."] } },
-            ],
-        };
+        const errors = envelopeBody(
+            [`task_node_list.${createdTaskIndex}.output_variable_path`, "Path 'variables._x' is not allowed."],
+            [`task_node_list.${updatedTaskIndex}.instructions`, "Placeholder '{context._x}' is not allowed."]
+        );
 
         const mapped = mapBulkSaveErrors(payload, errors, current.nodes);
 
@@ -124,26 +133,30 @@ describe('mapBulkSaveErrors', () => {
     });
 
     it('keeps the agent task a nested error is about: a saved task by its id, a new one by its temp id', () => {
-        const errors = {
-            agent_node_list: [
-                {
-                    index: indexIn('agent_node_list', (item) => item['id'] === LIVE_NODE_ID.agent),
-                    errors: {
-                        tasks: [{ name: ['Too long.'] }, { instructions: ["Placeholder '{topic!r}' is not allowed."] }],
-                    },
-                },
-            ],
-        };
+        const [savedRow, newRow] = editedAgent.data.tasks;
+        const errors = envelopeBody(
+            [`agent_node_list.${agentIndex}.non_field_errors`, 'Refused.'],
+            [`agent_node_list.${agentIndex}.tasks.0.name`, 'Too long.'],
+            [`agent_node_list.${agentIndex}.tasks.0.name`, 'Not unique.'],
+            [`agent_node_list.${agentIndex}.tasks.1.non_field_errors`, 'Invalid data.'],
+            [`agent_node_list.${agentIndex}.tasks.1.instructions`, "Placeholder '{topic!r}' is not allowed."],
+            [`agent_node_list.${agentIndex}.inline_surface.storage_items.0.storage_file`, 'Gone.']
+        );
 
         const mapped = mapBulkSaveErrors(payload, errors, current.nodes);
 
-        const [savedRow, newRow] = editedAgent.data.tasks;
         expect(mapped.byNodeId.get(savedAgent.id)).toEqual([
+            { field: null, messages: ['Refused.'] },
             {
                 field: 'name',
                 child: { list: 'tasks', key: agentTaskSaveErrorKey(savedRow), position: 0 },
                 sentValue: 'Saved',
-                messages: ['Too long.'],
+                messages: ['Too long.', 'Not unique.'],
+            },
+            {
+                field: null,
+                child: { list: 'tasks', key: agentTaskSaveErrorKey(newRow), position: 1 },
+                messages: ['Invalid data.'],
             },
             {
                 field: 'instructions',
@@ -151,7 +164,9 @@ describe('mapBulkSaveErrors', () => {
                 sentValue: 'Say {topic!r}',
                 messages: ["Placeholder '{topic!r}' is not allowed."],
             },
+            { field: 'inline_surface', sentValue: null, messages: ['Gone.'] },
         ]);
+        expect(mapped.unplaced).toEqual([]);
     });
 
     it('keeps the prompt a nested error is about by its prompt key', () => {
@@ -161,101 +176,80 @@ describe('mapBulkSaveErrors', () => {
         );
         const sentTable = (payload['classification_decision_table_node_list'] as Record<string, unknown>[])[tableIndex];
         const promptKeys = (sentTable['prompt_configs'] as Record<string, unknown>[]).map((sent) => sent['prompt_key']);
-        const errors = {
-            classification_decision_table_node_list: [
-                {
-                    index: tableIndex,
-                    errors: {
-                        prompt_configs: promptKeys.map((key) =>
-                            key === 'extract' ? { prompt_text: ["Placeholder '{context._x}' is not allowed."] } : {}
-                        ),
-                    },
-                },
-            ],
-        };
+        const extractPosition = promptKeys.indexOf('extract');
+        const errors = envelopeBody([
+            `classification_decision_table_node_list.${tableIndex}.prompt_configs.${extractPosition}.prompt_text`,
+            "Placeholder '{context._x}' is not allowed.",
+        ]);
 
         const mapped = mapBulkSaveErrors(payload, errors, current.nodes);
 
         expect(mapped.byNodeId.get(savedTable.id)).toEqual([
             {
                 field: 'prompt_text',
-                child: { list: 'prompt_configs', key: 'extract', position: promptKeys.indexOf('extract') },
+                child: { list: 'prompt_configs', key: 'extract', position: extractPosition },
                 sentValue: 'Pull {context._x}',
                 messages: ["Placeholder '{context._x}' is not allowed."],
             },
         ]);
     });
 
-    it.each([
-        ['a plain message', 'id=6 not found in graph 1', [{ field: null, messages: ['id=6 not found in graph 1'] }]],
-        ['a list of messages', ['Refused.'], [{ field: null, messages: ['Refused.'] }]],
-        ['non-field errors', { non_field_errors: ['Refused.'] }, [{ field: null, messages: ['Refused.'] }]],
+    it.each<[string, [path: string, detail: string][], { field: string | null; messages: string[] }[]]>([
         [
-            'a nested serializer, flattened onto its field',
-            { inline_surface: { storage_items: [{ storage_file: ['Gone.'] }], name: ['Too long.'] } },
+            'an error naming only the item',
+            [['', 'id=6 not found in graph 1']],
+            [{ field: null, messages: ['id=6 not found in graph 1'] }],
+        ],
+        [
+            'errors of a nested serializer, flattened onto its field',
+            [
+                ['.inline_surface.storage_items.0.storage_file', 'Gone.'],
+                ['.inline_surface.name', 'Too long.'],
+            ],
             [{ field: 'inline_surface', messages: ['Gone.', 'Too long.'] }],
         ],
         [
             'task-list messages that name no row',
-            { tasks: ['Ensure this field has no more than 20 elements.'] },
+            [['.tasks', 'Ensure this field has no more than 20 elements.']],
             [{ field: 'tasks', messages: ['Ensure this field has no more than 20 elements.'] }],
         ],
         [
-            'a task row error of no known shape',
-            { tasks: ['Row one is wrong.', {}] },
-            [{ field: 'tasks', messages: ['Row one is wrong.'] }],
+            'the error of a task row that was not sent',
+            [['.tasks.2.name', 'Row three is wrong.']],
+            [{ field: 'tasks', messages: ['Row three is wrong.'] }],
         ],
-    ])('keeps %s on the node as a whole or on its field', (_case, detail, expected) => {
-        const agentIndex = indexIn('agent_node_list', (item) => item['id'] === LIVE_NODE_ID.agent);
-        const errors = { agent_node_list: [{ index: agentIndex, errors: detail }] };
+    ])('keeps %s on the node as a whole or on its field', (_case, itemErrors, expected) => {
+        const errors = envelopeBody(
+            ...itemErrors.map(([path, detail]): [string, string] => [`agent_node_list.${agentIndex}${path}`, detail])
+        );
 
         const mapped = mapBulkSaveErrors(payload, errors, current.nodes).byNodeId.get(savedAgent.id);
 
         expect(mapped?.map(({ field, messages }) => ({ field, messages }))).toEqual(expected);
     });
 
-    it.each([
-        ['a body without errors', undefined, []],
-        ['a plain message', 'Something went wrong', ['Something went wrong']],
-        [
-            'an edge error',
-            { edge_list: ['Edge references node IDs not found in this graph: [9]'] },
-            ['Edge references node IDs not found in this graph: [9]'],
-        ],
-        [
-            'a graph-wide error',
-            { nodes: ['This uuid is already used by another node of this flow.'] },
-            ['This uuid is already used by another node of this flow.'],
-        ],
-        ['an item without an index', { task_node_list: [{ errors: { instructions: ['No index.'] } }] }, ['No index.']],
-        [
-            'an index past the sent list',
-            { task_node_list: [{ index: 99, errors: { instructions: ['Past the list.'] } }] },
-            ['Past the list.'],
-        ],
-        ['an unknown node list', { mystery_node_list: [{ index: 0, errors: 'Unknown list.' }] }, ['Unknown list.']],
-    ])('places no node for %s and hands back its messages', (_case, errors, unplaced) => {
-        const mapped = mapBulkSaveErrors(payload, errors, current.nodes);
+    it.each<[string, string | null]>([
+        ['an error of the graph as a whole', null],
+        ['an edge error', 'edge_list.0.start_node_id'],
+        ['a graph-wide field error', 'nodes'],
+        ['an unknown node list', 'mystery_node_list.0'],
+        ['an item whose place is not a number', 'task_node_list.first.instructions'],
+        ['a list path with no index', 'task_node_list'],
+        ['an index past the sent list', 'task_node_list.99.instructions'],
+    ])('places no node for %s and hands back its message', (_case, attr) => {
+        const mapped = mapBulkSaveErrors(payload, envelopeBody([attr, 'Refused.']), current.nodes);
 
         expect(mapped.byNodeId.size).toBe(0);
-        expect(mapped.unplaced).toEqual(unplaced);
+        expect(mapped.unplaced).toEqual(['Refused.']);
     });
 
-    it('places nothing and hands back nothing for an item whose detail holds no message', () => {
-        const errors = { task_node_list: [{ index: updatedTaskIndex, errors: {} }] };
-
-        expect(mapBulkSaveErrors(payload, errors, current.nodes)).toEqual({ byNodeId: new Map(), unplaced: [] });
-    });
-
-    it('hands back what it could not place next to what it placed', () => {
-        const errors = {
-            task_node_list: [
-                { index: updatedTaskIndex, errors: { instructions: ["Placeholder '{context._x}' is not allowed."] } },
-                { index: 99, errors: { instructions: ['Past the list.'] } },
-            ],
-            edge_list: ['Edge references node IDs not found in this graph: [9]'],
-            nodes: ['This uuid is already used by another node of this flow.'],
-        };
+    it('hands back what it could not place next to what it placed, in the order the errors came', () => {
+        const errors = envelopeBody(
+            [`task_node_list.${updatedTaskIndex}.instructions`, "Placeholder '{context._x}' is not allowed."],
+            ['task_node_list.99.instructions', 'Past the list.'],
+            ['edge_list', 'Edge references node IDs not found in this graph: [9]'],
+            [null, 'The flow is locked.']
+        );
 
         const mapped = mapBulkSaveErrors(payload, errors, current.nodes);
 
@@ -263,12 +257,21 @@ describe('mapBulkSaveErrors', () => {
         expect(mapped.unplaced).toEqual([
             'Past the list.',
             'Edge references node IDs not found in this graph: [9]',
-            'This uuid is already used by another node of this flow.',
+            'The flow is locked.',
         ]);
     });
 
+    it('places nothing and hands back nothing for an error whose detail is blank', () => {
+        const errors = envelopeBody([`task_node_list.${updatedTaskIndex}.instructions`, '  ']);
+
+        expect(mapBulkSaveErrors(payload, errors, current.nodes)).toEqual({
+            byNodeId: new Map(),
+            unplaced: [],
+        });
+    });
+
     it('hands back the errors of an item whose node left the canvas', () => {
-        const errors = { task_node_list: [{ index: createdTaskIndex, errors: { instructions: ['Gone.'] } }] };
+        const errors = envelopeBody([`task_node_list.${createdTaskIndex}.instructions`, 'Gone.']);
         const withoutNewTask = current.nodes.filter((node) => node.id !== newTask.id);
 
         const mapped = mapBulkSaveErrors(payload, errors, withoutNewTask);
@@ -279,7 +282,7 @@ describe('mapBulkSaveErrors', () => {
 
     it('never takes an edge id for a node backend id', () => {
         const edgePayload = { ...payload, edge_list: [{ id: LIVE_NODE_ID.task, graph: 1 }] };
-        const errors = { edge_list: [{ index: 0, errors: { start_node_id: ['Invalid.'] } }] };
+        const errors = envelopeBody(['edge_list.0.start_node_id', 'Invalid.']);
 
         const mapped = mapBulkSaveErrors(edgePayload, errors, current.nodes);
 

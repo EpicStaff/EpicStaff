@@ -27,7 +27,7 @@ import {
     SearchComponent,
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
-import { escapeHtml } from '@shared/utils';
+import { escapeHtml, extractApiErrors } from '@shared/utils';
 import { filter, finalize, Observable, switchMap, tap } from 'rxjs';
 
 import { TransferExportService } from '../../../../core/services/transfer-export.service';
@@ -52,8 +52,6 @@ import {
 import { AuditMatchScopeComponent } from '../audit-match-scope/audit-match-scope.component';
 
 const MAX_CARD_CHIPS = 3;
-const NAME_ERROR_PREFIX = 'name: ';
-const FIELD_ERROR_SEPARATOR = '; ';
 // Key of the presets block in the backend import summary.
 const PRESET_IMPORT_ENTITY = 'AuditFilterPreset';
 const SHARE_DIALOG_MESSAGE = 'This preset will become available to your team in Shared Presets.';
@@ -577,13 +575,9 @@ export class AuditPresetsComponent implements OnInit {
         }
     }
 
-    // First field error of a 400, without the `name: ` label the user doesn't need to see.
+    // First error of a 400, without the field name the user doesn't need to see.
     private backendMessage(error: HttpErrorResponse, fallback: string): string {
-        const message: unknown = error.status === 400 ? error.error?.message : null;
-        const firstError = typeof message === 'string' ? message.split(FIELD_ERROR_SEPARATOR)[0] : '';
-        if (firstError === '') {
-            return fallback;
-        }
-        return firstError.startsWith(NAME_ERROR_PREFIX) ? firstError.slice(NAME_ERROR_PREFIX.length) : firstError;
+        const firstError = error.status === 400 ? extractApiErrors(error)[0] : undefined;
+        return firstError?.detail || fallback;
     }
 }

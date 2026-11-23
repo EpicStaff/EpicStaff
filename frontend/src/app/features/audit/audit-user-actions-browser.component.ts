@@ -12,7 +12,7 @@ import {
 import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, AdminMembershipUser, ResourceCode } from '@shared/models';
 import { SidebarWidthOptions, SidebarWidthService } from '@shared/services';
-import { downloadBlob } from '@shared/utils';
+import { downloadBlob, extractServerMessage } from '@shared/utils';
 import { debounceTime, finalize, Subject, Subscription } from 'rxjs';
 
 import { ExportFormat } from '../../core/services/import-export.service';
@@ -396,8 +396,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
                     this.isLoading.set(false);
                 },
                 error: (error: HttpErrorResponse) => {
-                    const detail = error.error?.detail;
-                    this.loadErrorMessage.set(error.status === 400 && typeof detail === 'string' ? detail : null);
+                    this.loadErrorMessage.set(error.status === 400 ? extractServerMessage(error) : null);
                     this.events.set([]);
                     this.nextCursor.set(null);
                     this.isPartial.set(false);

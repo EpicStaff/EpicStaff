@@ -1,9 +1,13 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
 import { AppSvgIconComponent, CopyButtonComponent } from '@shared/components';
+import { sessionErrorItem } from '@shared/utils';
 
 import { GraphMessage, MessageType } from '../../../../models/graph-session-message.model';
 import { RuntimeNodeLabelPipe } from '../../../../pipes/runtime-node-label.pipe';
+
+// What the card shows for a message that is no error at all.
+const UNKNOWN_ERROR_TEXT = JSON.stringify({ error: 'Unknown error' }, null, 2);
 
 @Component({
     selector: 'app-error-message',
@@ -324,27 +328,16 @@ export class ErrorMessageComponent {
     }
 
     // ---------- Primary Error Details ----------
-    get errorDetails(): string | Record<string, unknown> {
-        if (
-            this.message.message_data &&
-            this.message.message_data.message_type === MessageType.ERROR &&
-            'details' in this.message.message_data
-        ) {
-            return this.message.message_data.details;
-        }
-        return { error: 'Unknown error' };
-    }
-
     getFormattedErrorDetails(): string {
-        const details = this.errorDetails;
-        if (typeof details === 'string') {
-            // Remove surrounding quotes if present
-            if (details.startsWith('"') && details.endsWith('"')) {
-                return details.substring(1, details.length - 1);
-            }
-            return details;
+        const messageData = this.message.message_data;
+        if (messageData?.message_type !== MessageType.ERROR) return UNKNOWN_ERROR_TEXT;
+        const detail = sessionErrorItem(messageData)?.detail;
+        if (!detail) return UNKNOWN_ERROR_TEXT;
+        // Remove surrounding quotes if present
+        if (detail.startsWith('"') && detail.endsWith('"')) {
+            return detail.substring(1, detail.length - 1);
         }
-        return JSON.stringify(details, null, 2);
+        return detail;
     }
 
     // ---------- Additional Data Subsection ----------

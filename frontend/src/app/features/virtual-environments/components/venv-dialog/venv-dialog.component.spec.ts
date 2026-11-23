@@ -270,9 +270,20 @@ describe('VenvDialogComponent library rows', () => {
         declare('requests', '1.0', '>=2.0');
 
         save();
-        httpMock
-            .expectOne(VENVS_URL)
-            .flush({ detail: "Version '1.0' does not satisfy specification '>=2.0'" }, { status: 400, statusText: '' });
+        httpMock.expectOne(VENVS_URL).flush(
+            {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'unknown',
+                        detail: "Version '1.0' does not satisfy specification '>=2.0'",
+                        attr: null,
+                        context: null,
+                    },
+                ],
+            },
+            { status: 400, statusText: '' }
+        );
 
         expect(TestBed.inject(ToastService).error).toHaveBeenCalledWith(
             "Version '1.0' does not satisfy specification '>=2.0'"
@@ -289,12 +300,20 @@ describe('VenvDialogComponent library rows', () => {
         });
 
         save();
-        httpMock
-            .expectOne(`${VENVS_URL}7/`)
-            .flush(
-                { status_code: 403, code: 'storage_grant_denied', message, missing_grants: ['write'] },
-                { status: 403, statusText: '' }
-            );
+        httpMock.expectOne(`${VENVS_URL}7/`).flush(
+            {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'storage_grant_denied',
+                        detail: message,
+                        attr: null,
+                        context: { missing_grants: ['write'] },
+                    },
+                ],
+            },
+            { status: 403, statusText: '' }
+        );
 
         expect(TestBed.inject(ToastService).error).toHaveBeenCalledExactlyOnceWith(message);
         expect(close).not.toHaveBeenCalled();
@@ -314,7 +333,10 @@ describe('VenvDialogComponent library rows', () => {
         save();
         httpMock
             .expectOne(`${VENVS_URL}7/`)
-            .flush({ status_code: 400, code: 'invalid', message }, { status: 400, statusText: 'Bad Request' });
+            .flush(
+                { type: 'client_error', errors: [{ code: 'invalid', detail: message, attr: null, context: null }] },
+                { status: 400, statusText: 'Bad Request' }
+            );
 
         expect(TestBed.inject(ToastService).error).toHaveBeenCalledExactlyOnceWith(message);
         expect(close).not.toHaveBeenCalled();

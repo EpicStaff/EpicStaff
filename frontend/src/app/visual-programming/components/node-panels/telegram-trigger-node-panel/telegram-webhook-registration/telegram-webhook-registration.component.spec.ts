@@ -23,7 +23,7 @@ const REGISTERED_LABEL = '.telegram-registration__registered-label';
 const MATCH_SUMMARY = 'Telegram is delivering to this trigger.';
 const GENERIC_REGISTER_ERROR = "Couldn't register the webhook. Press Check to see the current status, then try again.";
 const BOT_KEY_REJECTED_TEXT = 'Telegram rejected this bot key. Check the secret selected as the bot key on this node.';
-const BOT_KEY_REJECTED_BODY = { status_code: 422, code: 'telegram_bot_key_rejected', message: 'raw server text' };
+const BOT_KEY_REJECTED_BODY = envelope('telegram_bot_key_rejected', 'raw server text');
 const TAKEOVER_HINT =
     'Telegram keeps only one webhook per bot key. Press Register to point it at this trigger instead (the other URL will stop receiving messages).';
 
@@ -48,6 +48,16 @@ function blocker(
     message = 'Server says no.'
 ): TelegramRegistrationBlocker {
     return { code, message };
+}
+
+/** A 4xx body in the `{type, errors}` error envelope, with one error. */
+function envelope(code: string, detail: string, context: Record<string, unknown> | null = null): unknown {
+    return { type: 'client_error', errors: [{ code, detail, attr: null, context }] };
+}
+
+/** A 5xx body in the `{type, errors}` error envelope, with one error. */
+function serverEnvelope(code: string, detail: string): unknown {
+    return { type: 'server_error', errors: [{ code, detail, attr: null, context: null }] };
 }
 
 function httpError(status: HttpStatusCode, error: unknown = null): () => Observable<never> {
@@ -307,11 +317,10 @@ describe('TelegramWebhookRegistrationComponent', () => {
     it('treats a 400 with the telegram_bot_key_not_configured code as a missing bot key', () => {
         const { fixture, text } = setup(
             { backendId: 12, botKeySecretId: 5 },
-            httpError(HttpStatusCode.BadRequest, {
-                status_code: 400,
-                code: 'telegram_bot_key_not_configured',
-                message: 'This Telegram trigger node has no bot key configured.',
-            })
+            httpError(
+                HttpStatusCode.BadRequest,
+                envelope('telegram_bot_key_not_configured', 'This Telegram trigger node has no bot key configured.')
+            )
         );
 
         expect(text()).toContain('Select a bot key and save the flow');
@@ -320,10 +329,10 @@ describe('TelegramWebhookRegistrationComponent', () => {
     });
 
     it.each([
-        ['a 400 with another code', HttpStatusCode.BadRequest, { status_code: 400, code: 'invalid', message: 'x' }],
+        ['a 400 with another code', HttpStatusCode.BadRequest, envelope('invalid', 'x')],
         ['a 403', HttpStatusCode.Forbidden, null],
         ['a 404', HttpStatusCode.NotFound, null],
-        ['a 422 with another code', HttpStatusCode.UnprocessableEntity, { status_code: 422, code: 'x', message: 'x' }],
+        ['a 422 with another code', HttpStatusCode.UnprocessableEntity, envelope('x', 'x')],
         ['a 500', HttpStatusCode.InternalServerError, null],
     ])('shows the generic error for %s, not a Telegram or bot key message', (_label, status, error) => {
         const { fixture, text } = setup({ backendId: 12, botKeySecretId: 5 }, httpError(status, error));
@@ -509,12 +518,12 @@ describe('TelegramWebhookRegistrationComponent', () => {
             const { fixture, text, clickRegister } = setup(
                 { backendId: 12, botKeySecretId: 5 },
                 () => of(NOT_REGISTERED),
-                httpError(HttpStatusCode.Conflict, {
-                    status_code: 409,
-                    code: 'telegram_registration_blocked',
-                    message: 'Registration is blocked.',
-                    registration_blocker: blocker('no_telegram_secret'),
-                })
+                httpError(
+                    HttpStatusCode.Conflict,
+                    envelope('telegram_registration_blocked', 'Registration is blocked.', {
+                        registration_blocker: blocker('no_telegram_secret'),
+                    })
+                )
             );
 
             clickRegister();
@@ -530,43 +539,43 @@ describe('TelegramWebhookRegistrationComponent', () => {
             [
                 'a 502',
                 HttpStatusCode.BadGateway,
-                { status_code: 502, code: 'telegram_registration_failed', message: 'raw server text' },
+                serverEnvelope('telegram_registration_failed', 'raw server text'),
                 "Couldn't register the webhook: Telegram did not accept it. Press Check to see the current status, then try again.",
             ],
             [
                 'a 503 tunnel error',
                 HttpStatusCode.ServiceUnavailable,
-                { status_code: 503, code: 'telegram_tunnel_unavailable', message: 'raw server text' },
+                serverEnvelope('telegram_tunnel_unavailable', 'raw server text'),
                 "Couldn't register the webhook: the trigger's tunnel is not available yet. Check the trigger's tunnel and try again.",
             ],
             [
                 'a 502 with another code',
                 HttpStatusCode.BadGateway,
-                { status_code: 502, code: 'something_else', message: 'raw server text' },
+                serverEnvelope('something_else', 'raw server text'),
                 GENERIC_REGISTER_ERROR,
             ],
             [
                 'a 403',
                 HttpStatusCode.Forbidden,
-                { status_code: 403, code: 'permission_denied', message: 'raw server text' },
+                envelope('permission_denied', 'raw server text'),
                 GENERIC_REGISTER_ERROR,
             ],
             [
                 'a 500',
                 HttpStatusCode.InternalServerError,
-                { status_code: 500, code: 'secret_resolution_error', message: 'raw server text' },
+                serverEnvelope('secret_resolution_error', 'raw server text'),
                 GENERIC_REGISTER_ERROR,
             ],
             [
                 'a 422 with another code',
                 HttpStatusCode.UnprocessableEntity,
-                { status_code: 422, code: 'something_else', message: 'raw server text' },
+                envelope('something_else', 'raw server text'),
                 GENERIC_REGISTER_ERROR,
             ],
             [
                 'a 409 without a blocker',
                 HttpStatusCode.Conflict,
-                { status_code: 409, code: 'telegram_registration_blocked', message: 'raw server text' },
+                envelope('telegram_registration_blocked', 'raw server text'),
                 GENERIC_REGISTER_ERROR,
             ],
         ])('shows a muted error line for %s and keeps the status and Register', (_label, status, body, line) => {
@@ -609,11 +618,10 @@ describe('TelegramWebhookRegistrationComponent', () => {
             const { fixture, announcement, clickRegister } = setup(
                 { backendId: 12, botKeySecretId: 5 },
                 () => of(MISMATCH),
-                httpError(HttpStatusCode.BadGateway, {
-                    status_code: 502,
-                    code: 'telegram_webhook_info_unavailable',
-                    message: 'raw server text',
-                })
+                httpError(
+                    HttpStatusCode.BadGateway,
+                    serverEnvelope('telegram_webhook_info_unavailable', 'raw server text')
+                )
             );
 
             clickRegister();
@@ -691,7 +699,10 @@ describe('TelegramWebhookRegistrationComponent', () => {
             const { fixture, text, clickRegister } = setup(
                 { backendId: 12, botKeySecretId: 5 },
                 () => of(NOT_REGISTERED),
-                httpError(HttpStatusCode.BadRequest, { status_code: 400, code: 'telegram_bot_key_not_configured' })
+                httpError(
+                    HttpStatusCode.BadRequest,
+                    envelope('telegram_bot_key_not_configured', 'This Telegram trigger node has no bot key configured.')
+                )
             );
 
             clickRegister();

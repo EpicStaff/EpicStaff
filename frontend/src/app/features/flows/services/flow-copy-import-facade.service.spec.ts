@@ -21,9 +21,15 @@ const PARTIAL_IMPORT_RESPONSE = {
 const SETTINGS: ImportFlowRequestOptions = { preserveUuids: false, replaceExisting: true, importLabels: true };
 const FILE = new File(['{}'], 'flow.json', { type: 'application/json' });
 const REFUSAL_BODY = {
-    status_code: 403,
-    code: 'flow_with_trigger_nodes_requires_use_permission',
-    message: 'This flow contains trigger nodes.',
+    type: 'client_error',
+    errors: [
+        {
+            code: 'flow_with_trigger_nodes_requires_use_permission',
+            detail: 'This flow contains trigger nodes.',
+            attr: null,
+            context: null,
+        },
+    ],
 };
 
 interface Outcome {
@@ -151,7 +157,12 @@ describe('FlowCopyImportFacadeService', () => {
     it.each(operations)('passes any other %s failure to the caller, without a dialog', (_name, call, url) => {
         const outcome = collect(call(service));
 
-        httpMock.expectOne(url).flush({ detail: 'boom' }, { status: 500, statusText: 'Server Error' });
+        httpMock
+            .expectOne(url)
+            .flush(
+                { type: 'server_error', errors: [{ code: 'unknown', detail: 'boom', attr: null, context: null }] },
+                { status: 500, statusText: 'Server Error' }
+            );
 
         expect(outcome.error).toBeInstanceOf(HttpErrorResponse);
         expect((outcome.error as HttpErrorResponse).status).toBe(500);

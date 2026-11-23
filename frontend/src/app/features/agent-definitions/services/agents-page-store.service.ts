@@ -3,7 +3,13 @@ import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 import { ExportOptionsDialogService } from '@shared/services';
-import { computeUniqueCopyName, computeUniqueName, movedToRecycleBinMessage } from '@shared/utils';
+import {
+    computeUniqueCopyName,
+    computeUniqueName,
+    extractApiErrors,
+    extractServerMessage,
+    movedToRecycleBinMessage,
+} from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap, switchMap, tap } from 'rxjs/operators';
 
@@ -70,6 +76,8 @@ export interface SelectedAgentDoc {
 const VISIBLE_SECTIONS_STORAGE_KEY = 'agents-explorer/visibleSections';
 
 const SURFACE_PATCH_DEBOUNCE_MS = 400;
+
+const INSTRUCTION_LIST_FIELD = 'instruction_list';
 
 /** Collapsed group blocks, per user: `<prefix>/<user id>` holds an array of `groupBlockKey`s. */
 const COLLAPSED_GROUPS_STORAGE_PREFIX = 'agents-explorer/collapsedGroups';
@@ -1358,12 +1366,12 @@ export class AgentsPageStore {
         });
     }
 
-    /** First message under `instruction_list` in a DRF error body (flat or nested per item), else null. */
-    /** The API envelope flattens field errors into `message` as "<field>: <text>". */
+    /** The first reason a failed save gives for `instruction_list` (the list or one of its items), else null. */
     private extractInstructionListError(err: unknown): string | null {
-        const message = (err as { error?: { message?: unknown } })?.error?.message;
-        const prefix = 'instruction_list: ';
-        return typeof message === 'string' && message.startsWith(prefix) ? message.slice(prefix.length) : null;
+        const fieldError = extractApiErrors(err).find(
+            ({ attr }) => attr === INSTRUCTION_LIST_FIELD || attr?.startsWith(`${INSTRUCTION_LIST_FIELD}.`)
+        );
+        return fieldError?.detail ?? null;
     }
 
     /**
@@ -1400,16 +1408,6 @@ export class AgentsPageStore {
     }
 
     private extractError(err: unknown, fallback: string): string {
-        const e = err as { error?: Record<string, unknown> };
-        const body = e?.error;
-        if (!body) return fallback;
-        if (typeof body === 'string') return body;
-        if (typeof body['detail'] === 'string') return body['detail'] as string;
-        if (typeof body['message'] === 'string') return body['message'] as string;
-        for (const v of Object.values(body)) {
-            if (typeof v === 'string') return v;
-            if (Array.isArray(v) && typeof v[0] === 'string') return v[0] as string;
-        }
-        return fallback;
+        return extractServerMessage(err) ?? fallback;
     }
 }

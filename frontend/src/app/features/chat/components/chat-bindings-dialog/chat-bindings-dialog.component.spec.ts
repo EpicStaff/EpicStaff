@@ -112,7 +112,12 @@ describe('ChatBindingsDialogComponent', () => {
             () =>
                 new HttpErrorResponse({
                     status: 400,
-                    error: { code: 'unknown_flow', message: 'The flow does not exist.' },
+                    error: {
+                        type: 'client_error',
+                        errors: [
+                            { code: 'unknown_flow', detail: 'The flow does not exist.', attr: null, context: null },
+                        ],
+                    },
                 })
         );
 
@@ -385,6 +390,26 @@ describe('ChatBindingsDialogComponent', () => {
         component.form.controls.graph_id.setValue(null);
         fixture.detectChanges();
         expect(text('.bindings-dialog__contract-error')).toEqual([]);
+    });
+
+    it('shows a missing flow from the error envelope the same way', () => {
+        const component = open(null);
+        fixture.detectChanges();
+        chatApi.checkContract.mockReturnValueOnce(
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 400,
+                        error: {
+                            type: 'client_error',
+                            errors: [{ code: 'unknown_flow', detail: 'The flow does not exist.', attr: null }],
+                        },
+                    })
+            )
+        );
+        component.form.controls.graph_id.setValue(6);
+        fixture.detectChanges();
+        expect(text('.bindings-dialog__contract-error')).toEqual(['The flow does not exist.']);
     });
 
     it('offers the fix for what the picked flow lacks, and checks the flow again once it is applied', () => {
@@ -1108,10 +1133,15 @@ describe('ChatBindingsDialogComponent', () => {
                         new HttpErrorResponse({
                             status: 400,
                             error: {
-                                code: 'duration_above_cap',
-                                message: 'Above the cap.',
-                                field: 'close_after_seconds',
-                                max: 172_800,
+                                type: 'client_error',
+                                errors: [
+                                    {
+                                        code: 'duration_above_cap',
+                                        detail: 'Above the cap.',
+                                        attr: 'close_after_seconds',
+                                        context: { max: 172_800 },
+                                    },
+                                ],
                             },
                         })
                 )
@@ -1201,17 +1231,20 @@ describe('ChatBindingsDialogComponent', () => {
     });
 
     it.each([
-        { field: 'daily_token_budget' },
-        { field: 'unknown_field', max: 50_000_000 },
-        { max: 50_000_000 },
-        { field: 'daily_token_budget', max: null },
-    ])('falls back to the error banner for a malformed budget_above_cap body %o', (extra) => {
+        { attr: 'daily_token_budget', context: null },
+        { attr: 'unknown_field', context: { max: 50_000_000 } },
+        { attr: null, context: { max: 50_000_000 } },
+        { attr: 'daily_token_budget', context: { max: null } },
+    ])('falls back to the error banner for a malformed budget_above_cap error %o', ({ attr, context }) => {
         chatApi.updateBinding.mockReturnValue(
             throwError(
                 () =>
                     new HttpErrorResponse({
                         status: 400,
-                        error: { code: 'budget_above_cap', message: 'Above the cap.', ...extra },
+                        error: {
+                            type: 'client_error',
+                            errors: [{ code: 'budget_above_cap', detail: 'Above the cap.', attr, context }],
+                        },
                     })
             )
         );
@@ -1231,10 +1264,15 @@ describe('ChatBindingsDialogComponent', () => {
                     new HttpErrorResponse({
                         status: 400,
                         error: {
-                            code: 'budget_above_cap',
-                            message: 'Above the cap.',
-                            field: 'daily_token_budget',
-                            max: 3_000_000,
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'budget_above_cap',
+                                    detail: 'Above the cap.',
+                                    attr: 'daily_token_budget',
+                                    context: { max: 3_000_000 },
+                                },
+                            ],
                         },
                     })
             )
@@ -1255,16 +1293,16 @@ describe('ChatBindingsDialogComponent', () => {
         fixture.detectChanges();
         expect(errorUnder('daily_token_budget')).toBe('');
     });
-    describe("the server's refusals of a name field", () => {
-        const refused = (error: unknown) =>
-            throwError(() => new HttpErrorResponse({ status: (error as { status: number }).status, error }));
 
+    describe("the server's refusals of a name field", () => {
         const announcement = (): string | undefined =>
             text('.bindings-dialog__form > [role="alert"]').find((message) => message !== '');
 
-        /** Creates a desk with both names, which the server refuses with `body`. */
-        function saveRefused(body: unknown): ChatBindingsDialogComponent {
-            chatApi.createBinding.mockReturnValue(refused(body));
+        /** Creates a desk with both names, which the server refuses with `errors`. */
+        function saveRefused(status: number, errors: unknown[]): ChatBindingsDialogComponent {
+            chatApi.createBinding.mockReturnValue(
+                throwError(() => new HttpErrorResponse({ status, error: { type: 'client_error', errors } }))
+            );
             const component = open(null);
             component.form.patchValue({ name: 'Portal', graph_id: 5 });
             component.form.controls.bot_display_name.setValue('Mike');
@@ -1277,7 +1315,9 @@ describe('ChatBindingsDialogComponent', () => {
         it('shows bot_name_taken under the bot name, says it, and stays open without a toast', () => {
             const message =
                 'An operator on this desk already uses this name; visitors could not tell the bot from them. Choose another bot name.';
-            const component = saveRefused({ status: 409, code: 'bot_name_taken', message, field: 'bot_display_name' });
+            const component = saveRefused(409, [
+                { code: 'bot_name_taken', detail: message, attr: 'bot_display_name', context: null },
+            ]);
 
             expect(errorUnder('bot_display_name')).toBe(message);
             expect(announcement()).toBe(`Displayed bot name: ${message}`);
@@ -1294,19 +1334,20 @@ describe('ChatBindingsDialogComponent', () => {
         });
 
         it('shows refused characters and lengths on the fields the validation errors name, without the validator prefix', () => {
-            const component = saveRefused({
-                status: 400,
-                code: 'validation_error',
-                message: 'Validation failed for PATCH /chat/operator/v1/bindings/b-1',
-                errors: [
-                    {
-                        message: 'Value error, Must be plain text: U+202E is not allowed.',
-                        key: 'bot_display_name',
-                        source: 'body',
-                    },
-                    { message: 'Value error, Must be at most 64 characters.', key: 'data.operator_display_name' },
-                ],
-            });
+            const component = saveRefused(400, [
+                {
+                    code: 'validation_error',
+                    detail: 'Value error, Must be plain text: U+202E is not allowed.',
+                    attr: 'bot_display_name',
+                    context: null,
+                },
+                {
+                    code: 'validation_error',
+                    detail: 'Value error, Must be at most 64 characters.',
+                    attr: 'data.operator_display_name',
+                    context: null,
+                },
+            ]);
 
             expect(errorUnder('bot_display_name')).toBe('Must be plain text: U+202E is not allowed.');
             expect(announcement()).toBe(
@@ -1323,25 +1364,30 @@ describe('ChatBindingsDialogComponent', () => {
         });
 
         it('says validation errors that name no field of the dialog in the banner, beside the placed ones', () => {
-            const component = saveRefused({
-                status: 400,
-                code: 'validation_error',
-                message: 'Validation failed',
-                errors: [
-                    { message: 'Value error, Must be plain text: U+0007 is not allowed.', key: 'bot_display_name' },
-                    { message: 'Input should be a valid list', key: 'allowed_origins' },
-                ],
-            });
+            const component = saveRefused(400, [
+                {
+                    code: 'validation_error',
+                    detail: 'Value error, Must be plain text: U+0007 is not allowed.',
+                    attr: 'data.bot_display_name',
+                    context: null,
+                },
+                {
+                    code: 'validation_error',
+                    detail: 'Input should be a valid list',
+                    attr: 'allowed_origins',
+                    context: null,
+                },
+            ]);
+
             expect(errorUnder('bot_display_name')).toBe('Must be plain text: U+0007 is not allowed.');
             expect(component.errorMessage()).toBe('Input should be a valid list');
         });
 
         it('keeps the banner for a validation error that names no field', () => {
-            const component = saveRefused({
-                status: 400,
-                code: 'validation_error',
-                message: 'The body is nested too deeply.',
-            });
+            const component = saveRefused(400, [
+                { code: 'validation_error', detail: 'The body is nested too deeply.', attr: null, context: null },
+            ]);
+
             expect(component.errorMessage()).toBe('The body is nested too deeply.');
             expect(errorUnder('bot_display_name')).toBe('');
             expect(announcement()).toBeUndefined();

@@ -78,8 +78,8 @@ export class RunningGraphComponent implements OnInit, OnDestroy {
                     this.graphData = graph;
                     this.cdr.markForCheck();
                 },
-                error: (err) => {
-                    this.toast.error(err.error?.detail || 'Failed to fetch graph');
+                error: () => {
+                    this.toast.error('Failed to fetch graph');
                     void this.router.navigate(['/sessions']);
                     this.cdr.markForCheck();
                 },
@@ -96,8 +96,8 @@ export class RunningGraphComponent implements OnInit, OnDestroy {
                     this.currentSessionStatus = GraphSessionStatus.STOP;
                     this.cdr.markForCheck();
                 },
-                error: (err) => {
-                    this.toast.error(err.error?.detail || 'Failed to stop session');
+                error: () => {
+                    this.toast.error('Failed to stop session');
                 },
             });
     }

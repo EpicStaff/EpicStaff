@@ -19,12 +19,15 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { notWhitespaceValidator } from '@shared/form-validators';
+import { extractServerMessage } from '@shared/utils';
 import { switchMap } from 'rxjs';
 
 import { AuthService } from '../../../../services/auth/auth.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 import { OrganizationsStorageService } from '../../../role-base-access/services/admin/organizations-storage.service';
+
+const ORGANIZATION_RENAME_FAILED_MESSAGE = 'Failed to update the organization name.';
 
 @Component({
     selector: 'app-onboarding-page',
@@ -76,7 +79,8 @@ export class OnboardingPageComponent {
             )
             .subscribe({
                 next: () => this.step.set(2),
-                error: (err: HttpErrorResponse) => this.toast.error(err.error?.message),
+                error: (err: HttpErrorResponse) =>
+                    this.toast.error(extractServerMessage(err) ?? ORGANIZATION_RENAME_FAILED_MESSAGE),
             });
     }
 

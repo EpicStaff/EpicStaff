@@ -373,9 +373,13 @@ describe('TransferJobsService', () => {
             service.started$.subscribe((job) => started.push(job));
 
             observe(service.startExport('mcpTools', { ids: [4] }));
-            httpMock
-                .expectOne('/api/mcp-tools/export-jobs/')
-                .flush({ message: 'Too many exports.' }, { status: 429, statusText: 'Too Many Requests' });
+            httpMock.expectOne('/api/mcp-tools/export-jobs/').flush(
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'unknown', detail: 'Too many exports.', attr: null, context: null }],
+                },
+                { status: 429, statusText: 'Too Many Requests' }
+            );
 
             expect(started).toEqual([]);
         });
@@ -555,7 +559,13 @@ describe('TransferJobsService', () => {
             service.exportUnavailable$.subscribe((jobId) => unavailable.push(jobId));
             const outcome = observe(service.downloadExport(STARTED_EXPORT, 'Orders.zip'));
 
-            requestTicket().flush({ detail: 'Not found.' }, { status: 404, statusText: 'Not Found' });
+            requestTicket().flush(
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'unknown', detail: 'Not found.', attr: null, context: null }],
+                },
+                { status: 404, statusText: 'Not Found' }
+            );
 
             expect(outcome.error).toBeInstanceOf(TransferExportUnavailableError);
             expect(outcome.error?.message).toBe('This export is no longer available to you.');
@@ -569,7 +579,13 @@ describe('TransferJobsService', () => {
             service.exportUnavailable$.subscribe((jobId) => unavailable.push(jobId));
             const outcome = observe(service.downloadExport(STARTED_EXPORT, 'Orders.zip'));
 
-            requestTicket().flush({ detail: 'The archive was removed.' }, { status: 410, statusText: 'Gone' });
+            requestTicket().flush(
+                {
+                    type: 'client_error',
+                    errors: [{ code: 'unknown', detail: 'The archive was removed.', attr: null, context: null }],
+                },
+                { status: 410, statusText: 'Gone' }
+            );
 
             expect(outcome.error).toBeInstanceOf(HttpErrorResponse);
             expect((outcome.error as HttpErrorResponse).status).toBe(410);

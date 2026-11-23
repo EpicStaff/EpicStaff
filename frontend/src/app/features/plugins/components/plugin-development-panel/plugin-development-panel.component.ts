@@ -165,7 +165,7 @@ export class PluginDevelopmentPanelComponent {
     });
     /** Problems of a refused save that belong to no port. */
     protected readonly otherErrorItems = computed<PluginErrorItem[]>(
-        () => this.saveError()?.items.filter((item) => !isPortKey(item.loc)) ?? []
+        () => this.saveError()?.items.filter((item) => !isPortKey(item.attr)) ?? []
     );
     private readonly reloads = signal(0);
     private readonly request = computed(() => ({ identifier: this.identifier(), reload: this.reloads() }));
@@ -335,16 +335,16 @@ function portProblem(value: number | null): string | null {
     return null;
 }
 
-function isPortKey(loc: string): loc is PortKey {
-    return Object.hasOwn(PORT_LABELS, loc);
+function isPortKey(loc: string | null): loc is PortKey {
+    return loc !== null && Object.hasOwn(PORT_LABELS, loc);
 }
 
 function fieldErrorsOf(items: PluginErrorItem[]): Partial<Record<PortKey, string>> {
     const errors: Partial<Record<PortKey, string>> = {};
     for (const item of items) {
-        if (!isPortKey(item.loc)) continue;
-        const known = errors[item.loc];
-        errors[item.loc] = known ? `${known} ${item.message}` : item.message;
+        if (!isPortKey(item.attr)) continue;
+        const known = errors[item.attr];
+        errors[item.attr] = known ? `${known} ${item.detail}` : item.detail;
     }
     return errors;
 }

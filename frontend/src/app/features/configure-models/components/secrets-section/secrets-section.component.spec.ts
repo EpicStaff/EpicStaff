@@ -161,7 +161,10 @@ describe('SecretsSectionComponent bulk delete', () => {
         bulkDeleteButton(fixture)!.click();
         http.expectOne({ method: 'DELETE', url: `${SECRETS_URL}1/` }).flush(null);
         http.expectOne({ method: 'DELETE', url: `${SECRETS_URL}2/` }).flush(
-            { message: 'No Secret matches the given query.' },
+            {
+                type: 'client_error',
+                errors: [{ code: 'unknown', detail: 'No Secret matches the given query.', attr: null, context: null }],
+            },
             { status: 404, statusText: 'Not Found' }
         );
         http.expectOne({ method: 'DELETE', url: `${SECRETS_URL}3/` }).flush(null);
@@ -191,7 +194,10 @@ describe('SecretsSectionComponent bulk delete', () => {
         bulkDeleteButton(fixture)!.click();
         http.expectOne({ method: 'DELETE', url: `${SECRETS_URL}1/` }).flush(null);
         http.expectOne({ method: 'DELETE', url: `${SECRETS_URL}2/` }).flush(
-            { message: 'The database is unavailable.' },
+            {
+                type: 'server_error',
+                errors: [{ code: 'unknown', detail: 'The database is unavailable.', attr: null, context: null }],
+            },
             { status: 500, statusText: 'Server Error' }
         );
 
@@ -241,11 +247,19 @@ describe('SecretsSectionComponent bulk delete', () => {
 
         bulkDeleteButton(fixture)!.click();
         http.expectOne({ method: 'DELETE', url: `${SECRETS_URL}1/` }).flush(
-            { message: 'This secret is locked.' },
+            {
+                type: 'client_error',
+                errors: [{ code: 'unknown', detail: 'This secret is locked.', attr: null, context: null }],
+            },
             { status: 400, statusText: 'Bad Request' }
         );
         http.expectOne({ method: 'DELETE', url: `${SECRETS_URL}2/` }).flush(
-            { message: 'This secret is managed by an integration.' },
+            {
+                type: 'client_error',
+                errors: [
+                    { code: 'unknown', detail: 'This secret is managed by an integration.', attr: null, context: null },
+                ],
+            },
             { status: 400, statusText: 'Bad Request' }
         );
 
@@ -268,11 +282,17 @@ describe('SecretsSectionComponent bulk delete', () => {
 
         bulkDeleteButton(fixture)!.click();
         http.expectOne({ method: 'DELETE', url: `${SECRETS_URL}1/` }).flush(
-            { message: 'The database is unavailable.' },
+            {
+                type: 'server_error',
+                errors: [{ code: 'unknown', detail: 'The database is unavailable.', attr: null, context: null }],
+            },
             { status: 500, statusText: 'Server Error' }
         );
         http.expectOne({ method: 'DELETE', url: `${SECRETS_URL}2/` }).flush(
-            { message: 'You do not have permission.' },
+            {
+                type: 'server_error',
+                errors: [{ code: 'unknown', detail: 'You do not have permission.', attr: null, context: null }],
+            },
             { status: 403, statusText: 'Forbidden' }
         );
 

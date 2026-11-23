@@ -110,7 +110,10 @@ function installing(grant: PluginGrant): PluginGrant {
 }
 
 function conflict(code: string): HttpErrorResponse {
-    return new HttpErrorResponse({ status: 409, error: { status_code: 409, code, message: 'Refused.' } });
+    return new HttpErrorResponse({
+        status: 409,
+        error: { type: 'client_error', errors: [{ code, detail: 'Refused.', attr: null, context: null }] },
+    });
 }
 
 describe('PluginGrantsTableComponent', () => {
@@ -320,7 +323,10 @@ describe('PluginGrantsTableComponent', () => {
                 () =>
                     new HttpErrorResponse({
                         status: 409,
-                        error: { status_code: 409, code: 'hook_not_retryable', message: 'Not failed.' },
+                        error: {
+                            type: 'client_error',
+                            errors: [{ code: 'hook_not_retryable', detail: 'Not failed.', attr: null, context: null }],
+                        },
                     })
             )
         );

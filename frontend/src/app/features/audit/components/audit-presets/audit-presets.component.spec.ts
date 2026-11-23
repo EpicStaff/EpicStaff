@@ -96,7 +96,7 @@ describe('AuditPresetsComponent export and import', () => {
 
     function refuse(start: ReturnType<HttpTestingController['expectOne']>): void {
         start.flush(
-            { status_code: 429, code: 'too_many_jobs', message: 'Busy.' },
+            { type: 'client_error', errors: [{ code: 'too_many_jobs', detail: 'Busy.', attr: null, context: null }] },
             { status: 429, statusText: 'Too Many Requests' }
         );
         fixture.detectChanges();
@@ -133,5 +133,88 @@ describe('AuditPresetsComponent export and import', () => {
 
         expect(element.textContent).toContain('2 selected');
         expect(buttonWithText(element, 'Export').disabled).toBe(false);
+    });
+});
+
+describe('AuditPresetsComponent save errors', () => {
+    let fixture: ComponentFixture<AuditPresetsComponent>;
+    let element: HTMLElement;
+    let httpMock: HttpTestingController;
+
+    beforeEach(() => {
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        TestBed.configureTestingModule({
+            imports: [AuditPresetsComponent],
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } },
+                { provide: AUDIT_FIELD_CATALOG, useValue: USER_ACTION_FIELD_CATALOG },
+                AuditPresetsStorageService,
+            ],
+        });
+        httpMock = TestBed.inject(HttpTestingController);
+        TestBed.inject(AuditPresetsStorageService).load();
+        httpMock
+            .expectOne((request) => request.url === PRESETS_URL)
+            .flush({ count: 0, next: null, previous: null, results: [] });
+
+        fixture = TestBed.createComponent(AuditPresetsComponent);
+        fixture.componentRef.setInput('scope', 'mine');
+        fixture.componentRef.setInput('currentFilter', EMPTY_AUDIT_FILTER);
+        element = fixture.nativeElement as HTMLElement;
+        fixture.detectChanges();
+    });
+
+    afterEach(() => {
+        httpMock.verify();
+        vi.unstubAllGlobals();
+    });
+
+    function saveNewPreset(name: string): ReturnType<HttpTestingController['expectOne']> {
+        const buttons = (): HTMLButtonElement[] => Array.from(element.querySelectorAll<HTMLButtonElement>('button'));
+        buttons()
+            .find((button) => button.textContent?.trim() === 'New Preset')!
+            .click();
+        fixture.detectChanges();
+        const nameInput = element.querySelector<HTMLInputElement>('#audit-preset-name')!;
+        nameInput.value = name;
+        nameInput.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+        buttons()
+            .find((button) => button.textContent?.trim() === 'Save Changes')!
+            .click();
+        return httpMock.expectOne((request) => request.method === 'POST' && request.url === PRESETS_URL);
+    }
+
+    function shownError(): string | undefined {
+        return element.querySelector('.preset-form__error')?.textContent?.trim();
+    }
+
+    it('shows the first reason of a refused save, without its field label', () => {
+        const body = {
+            type: 'validation_error',
+            errors: [
+                { code: 'unique', detail: 'A preset with this name already exists.', attr: 'name' },
+                { code: 'invalid', detail: 'Bad.', attr: 'filter_body' },
+            ],
+        };
+        saveNewPreset('Failures').flush(body, { status: 400, statusText: 'Bad Request' });
+        fixture.detectChanges();
+
+        expect(shownError()).toBe('A preset with this name already exists.');
+    });
+
+    it('shows its own words for a failure that is not a refused field', () => {
+        saveNewPreset('Failures').flush(
+            {
+                type: 'server_error',
+                errors: [{ code: 'error', detail: 'Unpredictable error', attr: null, context: null }],
+            },
+            { status: 500, statusText: 'Server Error' }
+        );
+        fixture.detectChanges();
+
+        expect(shownError()).toBe('Could not save the preset.');
     });
 });

@@ -1,4 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
+import { extractErrorCode } from '@shared/utils';
 
 import { CDT_TREE_COPY } from './cdt-decision-tree.constants';
 
@@ -20,7 +21,6 @@ const EXPLAIN_ERROR_MESSAGES: ReadonlyMap<string, string> = new Map([
  * interceptor: `forbidden` covers 403 and `validation-errors` only annotates 4xx.
  */
 export function explainErrorMessage(error: HttpErrorResponse): string {
-    const code: unknown = (error.error as { code?: unknown } | null)?.code;
-    const message = typeof code === 'string' ? EXPLAIN_ERROR_MESSAGES.get(code) : undefined;
-    return message ?? CDT_TREE_COPY.explainFailed;
+    const code = extractErrorCode(error);
+    return (code && EXPLAIN_ERROR_MESSAGES.get(code)) || CDT_TREE_COPY.explainFailed;
 }

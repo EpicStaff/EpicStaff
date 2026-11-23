@@ -527,8 +527,8 @@ export class GraphMessagesComponent implements OnInit, OnDestroy, OnChanges, Aft
                     }
                     this.loadMoreMessages();
                 },
-                error: (err) => {
-                    this.toast.error(err.error?.detail || 'Failed to fetch session');
+                error: () => {
+                    this.toast.error('Failed to fetch session');
                     void this.router.navigate(['/sessions']);
                 },
             });

@@ -7,6 +7,7 @@ export interface TableDocument extends NaiveRagDocumentConfig {
     errors?: NormalizedDocumentErrors;
 }
 
+/** A document's refused settings by field: its own fields, and any other field the server names. */
 export type NormalizedDocumentErrors = {
     [K in keyof TableDocument]?: Partial<UpdateNaiveRagDocumentConfigError>;
-};
+} & Record<string, Partial<UpdateNaiveRagDocumentConfigError> | undefined>;

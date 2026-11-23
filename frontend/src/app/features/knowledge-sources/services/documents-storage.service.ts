@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import { StorageService } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractErrorCode, extractErrorContext, extractHttpErrorMessage } from '@shared/utils';
 import { forkJoin, Observable, of, ReplaySubject } from 'rxjs';
 import { catchError, finalize, map, switchMap, tap } from 'rxjs/operators';
 
@@ -11,10 +11,10 @@ import {
     CollectionDocument,
     CopyDocumentsResponse,
     DisplayedListDocument,
-    ImportFromStorageErrorResponse,
     ImportFromStorageResponse,
     NOTHING_TO_IMPORT_ERROR_CODE,
     StorageImportCandidate,
+    StorageImportSkippedFile,
     UploadDocumentResponse,
 } from '../models/document.model';
 import { CollectionsApiService } from './collections-api.service';
@@ -266,9 +266,13 @@ export class DocumentsStorageService implements StorageService {
         }
         if (error.status === 403) return;
         const message = extractHttpErrorMessage(error, 'Failed to add files to the collection');
-        const body = error.error as ImportFromStorageErrorResponse | null;
-        const skipped = body?.code === NOTHING_TO_IMPORT_ERROR_CODE ? body.skipped : undefined;
-        this.toastService.error(skipped?.length ? `${message} (skipped: ${formatSkippedReasons(skipped)})` : message);
+        const context = extractErrorCode(error) === NOTHING_TO_IMPORT_ERROR_CODE ? extractErrorContext(error) : null;
+        const skipped = context?.['skipped'];
+        this.toastService.error(
+            Array.isArray(skipped) && skipped.length
+                ? `${message} (skipped: ${formatSkippedReasons(skipped as StorageImportSkippedFile[])})`
+                : message
+        );
     }
 
     private deleteDocumentFromCache(id: number) {

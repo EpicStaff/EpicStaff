@@ -26,6 +26,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { extractApiErrors } from '@shared/utils';
 import { EMPTY, Observable, of } from 'rxjs';
 import { catchError, defaultIfEmpty, switchMap } from 'rxjs/operators';
 
@@ -237,8 +238,8 @@ export class NaiveRagConfigurationComponent implements OnInit, RagConfiguration 
         return this.documentsStorageService.bulkPartialUpdate(id, checkedIds).pipe(
             defaultIfEmpty(null),
             catchError((err: HttpErrorResponse) => {
-                const first = err.error?.errors?.[0];
-                this.toastService.error(first?.reason ? `Save failed: ${first.reason}` : 'Save failed');
+                const fieldError = extractApiErrors(err).find(({ attr }) => attr !== null);
+                this.toastService.error(fieldError?.detail ? `Save failed: ${fieldError.detail}` : 'Save failed');
                 return of(null);
             })
         );

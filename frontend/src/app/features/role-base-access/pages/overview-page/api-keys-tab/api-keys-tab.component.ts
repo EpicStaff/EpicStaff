@@ -31,7 +31,7 @@ import {
     UserAvatarComponent,
 } from '@shared/components';
 import { ActionCode, ApiKeyStatus, GetApiKeyWithOwnerResponse, ResourceCode } from '@shared/models';
-import { getRelativeTime } from '@shared/utils';
+import { extractServerMessage, getRelativeTime } from '@shared/utils';
 import { combineLatest, debounceTime, distinctUntilChanged, EMPTY, forkJoin, map, of, switchMap } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
 
@@ -379,7 +379,7 @@ export class ApiKeysTabComponent {
                     this.toast.success(`"${row['name']}" was revoked`);
                     this.bulkButton().nativeElement.focus();
                 },
-                error: (err) => this.toast.error(err.error?.message ?? 'Failed to revoke API key'),
+                error: (err) => this.toast.error(extractServerMessage(err) ?? 'Failed to revoke API key'),
             });
     }
 
@@ -397,7 +397,7 @@ export class ApiKeysTabComponent {
                     this.toast.success(`"${row['name']}" was deleted`);
                     this.bulkButton().nativeElement.focus();
                 },
-                error: (err) => this.toast.error(err.error?.message ?? 'Failed to delete API key'),
+                error: (err) => this.toast.error(extractServerMessage(err) ?? 'Failed to delete API key'),
             });
     }
 

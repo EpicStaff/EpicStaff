@@ -193,7 +193,10 @@ describe('ShortcutsModalComponent', () => {
                 render();
             },
             fail: () => {
-                request.flush({ detail: 'boom' }, { status: 500, statusText: 'Server Error' });
+                request.flush(
+                    { type: 'server_error', errors: [{ code: 'unknown', detail: 'boom', attr: null, context: null }] },
+                    { status: 500, statusText: 'Server Error' }
+                );
                 render();
             },
         };

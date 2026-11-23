@@ -353,7 +353,13 @@ describe('CollectionsImportComponent', () => {
                     inspect.flush({ review_items: [] });
                     httpMock
                         .expectOne((request) => request.url === IMPORT_JOBS_URL)
-                        .flush({ message: 'Busy.' }, { status: 429, statusText: 'Too Many Requests' });
+                        .flush(
+                            {
+                                type: 'client_error',
+                                errors: [{ code: 'unknown', detail: 'Busy.', attr: null, context: null }],
+                            },
+                            { status: 429, statusText: 'Too Many Requests' }
+                        );
                 },
             },
         ])('is free again when $step fails', async ({ fail }) => {

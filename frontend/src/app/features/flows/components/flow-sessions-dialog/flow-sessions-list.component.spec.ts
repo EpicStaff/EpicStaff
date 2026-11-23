@@ -173,7 +173,13 @@ describe('FlowSessionsListComponent bulk actions', () => {
         clickDeleteSelected();
         clickDialogButton('.confirm-button');
 
-        expectBulkDelete().flush({ detail: 'Database is unavailable.' }, { status: 500, statusText: 'Server Error' });
+        expectBulkDelete().flush(
+            {
+                type: 'server_error',
+                errors: [{ code: 'unknown', detail: 'Database is unavailable.', attr: null, context: null }],
+            },
+            { status: 500, statusText: 'Server Error' }
+        );
         fixture.detectChanges();
 
         expect(await shownToasts()).toEqual([{ type: 'error', message: 'Database is unavailable.' }]);

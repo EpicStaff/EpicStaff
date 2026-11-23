@@ -1,7 +1,3 @@
-// Side-effect import: DocumentsStorageService's dependency graph reaches shared/utils/http-error.util.ts,
-// which reads the `validationErrors` augmentation declared by this interceptor module.
-import '../../../../core/interceptors/validation-errors.interceptor';
-
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';

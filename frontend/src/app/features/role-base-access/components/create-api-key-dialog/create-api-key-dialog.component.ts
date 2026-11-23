@@ -26,6 +26,7 @@ import {
 } from '@shared/components';
 import { EnterSubmitDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
+import { extractServerMessage } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
@@ -140,7 +141,7 @@ export class CreateApiKeyDialogComponent {
                     this.step.set('created');
                 },
                 error: (err: HttpErrorResponse) => {
-                    this.toast.error(err.error?.message ?? 'Failed to create API key');
+                    this.toast.error(extractServerMessage(err) ?? 'Failed to create API key');
                 },
             });
     }

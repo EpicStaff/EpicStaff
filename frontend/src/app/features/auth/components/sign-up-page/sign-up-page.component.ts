@@ -13,6 +13,7 @@ import {
 import { ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
 import { newAccountEmailValidator, notNumericOnlyValidator } from '@shared/form-validators';
 import { HttpStatus } from '@shared/models';
+import { extractFieldErrors, extractServerMessage } from '@shared/utils';
 import { forkJoin, timer } from 'rxjs';
 
 import { AuthService } from '../../../../services/auth/auth.service';
@@ -87,12 +88,13 @@ export class SignUpPageComponent {
             },
             error: (err: HttpErrorResponse) => {
                 this.state.set('form');
-                if (err.validationErrors?.length) {
-                    this.serverErrorsRef.setErrors(err.validationErrors);
+                const fieldErrors = extractFieldErrors(err);
+                if (fieldErrors.length) {
+                    this.serverErrorsRef.setErrors(fieldErrors);
                     return;
                 }
                 if (err.status === HttpStatus.Conflict) {
-                    this.toast.error(err.error?.message ?? 'Conflict');
+                    this.toast.error(extractServerMessage(err) ?? 'Conflict');
                     return;
                 }
                 this.toast.error('Something went wrong. Please try again.');

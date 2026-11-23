@@ -14,7 +14,13 @@ import {
 import { EnterSubmitDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, CatalogResponse, GetRoleResponse, ResourceCode } from '@shared/models';
-import { rolePermissionsToSet, setToRolePermissions } from '@shared/utils';
+import {
+    extractApiErrors,
+    extractErrorCode,
+    extractServerMessage,
+    rolePermissionsToSet,
+    setToRolePermissions,
+} from '@shared/utils';
 import { distinctUntilChanged, filter, finalize, map, switchMap } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -439,7 +445,7 @@ export class CreateRoleDialogComponent implements OnInit {
     }
 
     private handleError(err: HttpErrorResponse): void {
-        const code: string | undefined = err.error?.code;
+        const code = extractErrorCode(err);
         if (code === 'role_name_conflict') {
             this.toast.error('A role with this name already exists in the organization.');
             return;
@@ -448,15 +454,18 @@ export class CreateRoleDialogComponent implements OnInit {
             this.toast.error("You can't grant permissions you don't have in that organization.");
             return;
         }
-        if (code === 'invalid' && Array.isArray(err.error?.errors)) {
-            for (const e of err.error.errors) {
-                const control = this.form.get(e.field);
+        const fieldErrors = extractApiErrors(err).flatMap(({ attr, detail }) =>
+            attr === null ? [] : [{ attr, detail }]
+        );
+        if (code === 'invalid' && fieldErrors.length) {
+            for (const { attr, detail } of fieldErrors) {
+                const control = this.form.get(attr);
                 if (!control) continue;
-                control.setErrors({ server: [e.reason] });
+                control.setErrors({ server: [detail] });
             }
             return;
         }
-        this.toast.error(err.error?.message ?? 'Failed to save role');
+        this.toast.error(extractServerMessage(err) ?? 'Failed to save role');
     }
 
     onCancel(): void {

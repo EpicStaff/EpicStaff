@@ -174,7 +174,10 @@ const DELETING = buildPluginDetail({
 function notFound(): HttpErrorResponse {
     return new HttpErrorResponse({
         status: 404,
-        error: { status_code: 404, code: 'plugin_not_found', message: 'Not found.' },
+        error: {
+            type: 'client_error',
+            errors: [{ code: 'plugin_not_found', detail: 'Not found.', attr: null, context: null }],
+        },
     });
 }
 
@@ -442,7 +445,12 @@ describe('PluginAdminDetailPageComponent uninstall, reinstall and deletion', () 
                 () =>
                     new HttpErrorResponse({
                         status: 409,
-                        error: { status_code: 409, code: 'plugin_not_uninstalling', message: 'Refused.' },
+                        error: {
+                            type: 'client_error',
+                            errors: [
+                                { code: 'plugin_not_uninstalling', detail: 'Refused.', attr: null, context: null },
+                            ],
+                        },
                     })
             )
         );
@@ -815,7 +823,10 @@ describe('PluginAdminDetailPageComponent upgrades', () => {
                 () =>
                     new HttpErrorResponse({
                         status: 409,
-                        error: { status_code: 409, code: 'upgrade_not_retryable', message: 'Refused.' },
+                        error: {
+                            type: 'client_error',
+                            errors: [{ code: 'upgrade_not_retryable', detail: 'Refused.', attr: null, context: null }],
+                        },
                     })
             )
         );

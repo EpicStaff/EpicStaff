@@ -129,11 +129,18 @@ describe('PythonCodeTestRun', () => {
                 status: 409,
                 url: '/run-python-code/',
                 error: {
-                    status_code: 409,
-                    code: 'plugin_suspended',
-                    message,
-                    plugin: { identifier: 'weather', name: 'Weather' },
-                    organization: { id: 3 },
+                    type: 'client_error',
+                    errors: [
+                        {
+                            code: 'plugin_suspended',
+                            detail: message,
+                            attr: null,
+                            context: {
+                                plugin: { identifier: 'weather', name: 'Weather' },
+                                organization: { id: 3 },
+                            },
+                        },
+                    ],
                 },
             })
         );

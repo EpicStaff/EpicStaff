@@ -104,7 +104,16 @@ describe('RagTabComponent validation', () => {
 describe('RagTabComponent token limits', () => {
     it('explains a GraphRAG with no LLM config and offers no retry', () => {
         const component = render(() =>
-            throwError(() => new HttpErrorResponse({ status: 409, error: { code: 'graph_rag_llm_not_configured' } }))
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 409,
+                        error: {
+                            type: 'client_error',
+                            errors: [{ code: 'graph_rag_llm_not_configured', detail: '', attr: null, context: null }],
+                        },
+                    })
+            )
         );
 
         expect(component.tokenLimitsError()?.canRetry).toBe(false);

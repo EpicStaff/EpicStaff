@@ -105,9 +105,15 @@ describe('MyFlowsComponent copy action', () => {
                     new HttpErrorResponse({
                         status: 403,
                         error: {
-                            status_code: 403,
-                            code: 'flow_with_trigger_nodes_requires_use_permission',
-                            message: 'This flow contains trigger nodes.',
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'flow_with_trigger_nodes_requires_use_permission',
+                                    detail: 'This flow contains trigger nodes.',
+                                    attr: null,
+                                    context: null,
+                                },
+                            ],
                         },
                     })
             )
@@ -148,9 +154,15 @@ describe('MyFlowsComponent copy action', () => {
                     new HttpErrorResponse({
                         status: 403,
                         error: {
-                            status_code: 403,
-                            code: 'code_with_secrets_requires_secrets_use_permission',
-                            message: SECRETS_REFUSAL_MESSAGE,
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'code_with_secrets_requires_secrets_use_permission',
+                                    detail: SECRETS_REFUSAL_MESSAGE,
+                                    attr: null,
+                                    context: null,
+                                },
+                            ],
                         },
                     })
             )
@@ -536,7 +548,13 @@ describe('MyFlowsComponent run action', () => {
     it.each([
         [
             'the reason the server gave',
-            new HttpErrorResponse({ status: 400, error: { message: 'No node connected to start node' } }),
+            new HttpErrorResponse({
+                status: 400,
+                error: {
+                    type: 'client_error',
+                    errors: [{ code: 'unknown', detail: 'No node connected to start node', attr: null, context: null }],
+                },
+            }),
             'Couldn\'t run "Report". No node connected to start node',
         ],
         [

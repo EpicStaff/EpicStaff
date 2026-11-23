@@ -1,5 +1,5 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { HttpErrorResponse, HttpRequest } from '@angular/common/http';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, forwardRef, input, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ControlValueAccessor, FormGroup, NG_VALUE_ACCESSOR } from '@angular/forms';
@@ -14,7 +14,6 @@ import {
 } from '@shared/services';
 import { EMPTY, Observable, of, Subject, throwError } from 'rxjs';
 
-import { validationErrorsInterceptor } from '../../../../core/interceptors/validation-errors.interceptor';
 import { ToastService } from '../../../../services/notifications';
 import { JsonEditorFormFieldComponent } from '../../json-editor/json-editor-form-field.component';
 import { LlmModelConfigDialogComponent } from './llm-model-config-dialog.component';
@@ -375,37 +374,39 @@ function reasoningErrorText(fixture: ComponentFixture<LlmModelConfigDialogCompon
     );
 }
 
-/** A 400 in the backend's validation envelope, passed through the interceptor the app registers. */
-function validationErrorResponse(field: string, value: string, reason: string): Observable<never> {
+/** A 400 in the backend's validation envelope. */
+function validationErrorResponse(field: string, reason: string): Observable<never> {
     const response = new HttpErrorResponse({
         status: 400,
-        error: {
-            status_code: 400,
-            code: 'validation_error',
-            message: 'Invalid input.',
-            errors: [{ field, value, reason }],
-        },
+        error: { type: 'client_error', errors: [{ code: 'invalid', detail: reason, attr: field, context: null }] },
     });
-    return validationErrorsInterceptor(new HttpRequest('PUT', '/api/llm-configs/7/', null), () =>
-        throwError(() => response)
-    ) as Observable<never>;
+    return throwError(() => response);
 }
 
 /** The 400 the backend sends when a write would change where a secret goes and the caller lacks Secrets "Use". */
 const SECRET_USE_REFUSAL = new HttpErrorResponse({
     status: 400,
     error: {
-        status_code: 400,
-        code: 'invalid',
-        message:
-            'model: Changing where this sends its secrets requires the "Use" permission on Secrets. ' +
-            'The existing value was left unchanged. Ask an organization admin to grant it.',
+        type: 'client_error',
+        errors: [
+            {
+                code: 'invalid',
+                detail:
+                    'Changing where this sends its secrets requires the "Use" permission on Secrets. ' +
+                    'The existing value was left unchanged. Ask an organization admin to grant it.',
+                attr: 'model',
+                context: null,
+            },
+        ],
     },
 });
 
 const SERVER_ERROR = new HttpErrorResponse({
     status: 500,
-    error: { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
+    error: {
+        type: 'server_error',
+        errors: [{ code: 'Exception', detail: 'Unpredictable error', attr: null, context: null }],
+    },
 });
 
 function bannerText(fixture: ComponentFixture<LlmModelConfigDialogComponent>): string {
@@ -414,7 +415,7 @@ function bannerText(fixture: ComponentFixture<LlmModelConfigDialogComponent>): s
 }
 
 function unsupportedEffortResponse(): Observable<never> {
-    return validationErrorResponse('reasoning_effort', 'xhigh', UNSUPPORTED_EFFORT_ERROR);
+    return validationErrorResponse('reasoning_effort', UNSUPPORTED_EFFORT_ERROR);
 }
 
 function reasoningControlValue(fixture: ComponentFixture<LlmModelConfigDialogComponent>): ReasoningEffort | null {
@@ -500,12 +501,12 @@ describe('LlmModelConfigDialogComponent reasoning effort', () => {
     it('shows a 400 about another field in the banner, not under the reasoning effort select', async () => {
         const { fixture, updateConfig } = await render(storedConfig(ALWAYS_REASONING_MODEL_ID, 'high'));
         const reason = 'An LLM configuration with this name already exists.';
-        updateConfig.mockReturnValueOnce(validationErrorResponse('custom_name', 'model-3', reason));
+        updateConfig.mockReturnValueOnce(validationErrorResponse('custom_name', reason));
 
         fixture.componentInstance.onSave();
         fixture.detectChanges();
 
-        expect(bannerText(fixture)).toBe(reason);
+        expect(bannerText(fixture)).toBe(`Custom name: ${reason}`);
         expect(reasoningErrorText(fixture)).toBe('');
     });
 

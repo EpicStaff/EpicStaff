@@ -7,6 +7,7 @@ import { AppSvgIconComponent, UserAvatarComponent } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { FullMembership, GetMeResponse } from '@shared/models';
 import { ORG_SWITCH_URL_RULES } from '@shared/services';
+import { extractServerMessage } from '@shared/utils';
 import { EMPTY } from 'rxjs';
 import { catchError, filter, finalize, map, switchMap } from 'rxjs/operators';
 
@@ -136,9 +137,6 @@ export class UserMenuComponent {
 
     /** The server's message when the response carries one (a network error or a non-JSON 5xx does not). */
     private errorMessage(error: unknown): string {
-        if (error instanceof HttpErrorResponse && typeof error.error?.message === 'string') {
-            return error.error.message;
-        }
-        return ORG_SWITCH_FAILED_MESSAGE;
+        return extractServerMessage(error) ?? ORG_SWITCH_FAILED_MESSAGE;
     }
 }

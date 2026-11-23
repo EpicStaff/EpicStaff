@@ -49,11 +49,17 @@ const STORED_CONFIGS = { openai: OPENAI_CONFIG, elevenlabs: ELEVENLABS_CONFIG, g
 const SECRET_USE_REFUSAL = new HttpErrorResponse({
     status: 400,
     error: {
-        status_code: 400,
-        code: 'invalid',
-        message:
-            'api_key_secret_id: Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
-            'The existing selection was left unchanged. Ask an organization admin to grant it.',
+        type: 'client_error',
+        errors: [
+            {
+                code: 'invalid',
+                detail:
+                    'Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
+                    'The existing selection was left unchanged. Ask an organization admin to grant it.',
+                attr: 'api_key_secret_id',
+                context: null,
+            },
+        ],
     },
 });
 
@@ -156,7 +162,10 @@ describe('RealtimeConfigDialogComponent save errors', () => {
     it('keeps the generic message for a server error', () => {
         const serverError = new HttpErrorResponse({
             status: 500,
-            error: { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
+            error: {
+                type: 'server_error',
+                errors: [{ code: 'Exception', detail: 'Unpredictable error', attr: null, context: null }],
+            },
         });
         const fixture = render('openai', () => throwError(() => serverError));
 

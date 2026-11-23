@@ -5,9 +5,9 @@ import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractApiErrors, extractErrorCode, extractHttpErrorMessage } from '@shared/utils';
 
-import { ChatBinding, ChatErrorBody, ChatMyAliasResult } from '../../models/chat.model';
+import { ChatBinding, ChatMyAliasResult } from '../../models/chat.model';
 import { ChatApiService } from '../../services/chat-api.service';
 import { ChatMyAliasesStorageService } from '../../services/chat-my-aliases-storage.service';
 import { isSamePublicName, normalizePublicName, publicNameError, validationReason } from '../../utils/public-name.util';
@@ -120,10 +120,9 @@ export class MyDeskAliasDialogComponent {
 
 /** A refusal in words: the two known conflicts, the validation errors, else the server's message. */
 function refusalMessage(error: HttpErrorResponse): string {
-    const body = error.error as ChatErrorBody | null;
-    const known = body?.code ? REFUSALS[body.code] : undefined;
-    if (known) return known;
+    const code = extractErrorCode(error);
+    if (code && Object.hasOwn(REFUSALS, code)) return REFUSALS[code];
     const details =
-        body?.code === 'validation_error' ? (body.errors ?? []).map(({ message }) => validationReason(message)) : [];
+        code === 'validation_error' ? extractApiErrors(error).map(({ detail }) => validationReason(detail)) : [];
     return details.filter(Boolean).join(' ') || extractHttpErrorMessage(error);
 }

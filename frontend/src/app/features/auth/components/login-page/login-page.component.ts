@@ -14,7 +14,7 @@ import {
 import { ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
 import { strictEmailValidator } from '@shared/form-validators';
 import { HttpStatus } from '@shared/models';
-import { getRetryAfterSeconds } from '@shared/utils';
+import { extractFieldErrors, extractServerMessage, getRetryAfterSeconds } from '@shared/utils';
 import { interval, Subscription, take } from 'rxjs';
 import { finalize } from 'rxjs/operators';
 
@@ -112,13 +112,14 @@ export class LoginPageComponent implements OnInit {
                         this.handleThrottleError(err);
                         return;
                     }
-                    if (err.validationErrors?.length) {
-                        this.serverErrorsRef.setErrors(err.validationErrors);
+                    const fieldErrors = extractFieldErrors(err);
+                    if (fieldErrors.length) {
+                        this.serverErrorsRef.setErrors(fieldErrors);
                         return;
                     }
                     // Login failure on bad credentials — show as form-level error.
                     this.serverErrorsRef.setErrors([
-                        { field: '', value: '', reason: err.error?.message ?? 'Login failed. Please try again.' },
+                        { attr: null, detail: extractServerMessage(err) ?? 'Login failed. Please try again.' },
                     ]);
                 },
             });
@@ -128,7 +129,7 @@ export class LoginPageComponent implements OnInit {
         const seconds = getRetryAfterSeconds(err);
         if (!seconds) {
             this.serverErrorsRef.setErrors([
-                { field: '', value: '', reason: err.error?.message ?? LOGIN_THROTTLED_FALLBACK_MESSAGE },
+                { attr: null, detail: extractServerMessage(err) ?? LOGIN_THROTTLED_FALLBACK_MESSAGE },
             ]);
             return;
         }

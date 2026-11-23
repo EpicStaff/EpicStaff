@@ -241,7 +241,17 @@ describe('FlowImportExportService — importing', () => {
                                 () =>
                                     new HttpErrorResponse({
                                         status: 400,
-                                        error: { message: 'The file is not a node export.' },
+                                        error: {
+                                            type: 'client_error',
+                                            errors: [
+                                                {
+                                                    code: 'invalid',
+                                                    detail: 'The file is not a node export.',
+                                                    attr: null,
+                                                    context: null,
+                                                },
+                                            ],
+                                        },
                                     })
                             ),
                     },

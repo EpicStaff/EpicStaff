@@ -52,12 +52,15 @@ const STORED_TOOL: GetPythonCodeToolRequest = {
 };
 
 const SECRET_USE_REFUSAL =
-    'python_code: secret_ids: Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
+    'Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
     'The existing selection was left unchanged. Ask an organization admin to grant it.';
 
-/** A 400 in the backend's envelope: the message starts with the field path it is about. */
-function badRequest(message: string): HttpErrorResponse {
-    return new HttpErrorResponse({ status: 400, error: { status_code: 400, code: 'invalid', message } });
+/** A 400 in the backend's envelope, about the field at the dotted path `attr`. */
+function badRequest(attr: string, detail: string): HttpErrorResponse {
+    return new HttpErrorResponse({
+        status: 400,
+        error: { type: 'validation_error', errors: [{ code: 'invalid', detail, attr, context: null }] },
+    });
 }
 
 // jsdom has no ResizeObserver; the variables breadcrumb only needs it to exist.
@@ -347,7 +350,9 @@ describe('CreateCustomToolDialogComponent save errors', () => {
 
     it('shows a secret Use refusal in the banner, with its field labels in words', () => {
         const { fixture, customTools, toast } = openDialog(STORED_TOOL);
-        customTools.updatePythonCodeToolV2.mockReturnValueOnce(throwError(() => badRequest(SECRET_USE_REFUSAL)));
+        customTools.updatePythonCodeToolV2.mockReturnValueOnce(
+            throwError(() => badRequest('python_code.secret_ids', SECRET_USE_REFUSAL))
+        );
 
         save(fixture);
 
@@ -362,7 +367,7 @@ describe('CreateCustomToolDialogComponent save errors', () => {
     it('shows a duplicate name in the banner', () => {
         const { fixture, customTools } = openDialog(STORED_TOOL);
         customTools.updatePythonCodeToolV2.mockReturnValueOnce(
-            throwError(() => badRequest('name: A tool with this name already exists.'))
+            throwError(() => badRequest('name', 'A tool with this name already exists.'))
         );
 
         save(fixture);
@@ -373,7 +378,7 @@ describe('CreateCustomToolDialogComponent save errors', () => {
     it('clears the banner when the tool is saved again', () => {
         const { fixture, customTools } = openDialog(STORED_TOOL);
         customTools.updatePythonCodeToolV2.mockReturnValueOnce(
-            throwError(() => badRequest('name: A tool with this name already exists.'))
+            throwError(() => badRequest('name', 'A tool with this name already exists.'))
         );
         save(fixture);
         expect(bannerText(fixture)).not.toBe('');
@@ -386,7 +391,16 @@ describe('CreateCustomToolDialogComponent save errors', () => {
     it('reports a server error in a toast, not in the banner', () => {
         const { fixture, customTools, toast } = openDialog(STORED_TOOL);
         customTools.updatePythonCodeToolV2.mockReturnValueOnce(
-            throwError(() => new HttpErrorResponse({ status: 500, error: { message: 'Unpredictable error' } }))
+            throwError(
+                () =>
+                    new HttpErrorResponse({
+                        status: 500,
+                        error: {
+                            type: 'server_error',
+                            errors: [{ code: 'unknown', detail: 'Unpredictable error', attr: null, context: null }],
+                        },
+                    })
+            )
         );
 
         save(fixture);
@@ -536,9 +550,15 @@ describe('CreateCustomToolDialogComponent code that reads secrets', () => {
                     new HttpErrorResponse({
                         status: 403,
                         error: {
-                            status_code: 403,
-                            code: 'code_with_secrets_requires_secrets_use_permission',
-                            message: reason,
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'code_with_secrets_requires_secrets_use_permission',
+                                    detail: reason,
+                                    attr: null,
+                                    context: null,
+                                },
+                            ],
                         },
                     })
             )

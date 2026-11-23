@@ -17,7 +17,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, getLabelColorOption, LabelColor, LabelDto, LabelTreeNode, ResourceCode } from '@shared/models';
 import { LABELS_STORE, SidebarWidthService } from '@shared/services';
-import { escapeHtml } from '@shared/utils';
+import { escapeHtml, extractHttpErrorMessage } from '@shared/utils';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
@@ -311,7 +311,7 @@ export class LabelSidebarComponent implements OnInit {
     }
 
     private parseCreateError(err: HttpErrorResponse): string {
-        const msg: string = err?.error?.message ?? err?.message ?? '';
+        const msg = extractHttpErrorMessage(err, '');
         if (
             msg.includes('Top-level label with this name already exists') ||
             msg.includes('name, parent must make a unique set')

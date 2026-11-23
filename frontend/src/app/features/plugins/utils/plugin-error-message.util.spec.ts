@@ -72,7 +72,13 @@ describe('toPluginErrorView', () => {
     });
 
     it.each(ENDPOINT_CODES.filter((code) => !SERVER_MESSAGE_CODES.includes(code)))('maps %s to its message', (code) => {
-        const view = toPluginErrorView(failure(400, { status_code: 400, code, message: 'server text' }), 'fallback');
+        const view = toPluginErrorView(
+            failure(400, {
+                type: 'client_error',
+                errors: [{ code, detail: 'server text', attr: null, context: null }],
+            }),
+            'fallback'
+        );
 
         expect(view.code).toBe(code);
         expect(view.message).toBe(PLUGIN_ERROR_MESSAGES[code]);
@@ -82,11 +88,15 @@ describe('toPluginErrorView', () => {
         const message = 'This run uses resources of the plugin "Weather", which is suspended in this organization.';
         const view = toPluginErrorView(
             failure(409, {
-                status_code: 409,
-                code: 'plugin_suspended',
-                message,
-                plugin: { identifier: 'weather', name: 'Weather' },
-                organization: { id: 3 },
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'plugin_suspended',
+                        detail: message,
+                        attr: null,
+                        context: { plugin: { identifier: 'weather', name: 'Weather' }, organization: { id: 3 } },
+                    },
+                ],
             }),
             'fallback'
         );
@@ -97,11 +107,15 @@ describe('toPluginErrorView', () => {
     it("shows the server's sentence for a version that is not newer, which names both versions", () => {
         const view = toPluginErrorView(
             failure(409, {
-                status_code: 409,
-                code: 'plugin_version_not_newer',
-                message: '0.6.0 is not newer than the installed 0.7.0.',
-                installed_version: '0.7.0',
-                latest_version: '0.7.0',
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'plugin_version_not_newer',
+                        detail: '0.6.0 is not newer than the installed 0.7.0.',
+                        attr: null,
+                        context: { installed_version: '0.7.0', latest_version: '0.7.0' },
+                    },
+                ],
             }),
             'fallback'
         );
@@ -116,9 +130,15 @@ describe('toPluginErrorView', () => {
     it('says development mode is off when the deployment refuses a development change', () => {
         const view = toPluginErrorView(
             failure(409, {
-                status_code: 409,
-                code: 'plugin_development_mode_off',
-                message: 'Plugin development mode is off on this deployment.',
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'plugin_development_mode_off',
+                        detail: 'Plugin development mode is off on this deployment.',
+                        attr: null,
+                        context: null,
+                    },
+                ],
             }),
             'fallback'
         );
@@ -133,14 +153,19 @@ describe('toPluginErrorView', () => {
     it('lists why a package cannot upgrade the installed plugin', () => {
         const view = toPluginErrorView(
             failure(409, {
-                status_code: 409,
-                code: 'plugin_upgrade_unavailable',
-                message: 'The package cannot upgrade the installed plugin.',
+                type: 'client_error',
                 errors: [
-                    { loc: 'manifest.backend', message: 'a new version cannot drop the backend' },
                     {
-                        loc: 'package.database/migrations/001_weather.sql',
-                        message: '001_weather.sql is already applied; a new version must keep it unchanged',
+                        code: 'plugin_upgrade_unavailable',
+                        detail: 'a new version cannot drop the backend',
+                        attr: 'manifest.backend',
+                        context: null,
+                    },
+                    {
+                        code: 'plugin_upgrade_unavailable',
+                        detail: '001_weather.sql is already applied; a new version must keep it unchanged',
+                        attr: 'package.database/migrations/001_weather.sql',
+                        context: null,
                     },
                 ],
             }),
@@ -148,25 +173,37 @@ describe('toPluginErrorView', () => {
         );
 
         expect(view.message).toBe(PLUGIN_ERROR_MESSAGES.plugin_upgrade_unavailable);
-        expect(view.items.map((item) => item.loc)).toEqual([
+        expect(view.items.map((item) => item.attr)).toEqual([
             'manifest.backend',
             'package.database/migrations/001_weather.sql',
         ]);
     });
 
     it('falls back to its own text for a refused run without a server message', () => {
-        const view = toPluginErrorView(failure(409, { status_code: 409, code: 'plugin_suspended' }), 'fallback');
+        const view = toPluginErrorView(
+            failure(409, {
+                type: 'client_error',
+                errors: [{ code: 'plugin_suspended', detail: '', attr: null, context: null }],
+            }),
+            'fallback'
+        );
 
         expect(view.message).toBe(PLUGIN_ERROR_MESSAGES.plugin_suspended);
     });
 
     it('tells to reload the list when a suspend or a resume no longer fits the grant', () => {
         const suspend = toPluginErrorView(
-            failure(409, { status_code: 409, code: 'grant_not_suspendable', message: 'Not suspendable.' }),
+            failure(409, {
+                type: 'client_error',
+                errors: [{ code: 'grant_not_suspendable', detail: 'Not suspendable.', attr: null, context: null }],
+            }),
             'fallback'
         );
         const resume = toPluginErrorView(
-            failure(409, { status_code: 409, code: 'grant_not_suspended', message: 'Not suspended.' }),
+            failure(409, {
+                type: 'client_error',
+                errors: [{ code: 'grant_not_suspended', detail: 'Not suspended.', attr: null, context: null }],
+            }),
             'fallback'
         );
 
@@ -178,7 +215,10 @@ describe('toPluginErrorView', () => {
 
     it('says a confirmation text that no longer matches may come from a renamed organization', () => {
         const view = toPluginErrorView(
-            failure(400, { status_code: 400, code: 'invalid_purge_phrase', message: 'Invalid phrase.' }),
+            failure(400, {
+                type: 'client_error',
+                errors: [{ code: 'invalid_purge_phrase', detail: 'Invalid phrase.', attr: null, context: null }],
+            }),
             'fallback'
         );
 
@@ -189,7 +229,12 @@ describe('toPluginErrorView', () => {
 
     it('tells to reject and upload again when the stored package no longer matches the review', () => {
         const view = toPluginErrorView(
-            failure(409, { status_code: 409, code: 'package_file_mismatch', message: 'Package file mismatch.' }),
+            failure(409, {
+                type: 'client_error',
+                errors: [
+                    { code: 'package_file_mismatch', detail: 'Package file mismatch.', attr: null, context: null },
+                ],
+            }),
             "Couldn't approve the package."
         );
 
@@ -199,7 +244,10 @@ describe('toPluginErrorView', () => {
 
     it('tells what to check when approving a database package finds no plugin database server', () => {
         const view = toPluginErrorView(
-            failure(409, { status_code: 409, code: 'no_plugin_database_server', message: 'No server.' }),
+            failure(409, {
+                type: 'client_error',
+                errors: [{ code: 'no_plugin_database_server', detail: 'No server.', attr: null, context: null }],
+            }),
             "Couldn't approve the package."
         );
 
@@ -212,7 +260,10 @@ describe('toPluginErrorView', () => {
 
     it('no longer knows the code for a package needing a feature this version lacks', () => {
         const view = toPluginErrorView(
-            failure(400, { status_code: 400, code: 'plugin_feature_unavailable', message: 'Server text.' }),
+            failure(400, {
+                type: 'client_error',
+                errors: [{ code: 'plugin_feature_unavailable', detail: 'Server text.', attr: null, context: null }],
+            }),
             'fallback'
         );
 
@@ -230,28 +281,86 @@ describe('toPluginErrorView', () => {
         });
     });
 
-    it('keeps the well-formed errors[] items of a refused package', () => {
+    it('reads the {loc, message} entries of a refused package as located problems', () => {
         const view = toPluginErrorView(
             failure(400, {
-                status_code: 400,
-                code: 'invalid_plugin',
-                message: 'Invalid plugin.',
+                type: 'client_error',
                 errors: [
-                    { loc: 'manifest.user_permissions[1].action', message: 'Unknown action.' },
-                    { loc: 7, message: 'dropped' },
-                    'dropped',
+                    {
+                        code: 'invalid_plugin',
+                        detail: 'Unknown action.',
+                        attr: 'manifest.user_permissions[1].action',
+                        context: null,
+                    },
                 ],
             }),
             'x'
         );
 
-        expect(view.items).toEqual([{ loc: 'manifest.user_permissions[1].action', message: 'Unknown action.' }]);
+        expect(view.items).toEqual([
+            {
+                code: 'invalid_plugin',
+                detail: 'Unknown action.',
+                attr: 'manifest.user_permissions[1].action',
+                context: null,
+            },
+        ]);
+    });
+
+    it('lists a problem of the whole request, which the envelope sends without attr, under its own message', () => {
+        const view = toPluginErrorView(
+            failure(400, {
+                type: 'validation_error',
+                errors: [
+                    {
+                        code: 'invalid',
+                        detail: 'needs a backend port or a frontend dev server port',
+                        attr: null,
+                        context: null,
+                    },
+                    { code: 'invalid', detail: 'is the development API port', attr: 'spa_port', context: null },
+                ],
+            }),
+            'fallback'
+        );
+
+        expect(view).toEqual({
+            code: 'invalid',
+            message: 'The request was not valid.',
+            items: [
+                {
+                    code: 'invalid',
+                    detail: 'needs a backend port or a frontend dev server port',
+                    attr: null,
+                    context: null,
+                },
+                { code: 'invalid', detail: 'is the development API port', attr: 'spa_port', context: null },
+            ],
+        });
+    });
+
+    it.each<[string, PluginErrorCode]>([
+        ['its own text', 'grant_not_suspendable'],
+        ["the server's sentence", 'plugin_suspended'],
+    ])('does not list the one sentence of an envelope error shown with %s', (_shownWith, code) => {
+        const view = toPluginErrorView(
+            failure(409, {
+                type: 'client_error',
+                errors: [{ code, detail: 'Server sentence.', attr: null, context: null }],
+            }),
+            'fallback'
+        );
+
+        expect(view.items).toEqual([]);
     });
 
     it("uses the server's message for an unknown code, and the fallback without a JSON body", () => {
-        expect(toPluginErrorView(failure(500, { code: 'boom', message: 'It broke.' }), 'fallback').message).toBe(
-            'It broke.'
-        );
+        expect(
+            toPluginErrorView(
+                failure(500, { type: 'server_error', errors: [{ code: 'boom', detail: 'It broke.' }] }),
+                'fallback'
+            ).message
+        ).toBe('It broke.');
         expect(toPluginErrorView(failure(502, 'Bad gateway'), 'fallback')).toEqual({
             code: null,
             message: 'fallback',

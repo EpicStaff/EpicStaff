@@ -77,7 +77,13 @@ describe('copyWithFeedback', () => {
     it("gives the server's reason when loading the text failed", async () => {
         Object.defineProperty(navigator, 'clipboard', { value: { writeText: vi.fn() }, configurable: true });
         const toast = toasts();
-        const notFound = new HttpErrorResponse({ status: 404, error: { message: 'Entry not found.' } });
+        const notFound = new HttpErrorResponse({
+            status: 404,
+            error: {
+                type: 'client_error',
+                errors: [{ code: 'unknown', detail: 'Entry not found.', attr: null, context: null }],
+            },
+        });
         await copyWithFeedback(Promise.reject(notFound), toast as unknown as ToastService);
         expect(toast.error).toHaveBeenCalledWith('Entry not found.', 3000, 'top-right');
     });

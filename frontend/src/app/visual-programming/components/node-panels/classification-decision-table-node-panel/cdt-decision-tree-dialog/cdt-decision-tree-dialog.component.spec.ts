@@ -96,16 +96,20 @@ const KEYLESS_MODEL: CdtDecisionTreeInput['llmConfigOptions'][number] = {
 /** Past the stored text length limit by one character. */
 const TOO_LONG = 't'.repeat(CDT_EXPLANATION_LIMITS.maxTextLength + 1);
 
-/** What the endpoint answers when every batch failed for a model with no key. */
-function missingKeyError(): HttpErrorResponse {
+/** A failed explain request, its body in the error envelope with one error carrying `code`. */
+function explainError(status: number, code: string, detail = 'Refused.'): HttpErrorResponse {
     return new HttpErrorResponse({
-        status: 422,
+        status,
         error: {
-            status_code: 422,
-            code: 'cdt_explain_llm_config_missing_key',
-            message: `LLM config ${MODEL} has no API key.`,
+            type: status >= 500 ? 'server_error' : 'client_error',
+            errors: [{ code, detail, attr: null, context: null }],
         },
     });
+}
+
+/** What the endpoint answers when every batch failed for a model with no key. */
+function missingKeyError(): HttpErrorResponse {
+    return explainError(422, 'cdt_explain_llm_config_missing_key', `LLM config ${MODEL} has no API key.`);
 }
 
 function withExpression(rows: readonly ConditionGroup[], name: string, expression: string): ConditionGroup[] {
@@ -442,11 +446,7 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
 
         it('shows the reason a failed request gives', () => {
             mount(input());
-            explainApi.explain.mockReturnValue(
-                throwError(
-                    () => new HttpErrorResponse({ status: 404, error: { code: 'cdt_explain_llm_config_not_found' } })
-                )
-            );
+            explainApi.explain.mockReturnValue(throwError(() => explainError(404, 'cdt_explain_llm_config_not_found')));
 
             openBlock('Spam');
             clickExplainStep();
@@ -470,11 +470,7 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
 
         it('asks about a model the picker does not list, and lets the endpoint say it is gone', () => {
             mount(input({ llmConfigOptions: [] }));
-            explainApi.explain.mockReturnValue(
-                throwError(
-                    () => new HttpErrorResponse({ status: 404, error: { code: 'cdt_explain_llm_config_not_found' } })
-                )
-            );
+            explainApi.explain.mockReturnValue(throwError(() => explainError(404, 'cdt_explain_llm_config_not_found')));
 
             openBlock('Spam');
             clickExplainStep();
@@ -511,7 +507,7 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
             // Not a key of the lookup, however it is spelt.
             ['constructor', CDT_TREE_COPY.explainFailed],
         ])('maps %s to its message', (code, message) => {
-            expect(explainErrorMessage(new HttpErrorResponse({ status: 400, error: { code } }))).toBe(message);
+            expect(explainErrorMessage(explainError(400, code))).toBe(message);
         });
 
         it('falls back to the generic message when the body has no code', () => {
@@ -525,11 +521,9 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
             expect(explainErrorMessage(missingKeyError())).toBe(
                 'The selected model has no API key. Choose another model or add a key.'
             );
-            expect(
-                explainErrorMessage(
-                    new HttpErrorResponse({ status: 404, error: { code: 'cdt_explain_llm_config_not_found' } })
-                )
-            ).toBe('The selected model no longer exists. Choose another model.');
+            expect(explainErrorMessage(explainError(404, 'cdt_explain_llm_config_not_found'))).toBe(
+                'The selected model no longer exists. Choose another model.'
+            );
         });
     });
 
@@ -699,7 +693,7 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
             ['cdt_explain_upstream_failed', 502, CDT_TREE_COPY.explainUpstreamFailed],
         ])('reads a failed request’s %s the way Explain Step does', (code, status, message) => {
             mountMixed();
-            explainApi.explain.mockReturnValue(throwError(() => new HttpErrorResponse({ status, error: { code } })));
+            explainApi.explain.mockReturnValue(throwError(() => explainError(status, code)));
 
             clickExplainAll();
 
@@ -716,15 +710,7 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
                             failures: [],
                         })
                 )
-                .mockReturnValueOnce(
-                    throwError(
-                        () =>
-                            new HttpErrorResponse({
-                                status: 404,
-                                error: { code: 'cdt_explain_llm_config_not_found' },
-                            })
-                    )
-                );
+                .mockReturnValueOnce(throwError(() => explainError(404, 'cdt_explain_llm_config_not_found')));
 
             clickExplainAll();
 

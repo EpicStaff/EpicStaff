@@ -4,6 +4,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { extractFieldErrors, extractServerMessage } from '@shared/utils';
 import { EMPTY, Observable, of } from 'rxjs';
 import { filter, finalize, switchMap, tap } from 'rxjs/operators';
 
@@ -148,11 +149,12 @@ export class GraphRagConfigurationDialog extends RagConfigurationDialogComponent
             )
             .subscribe({
                 error: (err: HttpErrorResponse) => {
-                    if (err?.validationErrors?.length) {
-                        ragComponent.setServerValidationErrors(err.validationErrors);
+                    const fieldErrors = extractFieldErrors(err);
+                    if (fieldErrors.length && ragComponent.showsServerErrorsInline(fieldErrors)) {
+                        ragComponent.setServerValidationErrors(fieldErrors);
                         return;
                     }
-                    this.toast.error(err.error?.message || 'Files re-indexing failed');
+                    this.toast.error(extractServerMessage(err) ?? 'Files re-indexing failed');
                 },
             });
     }

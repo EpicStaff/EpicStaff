@@ -131,7 +131,15 @@ describe('PluginOrgChooserPageComponent', () => {
 
     it('says the plugin is not available on 404', () => {
         const fixture = render(BASE);
-        responses[0].error(new HttpErrorResponse({ status: 404, error: { code: 'plugin_not_found' } }));
+        responses[0].error(
+            new HttpErrorResponse({
+                status: 404,
+                error: {
+                    type: 'client_error',
+                    errors: [{ code: 'plugin_not_found', detail: '', attr: null, context: null }],
+                },
+            })
+        );
         fixture.detectChanges();
 
         expect(liveStatus(fixture)).toContain('This plugin is not available');

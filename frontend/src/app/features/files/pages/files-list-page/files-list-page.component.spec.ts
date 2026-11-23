@@ -1,7 +1,3 @@
-// Side-effect import: the real tab pages' dependency graph reaches shared/utils/http-error.util.ts,
-// which reads the `validationErrors` augmentation declared by this interceptor module.
-import '../../../../core/interceptors/validation-errors.interceptor';
-
 import { Dialog } from '@angular/cdk/dialog';
 import { Component, inject, OnDestroy } from '@angular/core';
 import { ComponentFixture, DeferBlockBehavior, DeferBlockState, TestBed } from '@angular/core/testing';

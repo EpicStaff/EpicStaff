@@ -37,7 +37,15 @@ import {
     SystemOnePromptKind,
 } from '@shared/models';
 import { ExecutionTimeoutLimitsStorageService, LABELS_STORE, LlmConfigStorageService } from '@shared/services';
-import { escapeHtml, formatNodeLabel, generateUuid, httpFailureReason, joinErrorMessages } from '@shared/utils';
+import {
+    escapeHtml,
+    extractApiErrors,
+    extractServerMessage,
+    formatNodeLabel,
+    generateUuid,
+    httpFailureReason,
+    joinErrorMessages,
+} from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -1239,7 +1247,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 } else if (err.status === 400) {
                     if (!this.isCurrentGraph(graphId)) return EMPTY;
                     // The backend checks every node of the save before refusing it, so these replace all earlier ones.
-                    const refused = mapBulkSaveErrors(payload, err.error?.errors, this.flowService.nodes());
+                    const refused = mapBulkSaveErrors(payload, extractApiErrors(err), this.flowService.nodes());
                     this.nodeSaveErrors.setAll(refused.byNodeId);
                     this.toastService.error(this.saveRefusedMessage("Couldn't save the flow", refused, err));
                 } else {
@@ -1462,7 +1470,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
                 } else if (err.status === 400) {
                     if (!this.isCurrentGraph(graphId)) return EMPTY;
                     // Only this node was sent; the errors of the others stand.
-                    const refused = mapBulkSaveErrors(payload, err.error?.errors, this.flowService.nodes());
+                    const refused = mapBulkSaveErrors(payload, extractApiErrors(err), this.flowService.nodes());
                     this.nodeSaveErrors.setForNode(nodeId, refused.byNodeId.get(nodeId) ?? []);
                     this.toastService.error(this.saveRefusedMessage("Couldn't save the node", refused, err));
                 } else {
@@ -1612,10 +1620,13 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     private reportTestRunError(nodeId: string, error: HttpErrorResponse): void {
         if (error.status === 400) {
-            const payloadErrors: unknown = error.error?.errors;
-            const isMessageList =
-                Array.isArray(payloadErrors) && payloadErrors.every((message) => typeof message === 'string');
-            this.flowTestRunService.setServerErrors(nodeId, isMessageList ? payloadErrors : [httpFailureReason(error)]);
+            // Each problem with the payload on its own line; errors of named fields read better joined, with their names.
+            const errors = extractApiErrors(error);
+            const isMessageList = errors.length > 0 && errors.every(({ attr }) => attr === null);
+            this.flowTestRunService.setServerErrors(
+                nodeId,
+                isMessageList ? errors.map(({ detail }) => detail) : [httpFailureReason(error)]
+            );
             // The errors show under that node's test payload editor; say so when it is not on screen.
             if (this.sidePanelService.selectedNodeId() !== nodeId) {
                 this.toastService.error(TEST_RUN_PAYLOAD_REJECTED_MESSAGE);
@@ -2092,10 +2103,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             .subscribe({
                 error: (err: HttpErrorResponse) => {
                     // A refusal such as a missing Files permission carries its own explanation.
-                    const serverMessage: unknown = err?.error?.message;
-                    this.toastService.error(
-                        typeof serverMessage === 'string' && serverMessage ? serverMessage : 'Failed to restore version'
-                    );
+                    this.toastService.error(extractServerMessage(err) ?? 'Failed to restore version');
                 },
             });
     }

@@ -30,7 +30,7 @@ import {
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { LABELS_STORE } from '@shared/services';
-import { isFocusLost, movedToRecycleBinMessage, takeQueryParams } from '@shared/utils';
+import { extractServerMessage, isFocusLost, movedToRecycleBinMessage, takeQueryParams } from '@shared/utils';
 import { map, tap } from 'rxjs/operators';
 
 import { TransferExportService } from '../../../../../../core/services/transfer-export.service';
@@ -170,7 +170,7 @@ export class ToolsListComponent implements OnInit {
                     next: (items) => this.usageById.set(new Map(items.map((i) => [i.id, i]))),
                     error: (err: HttpErrorResponse) => {
                         this.toastService.error(
-                            err.error?.message || `Failed to load usage for ${this.port.entityLabelPlural}.`
+                            extractServerMessage(err) ?? `Failed to load usage for ${this.port.entityLabelPlural}.`
                         );
                     },
                 });
@@ -665,7 +665,8 @@ export class ToolsListComponent implements OnInit {
                 },
                 error: (err: HttpErrorResponse) => {
                     this.error.set(
-                        err.error?.message || `Failed to load ${this.port.entityLabelPlural}. Please try again later.`
+                        extractServerMessage(err) ??
+                            `Failed to load ${this.port.entityLabelPlural}. Please try again later.`
                     );
                     this.isLoaded.set(true);
                 },
@@ -702,7 +703,7 @@ export class ToolsListComponent implements OnInit {
     }
 
     private handleStaleResource(err: HttpErrorResponse, defaultMessage: string): void {
-        this.toastService.error(err.error?.message || defaultMessage);
+        this.toastService.error(extractServerMessage(err) ?? defaultMessage);
         if (err.status === 404 || err.status === 410) {
             this.loadTools();
         }

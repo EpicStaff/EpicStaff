@@ -151,7 +151,7 @@ describe('PluginRolePermissionExtension', () => {
         extension.saveRole(7, []).subscribe({ error: (error: unknown) => (failure = error) });
 
         http.expectOne(`${BASE_URL}7/`).flush(
-            { status_code: status, code, message: 'server' },
+            { type: 'client_error', errors: [{ code, detail: 'server', attr: null, context: null }] },
             {
                 status,
                 statusText: 'Refused',
@@ -178,10 +178,15 @@ describe('PluginRolePermissionExtension', () => {
 
         http.expectOne(`${BASE_URL}7/`).flush(
             {
-                status_code: 400,
-                code: 'invalid_plugin_role_permissions',
-                message: 'Invalid.',
-                errors: [{ loc: 'plugins[1].actions', message: 'Edit needs View.' }],
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'invalid_plugin_role_permissions',
+                        detail: 'Edit needs View.',
+                        attr: 'plugins[1].actions',
+                        context: null,
+                    },
+                ],
             },
             { status: 400, statusText: 'Bad Request' }
         );

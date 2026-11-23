@@ -29,11 +29,17 @@ const EDITED_MODEL: LLMModel = {
 const SECRET_USE_REFUSAL = new HttpErrorResponse({
     status: 400,
     error: {
-        status_code: 400,
-        code: 'invalid',
-        message:
-            'base_url: Changing where this sends its secrets requires the "Use" permission on Secrets. ' +
-            'The existing value was left unchanged. Ask an organization admin to grant it.',
+        type: 'client_error',
+        errors: [
+            {
+                code: 'invalid',
+                detail:
+                    'Changing where this sends its secrets requires the "Use" permission on Secrets. ' +
+                    'The existing value was left unchanged. Ask an organization admin to grant it.',
+                attr: 'base_url',
+                context: null,
+            },
+        ],
     },
 });
 
@@ -133,7 +139,32 @@ describe('CreateLlmModelModalComponent save errors', () => {
     it('says a built-in model cannot be edited', () => {
         const builtInRefusal = new HttpErrorResponse({
             status: 403,
-            error: { status_code: 403, code: 'built_in_model_immutable', message: 'Built-in models are read-only.' },
+            error: {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'built_in_model_immutable',
+                        detail: 'Built-in models are read-only.',
+                        attr: null,
+                        context: null,
+                    },
+                ],
+            },
+        });
+        const { fixture } = render(EDITED_MODEL, undefined, () => throwError(() => builtInRefusal));
+
+        submit(fixture);
+
+        expect(bannerText(fixture)).toBe('This model is a shared built-in and cannot be edited or deleted.');
+    });
+
+    it('says a built-in model cannot be edited when the refusal comes as the error envelope', () => {
+        const builtInRefusal = new HttpErrorResponse({
+            status: 403,
+            error: {
+                type: 'client_error',
+                errors: [{ code: 'built_in_model_immutable', detail: 'Built-in models are read-only.', attr: null }],
+            },
         });
         const { fixture } = render(EDITED_MODEL, undefined, () => throwError(() => builtInRefusal));
 
@@ -145,7 +176,10 @@ describe('CreateLlmModelModalComponent save errors', () => {
     it('reports a server error in a toast, not in the banner', () => {
         const serverError = new HttpErrorResponse({
             status: 500,
-            error: { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
+            error: {
+                type: 'server_error',
+                errors: [{ code: 'Exception', detail: 'Unpredictable error', attr: null, context: null }],
+            },
         });
         const { fixture, toastError } = render(EDITED_MODEL, undefined, () => throwError(() => serverError));
 

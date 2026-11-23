@@ -80,7 +80,11 @@ describe('KeymapService', () => {
         return {
             body,
             succeed: () => request.flush({ ...BASE_USER, custom_shortcuts: body.custom_shortcuts }),
-            fail: () => request.flush({ detail: 'boom' }, { status: 500, statusText: 'Server Error' }),
+            fail: () =>
+                request.flush(
+                    { type: 'server_error', errors: [{ code: 'error', detail: 'boom', attr: null, context: null }] },
+                    { status: 500, statusText: 'Server Error' }
+                ),
         };
     }
 

@@ -1,12 +1,15 @@
 import { ChangeDetectionStrategy, Component, inject, input } from '@angular/core';
 import { Router } from '@angular/router';
 import { GetOrganizationResponse } from '@shared/models';
+import { extractServerMessage } from '@shared/utils';
 import { EMPTY } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ToastService } from '../../../../services/notifications';
 import { OrgAvatarComponent } from '../org-avatar/org-avatar.component';
+
+const ORG_SWITCH_FAILED_MESSAGE = 'Could not switch organization. Please try again.';
 
 @Component({
     selector: 'app-org-card',
@@ -32,7 +35,7 @@ export class OrgCardComponent {
             .switchOrg(id)
             .pipe(
                 catchError((err) => {
-                    this.toast.error(err.error.message);
+                    this.toast.error(extractServerMessage(err) ?? ORG_SWITCH_FAILED_MESSAGE);
                     return EMPTY;
                 })
             )

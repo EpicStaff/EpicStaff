@@ -13,6 +13,7 @@ import {
 } from '@shared/components';
 import { ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
 import { notNumericOnlyValidator } from '@shared/form-validators';
+import { extractFieldErrors, extractServerMessage, httpFailureReason } from '@shared/utils';
 import { finalize } from 'rxjs';
 
 import { AuthService } from '../../../../services/auth/auth.service';
@@ -95,11 +96,12 @@ export class ResetPasswordPageComponent {
                     this.state.set('success');
                 },
                 error: (err) => {
-                    if (err.validationErrors?.length) {
-                        this.serverErrorsRef.setErrors(err.validationErrors);
+                    const fieldErrors = extractFieldErrors(err);
+                    if (fieldErrors.length) {
+                        this.serverErrorsRef.setErrors(fieldErrors);
                         return;
                     } else {
-                        this.toast.error(err?.error.message);
+                        this.toast.error(extractServerMessage(err) ?? httpFailureReason(err));
                     }
                 },
             });

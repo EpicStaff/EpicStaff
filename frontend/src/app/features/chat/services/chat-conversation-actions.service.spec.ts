@@ -41,13 +41,9 @@ const conversation = (overrides: Partial<ChatConversation> = {}): ChatConversati
     ...overrides,
 });
 
-const heldByOther = (): HttpErrorResponse =>
-    new HttpErrorResponse({ status: 409, error: { code: 'claimed_by_other', message: 'held' } });
-const alreadyClosed = (): HttpErrorResponse =>
-    new HttpErrorResponse({
-        status: 409,
-        error: { code: 'conversation_closed', message: 'Conversation is closed', close_reason: 'ended' },
-    });
+const envelopeRefusal = (code: string, detail: string) => (): HttpErrorResponse =>
+    new HttpErrorResponse({ status: 409, error: { type: 'client_error', errors: [{ code, detail, attr: null }] } });
+const heldByOther = envelopeRefusal('claimed_by_other', 'held');
 const closedRow = (): ChatConversation =>
     conversation({
         status: 'closed',
@@ -126,9 +122,9 @@ describe('ChatConversationActionsService', () => {
         expect(changed).toEqual([released]);
     });
 
-    it('toasts that a conversation is closed when the server refuses an action on it, and publishes it as it is', () => {
+    it('toasts that a conversation is closed when the server refuses an action on it, and publishes it', () => {
         const closedMeanwhile = closedRow();
-        chatApi.claim.mockReturnValueOnce(throwError(alreadyClosed));
+        chatApi.claim.mockReturnValueOnce(throwError(envelopeRefusal('conversation_closed', 'Conversation is closed')));
         chatApi.getConversation.mockReturnValueOnce(of(closedMeanwhile));
         service.takeOver(conversation());
         expect(confirmation.confirm).not.toHaveBeenCalled();

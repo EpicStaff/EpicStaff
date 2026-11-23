@@ -169,7 +169,13 @@ describe('ToolsListComponent export and import', () => {
     it('loads the tools again when a tool to export is gone', () => {
         component.onCardMenuAction({ tool: MCP_CARD, action: 'export', trigger: document.createElement('button') });
 
-        httpMock.expectOne(EXPORT_JOBS_URL).flush({ message: 'Not found.' }, { status: 404, statusText: 'Not Found' });
+        httpMock.expectOne(EXPORT_JOBS_URL).flush(
+            {
+                type: 'client_error',
+                errors: [{ code: 'unknown', detail: 'Not found.', attr: null, context: null }],
+            },
+            { status: 404, statusText: 'Not Found' }
+        );
 
         httpMock.expectOne((request) => request.url === TOOLS_URL && request.method === 'GET');
     });
@@ -196,8 +202,11 @@ describe('ToolsListComponent export and import', () => {
 });
 
 describe('ToolsListComponent "duplicate" action', () => {
+    const reason = 'This contains code that reads secrets. This action requires the Use permission on secrets.';
+    const code = 'code_with_secrets_requires_secrets_use_permission';
+
     it('shows the reason the backend gives for refusing a copy', () => {
-        const reason = 'This contains code that reads secrets. This action requires the Use permission on secrets.';
+        const body = { type: 'client_error', errors: [{ code, detail: reason, attr: null }] };
         const toast = { error: vi.fn(), success: vi.fn() };
         const port = {
             kind: 'mcp',
@@ -215,18 +224,7 @@ describe('ToolsListComponent "duplicate" action', () => {
             descriptionOf: () => '',
             getAll: () => of([MCP_TOOL]),
             getBulkUsage: () => of([]),
-            copy: () =>
-                throwError(
-                    () =>
-                        new HttpErrorResponse({
-                            status: 403,
-                            error: {
-                                status_code: 403,
-                                code: 'code_with_secrets_requires_secrets_use_permission',
-                                message: reason,
-                            },
-                        })
-                ),
+            copy: () => throwError(() => new HttpErrorResponse({ status: 403, error: body })),
         };
         TestBed.configureTestingModule({
             providers: [

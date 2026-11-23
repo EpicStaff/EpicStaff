@@ -136,7 +136,16 @@ describe('OpenConversationSyncService', () => {
         it('keeps the link on any other failure, says so, and asks again only after the next ready', async () => {
             await arrive(`${DESK}?conversation=c-old`);
             chatApi.getConversation.mockReturnValueOnce(
-                throwError(() => new HttpErrorResponse({ status: 503, error: { message: 'Chat is restarting.' } }))
+                throwError(
+                    () =>
+                        new HttpErrorResponse({
+                            status: 503,
+                            error: {
+                                type: 'server_error',
+                                errors: [{ code: 'unknown', detail: 'Chat is restarting.', attr: null, context: null }],
+                            },
+                        })
+                )
             );
             sync.resolve('c-old', 'missing');
             await settle();

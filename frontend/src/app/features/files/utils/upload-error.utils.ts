@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { formatFileSize } from '@shared/utils';
+import { extractErrorCode, extractServerMessage, formatFileSize } from '@shared/utils';
 
 import { UploadFailure } from '../models/storage.models';
 
@@ -124,23 +124,12 @@ const DESCRIPTION_BY_STATUS: Record<number, UploadErrorDescription> = {
 };
 
 export function getUploadErrorCode(error: unknown): string | null {
-    if (!(error instanceof HttpErrorResponse)) return null;
-    const body: unknown = error.error;
-    if (body && typeof body === 'object' && 'code' in body && typeof body.code === 'string') {
-        return body.code;
-    }
-    return null;
+    return extractErrorCode(error);
 }
 
-/** The envelope's `message` (DRF's `detail` as a fallback); '' for a non-JSON body. */
+/** What the server said went wrong; '' for a body without a readable error (not JSON, say). */
 function getServerMessage(error: HttpErrorResponse): string {
-    const body: unknown = error.error;
-    if (!body || typeof body !== 'object') return '';
-    for (const key of ['message', 'detail'] as const) {
-        const value: unknown = key in body ? (body as Record<string, unknown>)[key] : undefined;
-        if (typeof value === 'string' && value.trim()) return value.trim();
-    }
-    return '';
+    return extractServerMessage(error)?.trim() ?? '';
 }
 
 export function isStorageQuotaExceeded(error: unknown): boolean {

@@ -20,7 +20,8 @@ function makeFile(name: string): File {
 }
 
 function errorEnvelope(status: number, code: string, message = 'error'): object {
-    return { status_code: status, code, message };
+    const type = status >= 500 ? 'server_error' : 'client_error';
+    return { type, errors: [{ code, detail: message, attr: null, context: null }] };
 }
 
 describe('StorageApiService', () => {

@@ -30,6 +30,7 @@ import {
 } from '@shared/components';
 import { ResizableSidebarDirective } from '@shared/directives';
 import { SidebarWidthService } from '@shared/services';
+import { extractServerMessage } from '@shared/utils';
 import { catchError, debounceTime, distinctUntilChanged, EMPTY, of, Subject, switchMap, tap } from 'rxjs';
 
 import {
@@ -562,7 +563,7 @@ export class GraphRagVisualizationComponent implements OnInit {
             this.errorMessage.set('GraphRAG is not available on this server');
         } else {
             this.viewState.set('error');
-            this.errorMessage.set(error.error?.message ?? 'Failed to load graph visualization data');
+            this.errorMessage.set(extractServerMessage(error) ?? 'Failed to load graph visualization data');
         }
     }
 

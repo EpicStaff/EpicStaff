@@ -27,7 +27,7 @@ import {
 import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { SidebarWidthOptions, SidebarWidthService } from '@shared/services';
-import { downloadBlob } from '@shared/utils';
+import { downloadBlob, extractServerMessage } from '@shared/utils';
 import {
     catchError,
     debounceTime,
@@ -434,8 +434,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
                     if (silent) {
                         return;
                     }
-                    const detail = error.error?.detail;
-                    this.loadErrorMessage.set(error.status === 400 && typeof detail === 'string' ? detail : null);
+                    this.loadErrorMessage.set(error.status === 400 ? extractServerMessage(error) : null);
                     this.rawEvents.set([]);
                     this.nextCursor.set(null);
                     this.isPartial.set(false);

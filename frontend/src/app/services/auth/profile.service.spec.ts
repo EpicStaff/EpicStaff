@@ -165,7 +165,10 @@ describe('ProfileService tour progress', () => {
         service.markTourCompleted('a b/c').subscribe({ error: () => undefined });
 
         expectTourSave('a%20b%2Fc').flush(
-            { status_code: 400, code: 'invalid', message: 'Invalid tour key.' },
+            {
+                type: 'client_error',
+                errors: [{ code: 'invalid', detail: 'Invalid tour key.', attr: null, context: null }],
+            },
             { status: 400, statusText: 'Bad Request' }
         );
     });

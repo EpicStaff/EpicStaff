@@ -1,4 +1,4 @@
-import { ApiErrorItem } from '@shared/models';
+import { ApiErrorDetail } from '@shared/models';
 import { Observable } from 'rxjs';
 
 /** A file the user is about to index; `wasIndexed` puts it under "Re-index files". */
@@ -12,7 +12,10 @@ export interface RagConfiguration {
     getConfigurationData(): unknown;
     getIndexingDocuments(): IndexingDocumentInfo[];
     shouldSaveConfig?(): boolean;
-    setServerValidationErrors?(errors: ApiErrorItem[]): void;
+    setServerValidationErrors?(errors: ApiErrorDetail[]): void;
+    // Whether every one of these errors names a field the configuration shows; when one does not, the caller says
+    // the failure as a whole instead, so that no error goes unshown.
+    showsServerErrorsInline?(errors: ApiErrorDetail[]): boolean;
     // Optional list of document_ids that must be deleted (bulk) before saving
     // the config and starting indexing. Empty / undefined = nothing to delete.
     getPendingDeleteDocumentIds?(): number[];

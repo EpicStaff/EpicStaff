@@ -280,8 +280,11 @@ function valueEditorGroup(): HTMLElement | null {
     return document.querySelector<HTMLElement>('app-entry-cell-editor [role="group"]');
 }
 
-function badRequest(message: string): HttpErrorResponse {
-    return new HttpErrorResponse({ status: 400, error: { message } });
+function envelopeBadRequest(attr: string, detail: string): HttpErrorResponse {
+    return new HttpErrorResponse({
+        status: 400,
+        error: { type: 'validation_error', errors: [{ code: 'unique', detail, attr }] },
+    });
 }
 
 describe('KeyValueEntriesGridComponent in-place editing', () => {
@@ -422,7 +425,7 @@ describe('KeyValueEntriesGridComponent in-place editing', () => {
         onTestFinished(stubLayout());
         const { fixture, element, toastError } = renderGrid({
             canUpdate: true,
-            updateEntry: () => throwError(() => badRequest('key: An entry with this key already exists.')),
+            updateEntry: () => throwError(() => envelopeBadRequest('key', 'An entry with this key already exists.')),
         });
         await settle(fixture);
         await openEditor(fixture, cell(element, '11', 'key'));
@@ -535,7 +538,7 @@ describe('KeyValueEntriesGridComponent in-place editing', () => {
         expect(locked()).toBe(true);
 
         // The value save fails: a follow-up reload brings the rename and unlocks the row.
-        valueSave.error(badRequest('value: Too large.'));
+        valueSave.error(envelopeBadRequest('value', 'Too large.'));
         await settle(fixture);
         expect(api.getEntries).toHaveBeenCalledTimes(3);
         expect(locked()).toBe(false);
@@ -553,7 +556,9 @@ describe('KeyValueEntriesGridComponent in-place editing', () => {
             createEntry: () => {
                 attempt += 1;
                 return throwError(() =>
-                    badRequest(attempt === 1 ? 'key: An entry with this key already exists.' : 'value: Too large.')
+                    attempt === 1
+                        ? envelopeBadRequest('key', 'An entry with this key already exists.')
+                        : envelopeBadRequest('value', 'Too large.')
                 );
             },
         });
@@ -719,7 +724,7 @@ describe('KeyValueEntriesGridComponent new entry row', () => {
     function rejectingGrid() {
         return renderGrid({
             canCreate: true,
-            createEntry: () => throwError(() => badRequest('key: An entry with this key already exists.')),
+            createEntry: () => throwError(() => envelopeBadRequest('key', 'An entry with this key already exists.')),
         });
     }
 
@@ -891,7 +896,14 @@ describe('KeyValueEntriesGridComponent keyboard', () => {
     it("shows the server's reason when the value to copy cannot be fetched", async () => {
         const { fixture, element, toastError } = renderGrid({
             entries: [RUN_ENTRY],
-            getEntry: () => throwError(() => new HttpErrorResponse({ status: 404, error: { message: 'Not found.' } })),
+            getEntry: () =>
+                throwError(
+                    () =>
+                        new HttpErrorResponse({
+                            status: 404,
+                            error: { type: 'client_error', errors: [{ code: 'not_found', detail: 'Not found.' }] },
+                        })
+                ),
         });
         await settle(fixture);
         keydown(cell(element, '11', 'value'), 'c', { ctrlKey: true });

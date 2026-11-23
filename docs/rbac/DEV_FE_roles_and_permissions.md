@@ -391,7 +391,8 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError((err: HttpErrorResponse) => {
-      const code = err.error?.code;
+      // The code of the first `{code, detail, attr, context}` item of the error envelope.
+      const code = extractErrorCode(err);
       if (err.status === 403 && code === 'org_membership_required') {
         activeOrg.set(null);
         permissions.setActivePermissions(null);

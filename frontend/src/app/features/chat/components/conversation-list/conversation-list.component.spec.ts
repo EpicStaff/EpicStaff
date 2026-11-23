@@ -1371,13 +1371,17 @@ describe('ConversationListComponent', () => {
         });
 
         it('shows a search the server refuses under the field, without a toast, and lists nothing until it changes', () => {
-            const refused = throwError(
-                () =>
-                    new HttpErrorResponse({
-                        status: 400,
-                        error: { code: 'invalid_search', message: 'The search must be at most 100 characters.' },
-                    })
-            );
+            const body = {
+                type: 'validation_error',
+                errors: [
+                    {
+                        code: 'invalid_search',
+                        detail: 'The search must be at most 100 characters.',
+                        attr: 'search',
+                    },
+                ],
+            };
+            const refused = throwError(() => new HttpErrorResponse({ status: 400, error: body }));
             answerNextSearch({ waiting: refused, in_progress: refused, closed: refused, bot: refused });
             typeSearch('x'.repeat(101));
             settle();
@@ -1823,7 +1827,13 @@ describe('ConversationListComponent', () => {
                 .mockReturnValueOnce(
                     throwError(
                         () =>
-                            new HttpErrorResponse({ status: 409, error: { code: 'claimed_by_other', message: 'held' } })
+                            new HttpErrorResponse({
+                                status: 409,
+                                error: {
+                                    type: 'client_error',
+                                    errors: [{ code: 'claimed_by_other', detail: 'held', attr: null, context: null }],
+                                },
+                            })
                     )
                 )
                 .mockReturnValueOnce(

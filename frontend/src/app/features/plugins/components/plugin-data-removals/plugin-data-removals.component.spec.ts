@@ -293,7 +293,17 @@ describe('PluginDataRemovalsComponent', () => {
                 () =>
                     new HttpErrorResponse({
                         status: 409,
-                        error: { status_code: 409, code: 'org_removed_hook_not_skippable', message: 'Refused.' },
+                        error: {
+                            type: 'client_error',
+                            errors: [
+                                {
+                                    code: 'org_removed_hook_not_skippable',
+                                    detail: 'Refused.',
+                                    attr: null,
+                                    context: null,
+                                },
+                            ],
+                        },
                     })
             )
         );

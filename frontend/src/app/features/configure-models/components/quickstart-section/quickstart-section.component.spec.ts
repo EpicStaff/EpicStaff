@@ -23,32 +23,43 @@ import { QuickstartSectionComponent } from './quickstart-section.component';
 
 const STATUS: GetQuickstartResponse = { supported_providers: ['openai'], last_config: null, is_synced: false };
 
-/** How the quickstart endpoint itself refuses: not the usual envelope, the reason sits in `error`. */
-const CUSTOM_MODEL_REFUSAL = new HttpErrorResponse({
-    status: 400,
-    error: {
-        detail: 'Error quickstart',
-        error:
-            'The organization\'s custom model "gpt-4o" sends requests to a custom URL, so quickstart will not ' +
-            'attach a key to it.',
-    },
-});
+const CUSTOM_MODEL_REASON =
+    'The organization\'s custom model "gpt-4o" sends requests to a custom URL, so quickstart will not ' +
+    'attach a key to it.';
 
 /** The 400 the backend sends when the quickstart would reuse a secret the caller may not use. */
 const SECRET_USE_REFUSAL = new HttpErrorResponse({
     status: 400,
     error: {
-        status_code: 400,
-        code: 'invalid',
-        message:
-            'api_key_secret_id: Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
-            'The existing selection was left unchanged. Ask an organization admin to grant it.',
+        type: 'client_error',
+        errors: [
+            {
+                code: 'invalid',
+                detail:
+                    'Changing the secrets referenced here requires the "Use" permission on Secrets. ' +
+                    'The existing selection was left unchanged. Ask an organization admin to grant it.',
+                attr: 'api_key_secret_id',
+                context: null,
+            },
+        ],
+    },
+});
+
+/** How the quickstart endpoint refuses to attach a key to a custom model. */
+const CUSTOM_MODEL_REFUSAL_ENVELOPE = new HttpErrorResponse({
+    status: 400,
+    error: {
+        type: 'validation_error',
+        errors: [{ code: 'invalid', detail: CUSTOM_MODEL_REASON, attr: null }],
     },
 });
 
 const SERVER_ERROR = new HttpErrorResponse({
     status: 500,
-    error: { status_code: 500, code: 'Exception', message: 'Unpredictable error' },
+    error: {
+        type: 'server_error',
+        errors: [{ code: 'Exception', detail: 'Unpredictable error', attr: null, context: null }],
+    },
 });
 
 // jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
@@ -125,7 +136,7 @@ describe('QuickstartSectionComponent errors', () => {
     afterEach(() => vi.unstubAllGlobals());
 
     it("shows the quickstart's own refusal in the banner", () => {
-        const { fixture, toastError } = render(() => throwError(() => CUSTOM_MODEL_REFUSAL));
+        const { fixture, toastError } = render(() => throwError(() => CUSTOM_MODEL_REFUSAL_ENVELOPE));
 
         activate(fixture);
 
@@ -150,7 +161,7 @@ describe('QuickstartSectionComponent errors', () => {
     it('clears the banner when Activate is pressed again', () => {
         const createQuickstart = vi
             .fn<QuickstartCall>()
-            .mockReturnValueOnce(throwError(() => CUSTOM_MODEL_REFUSAL))
+            .mockReturnValueOnce(throwError(() => CUSTOM_MODEL_REFUSAL_ENVELOPE))
             .mockReturnValueOnce(NEVER);
         const { fixture } = render(createQuickstart);
         activate(fixture);

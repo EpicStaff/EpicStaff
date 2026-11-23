@@ -12,7 +12,11 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControlStatus, FormGroup, ValidatorFn } from '@angular/forms';
-import { ApiErrorItem } from '@shared/models';
+import { ApiErrorDetail } from '@shared/models';
+import { humanizeErrorMessage } from '@shared/utils';
+
+/** What the directive needs of a server error: the field it names (null for the whole form) and the message. */
+export type ServerErrorItem = Pick<ApiErrorDetail, 'attr' | 'detail'>;
 
 /**
  * A lightweight mediator between a component and {@link ServerErrorsDirective}.
@@ -24,10 +28,10 @@ import { ApiErrorItem } from '@shared/models';
  * When the directive (re-)initialises it picks up the latest value automatically.
  */
 export class ServerErrorsRef {
-    private readonly _errors = signal<ApiErrorItem[] | null>(null);
+    private readonly _errors = signal<readonly ServerErrorItem[] | null>(null);
     readonly errors = this._errors.asReadonly();
 
-    setErrors(items: ApiErrorItem[]): void {
+    setErrors(items: readonly ServerErrorItem[]): void {
         this._errors.set(items);
     }
 
@@ -44,12 +48,14 @@ export class ServerErrorsRef {
  *
  * Usage:
  *   <form [formGroup]="form" [appServerErrors]="form" #serverErrors="serverErrors">
- *   serverErrors.setErrors(err.validationErrors ?? []);
+ *   serverErrors.setErrors(extractFieldErrors(err));
  *
  * Server messages clear automatically when the user edits the affected field.
  *
- * Non-field errors (field === '__all__' / 'non_field_errors' / '' / null) are
- * collected separately and exposed via `formLevelErrors()`.
+ * Errors with `attr === null` belong to no single field; they are collected
+ * separately and exposed via `formLevelErrors()`. So is an error naming a field
+ * the form has no enabled control for (after `fieldMap`), as `Field name: message`, so
+ * that no server error goes unshown.
  */
 @Directive({
     selector: '[appServerErrors]',
@@ -136,23 +142,25 @@ export class ServerErrorsDirective implements OnInit {
     }
 
     /** Apply a batch of server errors. Form is marked touched so messages render. */
-    setErrors(errors: ApiErrorItem[]): void {
+    setErrors(errors: readonly ServerErrorItem[]): void {
         const grouped: Record<string, string[]> = {};
         const formLevel: string[] = [];
         const map = this.fieldMap();
+        const group = this.appServerErrors();
 
-        for (const { field, reason } of errors) {
-            const key = field ? (map[field] ?? field) : '';
-            if (!key || key === '__all__' || key === 'non_field_errors') {
-                formLevel.push(reason);
+        for (const { attr, detail } of errors) {
+            const key = attr === null ? null : (map[attr] ?? attr);
+            // A disabled control runs no validators, so its error is shown on the form too.
+            if (key !== null && group.contains(key)) {
+                (grouped[key] ??= []).push(detail);
             } else {
-                (grouped[key] ??= []).push(reason);
+                formLevel.push(attr ? humanizeErrorMessage(`${attr}: ${detail}`) : detail);
             }
         }
 
         this.fieldErrors.set(grouped);
         this.formErrors.set(formLevel);
-        this.appServerErrors().markAllAsTouched();
+        group.markAllAsTouched();
     }
 
     /** Clear all server errors (call before submit). */

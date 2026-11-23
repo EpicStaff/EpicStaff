@@ -1,5 +1,6 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
@@ -7,7 +8,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { EnterSubmitDirective } from '@shared/directives';
 import { GetRealtimeTranscriptionModelRequest, LLMProvider } from '@shared/models';
 import { TranscriptionModelsStorageService } from '@shared/services';
-import { getProviderIconPath } from '@shared/utils';
+import { extractErrorCode, extractHttpErrorMessage, getProviderIconPath } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
@@ -97,33 +98,10 @@ export class CreateTranscriptionModelModalComponent {
 
     private extractApiErrorMessage(error: unknown): string {
         const fallback = this.isEditMode ? 'Failed to update model.' : 'Failed to create model.';
-        const httpError = error as { error?: unknown; message?: string };
-        const payload = httpError?.error;
-
-        if (typeof payload === 'string' && payload.trim()) {
-            return payload;
+        if (!(error instanceof HttpErrorResponse)) return fallback;
+        if (extractErrorCode(error) === 'built_in_model_immutable') {
+            return 'This model is a shared built-in and cannot be edited or deleted.';
         }
-
-        if (payload && typeof payload === 'object') {
-            const errorPayload = payload as Record<string, unknown>;
-            if (errorPayload['code'] === 'built_in_model_immutable') {
-                return 'This model is a shared built-in and cannot be edited or deleted.';
-            }
-
-            const entries = Object.entries(errorPayload);
-            if (entries.length > 0) {
-                const [field, value] = entries[0];
-                const normalized = Array.isArray(value) ? value[0] : value;
-                if (typeof normalized === 'string' && normalized.trim()) {
-                    return `${field}: ${normalized}`;
-                }
-            }
-        }
-
-        if (httpError?.message) {
-            return httpError.message;
-        }
-
-        return fallback;
+        return extractHttpErrorMessage(error, fallback);
     }
 }
