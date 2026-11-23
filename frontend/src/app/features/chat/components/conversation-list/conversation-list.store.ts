@@ -10,18 +10,19 @@ import { ChatApiService } from '../../services/chat-api.service';
 import { ChatConversationActionsService } from '../../services/chat-conversation-actions.service';
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
-import { isClosed } from '../../utils/conversation-close.util';
 import {
     ConversationListSection,
     ConversationListTab,
     isTestingSection,
     tabOfSection,
 } from '../../utils/conversation-list-tab.util';
+import { CONVERSATION_SECTIONS, sectionView } from '../../utils/conversation-section.util';
 import { belongsTo, inboxOrder, placeRow } from '../../utils/inbox-merge.util';
 
 /**
  * Why the rows changed: `live` for a stream event or an action result, `load` for anything that loads or re-arranges
- * them (first pages, paging, reloads, another desk, search, Mine, collapsing). Only live changes animate.
+ * them (first pages, paging, reloads, another desk, search, Mine, folding or opening a section). Only live changes
+ * animate.
  */
 export type ConversationListChange = 'live' | 'load';
 
@@ -53,126 +54,15 @@ export interface ConversationSectionState {
     isLoading: boolean;
     // The query (by generation) whose first page landed here; until it is the current one the list has not loaded.
     loadedFor: number | null;
+    // The query (by generation) whose first page failed here, until it is asked for again: nothing more is coming.
+    failedFor: number | null;
 }
-
-/**
- * A section the column shows. Its rows come from one server list (`list`): all of them for Inbox's sections, which
- * the server lists one by one, and a part of them (`shows`) for Bot Testing's, which share the server's one `test`
- * list. Paging and loading belong to the list, so two sections of one list page together.
- */
-export interface ConversationSectionView {
-    id: ConversationListSection;
-    list: ChatInboxSection;
-    // The part of the list this section shows; all of it when absent.
-    shows?: (row: ChatConversation) => boolean;
-    label: string;
-    icon: string;
-    // The icon's box when it is not the default one.
-    iconSize?: string;
-    // The icon's colour, a CSS value; muted when absent.
-    iconColor?: string;
-    emptyTitle: string;
-    emptyDescription: string;
-    // Said instead under Mine; only the sections Mine lists have one.
-    mineEmptyTitle?: string;
-    // Said instead on All desks, where nothing that starts with a desk is there to point at.
-    allDesksEmptyDescription?: string;
-    // Above the rows of a section that is not newest first, which every other one is.
-    orderNote?: string;
-    /**
-     * Pinned at the column's bottom while the section is below the view, so the last ones are not lost under many open
-     * sections: the number of pinned headers under its own. Absent: only on top, while the section scrolls by.
-     */
-    pinnedBelow?: number;
-}
-
-/**
- * Top to bottom. Inbox: the queue first (the one open by default), then what operators are on, what the bot is on,
- * and Closed last — there to look into, not to work through, and an endless history, so it goes below the live ones.
- * Bot Testing the same way: Tests (the ones still open), then the closed ones; both by the latest message, as the
- * server sorts them.
- */
-export const CONVERSATION_SECTIONS: readonly ConversationSectionView[] = [
-    {
-        id: 'waiting',
-        list: 'waiting',
-        label: 'Waiting for a person',
-        icon: 'waiting',
-        iconSize: '12px',
-        iconColor: 'var(--color-status-waiting)',
-        emptyTitle: 'Nobody is waiting',
-        emptyDescription: 'Visitors the bot hands over, or who write after an operator took over, line up here.',
-        mineEmptyTitle: 'Nobody is waiting for you',
-        orderNote: 'Longest wait first',
-    },
-    {
-        id: 'in_progress',
-        list: 'in_progress',
-        label: 'In progress',
-        icon: 'headset-outline',
-        iconSize: '12px',
-        iconColor: 'var(--color-status-in-progress)',
-        emptyTitle: 'Nothing in progress',
-        emptyDescription: 'Conversations an operator took over and answered last show up here.',
-        mineEmptyTitle: 'None of yours in progress',
-    },
-    {
-        id: 'bot',
-        list: 'bot',
-        label: 'Bot',
-        icon: 'bot',
-        iconSize: '14px',
-        iconColor: 'var(--accent-color)',
-        emptyTitle: 'No conversations yet',
-        emptyDescription: 'Conversations from your website the bot is answering show up here.',
-        pinnedBelow: 1,
-    },
-    {
-        id: 'closed',
-        list: 'closed',
-        label: 'Closed',
-        icon: 'closed',
-        iconSize: '12px',
-        emptyTitle: 'Nothing closed yet',
-        emptyDescription: 'Conversations an operator resolved, the visitor ended or that went quiet end up here.',
-        orderNote: 'Most recently closed first',
-        pinnedBelow: 0,
-    },
-    {
-        id: 'test_open',
-        list: 'test',
-        shows: (row) => !isClosed(row),
-        label: 'Tests',
-        icon: 'flask',
-        iconSize: '12px',
-        iconColor: 'var(--color-status-info)',
-        emptyTitle: 'No test conversations',
-        emptyDescription: 'Start one with New Test Chat above.',
-        allDesksEmptyDescription: 'Open a desk to start one with New Test Chat.',
-        pinnedBelow: 1,
-    },
-    {
-        id: 'test_closed',
-        list: 'test',
-        shows: isClosed,
-        label: 'Closed',
-        icon: 'closed',
-        iconSize: '12px',
-        emptyTitle: 'No closed tests',
-        emptyDescription: 'Test conversations that were closed or went quiet end up here.',
-        pinnedBelow: 0,
-    },
-];
-
 // The server lists, each fetched once however many sections show it.
 const LISTS: readonly ChatInboxSection[] = ['waiting', 'in_progress', 'closed', 'bot', 'test'];
 
 // Mine lists what the user holds: the bot holds nothing, tests are not work to pick up, and closed conversations are
 // done.
 const MINE_LISTS: ReadonlySet<ChatInboxSection> = new Set(['waiting', 'in_progress']);
-
-const viewOf = (section: ConversationListSection): ConversationSectionView =>
-    CONVERSATION_SECTIONS.find(({ id }) => id === section)!;
 
 /** Whether a query lists a server list at all: only its tab's, and on Inbox, Mine hides Bot and Closed. */
 const listsList = (query: ConversationListQuery, list: ChatInboxSection): boolean =>
@@ -182,17 +72,7 @@ const listsList = (query: ConversationListQuery, list: ChatInboxSection): boolea
 
 /** Whether a query shows a section at all: one of its tab's, whose list the query lists. */
 export const listsSection = (query: ConversationListQuery, section: ConversationListSection): boolean =>
-    tabOfSection(section) === query.tab && listsList(query, viewOf(section).list);
-
-/** Whether `section` shows `row` (with `holderId`, under Mine): the server lists it there, and it is this part. */
-export const sectionHolds = (
-    section: ConversationListSection,
-    row: ChatConversation,
-    holderId: number | null
-): boolean => {
-    const view = viewOf(section);
-    return belongsTo(row, view.list, holderId) && (view.shows?.(row) ?? true);
-};
+    tabOfSection(section) === query.tab && listsList(query, sectionView(section).list);
 
 const emptyList = (): ConversationSectionState => ({
     rows: [],
@@ -200,6 +80,7 @@ const emptyList = (): ConversationSectionState => ({
     boundary: null,
     isLoading: false,
     loadedFor: null,
+    failedFor: null,
 });
 
 /**
@@ -227,21 +108,20 @@ export class ConversationListStore {
     // Bumped by every load: a list has loaded once its first page for the current generation has landed.
     private readonly generation = signal(0);
     /**
-     * Sections opened for this column only, beside each tab's remembered one: to look for a conversation the page was
-     * asked to open, or for a test that started. Folding one ends its opening; opening a folded one ends them all.
+     * Sections opened for this column only, beside each tab's remembered ones: to look for a conversation the page was
+     * asked to open, or for a test that started. Folding one ends its opening.
      */
     private readonly openedForColumn = signal<ReadonlySet<ConversationListSection>>(new Set());
     /**
      * The sections open while a search runs, for this column only: every one as it starts, then as the user folds and
-     * opens them. Clearing the search returns to the remembered one. Nothing of it is remembered.
+     * opens them. Clearing the search returns to the remembered ones. Nothing of it is remembered.
      */
     private readonly openedForSearch = signal<ReadonlySet<ConversationListSection>>(new Set());
-    // Open as shown: the search's own while searching, else the tab's remembered section and those opened for this
+    // Open as shown: the search's own while searching, else the tab's remembered sections and those opened for this
     // column.
     private readonly expanded = computed((): ReadonlySet<ConversationListSection> => {
         if (this.isSearching()) return this.openedForSearch();
-        const remembered = this.rememberedIn(this.query().tab);
-        return new Set([...(remembered ? [remembered] : []), ...this.openedForColumn()]);
+        return new Set([...this.rememberedIn(this.query().tab), ...this.openedForColumn()]);
     });
     /**
      * Each section the query shows, in column order, whether it is open, and its state: its list's, with only the rows
@@ -278,14 +158,18 @@ export class ConversationListStore {
     /** Every change to the rows, as it is made and before it renders. */
     readonly changes$: Observable<ConversationListChange> = this.changesSubject.asObservable();
     /**
-     * Some section is open and every open one has its list's first page for the current query: what the column shows
-     * is known. A list that failed to load keeps it false, so nothing concludes a conversation is not listed from a
-     * list that did not load; so does a column with every section collapsed, which shows nothing to conclude from.
+     * Some section is open and every open one's list has settled for the current query: its first page landed, or
+     * failed (toasted), so nothing more is coming to wait for. A conversation such a list would have held is then just
+     * not listed, which the page answers by fetching it by id. A column with every section collapsed keeps it false:
+     * it shows nothing to conclude from.
      */
-    readonly isLoaded = computed(() => {
+    readonly isSettled = computed(() => {
         const generation = this.generation();
         const open = this.view().filter(({ isExpanded }) => isExpanded);
-        return open.length > 0 && open.every(({ state }) => state.loadedFor === generation);
+        return (
+            open.length > 0 &&
+            open.every(({ state }) => state.loadedFor === generation || state.failedFor === generation)
+        );
     });
     private readonly chatApi = inject(ChatApiService);
     private readonly toastService = inject(ToastService);
@@ -305,7 +189,7 @@ export class ConversationListStore {
     /**
      * Lists `query` from the start: every list starts over. Lists an open section shows keep their rows on screen
      * until their first pages land; any other list is emptied and loads only once shown. A search starting opens every
-     * section; clearing it folds them back.
+     * section; clearing it returns to the ones open before.
      */
     load(query: ConversationListQuery): void {
         const wasSearching = !!this.query().search;
@@ -328,33 +212,31 @@ export class ConversationListStore {
 
     /** The next page of an open section's list, once its first has landed; one request at a time per list. */
     loadMore(section: ConversationListSection): void {
-        const list = viewOf(section).list;
+        const list = sectionView(section).list;
         const state = this.lists()[list];
         if (state.isLoading || !state.nextCursor || !this.isShown(list)) return;
         this.loadPage(list, state.nextCursor);
     }
 
-    /** Folds or opens a section; outside a search, opening one remembers it for its tab and folds the rest. */
+    /**
+     * Folds or opens one section; the others stay as they are. Outside a search the choice is remembered for its tab;
+     * folding one opened for this column ends that opening too.
+     */
     toggle(section: ConversationListSection): void {
-        const tab = tabOfSection(section);
         if (this.isSearching()) {
-            this.openedForSearch.update((sections) =>
-                sections.has(section) ? withoutSection(sections, section) : new Set([...sections, section])
-            );
-        } else if (this.expanded().has(section)) {
-            this.openedForColumn.update((sections) => withoutSection(sections, section));
-            if (this.rememberedIn(tab) === section) this.remember(tab, null);
+            this.openedForSearch.update((sections) => withSection(sections, section, !sections.has(section)));
         } else {
-            this.openedForColumn.set(new Set());
-            this.remember(tab, section);
+            const isOpening = !this.expanded().has(section);
+            if (!isOpening) this.openedForColumn.update((sections) => withSection(sections, section, false));
+            this.remember(section, isOpening);
         }
         this.showChange(section);
     }
 
     /** Opens a collapsed section in this column only; the remembered choice stays as it is. */
     openForColumn(section: ConversationListSection): void {
-        if (this.rememberedIn(tabOfSection(section)) === section || this.openedForColumn().has(section)) return;
-        this.openedForColumn.update((sections) => new Set([...sections, section]));
+        if (this.rememberedIn(tabOfSection(section)).includes(section) || this.openedForColumn().has(section)) return;
+        this.openedForColumn.update((sections) => withSection(sections, section, true));
         this.showChange(section);
     }
 
@@ -363,16 +245,23 @@ export class ConversationListStore {
         return LISTS.flatMap((list) => lists[list].rows).find((row) => row.id === id) ?? null;
     }
 
-    // Each tab remembers its own open section.
-    private rememberedIn(tab: ConversationListTab): ConversationListSection | null {
-        return tab === 'inbox' ? this.preferences.expanded() : this.preferences.testingExpanded();
+    // Each tab remembers its own open sections.
+    private rememberedIn(tab: ConversationListTab): readonly ConversationListSection[] {
+        return tab === 'inbox' ? this.preferences.openSections() : this.preferences.openTestingSections();
     }
 
-    private remember(tab: ConversationListTab, section: ConversationListSection | null): void {
-        if (tab === 'testing') {
-            this.preferences.setTestingExpanded(section && isTestingSection(section) ? section : null);
+    // Remembers `section` open or folded in its tab, beside the tab's other remembered sections.
+    private remember(section: ConversationListSection, isOpen: boolean): void {
+        if (isTestingSection(section)) {
+            const sections = this.preferences.openTestingSections();
+            this.preferences.setOpenTestingSections(
+                isOpen ? [...sections, section] : sections.filter((item) => item !== section)
+            );
         } else {
-            this.preferences.setExpanded(section && !isTestingSection(section) ? section : null);
+            const sections = this.preferences.openSections();
+            this.preferences.setOpenSections(
+                isOpen ? [...sections, section] : sections.filter((item) => item !== section)
+            );
         }
     }
 
@@ -388,7 +277,7 @@ export class ConversationListStore {
     // A section opened or closed: re-arranged rows do not animate, and a list newly shown loads its first page.
     private showChange(section: ConversationListSection): void {
         this.changesSubject.next('load');
-        const list = viewOf(section).list;
+        const list = sectionView(section).list;
         const state = this.lists()[list];
         if (this.isShown(list) && state.loadedFor !== this.generation() && !state.isLoading) {
             this.loadPage(list, null);
@@ -450,7 +339,10 @@ export class ConversationListStore {
         const query = this.query();
         const generation = this.generation();
         // A failed reload must not leave the previous query's cursor behind for the next page.
-        this.patchList(section, cursor ? { isLoading: true } : { isLoading: true, nextCursor: null, boundary: null });
+        this.patchList(
+            section,
+            cursor ? { isLoading: true } : { isLoading: true, nextCursor: null, boundary: null, failedFor: null }
+        );
         // Only the latest request per section may land: an older response would overwrite fresher rows or the cursor.
         this.pageRequests[section]?.unsubscribe();
         this.pageRequests[section] = this.chatApi
@@ -488,7 +380,11 @@ export class ConversationListStore {
                         this.changesSubject.next('load');
                         return;
                     }
-                    this.patchList(section, { isLoading: false });
+                    // A first page that failed settles the list for this query; a later one leaves the pages listed.
+                    this.patchList(
+                        section,
+                        cursor ? { isLoading: false } : { isLoading: false, failedFor: generation }
+                    );
                     this.toastService.error(extractHttpErrorMessage(error));
                 },
             });
@@ -567,9 +463,13 @@ function readErrorField(error: HttpErrorResponse, field: string): string | null 
     return typeof value === 'string' && value ? value : null;
 }
 
-function withoutSection(
+function withSection(
     sections: ReadonlySet<ConversationListSection>,
-    section: ConversationListSection
+    section: ConversationListSection,
+    isIncluded: boolean
 ): ReadonlySet<ConversationListSection> {
-    return new Set([...sections].filter((item) => item !== section));
+    const next = new Set(sections);
+    if (isIncluded) next.add(section);
+    else next.delete(section);
+    return next;
 }
