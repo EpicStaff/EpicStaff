@@ -7,8 +7,8 @@ from rest_framework.exceptions import ValidationError
 from tables.exceptions import UseImportJobError
 from tables.import_export.archive import (
     ImportArchive,
+    archive_too_big,
     detect_file_kind,
-    invalid_archive,
     temporary_archive,
 )
 from tables.import_export.constants import ARCHIVE_IMPORT_VERSION, MAIN_ENTITY_KEY
@@ -223,7 +223,7 @@ def _read_archive_envelope(file):
     max_size = django_settings.MAX_KNOWLEDGE_ARCHIVE_SIZE
     size = getattr(file, "size", None)
     if size is not None and size > max_size:
-        raise invalid_archive(f"the archive is larger than {max_size} bytes")
+        raise archive_too_big(max_size)
     # ImportArchive checks a file on disk; an upload may only be in memory.
     with (
         temporary_archive(lambda copy: _copy_at_most(file, copy, max_size)) as path,
@@ -270,5 +270,5 @@ def _copy_at_most(source: BinaryIO, target: BinaryIO, max_size: int) -> None:
     while chunk := source.read(_COPY_CHUNK_SIZE):
         copied += len(chunk)
         if copied > max_size:
-            raise invalid_archive(f"the archive is larger than {max_size} bytes")
+            raise archive_too_big(max_size)
         target.write(chunk)
