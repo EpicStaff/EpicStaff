@@ -241,8 +241,9 @@ MEMORY_LIMITS = (
     MemoryLimit("SANDBOX_WORKER_MEMORY", ("sandbox_worker",), 2048, 512, None),
     MemoryLimit("KNOWLEDGE_MEMORY", ("knowledge_new",), 2048, 512, None),
     MemoryLimit("AGENT_MEMORY", ("agent",), 1024, 256, None),
-    MemoryLimit("REDIS_MEMORY", ("redis",), 512, 128, None),
+    MemoryLimit("REDIS_MEMORY", ("redis",), 512, 256, None),
     MemoryLimit("OPENSEARCH_MEMORY", ("opensearch",), 2048, 1536, "auditor"),
+    MemoryLimit("PLUGINS_DB_MEMORY", ("plugins_db",), 2048, 1024, "plugins"),
 )
 # Limit variable -> (worker variable, MiB per worker, base MiB, profile). Never scaled down:
 # below this the workers themselves run out of memory.
@@ -263,7 +264,6 @@ FIXED_LIMITS = {
     "mailpit": (128, 64, "dev"),
     "auditor": (512, 256, "auditor"),
     "chatdb": (512, 512, "chat"),
-    "plugins_db": (512, 512, "plugins"),
     "plugins_egress": (256, 128, "plugins"),
 }
 # They get limits but are left out of the total: they exit after startup.

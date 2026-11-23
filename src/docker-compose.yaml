@@ -470,13 +470,26 @@ services:
     # limit. The password reaches redis-server as config on stdin (the trailing "-"), never as
     # an argument: every user on the host can read process arguments, and redis-server only
     # hides its own once it has started. sed escapes \ and " for the quoted config values.
+    # maxmemory is 75% of this container's own memory limit (REDIS_MEMORY, read from the cgroup:
+    # v2, then v1), with noeviction: once full, Redis refuses writes with an error instead of
+    # growing until the kernel kills it and every organization's sessions and pub/sub drop. With
+    # no limit ("max", v1's near-2^63 "unlimited", or no readable file) it sets no maxmemory.
     command:
       - sh
       - -c
       - |
         password=$$(printf '%s' "$$REDIS_PASSWORD" | sed 's/[\\"]/\\&/g')
-        printf 'requirepass "%s"\nuser "%s" on ">%s" ~* &* +@all\n' "$$password" "$$REDIS_USER" "$$password" |
-          redis-server /usr/local/etc/redis/redis.conf --port "$$REDIS_PORT" -
+        limit=$$(cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null)
+        maxmemory=
+        case "$$limit" in
+          '' | *[!0-9]*) ;;
+          *) if [ "$$limit" -lt 1152921504606846976 ]; then maxmemory=$$((limit / 4 * 3)); fi ;;
+        esac
+        {
+          printf 'requirepass "%s"\nuser "%s" on ">%s" ~* &* +@all\n' "$$password" "$$REDIS_USER" "$$password"
+          if [ -n "$$maxmemory" ]; then printf 'maxmemory %s\n' "$$maxmemory"; fi
+          printf 'maxmemory-policy noeviction\n'
+        } | redis-server /usr/local/etc/redis/redis.conf --port "$$REDIS_PORT" -
     healthcheck:
       # redis-cli reads the password from REDISCLI_AUTH: on a command line (-a) every user on the
       # host could read it in the process list.
@@ -1262,8 +1275,9 @@ services:
   # superuser exists for the one init step (plugins_db/init) and works only over the container's
   # own socket (plugins_db/pg_hba.conf). See docs/plugins/operator/enable-plugins.md.
   plugins_db:
-    mem_limit: 512m
+    mem_limit: ${PLUGINS_DB_MEMORY:?}
     pids_limit: 512
+    cpus: ${PLUGINS_DB_CPUS:?}
     image: postgres:17.11@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
     container_name: ${INSTANCE_PREFIX?}plugins_db
     hostname: plugins_db

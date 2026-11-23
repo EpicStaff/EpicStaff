@@ -994,7 +994,7 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(values["COMPOSE_PROFILES"], "chat")
         self.assertEqual(values["CHAT_MEMORY"], "768m")
         self.assertEqual(values["DJANGO_MEMORY"], "1536m")
-        self.assertEqual(values["CREW_MEMORY"], "640m")
+        self.assertEqual(values["CREW_MEMORY"], "576m")
         self.assertIn("Memory limits:", output.split("EpicStaff setup")[-1])
 
     def test_change_features_fits_the_chat_and_auditor_services_it_turns_on(self):
@@ -1010,7 +1010,7 @@ class SetupWizardTest(unittest.TestCase):
         self.memory_mb.return_value = 6144
         # Tune: Large, five minutes, keep logging, fit memory, No; then Small and keep the rest.
         declined = ["2", "4", "2", "1", "", ""]
-        for memory_answer, crew_memory in (("2", "1g"), ("", "448m")):
+        for memory_answer, crew_memory in (("2", "1g"), ("", "384m")):
             with self.subTest(memory=memory_answer or "fit"):
                 self.prod_file_with(DJANGO_SGI_WORKERS="3", DJANGO_MEMORY="2560m", CREW_MEMORY="1g")
                 values, output = self.run_setup("prod", [*declined, "2", "1", "1", memory_answer])
@@ -1309,7 +1309,7 @@ class MemoryFitTests(unittest.TestCase):
             self.assertEqual(int(fit.values.get(limit.variable, "0m")[:-1]) % 64, 0)
 
     def test_a_6gb_host_fits_at_small_size(self):
-        # 6144 - 1024 reserve - 960 fixed - 1536 Django = 2624 left; floors need 2432.
+        # 6144 - 1024 reserve - 960 fixed - 1536 Django = 2624 left; floors need 2560.
         fit = envtool.fit_memory_limits(6144, [], {"DJANGO_SGI_WORKERS": "1"})
         self.assertTrue(fit.fits)
         self.assertLessEqual(fit.total_mb, 6144 - 1024)
@@ -1321,7 +1321,7 @@ class MemoryFitTests(unittest.TestCase):
         self.assertEqual(fit.total_mb - scaled, 960 + 1536)  # one-shot containers not counted
 
     def test_too_small_when_the_floors_do_not_fit(self):
-        # 6 GiB at Medium: 3 Django workers leave 1600 for floors that need 2432.
+        # 6 GiB at Medium: 3 Django workers leave 1600 for floors that need 2560.
         fit = envtool.fit_memory_limits(6144, [], {"DJANGO_SGI_WORKERS": "3"})
         self.assertFalse(fit.fits)
         self.assertEqual(fit.largest[0], "DJANGO_MEMORY")
@@ -1335,6 +1335,14 @@ class MemoryFitTests(unittest.TestCase):
         )
         self.assertNotIn("ES_PLUGINS_MEMORY", small.values)
         self.assertEqual(big.total_mb - small.total_mb, 2048)
+
+    def test_plugins_db_memory_is_fitted_only_with_the_plugins_profile(self):
+        values = {"DJANGO_SGI_WORKERS": "1", "ES_PLUGINS_MEMORY": "4g"}
+        self.assertNotIn("PLUGINS_DB_MEMORY", envtool.fit_memory_limits(65536, [], values).values)
+        big = envtool.fit_memory_limits(65536, ["plugins"], values)
+        self.assertEqual(big.values["PLUGINS_DB_MEMORY"], "2048m")
+        small = envtool.fit_memory_limits(8192, ["plugins"], values)
+        self.assertEqual(small.values["PLUGINS_DB_MEMORY"], "1024m")  # held at its floor
 
     def test_too_small_names_the_plugin_node_among_the_largest(self):
         fit = envtool.fit_memory_limits(
@@ -1401,7 +1409,12 @@ class ComposeLimitTests(unittest.TestCase):
             self.assertEqual(profiles, None if profile is None else [profile], service)
 
     def test_sized_services_have_their_process_and_cpu_limits(self):
-        pids = {"crewdb": 512, "opensearch": 4096, "sandbox_worker": "${SANDBOX_WORKER_PIDS:?}"}
+        pids = {
+            "crewdb": 512,
+            "plugins_db": 512,
+            "opensearch": 4096,
+            "sandbox_worker": "${SANDBOX_WORKER_PIDS:?}",
+        }
         sized = {
             service: limit.variable.removesuffix("_MEMORY")
             for limit in envtool.MEMORY_LIMITS
