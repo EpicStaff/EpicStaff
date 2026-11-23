@@ -150,11 +150,20 @@ class CdtExplainService:
         self, client, table: dict, batches: list[list[dict]]
     ) -> tuple[dict[str, str], list[BaseException]]:
         semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
-        deadline = asyncio.get_running_loop().time() + EXPLAIN_REQUEST_DEADLINE_SECONDS
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + EXPLAIN_REQUEST_DEADLINE_SECONDS
 
         async def guarded(batch):
-            async with asyncio.timeout_at(deadline), semaphore:
-                return await self._explain_batch(client, table, batch)
+            async with asyncio.timeout_at(deadline):
+                await semaphore.acquire()
+            # The call gets the time left rather than an outer deadline: the client closes
+            # the provider stream when its own limit runs out, not when it is cancelled.
+            try:
+                return await self._explain_batch(
+                    client, table, batch, time_limit_seconds=deadline - loop.time()
+                )
+            finally:
+                semaphore.release()
 
         results = await asyncio.gather(
             *(guarded(batch) for batch in batches), return_exceptions=True
@@ -176,14 +185,18 @@ class CdtExplainService:
             texts.update(result)
         return texts, errors
 
-    async def _explain_batch(self, client, table: dict, batch: list[dict]) -> dict[str, str]:
+    async def _explain_batch(
+        self, client, table: dict, batch: list[dict], *, time_limit_seconds: float
+    ) -> dict[str, str]:
         messages = [
             {"role": "system", "content": build_system_prompt(b["block"] for b in batch)},
             {"role": "user", "content": render_user_message(table, batch)},
         ]
 
         chunks: list[str] = []
-        async for event in client.stream_completion(messages, []):
+        async for event in client.stream_completion(
+            messages, [], time_limit_seconds=time_limit_seconds
+        ):
             if isinstance(event, DoneEvent):
                 break
             if isinstance(event, TokenEvent):

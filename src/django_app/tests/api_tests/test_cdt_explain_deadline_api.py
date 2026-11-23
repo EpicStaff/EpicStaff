@@ -7,7 +7,9 @@ or still queued behind the concurrency limit, counts as failed: its steps come b
 failures while the batches that finished keep their explanations. When every batch is cut
 off the request fails as timed_out (504), with or without an API key on the config: a slow
 keyless model is not told it lacks a key. The same holds when every batch hits the LLM
-config's own per-request timeout, which litellm raises as `litellm.Timeout`.
+config's own per-request timeout, which litellm raises as `litellm.Timeout`. A batch cut off
+while the model is mid-answer has its provider stream closed, so the model does not keep
+generating for a request that already returned.
 
 Only the LLM provider call (`litellm.acompletion`) is replaced; the view, service, secret
 resolution and LiteLLMClient run for real.
@@ -161,6 +163,48 @@ def test_every_batch_cut_off_fails_the_request_as_timed_out(
     assert elapsed < ANSWERED_WITHIN_SECONDS
     assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT, response.content
     assert response.json()["code"] == "cdt_explain_timed_out"
+
+
+class StallingProviderStream:
+    """A provider stream that starts the answer, then stalls past the deadline."""
+
+    def __init__(self):
+        self.started = False
+        self.closed = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        if not self.started:
+            self.started = True
+            return _chunk('{"explanations": [', None)
+        await asyncio.sleep(STALL_SECONDS)
+        return _chunk(None, "stop")
+
+    async def aclose(self):
+        self.closed = True
+
+
+@pytest.mark.django_db
+def test_a_batch_cut_off_mid_answer_has_its_provider_stream_closed(
+    acme_client, cdt_node, llm_config
+):
+    provider_streams: list[StallingProviderStream] = []
+
+    async def answer_then_stall(**kwargs):
+        provider_streams.append(StallingProviderStream())
+        return provider_streams[-1]
+
+    started = time.monotonic()
+    with mock.patch("litellm.acompletion", side_effect=answer_then_stall):
+        response = acme_client.post(_url(cdt_node.id), _body(llm_config.id), format="json")
+
+    assert time.monotonic() - started < ANSWERED_WITHIN_SECONDS
+    assert response.status_code == status.HTTP_504_GATEWAY_TIMEOUT, response.content
+    # Only the first batch reached the model; the others were still queued at the deadline.
+    assert len(provider_streams) == 1
+    assert provider_streams[0].closed
 
 
 def _config_timeout_firing(**kwargs):
