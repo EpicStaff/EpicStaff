@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from plugins.development.development_mode import development_mode_on
 from plugins.development.development_targets import routed_ports
+from plugins.gateway.host_verifier import PluginHostVerifier
 from plugins.lifecycle.grant_actions import GrantAction, allowed_grant_actions
 from plugins.lifecycle.open_upgrades import open_upgrade_of
 from plugins.lifecycle.plugin_actions import (
@@ -31,7 +32,12 @@ from plugins.models import (
 )
 from plugins.models.upgrade import OPEN_UPGRADE_STAGES
 from plugins.origins import PluginOrigins
-from plugins.packages.review import action_label, resource_label, review_warnings
+from plugins.packages.review import (
+    action_label,
+    host_warnings,
+    resource_label,
+    review_warnings,
+)
 from plugins.packages.upgrade_review import PackageUpgradeReview, review_upgrade
 from plugins.serializers.common import UserRefSerializer
 from plugins.serializers.development import PluginDevelopmentPortsSerializer
@@ -282,7 +288,11 @@ class PackageReviewSerializer(serializers.ModelSerializer):
         )
 
     def get_warnings(self, package: PluginPackage) -> list[dict]:
-        return review_warnings(package.parsed_manifest, package.trust)
+        manifest = package.parsed_manifest
+        return [
+            *review_warnings(manifest, package.trust),
+            *host_warnings(manifest.id, PluginHostVerifier()),
+        ]
 
     @extend_schema_field(AccessGrowthSerializer(allow_null=True))
     def get_access_growth(self, package: PluginPackage) -> dict | None:

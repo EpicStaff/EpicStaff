@@ -1,7 +1,7 @@
 # Serve public paths
 
 Requests to a plugin's backend reach it through EpicStaff's gateway at
-`https://<id>.<plugins base domain>/api/**`. A path you declare **public** is forwarded without an
+`https://<plugin host>/api/**`. A path you declare **public** is forwarded without an
 EpicStaff login: a health probe, a webhook a third party calls, a page anyone may fetch. Every
 other path needs a person logged in to the plugin through EpicStaff, whose plugin login token the
 gateway checks ([Gateway context](../reference/gateway-context.md#who-is-asking-user-contexts));
@@ -71,7 +71,7 @@ set cookies on the plugins domain) and `X-Accel-Redirect`, which are dropped.
 ## Check it
 
 ```
-curl -i https://weather.plugins.example.com/api/ping
+curl -i https://weather-app.example.com/api/ping
 ```
 
 answers with your backend's response. A path that is not public answers
