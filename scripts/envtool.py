@@ -551,7 +551,11 @@ def update_env_file(
     # utf-8-sig: a byte order mark (Windows editors) would glue onto the first variable name.
     original = env_file.read_bytes().decode("utf-8-sig")
     already_set = set(SET_VARIABLE.findall(original))
-    overrides = {**_split_audit_switch(original), **(overrides or {})}
+    overrides = {
+        **_split_audit_switch(original),
+        **worker_memory_values(read_env_values(original)),
+        **(overrides or {}),
+    }
     added, needs_value, content = [], [], []
     for variables in schema["groups"].values():
         for name, declaration in variables["vars"].items():

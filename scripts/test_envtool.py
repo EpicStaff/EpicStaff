@@ -117,6 +117,19 @@ class UpdateEnvFileTest(unittest.TestCase):
         self.assertTrue(data.startswith(original.encode() + b"\r\n"))
         self.assertNotIn(b"\n", data.replace(b"\r\n", b""))
 
+    def test_added_worker_memory_follows_the_worker_counts_in_the_file(self):
+        self.env_file.write_text("CHAT_WORKERS=4\nDJANGO_SGI_WORKERS=6\n", encoding="utf-8")
+        envtool.update_env_file(real_schema(), "prod", self.env_file, TODAY)
+        values = envtool.read_env_values(self.env_file.read_text(encoding="utf-8"))
+        self.assertEqual(values["CHAT_MEMORY"], "1536m")
+        self.assertEqual(values["DJANGO_MEMORY"], "4096m")
+
+    def test_existing_worker_memory_is_left_untouched_on_update(self):
+        self.env_file.write_text("DJANGO_SGI_WORKERS=6\nDJANGO_MEMORY=2g\n", encoding="utf-8")
+        envtool.update_env_file(real_schema(), "prod", self.env_file, TODAY)
+        values = envtool.read_env_values(self.env_file.read_text(encoding="utf-8"))
+        self.assertEqual(values["DJANGO_MEMORY"], "2g")
+
     def test_override_fills_a_required_variable(self):
         self.env_file.write_text("CREW_LOG_LEVEL=INFO\n", encoding="utf-8")
         added, needs_value = envtool.update_env_file(
@@ -933,7 +946,7 @@ class SetupWizardTest(unittest.TestCase):
         self.assertNotIn("Memory limits of the containers?", output)
         self.assertIn("Memory limits:", output.split("EpicStaff setup")[-1])
         self.assertEqual(values["DJANGO_MEMORY"], "1536m")
-        self.assertNotEqual(values["CREW_MEMORY"], "2g")
+        self.assertEqual(values["CREW_MEMORY"], "832m")
 
     def test_first_setup_advanced_size_too_big_warns(self):
         self.memory_mb.return_value = 6144
@@ -981,7 +994,7 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(values["COMPOSE_PROFILES"], "chat")
         self.assertEqual(values["CHAT_MEMORY"], "768m")
         self.assertEqual(values["DJANGO_MEMORY"], "1536m")
-        self.assertNotEqual(values["CREW_MEMORY"], "2g")
+        self.assertEqual(values["CREW_MEMORY"], "640m")
         self.assertIn("Memory limits:", output.split("EpicStaff setup")[-1])
 
     def test_change_features_fits_the_chat_and_auditor_services_it_turns_on(self):
@@ -1373,6 +1386,31 @@ class ComposeLimitTests(unittest.TestCase):
         for service, (memory_mb, pids, _) in envtool.FIXED_LIMITS.items():
             self.assertEqual(humanize_mb(self.compose[service]["mem_limit"]), memory_mb, service)
             self.assertEqual(self.compose[service]["pids_limit"], pids, service)
+
+    def test_every_compose_service_is_accounted_for_with_its_profile(self):
+        profile_of = {}
+        for limit in envtool.MEMORY_LIMITS:
+            profile_of.update(dict.fromkeys(limit.services, limit.profile))
+        profile_of["django_app"] = envtool.WORKER_MEMORY["DJANGO_MEMORY"][3]
+        profile_of["chat"] = envtool.WORKER_MEMORY["CHAT_MEMORY"][3]
+        profile_of["es_plugins"] = "plugins"
+        profile_of.update({service: row[2] for service, row in envtool.FIXED_LIMITS.items()})
+        self.assertEqual(set(self.compose), set(profile_of))
+        for service, profile in profile_of.items():
+            profiles = self.compose[service].get("profiles")
+            self.assertEqual(profiles, None if profile is None else [profile], service)
+
+    def test_sized_services_have_their_process_and_cpu_limits(self):
+        pids = {"crewdb": 512, "opensearch": 4096, "sandbox_worker": "${SANDBOX_WORKER_PIDS:?}"}
+        sized = {
+            service: limit.variable.removesuffix("_MEMORY")
+            for limit in envtool.MEMORY_LIMITS
+            for service in limit.services
+        }
+        sized |= {"django_app": "DJANGO", "chat": "CHAT"}
+        for service, prefix in sized.items():
+            self.assertEqual(self.compose[service]["pids_limit"], pids.get(service, 1024), service)
+            self.assertEqual(self.compose[service]["cpus"], f"${{{prefix}_CPUS:?}}", service)
 
     def test_cpu_variables_default_to_no_cap(self):
         for name, value in self.defaults.items():
