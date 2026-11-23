@@ -993,16 +993,28 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(values["CHAT_MEMORY"], "1024m")
         self.assertEqual(values["OPENSEARCH_MEMORY"], "1600m")
 
-    def test_tune_too_small_and_declined_still_sizes_worker_memory(self):
+    def test_tune_too_small_and_declined_asks_again_and_writes_only_the_new_answers(self):
         self.memory_mb.return_value = 6144
-        self.prod_file_with(DJANGO_SGI_WORKERS="1", DJANGO_MEMORY="1536m", CREW_MEMORY="1g")
-        # Tune: Large, five minutes, keep logging, fit memory, then No.
-        values, output = self.run_setup("prod", ["2", "4", "2", "1", "", ""])
+        # Tune: Large, five minutes, keep logging, fit memory, No; then Small and keep the rest.
+        declined = ["2", "4", "2", "1", "", ""]
+        for memory_answer, crew_memory in (("2", "1g"), ("", "448m")):
+            with self.subTest(memory=memory_answer or "fit"):
+                self.prod_file_with(DJANGO_SGI_WORKERS="3", DJANGO_MEMORY="2560m", CREW_MEMORY="1g")
+                values, output = self.run_setup("prod", [*declined, "2", "1", "1", memory_answer])
+                self.assertIn("Memory limits do not fit", output)
+                self.assertEqual(values["DJANGO_SGI_WORKERS"], "1")
+                self.assertEqual(values["DJANGO_MEMORY"], "1536m")
+                self.assertEqual(values["SANDBOX_MAX_EXECUTION_TIMEOUT"], "30m")
+                self.assertEqual(values["CREW_MEMORY"], crew_memory)
+                self.assertNotIn("Memory limits do not fit", output.split("EpicStaff setup")[-1])
+
+    def test_tune_too_small_and_continued_writes_the_chosen_size(self):
+        self.memory_mb.return_value = 6144
+        self.prod_file_with(DJANGO_SGI_WORKERS="1", DJANGO_MEMORY="1536m")
+        values, output = self.run_setup("prod", ["2", "4", "1", "1", "", "y"])
         self.assertIn("Memory limits do not fit", output)
         self.assertEqual(values["DJANGO_SGI_WORKERS"], "6")
-        self.assertEqual(values["SANDBOX_MAX_EXECUTION_TIMEOUT"], "5m")
         self.assertEqual(values["DJANGO_MEMORY"], "4096m")
-        self.assertEqual(values["CREW_MEMORY"], "1g")
 
     def test_change_features_that_change_nothing_keep_hand_edited_memory(self):
         self.memory_mb.return_value = 4096  # too small: a refit would warn

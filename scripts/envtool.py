@@ -1321,10 +1321,16 @@ def tune_settings(
     memory_mb = detect_memory_mb() if target == "prod" else None
     if target == "prod" and memory_mb is None:
         screen.notes.append(MEMORY_UNKNOWN_NOTE)
-    values, fit = ask_advanced(screen, schema, enabled, current=old, memory_mb=memory_mb)
-    # No keeps the old scaled limits; Django's and chat's still follow a new size in `values`.
-    if fit and confirm_memory_fit(screen, fit):
-        values |= fit.values
+    notes_before_questions = len(screen.notes)
+    while True:
+        values, fit = ask_advanced(screen, schema, enabled, current=old, memory_mb=memory_mb)
+        if fit is None:
+            break
+        if confirm_memory_fit(screen, fit):
+            values |= fit.values
+            break
+        # Nothing is written for a setup the operator declined: ask the questions again.
+        del screen.notes[notes_before_questions:]
     screen.draw()
     # Rewrite only what actually changes, so hand-tuned neighbours stay byte-identical.
     changed = {name: value for name, value in values.items() if old.get(name) != value}
