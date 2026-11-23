@@ -201,6 +201,13 @@
         flex-shrink: 0;
     }
 
+    &__toolbar-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
     &__state {
         display: flex;
         align-items: center;

@@ -255,6 +255,8 @@
         z-index: 1;
 
         app-button {
+            width: 28px;
+            height: 28px;
             flex-shrink: 0;
         }
     }
@@ -293,7 +295,10 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
-        padding-top: 16px;
+        // Pull the section out to the panel edges so the top divider spans full width,
+        // then restore the inner horizontal padding the body otherwise provides.
+        margin: 0 -16px;
+        padding: 16px 16px 0 16px;
         border-top: 1px solid var(--color-divider-subtle);
     }
 

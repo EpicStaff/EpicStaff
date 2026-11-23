@@ -167,24 +167,42 @@ class KnowledgeClient:
         page: int,
         page_size: int,
         search: str | None = None,
+        search_scope: str = "all",
         filter_column: str | None = None,
         filter_value: str | None = None,
+        linked_to_type: str | None = None,
+        linked_to_id: str | None = None,
     ) -> dict:
         """Fetch paginated parquet table data for a graph RAG."""
         url = f"rags/graph/{rag_id}/tables/{_path_segment(table_name)}/"
         params: dict[str, str | int] = {"page": page, "page_size": page_size}
         if search:
             params["search"] = search
+        # Omit `search_scope` when unset or on the default so the query string stays clean.
+        if search_scope and search_scope != "all":
+            params["search_scope"] = search_scope
         # knowledge_new rejects a half-set pair; the Django serializer has already enforced that.
         if filter_column is not None and filter_value is not None:
             params["filter_column"] = filter_column
             params["filter_value"] = filter_value
+        if linked_to_type is not None and linked_to_id is not None:
+            params["linked_to_type"] = linked_to_type
+            params["linked_to_id"] = linked_to_id
         response = self._request(method="get", url=url, params=params)
         return response.json()
 
     def get_table_summary(self, rag_id: int) -> list[dict]:
         """Fetch the list of available tables with their row counts."""
         response = self._request(method="get", url=f"rags/graph/{rag_id}/table-summary/")
+        return response.json()
+
+    def get_table_link_pairs(self) -> dict[str, list[str]]:
+        """Fetch the allowed (subject, target) pairs for the linked_to table filter.
+
+        The upstream body is a static per-service matrix with no per-rag variance,
+        so the URL has no rag id.
+        """
+        response = self._request(method="get", url="rags/graph/table-link-pairs/")
         return response.json()
 
     def _request(

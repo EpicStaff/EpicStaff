@@ -113,3 +113,19 @@ GRAPH_SEARCH_MAX_LENGTH = 200
 GRAPH_VISUALIZATION_MIN_MAX_ENTITIES = 1
 GRAPH_VISUALIZATION_MAX_MAX_ENTITIES = 1000
 GRAPH_VISUALIZATION_MAX_PAGE_COUNT = 5
+# Table names accepted by the linked_to_type filter; matches knowledge_new's GraphOutputTableEnum.
+GRAPH_LINKED_TO_TYPE_CHOICES: tuple[str, ...] = (
+    "entities",
+    "relationships",
+    "communities",
+    "community_reports",
+    "text_units",
+    "documents",
+    "covariates",
+)
+# Row ids in graph index parquets are short — hashes, uuids or human-readable slugs.
+GRAPH_LINKED_TO_ID_MAX_LENGTH = 200
+# `search_scope` values accepted by the table data endpoint; matches knowledge_new's
+# GraphTableSearchScope. `all` is the default (every user-facing column); `identity`
+# restricts `search` to id + the per-table label column — used by the linked-to picker.
+GRAPH_SEARCH_SCOPE_CHOICES: tuple[str, ...] = ("all", "identity")

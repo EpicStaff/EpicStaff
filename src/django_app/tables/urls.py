@@ -410,6 +410,11 @@ urlpatterns = [
         name="graph-rag-table-summary",
     ),
     path(
+        "graph-rag/table-link-pairs/",
+        GraphRagViewSet.as_view({"get": "table_link_pairs"}),
+        name="graph-rag-table-link-pairs",
+    ),
+    path(
         "graph-rag/<int:pk>/tables/<str:table_name>/",
         GraphRagViewSet.as_view({"get": "table_data"}),
         name="graph-rag-table-data",

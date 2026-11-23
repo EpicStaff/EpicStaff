@@ -77,6 +77,7 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         "relationship_detail": Permission.READ,
         "table_data": Permission.READ,
         "table_summary": Permission.READ,
+        "table_link_pairs": Permission.READ,
     }
 
     queryset = GraphRag.objects.all()
@@ -417,6 +418,24 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             data = client.get_table_summary(rag_id=int(pk))
         return Response(data)
 
+    @extend_schema(responses=GRAPH_INDEX_READ_RESPONSES)
+    @action(detail=False, methods=["get"], url_path="table-link-pairs")
+    def table_link_pairs(self, request):
+        """Proxy the allowed linked_to (subject -> targets) matrix from knowledge_new.
+
+        The upstream body is a static per-service matrix with no per-rag variance,
+        so this endpoint carries no rag id. RBAC still gates it by READ on
+        KNOWLEDGE_SOURCES in the active org; there is no per-rag org check because
+        no rag is identified.
+        """
+        with KnowledgeClient() as client:
+            data = client.get_table_link_pairs()
+        # Body is a static mapping — cache for an hour so the browser stops hitting
+        # the Django proxy every time the user opens the link-to picker. `private`
+        # because the endpoint is behind org-level auth: shared caches must not pool
+        # responses across principals, even though the body is the same today.
+        return Response(data, headers={"Cache-Control": "private, max-age=3600"})
+
     @extend_schema(
         parameters=[GraphRagTableDataQuerySerializer],
         responses=GRAPH_INDEX_READ_RESPONSES,
@@ -436,8 +455,11 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
                 page=query.validated_data["page"],
                 page_size=query.validated_data["page_size"],
                 search=query.validated_data.get("search") or None,
+                search_scope=query.validated_data.get("search_scope"),
                 filter_column=query.validated_data.get("filter_column"),
                 filter_value=query.validated_data.get("filter_value"),
+                linked_to_type=query.validated_data.get("linked_to_type"),
+                linked_to_id=query.validated_data.get("linked_to_id"),
             )
         return Response(data)
 

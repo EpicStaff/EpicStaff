@@ -6,6 +6,7 @@ from application.graph_index_read_limits import (
     GRAPH_TABLE_DEFAULT_PAGE_SIZE,
     GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
 )
+from domain.enums import GraphOutputTableEnum, GraphTableSearchScope
 from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
@@ -105,10 +106,24 @@ class GetGraphTableData(Command):
     page: int = GRAPH_TABLE_DEFAULT_PAGE
     page_size: int = GRAPH_TABLE_DEFAULT_PAGE_SIZE
     search: str | None = None
+    # Which columns `search` matches against. `ALL` (default) keeps the main table's
+    # behaviour — any user-facing column. `IDENTITY` narrows to id + the per-table label
+    # column(s), used by the linked-to picker so the list is not polluted by body-text hits.
+    search_scope: GraphTableSearchScope = GraphTableSearchScope.ALL
     # Optional exact-match filter on a single column. Both filter_column and
     # filter_value must be set together; the match is applied before `search`.
     filter_column: str | None = None
     filter_value: str | None = None
+    # Optional graph-relation filter: keep rows linked to a row of another table.
+    # Both parts must be sent together; the relation is resolved through the graph
+    # index. Only pairs listed in link_resolver.ALLOWED_PAIRS are supported — every
+    # other (subject, target) pair raises UnsupportedError (400).
+    linked_to_type: GraphOutputTableEnum | None = None
+    linked_to_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if (self.linked_to_type is None) != (self.linked_to_id is None):
+            raise ValueError("linked_to_type and linked_to_id must be set together.")
 
 
 @dataclass(frozen=True)

@@ -11,11 +11,25 @@ import { ConfigService } from '../../../../services/config';
 import { GraphRagDocument } from '../../models/graph-rag-document.model';
 import { GraphTableData, GraphTableSummaryItem } from '../../models/graph-visualization.model';
 import { GraphRagDocumentsStorageService } from '../../services/graph-rag-documents-storage.service';
+import { GRAPH_ACTION_VIEW_COMMUNITY } from '../graph-rag-grid-table/graph-rag-table-columns';
 import { GraphRagDataTablesComponent } from './graph-rag-data-tables.component';
 
 const API_URL = 'http://api.test/api/';
 const RAG_ID = 42;
 const SUMMARY_URL = `${API_URL}graph-rag/${RAG_ID}/table-summary/`;
+// No rag id: the link-pairs matrix is a static per-service response.
+const LINK_PAIRS_URL = `${API_URL}graph-rag/table-link-pairs/`;
+
+/** Allowed targets covering every subject table used in these tests. */
+const DEFAULT_LINK_PAIRS: Record<string, string[]> = {
+    entities: ['relationships', 'communities', 'community_reports', 'text_units', 'documents', 'covariates'],
+    relationships: ['entities', 'communities', 'community_reports', 'text_units', 'documents', 'covariates'],
+    communities: ['entities', 'relationships', 'community_reports', 'text_units', 'documents', 'covariates'],
+    community_reports: ['entities', 'relationships', 'communities', 'text_units', 'documents', 'covariates'],
+    text_units: ['entities', 'relationships', 'communities', 'community_reports', 'documents', 'covariates'],
+    documents: ['entities', 'relationships', 'communities', 'community_reports', 'text_units', 'covariates'],
+    covariates: ['entities', 'relationships', 'communities', 'community_reports', 'text_units', 'documents'],
+};
 const NOT_INDEXED_BODY = { status_code: 409, code: 'graph_not_indexed', message: 'Graph is not indexed' };
 const CONFLICT_BODY = { status_code: 409, code: 'upstream_resource_conflict', message: 'Upstream conflict' };
 
@@ -72,12 +86,14 @@ describe('GraphRagDataTablesComponent', () => {
     let httpMock: HttpTestingController;
     let host: HTMLElement;
 
-    /** Flushes the initial table-summary request and the table-data request for the first table with data. */
+    /** Flushes the initial table-summary + link-pairs requests and the table-data request for the first table with data. */
     function flushInit(
         summary: GraphTableSummaryItem[] = buildSummary(),
-        tableData: GraphTableData = buildTableData()
+        tableData: GraphTableData = buildTableData(),
+        linkPairs: Record<string, string[]> = DEFAULT_LINK_PAIRS
     ): void {
         httpMock.expectOne(SUMMARY_URL).flush(summary);
+        httpMock.expectOne(LINK_PAIRS_URL).flush(linkPairs);
         const firstWithData = summary.find((item) => item.count > 0) ?? summary[0];
         if (firstWithData) {
             httpMock.expectOne(tableUrl(firstWithData.name)).flush(tableData);
@@ -287,6 +303,7 @@ describe('GraphRagDataTablesComponent', () => {
     describe('errors', () => {
         it('shows an error when the table data request fails', () => {
             httpMock.expectOne(SUMMARY_URL).flush(buildSummary());
+            httpMock.expectOne(LINK_PAIRS_URL).flush(DEFAULT_LINK_PAIRS);
             httpMock.expectOne(tableUrl('entities')).flush('Server error', { status: 500, statusText: 'Server Error' });
             fixture.detectChanges();
 
@@ -294,6 +311,7 @@ describe('GraphRagDataTablesComponent', () => {
         });
 
         it('shows an error when the table summary request fails', () => {
+            httpMock.expectOne(LINK_PAIRS_URL).flush(DEFAULT_LINK_PAIRS);
             httpMock.expectOne(SUMMARY_URL).flush('Server error', { status: 500, statusText: 'Server Error' });
             fixture.detectChanges();
 
@@ -301,6 +319,7 @@ describe('GraphRagDataTablesComponent', () => {
         });
 
         it('shows the run-indexing hint when the summary answers 409 graph_not_indexed', () => {
+            httpMock.expectOne(LINK_PAIRS_URL).flush(DEFAULT_LINK_PAIRS);
             httpMock.expectOne(SUMMARY_URL).flush(NOT_INDEXED_BODY, { status: 409, statusText: 'Conflict' });
             fixture.detectChanges();
 
@@ -310,6 +329,7 @@ describe('GraphRagDataTablesComponent', () => {
 
         it('shows the run-indexing hint when a table answers 409 graph_not_indexed', () => {
             httpMock.expectOne(SUMMARY_URL).flush(buildSummary());
+            httpMock.expectOne(LINK_PAIRS_URL).flush(DEFAULT_LINK_PAIRS);
             httpMock.expectOne(tableUrl('entities')).flush(NOT_INDEXED_BODY, { status: 409, statusText: 'Conflict' });
             fixture.detectChanges();
 
@@ -320,6 +340,7 @@ describe('GraphRagDataTablesComponent', () => {
             ['a 409 with another code', 409, CONFLICT_BODY],
             ['a 404', 404, { message: 'missing' }],
         ])('shows a plain error, not the indexing hint, when the summary answers %s', (_label, status, body) => {
+            httpMock.expectOne(LINK_PAIRS_URL).flush(DEFAULT_LINK_PAIRS);
             httpMock.expectOne(SUMMARY_URL).flush(body, { status, statusText: 'Error' });
             fixture.detectChanges();
 
@@ -329,6 +350,7 @@ describe('GraphRagDataTablesComponent', () => {
 
         it('replaces the error with the loading state while the next table loads, then shows its rows', () => {
             httpMock.expectOne(SUMMARY_URL).flush(buildSummary());
+            httpMock.expectOne(LINK_PAIRS_URL).flush(DEFAULT_LINK_PAIRS);
             httpMock.expectOne(tableUrl('entities')).flush('Server error', { status: 500, statusText: 'Server Error' });
             fixture.detectChanges();
 
@@ -404,6 +426,167 @@ describe('GraphRagDataTablesComponent', () => {
 
             typeSearch('alpha');
             httpMock.expectOne(tableUrl('relationships', 'page=1&page_size=10&search=alpha')).flush(buildTableData());
+        });
+    });
+
+    describe('linked-to filter', () => {
+        function dataTablesComponent(): GraphRagDataTablesComponent {
+            return fixture.debugElement.query(By.directive(GraphRagDataTablesComponent))
+                .componentInstance as GraphRagDataTablesComponent;
+        }
+
+        function summaryWithCommunities(): GraphTableSummaryItem[] {
+            return [
+                { name: 'entities', label: 'Entities', count: 37 },
+                { name: 'relationships', label: 'Relationships', count: 12 },
+                { name: 'communities', label: 'Communities', count: 4 },
+            ];
+        }
+
+        it('sends linked_to_type and linked_to_id on the next table-data request when the picker picks a row', () => {
+            flushInit();
+
+            dataTablesComponent().onLinkedToPicked({ type: 'relationships', id: 'abc-123' });
+            fixture.detectChanges();
+
+            httpMock
+                .expectOne(
+                    tableUrl('entities', 'page=1&page_size=10&linked_to_type=relationships&linked_to_id=abc-123')
+                )
+                .flush(buildTableData());
+            fixture.detectChanges();
+        });
+
+        it('clears a jump filter when a linked-to row is picked', () => {
+            flushInit(summaryWithCommunities());
+
+            // Set a jump filter via the grid action route (community number → communities tab).
+            dataTablesComponent().onGridAction({
+                action: GRAPH_ACTION_VIEW_COMMUNITY,
+                row: { community: 7 },
+            });
+            fixture.detectChanges();
+            httpMock
+                .expectOne(tableUrl('communities', 'page=1&page_size=10&filter_column=community&filter_value=7'))
+                .flush(buildTableData());
+            fixture.detectChanges();
+
+            const component = dataTablesComponent();
+            expect(component.filterColumn()).toBe('community');
+            expect(component.filterValue()).toBe('7');
+
+            component.onLinkedToPicked({ type: 'entities', id: 'ent-1' });
+            fixture.detectChanges();
+
+            expect(component.filterColumn()).toBeNull();
+            expect(component.filterValue()).toBeNull();
+            expect(component.linkedToType()).toBe('entities');
+            expect(component.linkedToId()).toBe('ent-1');
+
+            httpMock
+                .expectOne(tableUrl('communities', 'page=1&page_size=10&linked_to_type=entities&linked_to_id=ent-1'))
+                .flush(buildTableData());
+            fixture.detectChanges();
+        });
+
+        it('clears a linked-to filter when a jump filter is triggered', () => {
+            flushInit(summaryWithCommunities());
+
+            const component = dataTablesComponent();
+            component.onLinkedToPicked({ type: 'entities', id: 'ent-1' });
+            fixture.detectChanges();
+            httpMock
+                .expectOne(tableUrl('entities', 'page=1&page_size=10&linked_to_type=entities&linked_to_id=ent-1'))
+                .flush(buildTableData());
+            fixture.detectChanges();
+
+            expect(component.linkedToType()).toBe('entities');
+
+            component.onGridAction({ action: GRAPH_ACTION_VIEW_COMMUNITY, row: { community: 7 } });
+            fixture.detectChanges();
+
+            expect(component.linkedToType()).toBeNull();
+            expect(component.linkedToId()).toBeNull();
+            expect(component.filterColumn()).toBe('community');
+            expect(component.filterValue()).toBe('7');
+
+            httpMock
+                .expectOne(tableUrl('communities', 'page=1&page_size=10&filter_column=community&filter_value=7'))
+                .flush(buildTableData());
+            fixture.detectChanges();
+        });
+
+        it('preserves the linked-to filter when the user types in the search field', () => {
+            // Search and linked_to compose on the backend — typing must not blow the picked
+            // target away, otherwise the result set jumps back to the unfiltered table.
+            vi.useFakeTimers();
+            flushInit();
+
+            const component = dataTablesComponent();
+            component.onLinkedToPicked({ type: 'entities', id: 'ent-1' });
+            fixture.detectChanges();
+            httpMock
+                .expectOne(tableUrl('entities', 'page=1&page_size=10&linked_to_type=entities&linked_to_id=ent-1'))
+                .flush(buildTableData());
+            fixture.detectChanges();
+
+            const input = searchInput();
+            input.value = 'alpha';
+            input.dispatchEvent(new Event('input'));
+            vi.advanceTimersByTime(300);
+            fixture.detectChanges();
+
+            httpMock
+                .expectOne(
+                    tableUrl('entities', 'page=1&page_size=10&search=alpha&linked_to_type=entities&linked_to_id=ent-1')
+                )
+                .flush(buildTableData());
+            fixture.detectChanges();
+
+            expect(component.linkedToType()).toBe('entities');
+            expect(component.linkedToId()).toBe('ent-1');
+            vi.useRealTimers();
+        });
+
+        it('hides the picker and still renders the table when link-pairs fails', () => {
+            // Link-pairs is a nice-to-have; a 500 here must not prevent the table itself from loading.
+            httpMock.expectOne(SUMMARY_URL).flush(buildSummary());
+            httpMock
+                .expectOne(LINK_PAIRS_URL)
+                .flush({ message: 'boom' }, { status: 500, statusText: 'Internal Server Error' });
+            httpMock.expectOne(tableUrl('entities')).flush(buildTableData());
+            fixture.detectChanges();
+
+            expect(host.querySelector('app-graph-rag-linked-to-picker')).toBeNull();
+            expect(gridRows().length).toBe(2);
+        });
+
+        it('clears both jump and linked-to filters when another sidebar table is selected', () => {
+            flushInit(summaryWithCommunities());
+
+            const component = dataTablesComponent();
+            // Apply a jump filter, then a linked-to pick (which clears the jump), then set the jump again
+            // by poking the signals directly so both pairs are populated at once.
+            component.onLinkedToPicked({ type: 'entities', id: 'ent-1' });
+            fixture.detectChanges();
+            httpMock
+                .expectOne(tableUrl('entities', 'page=1&page_size=10&linked_to_type=entities&linked_to_id=ent-1'))
+                .flush(buildTableData());
+            fixture.detectChanges();
+            // Force both to be set to confirm onSelectTable clears both.
+            component.filterColumn.set('community');
+            component.filterValue.set('7');
+
+            component.onSelectTable({ name: 'relationships', label: 'Relationships', count: 12 });
+            fixture.detectChanges();
+
+            expect(component.filterColumn()).toBeNull();
+            expect(component.filterValue()).toBeNull();
+            expect(component.linkedToType()).toBeNull();
+            expect(component.linkedToId()).toBeNull();
+
+            httpMock.expectOne(tableUrl('relationships')).flush(buildTableData());
+            fixture.detectChanges();
         });
     });
 

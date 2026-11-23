@@ -79,17 +79,56 @@
                             <span class="data-tables__breadcrumb-separator">/</span>
                             <span class="data-tables__breadcrumb-current">Community {{ filterValue }}</span>
                         </h3>
+                    } @else if (linkedToBreadcrumb(); as linkedTo) {
+                        <h3 class="data-tables__title data-tables__title--breadcrumb">
+                            <button
+                                type="button"
+                                class="data-tables__breadcrumb-back"
+                                (click)="clearLinkedTo()"
+                            >
+                                <app-svg-icon
+                                    icon="arrow-left"
+                                    size="1rem"
+                                />
+                                <span class="data-tables__breadcrumb-label">{{ table.label }}</span>
+                            </button>
+                            <span class="data-tables__breadcrumb-separator">/</span>
+                            <span class="data-tables__breadcrumb-current">
+                                Linked to {{ linkedTo.typeLabel }} {{ linkedTo.id }}
+                            </span>
+                        </h3>
+                        <div class="data-tables__toolbar-actions">
+                            <div class="data-tables__search">
+                                <app-search
+                                    mod="small"
+                                    placeholder="Search..."
+                                    ariaLabel="Search table data"
+                                    [maxLength]="searchMaxLength"
+                                    [searchTerm]="searchTerm()"
+                                    (searchTermChange)="onSearchInput($event)"
+                                />
+                            </div>
+                        </div>
                     } @else {
                         <h3 class="data-tables__title">{{ table.label }}</h3>
-                        <div class="data-tables__search">
-                            <app-search
-                                mod="small"
-                                placeholder="Search..."
-                                ariaLabel="Search table data"
-                                [maxLength]="searchMaxLength"
-                                [searchTerm]="searchTerm()"
-                                (searchTermChange)="onSearchInput($event)"
-                            />
+                        <div class="data-tables__toolbar-actions">
+                            @if (allowedTargetsForActive().length > 0) {
+                                <app-graph-rag-linked-to-picker
+                                    [ragId]="ragId()"
+                                    [allowedTargets]="allowedTargetsForActive()"
+                                    (picked)="onLinkedToPicked($event)"
+                                />
+                            }
+                            <div class="data-tables__search">
+                                <app-search
+                                    mod="small"
+                                    placeholder="Search..."
+                                    ariaLabel="Search table data"
+                                    [maxLength]="searchMaxLength"
+                                    [searchTerm]="searchTerm()"
+                                    (searchTermChange)="onSearchInput($event)"
+                                />
+                            </div>
                         </div>
                     }
                 </div>

@@ -9,7 +9,7 @@ import {
     SelectComponent,
     SelectItem,
 } from '@shared/components';
-import { EMPTY, Subject } from 'rxjs';
+import { EMPTY, forkJoin, of, Subject } from 'rxjs';
 import { catchError, debounceTime, switchMap, tap } from 'rxjs/operators';
 
 import {
@@ -34,6 +34,17 @@ import {
     GRAPH_ACTION_VIEW_DOCUMENT,
     GRAPH_TABLE_COLUMNS,
 } from '../graph-rag-grid-table/graph-rag-table-columns';
+import {
+    GraphRagLinkedToPickerComponent,
+    LinkedToSelection,
+} from '../graph-rag-linked-to-picker/graph-rag-linked-to-picker.component';
+import {
+    LINKED_TO_LABEL_BY_TYPE,
+    LINKED_TO_TARGET_TYPES,
+    LinkedToTargetType,
+} from '../graph-rag-linked-to-picker/linked-to-targets';
+
+const LINKED_TO_TARGET_TYPE_SET = new Set<string>(LINKED_TO_TARGET_TYPES);
 
 /** `not-indexed`: the backend answered 409 `graph_not_indexed` — the graph exists but has not been indexed yet. */
 type ViewState = 'loading' | 'ready' | 'empty' | 'not-indexed' | 'error';
@@ -47,6 +58,7 @@ type ViewState = 'loading' | 'ready' | 'empty' | 'not-indexed' | 'error';
         AppSvgIconComponent,
         BlobPreviewComponent,
         GraphRagGridTableComponent,
+        GraphRagLinkedToPickerComponent,
         LoadingSpinnerComponent,
         SearchComponent,
         SelectComponent,
@@ -67,10 +79,34 @@ export class GraphRagDataTablesComponent implements OnInit {
     /** Exact-match filter set by a cross-table jump; cleared on table switch, page-size change, or new search. */
     readonly filterColumn = signal<string | null>(null);
     readonly filterValue = signal<string | null>(null);
+    /**
+     * "Linked to" cross-table filter set from the picker in the toolbar. Mutually exclusive with the jump
+     * filter above — either one is active at a time, never both. Cleared on table switch, new search or
+     * when the user opens the jump filter. The paired backend params go together or not at all.
+     */
+    readonly linkedToType = signal<LinkedToTargetType | null>(null);
+    readonly linkedToId = signal<string | null>(null);
     readonly viewState = signal<ViewState>('loading');
     readonly tableLoading = signal(false);
     readonly errorMessage = signal('');
     readonly summaryLoaded = signal(false);
+    /**
+     * Allowed linked-to pairs: each subject table maps to the sorted list of target tables the
+     * backend accepts for it. Fetched once on init; the backend caches the response for an hour.
+     */
+    readonly allowedPairs = signal<Record<string, string[]>>({});
+    /**
+     * Allowed target tables for the currently active subject table — passed to the picker. The
+     * backend response is `Record<string, string[]>`, so we narrow it to the `LinkedToTargetType`
+     * union on the way out by dropping any unknown names. A drift between frontend and backend
+     * table lists then only hides a tab instead of leaking an untyped string into the picker.
+     */
+    readonly allowedTargetsForActive = computed<readonly LinkedToTargetType[]>(() => {
+        const name = this.activeTable()?.name;
+        if (!name) return [];
+        const raw = this.allowedPairs()[name] ?? [];
+        return raw.filter((value): value is LinkedToTargetType => LINKED_TO_TARGET_TYPE_SET.has(value));
+    });
 
     /** The term as sent to the backend and highlighted in the cells; the field itself keeps what the user typed. */
     readonly trimmedSearchTerm = computed(() => this.searchTerm().trim());
@@ -79,6 +115,13 @@ export class GraphRagDataTablesComponent implements OnInit {
     readonly activeColumnDefs = signal<GraphGridColumnDef[]>([]);
     /** The jump filter's integer value, displayed in the breadcrumb when a cross-table jump is active. */
     readonly filterBreadcrumbValue = computed(() => this.filterValue());
+    /** The linked-to breadcrumb's human-readable target label; only present when both type and id are set. */
+    readonly linkedToBreadcrumb = computed(() => {
+        const type = this.linkedToType();
+        const id = this.linkedToId();
+        if (!type || !id) return null;
+        return { typeLabel: LINKED_TO_LABEL_BY_TYPE[type], id };
+    });
 
     // Document preview state
     readonly previewBlob = signal<Blob | null>(null);
@@ -197,6 +240,25 @@ export class GraphRagDataTablesComponent implements OnInit {
         this.loadTableData();
     }
 
+    /** Applies a "linked to" cross-table filter from the picker, replacing any active jump filter. */
+    onLinkedToPicked(selection: LinkedToSelection): void {
+        // Mutually exclusive with the jump filter — clear it when the user picks a linked-to row.
+        this.filterColumn.set(null);
+        this.filterValue.set(null);
+        this.linkedToType.set(selection.type);
+        this.linkedToId.set(selection.id);
+        this.page.set(1);
+        this.loadTableData();
+    }
+
+    /** Clears the linked-to filter while staying on the current tab. */
+    clearLinkedTo(): void {
+        this.linkedToType.set(null);
+        this.linkedToId.set(null);
+        this.page.set(1);
+        this.loadTableData();
+    }
+
     closePreview(): void {
         this.previewFileName.set('');
         this.previewBlob.set(null);
@@ -214,8 +276,11 @@ export class GraphRagDataTablesComponent implements OnInit {
                 tap((term) => {
                     this.searchTerm.set(term);
                     this.page.set(1);
-                    // Typing a new search abandons any cross-table jump filter — the two were never visible together.
-                    this.clearFilter();
+                    // Drop the cross-table jump filter on new input (the two are never shown
+                    // together), but keep any active linked-to filter — the linked-to
+                    // breadcrumb renders its own search so users can narrow by name within it.
+                    this.filterColumn.set(null);
+                    this.filterValue.set(null);
                 }),
                 takeUntilDestroyed(this.destroyRef)
             )
@@ -223,19 +288,28 @@ export class GraphRagDataTablesComponent implements OnInit {
     }
 
     private loadTableSummary(): void {
-        this.graphRagService
-            .getTableSummary(this.ragId())
+        // The summary drives the view; the link-pairs matrix only decides which linked-to tabs show.
+        // Running them in parallel saves a round-trip; a link-pairs failure must not block the view —
+        // the picker simply has no allowed targets and is hidden.
+        forkJoin({
+            summary: this.graphRagService.getTableSummary(this.ragId()),
+            pairs: this.graphRagService
+                .getTableLinkPairs()
+                // No allowed pairs → picker stays hidden; the rest of the view works.
+                .pipe(catchError(() => of<Record<string, string[]>>({}))),
+        })
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: (summaryItems: GraphTableSummaryItem[]) => {
+                next: ({ summary, pairs }) => {
                     this.summaryLoaded.set(true);
-                    this.tables.set(summaryItems);
-                    const firstWithData = summaryItems.find((item) => item.count > 0);
+                    this.allowedPairs.set(pairs);
+                    this.tables.set(summary);
+                    const firstWithData = summary.find((item) => item.count > 0);
                     if (firstWithData) {
                         this.activeTable.set(firstWithData);
                         this.loadTableData();
-                    } else if (summaryItems.length > 0) {
-                        this.activeTable.set(summaryItems[0]);
+                    } else if (summary.length > 0) {
+                        this.activeTable.set(summary[0]);
                         this.loadTableData();
                     } else {
                         this.viewState.set('empty');
@@ -281,15 +355,17 @@ export class GraphRagDataTablesComponent implements OnInit {
                     }
                     this.tableLoading.set(true);
                     return this.graphRagService
-                        .getTableData(
-                            this.ragId(),
-                            table.name,
-                            this.page(),
-                            this.pageSize(),
-                            this.trimmedSearchTerm() || undefined,
-                            this.filterColumn() ?? undefined,
-                            this.filterValue() ?? undefined
-                        )
+                        .getTableData({
+                            ragId: this.ragId(),
+                            tableName: table.name,
+                            page: this.page(),
+                            pageSize: this.pageSize(),
+                            search: this.trimmedSearchTerm() || undefined,
+                            filterColumn: this.filterColumn() ?? undefined,
+                            filterValue: this.filterValue() ?? undefined,
+                            linkedToType: this.linkedToType() ?? undefined,
+                            linkedToId: this.linkedToId() ?? undefined,
+                        })
                         .pipe(
                             tap((data) => this.applyTableData(table, data)),
                             catchError((error: HttpErrorResponse) => {
@@ -341,6 +417,9 @@ export class GraphRagDataTablesComponent implements OnInit {
         // (e.g. "7" would otherwise match 7, 17, 70, 700…).
         this.filterColumn.set(columnKey);
         this.filterValue.set(String(rawValue));
+        // The jump filter and the linked-to filter are mutually exclusive — opening one closes the other.
+        this.linkedToType.set(null);
+        this.linkedToId.set(null);
         this.loadTableData();
     }
 
@@ -359,8 +438,11 @@ export class GraphRagDataTablesComponent implements OnInit {
         this.loadSubject.next();
     }
 
+    /** Clears every exclusive filter (jump + linked-to). Called on table switch, new search, or clearing either. */
     private clearFilter(): void {
         this.filterColumn.set(null);
         this.filterValue.set(null);
+        this.linkedToType.set(null);
+        this.linkedToId.set(null);
     }
 }

@@ -12,6 +12,23 @@ import {
 import { GraphRagDocumentListResponse } from '../models/graph-rag-document.model';
 import { GraphTableData, GraphTableSummaryItem, GraphVisualizationData } from '../models/graph-visualization.model';
 
+/** Mirrors backend `GraphTableSearchScope`. `identity` narrows the `search` match to id + label columns. */
+export type GraphTableSearchScope = 'all' | 'identity';
+
+/** Options for `getTableData`. Only `ragId` and `tableName` are required; the rest default on the backend. */
+export interface GetTableDataOptions {
+    ragId: number;
+    tableName: string;
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    searchScope?: GraphTableSearchScope;
+    filterColumn?: string;
+    filterValue?: string;
+    linkedToType?: string;
+    linkedToId?: string;
+}
+
 @Injectable({
     providedIn: 'root',
 })
@@ -72,18 +89,27 @@ export class GraphRagService {
         return this.http.post<void>(`${this.apiUrl}${ragId}/documents/initialize/`, {});
     }
 
-    getTableData(
-        ragId: number,
-        tableName: string,
-        page = 1,
-        pageSize = 10,
-        search?: string,
-        filterColumn?: string,
-        filterValue?: string
-    ): Observable<GraphTableData> {
+    getTableData(options: GetTableDataOptions): Observable<GraphTableData> {
+        const {
+            ragId,
+            tableName,
+            page = 1,
+            pageSize = 10,
+            search,
+            searchScope,
+            filterColumn,
+            filterValue,
+            linkedToType,
+            linkedToId,
+        } = options;
         let params = new HttpParams().set('page', page.toString()).set('page_size', pageSize.toString());
         if (search) {
             params = params.set('search', search);
+        }
+        // Omit search_scope on the default so the request stays minimal; the backend treats a
+        // missing param as `all`, matching the main table's any-column match behaviour.
+        if (searchScope && searchScope !== 'all') {
+            params = params.set('search_scope', searchScope);
         }
         // filter_column and filter_value go together — the backend rejects a partial pair with 400.
         // Both have to be non-empty strings: the backend treats an empty filter_value as a literal
@@ -91,11 +117,25 @@ export class GraphRagService {
         if (filterColumn && filterValue) {
             params = params.set('filter_column', filterColumn).set('filter_value', filterValue);
         }
+        // linked_to_type and linked_to_id are a paired cross-table filter; the backend rejects a partial pair with 400.
+        if (linkedToType && linkedToId) {
+            params = params.set('linked_to_type', linkedToType).set('linked_to_id', linkedToId);
+        }
         return this.http.get<GraphTableData>(`${this.apiUrl}${ragId}/tables/${tableName}/`, { params });
     }
 
     getTableSummary(ragId: number): Observable<GraphTableSummaryItem[]> {
         return this.http.get<GraphTableSummaryItem[]>(`${this.apiUrl}${ragId}/table-summary/`);
+    }
+
+    /**
+     * Returns the allowed linked-to pairs as a dict keyed by subject-table name with the sorted list of
+     * allowed target-table names. The response is a static per-service matrix with no per-rag variance,
+     * so the URL carries no rag id. The server sets `Cache-Control: private, max-age=3600`, so the
+     * browser reuses it within the hour.
+     */
+    getTableLinkPairs(): Observable<Record<string, string[]>> {
+        return this.http.get<Record<string, string[]>>(`${this.apiUrl}table-link-pairs/`);
     }
 
     getVisualizationData(ragId: number, maxEntities?: number, search?: string): Observable<GraphVisualizationData> {
