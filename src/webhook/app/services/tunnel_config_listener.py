@@ -22,10 +22,12 @@ MAX_RECONNECT_DELAY_SECONDS = 30.0
 INITIAL_SYNC_REQUEST_RETRY_SECONDS = 2.0
 MAX_SYNC_REQUEST_RETRY_SECONDS = 30.0
 # How many config sets in a row may still have configs that failed to register before the
-# listener stops requesting the set again. A config that keeps failing has a missing or
-# undecryptable ngrok token, which only a change in Django heals, and Django publishes that
-# change by itself. Five sets span about 30s of the backoff above, longer than a brief Redis
-# failure that fails a localhost tunnel's registration.
+# listener stops requesting the set again. A config that keeps failing mostly has an ngrok
+# token that is missing, undecryptable or rejected by ngrok, which only a change in Django
+# heals, and Django publishes that change by itself; one failing because ngrok is
+# unreachable is retried by the periodic full sync below. Five sets span about 30s of the
+# backoff above, longer than a brief Redis failure that fails a localhost tunnel's
+# registration.
 MAX_CONSECUTIVE_SETS_WITH_FAILURES = 5
 # How long one read waits for a message. Bounds how late a subscription whose socket was
 # closed is noticed when no message is arriving to fail on. A half-open connection (the

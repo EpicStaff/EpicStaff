@@ -159,8 +159,9 @@ class TunnelRegistry:
 
         try:
             await tunnel.connect()
-        except asyncio.CancelledError:
-            # The new tunnel is not in the pool yet, so nothing else would ever disconnect it.
+        except BaseException:
+            # The new tunnel is not in the pool yet, so nothing else would ever disconnect it,
+            # and a failed ngrok start can leave its process and working directory behind.
             await asyncio.shield(tunnel.disconnect())
             raise
 

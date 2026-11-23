@@ -9,6 +9,7 @@ from src.shared.models import (
     WebhookConfigData,
     WebhookTriggerAuthData,
 )
+from pyngrok.exception import PyngrokNgrokError
 from redis.exceptions import ConnectionError as RedisConnectionError
 from transport_secrets import seal, sealing_cryptographer
 
@@ -160,6 +161,46 @@ async def test_an_undecryptable_ngrok_token_takes_the_restart_path_and_fails_lou
     assert any("Error registering" in line and "could not be decrypted" in line for line in logged)
     assert all(forged_token not in line for line in logged)
     assert ngrok_environment.ngrok.connect.call_count == 1
+
+
+async def test_an_ngrok_restart_with_a_token_ngrok_rejects_fails_closed(
+    tunnel_registry, redis_service, ngrok_environment
+):
+    """A revoked token decrypts fine; only ngrok refuses it, when the tunnel starts. The
+    config must then fail to register like an undecryptable one, not be served by a
+    tunnel that never came up while the closed tunnel's URL stays published."""
+    hook = NgrokConfigData(
+        name="hook", org_id=1, auth_token=seal("valid-token"), auth=_hook_auth("old-secret")
+    )
+    await tunnel_registry.register_many(WebhookConfigData(ngrok_configs=[hook]))
+    ngrok_environment.ngrok.connect.side_effect = PyngrokNgrokError(
+        "The ngrok process errored on start: authentication failed: The authtoken you "
+        "specified is properly formed, but it is invalid. ERR_NGROK_107"
+    )
+    revoked = hook.model_copy(
+        update={"auth_token": seal("revoked-token"), "auth": _hook_auth("new-secret")}
+    )
+    logged = []
+    sink_id = logger.add(logged.append, level="WARNING", format="{message}")
+    try:
+        with pytest.raises(ConfigsFailedToRegisterError) as raised:
+            await tunnel_registry.register_many(WebhookConfigData(ngrok_configs=[revoked]))
+        await tunnel_registry.republish_tunnel_urls()
+    finally:
+        logger.remove(sink_id)
+
+    assert raised.value.failed_ids == [hook.unique_id]
+    assert await _path_answer(tunnel_registry, "hook") == "unavailable"
+    assert await _published_tunnel_urls(redis_service) == {}
+    [failure] = [
+        message.record for message in logged if hook.unique_id in message.record["message"]
+    ]
+    assert failure["level"].name == "ERROR"
+    assert "ERR_NGROK_107" in failure["message"]
+    # Neither tunnel lingers: the old one is closed, and the failed start leaves no ngrok
+    # process or working directory behind.
+    ngrok_environment.ngrok.disconnect.assert_called_once()
+    assert list(ngrok_environment.temp_root.iterdir()) == []
 
 
 def _localhost_config(sealed_secret: str) -> LocalhostConfigData:

@@ -18,7 +18,7 @@ from transport_secrets import sealing_cryptographer, seal
 from app.core.settings import settings
 from app.main import lifespan
 from app.providers.tunnels import ngrok_working_directory as working_directory_module
-from app.providers.tunnels.ngrok_tunnel import NgrokTunnel
+from app.providers.tunnels.ngrok_tunnel import NgrokTunnel, NgrokTunnelStartError
 from app.providers.tunnels.ngrok_working_directory import (
     LOCK_FILE_NAME,
     UNLOCKED_WORKING_DIRECTORY_GRACE_SECONDS,
@@ -382,7 +382,8 @@ async def test_tunnel_holds_its_lock_across_retries_and_releases_it_on_disconnec
         ngrok_environment.ngrok.connect.return_value,
     ]
     provider = _make_provider()
-    await provider.connect()
+    with pytest.raises(NgrokTunnelStartError):
+        await provider.connect()
     working_directory = _started_working_directory(ngrok_environment)
     lock_path = os.path.join(working_directory, LOCK_FILE_NAME)
     assert not _lock_is_free(lock_path)
@@ -458,7 +459,8 @@ async def test_tunnel_refuses_to_run_when_its_directory_cannot_be_locked(
     )
     provider = _make_provider()
 
-    await provider.connect()
+    with pytest.raises(NgrokTunnelStartError):
+        await provider.connect()
 
     ngrok_environment.ngrok.connect.assert_not_called()
     assert list(ngrok_environment.temp_root.iterdir()) == []
