@@ -1,7 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from tables.views.dashboard_views import DashboardReportView
+from tables.views.dashboard_views import DashboardReportView, DashboardStatsView
 from tables.views.default_config import (
     DefaultModelsAPIView,
 )
@@ -245,6 +245,11 @@ urlpatterns = [
         "dashboard/report/",
         DashboardReportView.as_view({"get": "list"}),
         name="dashboard-report",
+    ),
+    path(
+        "dashboard/stats/",
+        DashboardStatsView.as_view({"get": "list"}),
+        name="dashboard-stats",
     ),
     path("default-models/", DefaultModelsAPIView.as_view(), name="default_models"),
     path(

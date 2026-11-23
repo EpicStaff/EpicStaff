@@ -9,6 +9,7 @@ from tables.models import (
     DashboardReport,
 )
 from tables.services.dashboard.schedule import next_build_at
+from tables.services.dashboard.stats import PERIOD_GROUPS
 
 TOTAL_FIELDS = (
     "agents",
@@ -102,3 +103,16 @@ class DashboardReportSerializer(serializers.ModelSerializer):
     def get_knowledge_usage(self, report):
         rows = DashboardKnowledgeUsage.objects.filter(org_id=report.org_id).order_by("rag_type")
         return DashboardKnowledgeUsageSerializer(rows, many=True).data
+
+
+class DashboardStatsQuerySerializer(serializers.Serializer):
+    to = serializers.DateField()
+    group = serializers.ChoiceField(choices=list(PERIOD_GROUPS))
+
+    def get_fields(self):
+        return {"from": serializers.DateField(), **super().get_fields()}
+
+    def validate(self, data):
+        if data["from"] > data["to"]:
+            raise serializers.ValidationError({"from": "Must not be after 'to'."})
+        return data
