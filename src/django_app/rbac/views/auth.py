@@ -4,7 +4,11 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
-from rest_framework.exceptions import AuthenticationFailed, UnsupportedMediaType
+from rest_framework.exceptions import (
+    AuthenticationFailed,
+    PermissionDenied,
+    UnsupportedMediaType,
+)
 from rest_framework.parsers import JSONParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -17,13 +21,17 @@ from user_audit.actor import Actor, actor_from_request
 from user_audit.background import run_off_request
 from user_audit.recorder import record_for_user_orgs
 from user_audit.targets import describe_user
+from utils.exception_handler import render_api_exception
 from utils.logger import logger
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
 from rbac.access.principals import user_api_key_org_id
 from rbac.exceptions import (
     FirstSetupDisabledError,
+    InvalidCredentialsError,
     InvalidRefreshTokenError,
+    RefreshTokenMissingError,
+    RefreshTokenRejectedError,
 )
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.identity.first_setup import FirstSetupService
@@ -211,6 +219,9 @@ class LogoutView(APIView):
         return response
 
 
+_USER_CONTEXT_REQUIRED = "This endpoint requires a user context."
+
+
 class SseTicketView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
@@ -220,10 +231,7 @@ class SseTicketView(APIView):
         if not getattr(request.user, "is_authenticated", False) or not hasattr(
             request.user, "email"
         ):
-            return Response(
-                {"detail": "This endpoint requires a user context."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            raise PermissionDenied(_USER_CONTEXT_REQUIRED)
         ticket, ttl = sse_ticket_service.issue(
             request.user, api_key_org_id=user_api_key_org_id(request)
         )
@@ -245,10 +253,7 @@ class WsTicketView(APIView):
         if not getattr(request.user, "is_authenticated", False) or not hasattr(
             request.user, "email"
         ):
-            return Response(
-                {"detail": "This endpoint requires a user context."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            raise PermissionDenied(_USER_CONTEXT_REQUIRED)
         ticket, ttl = ws_ticket_service.issue(
             request.user, api_key_org_id=user_api_key_org_id(request)
         )
@@ -319,10 +324,7 @@ class TokenIntrospectView(APIView):
     @extend_schema(**TOKEN_INTROSPECT_POST)
     def post(self, request):
         if not isinstance(request.auth, ApiKey) or request.auth.key_type != ApiKey.KeyType.SYSTEM:
-            return Response(
-                {"detail": "System API key required"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            raise PermissionDenied("System API key required")
 
         serializer = TokenIntrospectRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -367,10 +369,7 @@ class ApiKeyValidateView(APIView):
     def get(self, request):
         key = request.auth
         if not isinstance(key, ApiKey):
-            return Response(
-                {"detail": "API key required"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            raise PermissionDenied("API key required")
         return Response(
             {
                 "active": True,
@@ -400,14 +399,12 @@ class SwaggerTokenView(APIView):
         try:
             is_valid = serializer.is_valid()
         except AuthenticationFailed:
-            _log_failed_login(request, request.data.get("username"))
-            raise
+            # simplejwt's answer to a wrong password. Re-raised as is, DRF would turn it
+            # into a 403 here (this view has no authentication classes).
+            is_valid = False
         if not is_valid:
             _log_failed_login(request, request.data.get("username"))
-            return Response(
-                {"error": "Invalid credentials"},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            raise InvalidCredentialsError()
         return Response(
             {
                 "access_token": serializer.validated_data["access"],
@@ -546,10 +543,7 @@ class CookieTokenRefreshView(APIView):
     def post(self, request):
         refresh_value = get_refresh_from_cookie(request)
         if not refresh_value:
-            return Response(
-                {"detail": "No refresh token."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            raise RefreshTokenMissingError()
 
         # Read persistence intent before rotation so it survives on the new token.
         remember_me = read_remember_me_claim(refresh_value)
@@ -560,10 +554,10 @@ class CookieTokenRefreshView(APIView):
         # AuthenticationFailed: the token's user is deactivated. The cookie is
         # as dead as an expired one, so it is cleared the same way.
         except (TokenError, AuthenticationFailed):
-            response = Response(
-                {"detail": "Token is invalid or expired."},
-                status=status.HTTP_401_UNAUTHORIZED,
-            )
+            # Built here rather than raised: the answer must also clear the dead cookie,
+            # which the exception handler knows nothing about.
+            refusal = RefreshTokenRejectedError()
+            response = Response(render_api_exception(refusal), status=refusal.status_code)
             clear_refresh_cookie(response)
             return response
 

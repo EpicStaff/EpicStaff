@@ -34,6 +34,7 @@ from tests.plugins_tests.login_helpers import (
     redirect_parts,
     session_cookie,
 )
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("login_platform")]
 
@@ -333,8 +334,8 @@ def test_a_malformed_request_is_refused_with_json_never_a_redirect(client, membe
 
     assert response.status_code == 400
     body = response.json()
-    assert body["code"] == "invalid_authorize_request"
-    assert [error["loc"] for error in body["errors"]] == [loc]
+    assert body["errors"][0]["code"] == "invalid_authorize_request"
+    assert [error["attr"] for error in attr_details(body)] == [loc]
     assert "Location" not in response.headers
     _assert_no_store_and_no_cookie(response)
 
@@ -342,7 +343,7 @@ def test_a_malformed_request_is_refused_with_json_never_a_redirect(client, membe
 def test_every_problem_is_reported_at_once(client, weather_in_acme):
     response = authorize(client, plugin=None, state="x", redirect_uri="https://evil.example")
 
-    assert sorted(error["loc"] for error in response.json()["errors"]) == ["plugin", "redirect_uri", "state"]
+    assert sorted(error["attr"] for error in attr_details(response.json())) == ["plugin", "redirect_uri", "state"]
 
 
 def test_the_largest_organization_id_is_accepted(client, member_only, weather_in_acme):
@@ -357,7 +358,7 @@ def test_a_plugin_one_cannot_log_in_to_is_not_found(client, member_only, running
     response = authorize(client, cookie=session_cookie(member_only), plugin=identifier)
 
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_not_found"
     _assert_no_store_and_no_cookie(response)
 
 

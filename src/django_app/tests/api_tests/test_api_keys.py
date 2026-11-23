@@ -17,6 +17,7 @@ from rbac.identity.api_keys.generator import (
 )
 from rbac.identity.api_keys.system_key import SystemKeyService
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 PROFILE_URL = "/api/profile/"
 INTROSPECT_URL = "/api/auth/introspect/"
@@ -285,7 +286,7 @@ class TestSelfServiceApiKeys:
 
         assert resp.status_code == expected_status
         if expected_status == 400:
-            assert resp.json()["code"] == "api_key_limit_exceeded"
+            assert resp.json()["errors"][0]["code"] == "api_key_limit_exceeded"
 
     def test_list_own_keys_only(self, auth_client, superadmin_user, default_org, issue_api_key):
         issue_api_key(user=superadmin_user, name="not-mine")
@@ -310,8 +311,8 @@ class TestSelfServiceApiKeys:
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST
         body = resp.json()
-        assert body["code"] == "invalid"
-        assert [(error["field"], error["reason"]) for error in body["errors"]] == [
+        assert body["errors"][0]["code"] == "invalid"
+        assert [(error["attr"], error["detail"]) for error in body["errors"]] == [
             ("org_id", reason)
         ]
 
@@ -319,7 +320,7 @@ class TestSelfServiceApiKeys:
         resp = auth_client.post(PROFILE_KEYS_URL, data={"name": "k", "org_id": acme.id}, format="json")
 
         assert resp.status_code == status.HTTP_403_FORBIDDEN
-        assert resp.json()["code"] == "org_membership_required"
+        assert resp.json()["errors"][0]["code"] == "org_membership_required"
         assert not ApiKey.objects.filter(created_by=regular_user).exists()
 
     def test_member_cannot_create_key_in_inactive_org(self, auth_client, regular_user, default_org):
@@ -329,7 +330,7 @@ class TestSelfServiceApiKeys:
         resp = auth_client.post(PROFILE_KEYS_URL, data={"name": "k", "org_id": default_org.id}, format="json")
 
         assert resp.status_code == status.HTTP_403_FORBIDDEN
-        assert resp.json()["code"] == "org_membership_required"
+        assert resp.json()["errors"][0]["code"] == "org_membership_required"
         assert not ApiKey.objects.filter(created_by=regular_user).exists()
 
     @pytest.mark.parametrize(("org_is_active", "expected_status"), [(True, 201), (False, 403)], ids=["active", "inactive"])
@@ -352,7 +353,7 @@ class TestSelfServiceApiKeys:
         resp = superadmin_client.post(PROFILE_KEYS_URL, data={"name": "k", "org_id": missing_org_id}, format="json")
 
         assert resp.status_code == status.HTTP_404_NOT_FOUND
-        assert resp.json()["code"] == "organization_not_found"
+        assert resp.json()["errors"][0]["code"] == "organization_not_found"
 
     def test_cap_is_five_per_org(self, auth_client, regular_user, default_org, acme, role_member, issue_api_key):
         OrganizationUser.objects.create(user=regular_user, org=acme, role=role_member)
@@ -367,7 +368,7 @@ class TestSelfServiceApiKeys:
         )
 
         assert sixth_in_same_org.status_code == status.HTTP_400_BAD_REQUEST
-        assert sixth_in_same_org.json()["code"] == "api_key_limit_exceeded"
+        assert sixth_in_same_org.json()["errors"][0]["code"] == "api_key_limit_exceeded"
         assert first_in_other_org.status_code == status.HTTP_201_CREATED
 
     def test_list_shows_org_of_each_key(
@@ -464,7 +465,7 @@ def test_key_of_deactivated_owner_is_rejected(api_client, regular_user, issue_ap
     resp = api_client.get(PROFILE_URL)
 
     assert resp.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "inactive" in resp.json()["message"].lower()
+    assert "inactive" in error_text(resp.json()).lower()
     key.refresh_from_db()
     assert key.last_used_at is None
 

@@ -393,10 +393,8 @@ def test_swagger_token_spraying_from_one_ip_is_throttled(api_client):
             url, data={"username": email, "password": SPRAYED_PASSWORD}, format="json"
         )
 
-    # Wrong credentials currently answer 403 here, not the 401 the view
-    # intends; that is a separate defect, so only "not throttled" is asserted.
     for index in range(3):
-        assert swagger_login(f"victim{index}@example.com").status_code != 429
+        assert swagger_login(f"victim{index}@example.com").status_code == 401
 
     r = swagger_login("victim-next@example.com")
 

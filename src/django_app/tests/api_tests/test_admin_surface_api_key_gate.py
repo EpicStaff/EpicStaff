@@ -73,8 +73,8 @@ def _assert_forbidden(response, expected_message):
     (door gate, IsSuperadmin) carries a different message."""
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
     body = response.json()
-    assert body["code"] == "permission_denied"
-    assert body["message"] == expected_message
+    assert body["errors"][0]["code"] == "permission_denied"
+    assert body["errors"][0]["detail"] == expected_message
 
 
 @pytest.fixture

@@ -57,7 +57,7 @@ def test_superadmin_key_of_deactivated_org_is_401(
     response = _call(client, method, url, acme_graph)
 
     assert response.status_code == 401, response.content
-    assert response.json()["message"] == DEAD_KEY_MESSAGE
+    assert response.json()["errors"][0]["detail"] == DEAD_KEY_MESSAGE
 
 
 @pytest.mark.django_db
@@ -81,7 +81,7 @@ def test_key_of_owner_whose_membership_was_deleted_is_401(issue_api_key, member_
     response = client.get("/api/profile/")
 
     assert response.status_code == 401, response.content
-    assert response.json()["message"] == DEAD_KEY_MESSAGE
+    assert response.json()["errors"][0]["detail"] == DEAD_KEY_MESSAGE
 
 
 @pytest.mark.django_db

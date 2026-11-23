@@ -217,9 +217,9 @@ def test_protected_route_without_token_returns_401_project_envelope(api_client):
     r = api_client.get("/api/profile/")
     assert r.status_code == 401
     body = r.json()
-    assert body["status_code"] == 401
-    assert "code" in body
-    assert "message" in body
+    assert body["type"] == "client_error"
+    assert [item["code"] for item in body["errors"]] == ["not_authenticated"]
+    assert body["errors"][0]["detail"]
 
 
 # /me/-specific tests removed in Story 6 — the endpoint was deleted in favor
@@ -281,7 +281,7 @@ def test_login_refuses_a_body_that_is_not_json_and_sets_no_cookie(api_client, re
     response = send(api_client, reverse("login"), {"email": regular_user.email, "password": "UserStrongPass123!"})
 
     assert response.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
-    assert response.json()["code"] == "unsupported_media_type"
+    assert response.json()["errors"][0]["code"] == "unsupported_media_type"
     assert not response.cookies
     assert "access" not in response.json()
 
@@ -293,7 +293,7 @@ def test_first_setup_refuses_a_body_that_is_not_json_and_creates_nobody(api_clie
     response = send(api_client, reverse("first_setup"), {"email": "first@example.com", "password": "StrongPass123!"})
 
     assert response.status_code == status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
-    assert response.json()["code"] == "unsupported_media_type"
+    assert response.json()["errors"][0]["code"] == "unsupported_media_type"
     assert not response.cookies
     assert not get_user_model().objects.exists()
 
@@ -370,7 +370,7 @@ def test_logout_rejects_malformed_refresh(api_client, jwt_tokens):
     api_client.cookies[refresh_cookie_name()] = "not-a-real-token"
     r = api_client.post(reverse("logout"))
     assert r.status_code == 400
-    assert r.json()["code"] == "invalid_or_expired_refresh"
+    assert r.json()["errors"][0]["code"] == "invalid_or_expired_refresh"
 
 
 # ---------------- Throttling ----------------
@@ -441,6 +441,46 @@ def test_swagger_token_throttle_counts_the_username_whatever_email_is_sent(
         assert guess(index).status_code != 429
 
     assert guess(5).status_code == 429
+
+
+@pytest.mark.django_db
+@pytest.mark.urls("tests.urls_with_api_docs")
+def test_swagger_token_without_a_password_is_401_invalid_credentials(api_client, regular_user):
+    cache.clear()
+
+    response = api_client.post(
+        reverse("swagger_token"), data={"username": regular_user.email}, format="json"
+    )
+
+    assert response.status_code == 401, response.content
+    assert response.json() == {
+        "type": "client_error",
+        "errors": [
+            {
+                "code": "invalid_credentials",
+                "detail": "Invalid credentials",
+                "attr": None,
+                "context": None,
+            }
+        ],
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.urls("tests.urls_with_api_docs")
+def test_swagger_token_with_a_wrong_password_is_401_invalid_credentials(api_client, regular_user):
+    cache.clear()
+    wrong_password = "Wrong-Swagger-Pass-917!"
+
+    response = api_client.post(
+        reverse("swagger_token"),
+        data={"username": regular_user.email, "password": wrong_password},
+        format="json",
+    )
+
+    assert response.status_code == 401, response.content
+    assert [error["code"] for error in response.json()["errors"]] == ["invalid_credentials"]
+    assert wrong_password.encode() not in response.content
 
 
 @pytest.mark.django_db
@@ -560,7 +600,7 @@ def test_logout_rejects_refresh_owned_by_another_user(
     api_client.cookies[refresh_cookie_name()] = other_refresh
     r = api_client.post(reverse("logout"))
     assert r.status_code == 400
-    assert r.json()["code"] == "invalid_or_expired_refresh"
+    assert r.json()["errors"][0]["code"] == "invalid_or_expired_refresh"
 
     # The other user's refresh token must still work afterwards.
     api_client.credentials()
@@ -625,7 +665,7 @@ def test_first_setup_rejects_invalid_display_name(api_client, display_name, reas
     )
     assert r.status_code == 400
     assert r.json()["errors"] == [
-        {"field": "display_name", "value": display_name, "reason": reason}
+        {"code": "invalid", "detail": reason, "attr": "display_name", "context": None}
     ]
     assert not get_user_model().objects.exists()
 
@@ -642,7 +682,8 @@ def test_first_setup_rejects_invalid_display_name(api_client, display_name, reas
         ({"email": "not-an-email", "password": "StrongPass123!", "display_name": "   "}, {"email", "display_name"}, None),
         # UserAttributeSimilarityValidator used to pass silently (validate_password had no user=).
         ({"email": "john@acme.com", "password": "john@acme.com"}, {"password"}, "similar"),
-        ({"email": "a@b.co", "password": "password"}, {"password"}, None),
+        # Not "password": that is also the field name, so it is in every body.
+        ({"email": "a@b.co", "password": "password1"}, {"password"}, None),
         ({}, {"email", "password"}, None),
     ],
     ids=["email-and-weak-password", "email-and-display-name", "password-like-email", "common-password", "nothing"],
@@ -653,15 +694,16 @@ def test_first_setup_reports_every_invalid_field_at_once_without_echoing_the_pas
     r = api_client.post(reverse("first_setup"), data=body, format="json")
 
     assert r.status_code == 400
-    assert r.json()["code"] == "invalid"
+    assert r.json()["errors"][0]["code"] == "invalid"
     errors = r.json()["errors"]
-    assert fields <= {error["field"] for error in errors}
-    password_errors = [error for error in errors if error["field"] == "password"]
-    assert all(error["value"] == "***" for error in password_errors)
+    assert fields <= {error["attr"] for error in errors}
+    password_errors = [error for error in errors if error["attr"] == "password"]
+    if body.get("password"):
+        assert body["password"].encode() not in r.content
     if body.get("password") == "12345":
         assert len(password_errors) >= 2
     if password_reason:
-        assert any(password_reason in error["reason"].lower() for error in password_errors)
+        assert any(password_reason in error["detail"].lower() for error in password_errors)
     assert not get_user_model().objects.exists()
 
 
@@ -670,12 +712,12 @@ def test_login_missing_fields_returns_structured_errors(api_client):
     r = api_client.post(reverse("login"), data={}, format="json")
     assert r.status_code == 400
     body = r.json()
-    fields = {e["field"] for e in body["errors"]}
+    fields = {e["attr"] for e in body["errors"]}
     assert {"email", "password"} <= fields
 
 
 @pytest.mark.django_db
-def test_login_wrong_credentials_has_no_errors_array(api_client, regular_user):
+def test_login_wrong_credentials_names_no_field(api_client, regular_user):
     """User-enumeration guard: wrong creds must not disclose which field failed."""
     r = api_client.post(
         reverse("login"),
@@ -683,7 +725,7 @@ def test_login_wrong_credentials_has_no_errors_array(api_client, regular_user):
         format="json",
     )
     assert r.status_code == 401
-    assert "errors" not in r.json()
+    assert [item["attr"] for item in r.json()["errors"]] == [None]
 
 
 # ---------------- Password recovery: request ----------------
@@ -1021,7 +1063,7 @@ def test_password_reset_confirm_with_an_unusable_token_gets_one_opaque_answer(
     )
 
     assert r.status_code == 400
-    assert r.json()["code"] == OPAQUE_RESET_CODE
+    assert r.json()["errors"][0]["code"] == OPAQUE_RESET_CODE
     regular_user.refresh_from_db()
     assert not regular_user.check_password("AnotherPass456!")
 
@@ -1047,8 +1089,9 @@ def test_password_reset_confirm_field_errors_keep_the_grant_and_redact_the_passw
 
     assert r.status_code == 400
     errors = r.json()["errors"]
-    assert fields <= {error["field"] for error in errors}
-    assert all(error["value"] == "***" for error in errors if error["field"] == "new_password")
+    assert fields <= {error["attr"] for error in errors}
+    if body.get("new_password"):
+        assert body["new_password"].encode() not in r.content
     # A rejected request must leave the grant spendable and the password unchanged.
     assert PasswordResetToken.objects.filter(pk=token.pk).exists()
     regular_user.refresh_from_db()
@@ -1126,9 +1169,9 @@ def test_admin_password_reset_refusals_leave_the_password_alone(
 
     assert r.status_code == status_code
     if check and check[0] == "code":
-        assert r.json()["code"] == check[1]
+        assert r.json()["errors"][0]["code"] == check[1]
     elif check:
-        assert check[1] in {error["field"] for error in r.json()["errors"]}
+        assert check[1] in {error["attr"] for error in r.json()["errors"]}
     regular_user.refresh_from_db()
     assert regular_user.check_password("UserStrongPass123!")
 
@@ -1206,9 +1249,9 @@ def test_first_setup_rejects_a_password_outside_the_alphabet(api_client):
 
     assert r.status_code == 400
     assert any(
-        "only Latin letters, digits, and standard ASCII symbols" in error["reason"]
+        "only Latin letters, digits, and standard ASCII symbols" in error["detail"]
         for error in r.json()["errors"]
-        if error["field"] == "password"
+        if error["attr"] == "password"
     )
 
 
@@ -1224,9 +1267,9 @@ def test_password_reset_confirm_rejects_a_password_outside_the_alphabet(api_clie
 
     assert r.status_code == 400
     assert any(
-        "only Latin letters, digits, and standard ASCII symbols" in error["reason"]
+        "only Latin letters, digits, and standard ASCII symbols" in error["detail"]
         for error in r.json()["errors"]
-        if error["field"] == "new_password"
+        if error["attr"] == "new_password"
     )
 
 
@@ -1257,10 +1300,10 @@ def test_password_reset_request_with_an_invalid_email_is_a_field_error(api_clien
     r = api_client.post(reverse("password_reset_request"), data=body, format="json")
 
     assert r.status_code == 400, r.content
-    email_errors = [error for error in r.json()["errors"] if error["field"] == "email"]
+    email_errors = [error for error in r.json()["errors"] if error["attr"] == "email"]
     assert email_errors
     if reason:
-        assert any(reason in error["reason"].lower() for error in email_errors)
+        assert any(reason in error["detail"].lower() for error in email_errors)
 
 
 @pytest.mark.django_db
@@ -1271,9 +1314,9 @@ def test_first_setup_rejects_an_email_with_whitespace(api_client):
 
     assert r.status_code == 400
     assert any(
-        "must not contain whitespace" in error["reason"].lower()
+        "must not contain whitespace" in error["detail"].lower()
         for error in r.json()["errors"]
-        if error["field"] == "email"
+        if error["attr"] == "email"
     )
 
 

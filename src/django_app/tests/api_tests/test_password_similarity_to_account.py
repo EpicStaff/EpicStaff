@@ -56,8 +56,8 @@ def superadmin_client(superadmin_user):
 def _assert_rejected_for_similarity(response):
     assert response.status_code == 400
     body = response.json()
-    assert body["code"] == "invalid"
-    assert {"field": "new_password", "value": "***", "reason": SIMILARITY_REASON} in body[
+    assert body["errors"][0]["code"] == "invalid"
+    assert {"code": "invalid", "detail": SIMILARITY_REASON, "attr": "new_password", "context": None} in body[
         "errors"
     ]
 
