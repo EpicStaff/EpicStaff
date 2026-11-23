@@ -1114,5 +1114,45 @@ class MemoryFitTests(unittest.TestCase):
         self.assertRegex(envtool.memory_note(fit), r"^Memory limits: \d+\.\d GB for containers, 6\.4 GB kept free for the system \(64 GB detected\)\.$")
 
 
+def humanize_mb(value) -> int:
+    text = str(value).strip().lower()
+    if text[-1] in "kmg":  # Docker writes 2g / 128m; humanize wants gb / mb
+        text += "b"
+    return envtool.humanize.to_byte_size(text) // 2**20
+
+
+class ComposeLimitTests(unittest.TestCase):
+    def setUp(self):
+        self.compose = yaml.safe_load((envtool.BASE_DIR / "docker-compose.yaml").read_text())["services"]
+        self.defaults = envtool.target_defaults(real_schema(), "prod")
+
+    def test_every_service_has_a_memory_and_a_process_limit(self):
+        for name, service in self.compose.items():
+            self.assertIn("mem_limit", service, name)
+            self.assertIn("pids_limit", service, name)
+
+    def test_sized_services_read_their_variable(self):
+        for limit in envtool.MEMORY_LIMITS:
+            for service in limit.services:
+                self.assertEqual(self.compose[service]["mem_limit"], f"${{{limit.variable}:?}}")
+            self.assertEqual(humanize_mb(self.defaults[limit.variable]), limit.default_mb, limit.variable)
+
+    def test_fixed_services_match_the_table(self):
+        for service, (memory_mb, pids, _) in envtool.FIXED_LIMITS.items():
+            self.assertEqual(humanize_mb(self.compose[service]["mem_limit"]), memory_mb, service)
+            self.assertEqual(self.compose[service]["pids_limit"], pids, service)
+
+    def test_cpu_variables_default_to_no_cap(self):
+        for name, value in self.defaults.items():
+            if name.endswith("_CPUS") and name != "ES_PLUGINS_CPUS":
+                self.assertEqual(str(value), "0", name)
+
+    def test_large_size_django_memory_matches_the_schema_default(self):
+        self.assertEqual(
+            envtool.worker_memory_values(envtool.SERVER_SIZE_VALUES["large"])["DJANGO_MEMORY"],
+            f"{humanize_mb(self.defaults['DJANGO_MEMORY'])}m",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
