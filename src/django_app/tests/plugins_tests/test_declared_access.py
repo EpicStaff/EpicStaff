@@ -35,7 +35,7 @@ def weather_client_without_use(backend_plugin, service_account_platform, service
 
 def _assert_denied(response, code="permission_denied"):
     assert response.status_code == 403, response.content
-    assert response.json()["code"] == code
+    assert response.json()["errors"][0]["code"] == code
 
 
 # ---- flows ----
@@ -172,9 +172,9 @@ def test_a_non_declarable_resource_type_is_refused_at_upload(installation, super
     with pytest.raises(InvalidPluginError) as raised:
         installation.upload(upload_file(data), len(data), superadmin)
 
-    assert raised.value.errors == [
-        {"loc": "manifest.access[0].resource_type", "message": f"'{resource_type}' cannot be declared by a plugin"}
-    ]
+    assert raised.value.detail == {
+        "manifest.access[0].resource_type": [f"'{resource_type}' cannot be declared by a plugin"]
+    }
 
 
 def test_weather_s_access_is_accepted_at_upload(installation, superadmin):

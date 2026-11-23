@@ -120,7 +120,7 @@ def test_default_models_write_rejects_other_orgs_config(client_org_admin, org_a,
     )
 
     assert resp.status_code == 400, resp.data
-    assert "agent_llm_config" in resp.data
+    assert [item["attr"] for item in resp.data["errors"]] == ["agent_llm_config"]
     assert DefaultModels.load_for_org(org_a.id).agent_llm_config_id is None
 
 

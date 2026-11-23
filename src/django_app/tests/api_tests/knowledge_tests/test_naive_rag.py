@@ -18,6 +18,7 @@ from tables.models.knowledge_models import (
     NaiveRagDocumentConfig,
     SourceCollection,
 )
+from tests.error_envelope import attr_details, error_codes
 
 pytestmark = pytest.mark.django_db
 
@@ -87,16 +88,28 @@ def test_posting_an_embedder_creates_then_switches_the_collections_rag(
     assert NaiveRag.objects.filter(base_rag_type__source_collection=source_collection).count() == 1
 
 
-@pytest.mark.parametrize("missing", ["collection", "embedder"])
-def test_creating_a_rag_for_something_missing_is_404(auth_client, source_collection, test_embedding_config, missing):
-    collection_id = MISSING if missing == "collection" else source_collection.collection_id
-    embedder_id = MISSING if missing == "embedder" else test_embedding_config.pk
-
+def test_creating_a_rag_for_a_missing_collection_is_404(auth_client, test_embedding_config):
     response = auth_client.post(
-        reverse("naive-rag-collection", args=[collection_id]), {"embedder_id": embedder_id}, format="json"
+        reverse("naive-rag-collection", args=[MISSING]), {"embedder_id": test_embedding_config.pk}, format="json"
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert error_codes(response.json()) == ["not_found"]
+    assert not NaiveRag.objects.exists()
+
+
+def test_creating_a_rag_with_a_missing_embedder_is_400_on_that_field(auth_client, source_collection):
+    response = auth_client.post(
+        reverse("naive-rag-collection", args=[source_collection.collection_id]),
+        {"embedder_id": MISSING},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert error_codes(response.json()) == ["embedder_not_found"]
+    assert attr_details(response.json()) == [
+        {"attr": "embedder_id", "detail": f"Embedder with id {MISSING} not found"}
+    ]
     assert not NaiveRag.objects.exists()
 
 
@@ -108,6 +121,7 @@ def test_the_rag_is_read_by_collection_and_by_id(auth_client, source_collection,
     assert by_collection.status_code == detail.status_code == status.HTTP_200_OK
     assert by_collection.json()["naive_rag_id"] == detail.json()["naive_rag_id"] == naive_rag.naive_rag_id
     assert none_yet.status_code == status.HTTP_404_NOT_FOUND
+    assert error_codes(none_yet.json()) == ["naive_rag_not_found"]
 
 
 def test_deleting_the_rag_removes_its_base_type(auth_client, naive_rag):
@@ -197,6 +211,7 @@ def test_a_config_outside_this_rag_is_404_and_untouched(auth_client, naive_rag, 
     response = getattr(auth_client, method)(_config_url(naive_rag, config_id), {"chunk_size": 3000}, format="json")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert error_codes(response.json()) == ["document_config_not_found"]
     foreign_config.refresh_from_db()
     assert foreign_config.chunk_size == 1000
 
@@ -240,8 +255,8 @@ def test_bulk_update_applies_valid_items_and_reports_the_invalid_ones_with_207(
     [
         ([{"id": "own", "chunk_size": 5}], status.HTTP_400_BAD_REQUEST),
         ([{"id": "own"}], status.HTTP_400_BAD_REQUEST),
-        ([{"id": "own", "chunk_size": 3000}, {"id": MISSING, "chunk_size": 3000}], status.HTTP_404_NOT_FOUND),
-        ([{"id": "foreign", "chunk_size": 3000}], status.HTTP_404_NOT_FOUND),
+        ([{"id": "own", "chunk_size": 3000}, {"id": MISSING, "chunk_size": 3000}], status.HTTP_400_BAD_REQUEST),
+        ([{"id": "foreign", "chunk_size": 3000}], status.HTTP_400_BAD_REQUEST),
     ],
     ids=["invalid-size", "nothing-to-update", "unknown-id", "another-rags-config"],
 )
