@@ -62,3 +62,26 @@ def test_cdt_explain_returns_invalid_config_error(org, model):
 
     assert excinfo.value.status_code == 400
     assert "extra_headers" in str(excinfo.value.detail)
+
+
+@pytest.mark.django_db
+def test_cdt_explain_refuses_a_config_needing_review_as_an_invalid_config(org, model):
+    graph = Graph.objects.create(name="cdt", org=org)
+    node = ClassificationDecisionTableNode.objects.create(graph=graph, node_name="cdt_node")
+    # A setting no catalog model takes, as one a catalog update dropped would be.
+    config = LLMConfig.objects.create(
+        custom_name="stale", model=model, org=org, parameters={"epicstaff_dropped_setting": 1}
+    )
+
+    with pytest.raises(CdtExplainLLMConfigInvalidError) as excinfo:
+        CdtExplainService().explain(
+            pk=node.pk,
+            org_id=org.id,
+            llm_config_id=config.id,
+            table={},
+            blocks=[{"id": "block-1"}],
+            user=None,
+        )
+
+    assert excinfo.value.status_code == 400
+    assert "epicstaff_dropped_setting" in str(excinfo.value.detail)

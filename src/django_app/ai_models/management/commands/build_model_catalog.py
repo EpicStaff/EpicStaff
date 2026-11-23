@@ -59,7 +59,11 @@ class Command(BaseCommand):
         # The catalog must be reproducible from the pinned LiteLLM release, so its model
         # map must be the one bundled with it, never one fetched from upstream.
         adapter = LiteLLMAdapter()
-        if not adapter.uses_bundled_model_map():
+        try:
+            uses_bundled_model_map = adapter.uses_bundled_model_map()
+        except CatalogSourceError as error:
+            raise CommandError(str(error)) from error
+        if not uses_bundled_model_map:
             raise CommandError(
                 "Set LITELLM_LOCAL_MODEL_COST_MAP=True: without it LiteLLM fetches its "
                 "model map from GitHub, and the catalog would not match the pinned release."

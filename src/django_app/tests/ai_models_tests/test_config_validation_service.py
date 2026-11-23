@@ -256,6 +256,13 @@ def test_review_reasons_are_empty_for_a_matching_config(service):
     assert service.review_reasons(LLM, "openai", "gpt-4o", {"temperature": 0.3}, {}) == []
 
 
+def test_review_reasons_skip_a_setting_stored_as_null_as_the_run_does(service):
+    # claude-sonnet does not take frequency_penalty; a null one is "not set" and never sent.
+    assert service.review_reasons(
+        LLM, "anthropic", "claude-sonnet", {"temperature": 0.3, "frequency_penalty": None}, {}
+    ) == []
+
+
 def test_review_reasons_name_a_missing_required_connection_field(service):
     assert service.review_reasons(LLM, "bedrock", "anthropic.claude-v2", {}, {}) == [
         "aws_region_name: This field is required."

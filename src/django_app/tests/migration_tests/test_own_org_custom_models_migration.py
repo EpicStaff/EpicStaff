@@ -33,8 +33,9 @@ class _LegacyShape:
         self.provider = self._get("ai_models", "Provider").objects.get_or_create(name="openai")[0]
 
     def llm_model(self, name, org, **fields):
+        fields.setdefault("llm_provider", self.provider)
         return self._get("ai_models", "LLMModel").objects.create(
-            name=name, llm_provider=self.provider, org=org, is_custom=org is not None, **fields
+            name=name, org=org, is_custom=org is not None, **fields
         )
 
     def llm_config(self, name, model, org):
@@ -113,6 +114,44 @@ def test_configs_move_to_a_custom_model_row_of_their_own_org():
             beta_embed.is_custom,
         ) == (beta.pk, "acme-embed", shape.provider.pk, True)
         assert model_of("acme_embedding").pk == acme_embed.pk
+    finally:
+        _migrate_to_leaves()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_configs_on_a_custom_model_without_provider_move_to_one_row_of_their_own_org():
+    # A null provider is outside the unique constraint, so the row is found by a filter.
+    try:
+        shape = _LegacyShape(_migrate(BEFORE))
+        acme, beta = shape.acme, shape.beta
+        acme_unrouted = shape.llm_model("acme-unrouted", acme, llm_provider=None)
+        acme_shared = shape.llm_model("unrouted-shared", acme, llm_provider=None)
+        beta_shared = shape.llm_model("unrouted-shared", beta, llm_provider=None)
+        configs = {
+            "beta_first": shape.llm_config("Beta first", acme_unrouted, beta),
+            "beta_second": shape.llm_config("Beta second", acme_unrouted, beta),
+            "beta_reuses_own_row": shape.llm_config("Beta reuse", acme_shared, beta),
+        }
+        config_ids = {name: config.pk for name, config in configs.items()}
+
+        owned_apps = _migrate(OWNED)
+
+        def model_of(name):
+            return owned_apps.get_model("ai_models", "LLMConfig").objects.get(
+                pk=config_ids[name]
+            ).model
+
+        llm_models = owned_apps.get_model("ai_models", "LLMModel").objects
+        beta_unrouted = model_of("beta_first")
+        assert (beta_unrouted.org_id, beta_unrouted.name, beta_unrouted.llm_provider_id) == (
+            beta.pk,
+            "acme-unrouted",
+            None,
+        )
+        assert model_of("beta_second").pk == beta_unrouted.pk
+        assert llm_models.filter(name="acme-unrouted").count() == 2
+        assert model_of("beta_reuses_own_row").pk == beta_shared.pk
+        assert llm_models.filter(name="unrouted-shared").count() == 2
     finally:
         _migrate_to_leaves()
 

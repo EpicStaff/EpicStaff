@@ -17,6 +17,7 @@ from tables.exceptions import (
     CdtExplainLLMConfigNotFoundError,
     CdtExplainUpstreamError,
     ClassificationDecisionTableNodeNotFoundError,
+    ConfigNeedsReviewError,
 )
 from tables.models.graph_models import ClassificationDecisionTableNode
 from tables.services.llm_clients import get_llm_client
@@ -67,7 +68,7 @@ class CdtExplainService:
             )
         except UnsupportedLLMProviderError as exc:
             raise CdtExplainLLMConfigNotFoundError(llm_config_id) from exc
-        except InvalidLLMConfigError as exc:
+        except (InvalidLLMConfigError, ConfigNeedsReviewError) as exc:
             raise CdtExplainLLMConfigInvalidError(str(exc)) from exc
 
         batches = list(self._batches(blocks))

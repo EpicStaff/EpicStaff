@@ -259,6 +259,34 @@ class SecretResolver:
             for key, value in headers.items()
         }
 
+    def open_sealed(self, *, value: str) -> str:
+        """Return the plaintext of a value `resolve_sealed` sealed for transport.
+
+        For a caller that uses the secret in django_app itself instead of sending it on.
+        Never log the result.
+        """
+        return self._transport_cryptographer.decrypt(value)
+
+    def open_sealed_markers(self, *, headers: dict[str, str] | None) -> dict[str, str] | None:
+        """Return `headers` with each marker `resolve_header_markers` sealed holding its plaintext.
+
+        The counterpart of `resolve_header_markers` for a caller in django_app itself:
+        `epicstaff_secret(<ciphertext>)` becomes the secret's value, without the marker.
+        Returns a new dict. Never log the result.
+        """
+        if not headers:
+            return headers
+        return {
+            key: (
+                _SECRET_MARKER_RE.sub(
+                    lambda match: self._transport_cryptographer.decrypt(match.group(1)), value
+                )
+                if isinstance(value, str)
+                else value
+            )
+            for key, value in headers.items()
+        }
+
     def _fill_header_markers(self, *, model: BaseModel, field_name: str, org_id: int) -> None:
         """Replace each marker name in a header or connection dict with its secret's value, sealed for transport."""
         headers = getattr(model, field_name)

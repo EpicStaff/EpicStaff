@@ -355,10 +355,16 @@ class QuickstartService(metaclass=SingletonMeta):
         model = resolver.resolve(
             kind, provider, self.PROVIDER_CONFIGS[provider][model_key], org_id=org_id, author=author
         )
-        # Built-in rows are immutable and a new row is this transaction's own: neither moves.
+        # A built-in row is immutable, so it stays unlocked. An unsaved row comes back
+        # from `save_if_new` either created by this transaction or locked and still matching.
         if model.pk is None or model.org_id is None:
             return resolver.save_if_new(model)
-        locked = type(model).objects.select_for_update(of=("self",)).filter(pk=model.pk).first()
+        locked = (
+            type(model)
+            .objects.select_for_update(no_key=True, of=("self",))
+            .filter(pk=model.pk)
+            .first()
+        )
         resolved_key = (model.name, getattr(model, f"{provider_field}_id"))
         if locked is None or (locked.name, getattr(locked, f"{provider_field}_id")) != resolved_key:
             return self._model(kind, provider=provider, org_id=org_id, author=author)

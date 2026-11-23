@@ -135,20 +135,44 @@ class CatalogModelResolver:
         return [name for name in names if self._repository.model(kind, provider, name) is None]
 
     def save_if_new(self, model: LLMModel | EmbeddingModel) -> LLMModel | EmbeddingModel:
-        """Return `model` once saved: an unsaved custom row from `resolve` is stored first."""
+        """Return `model` once saved: an unsaved custom row from `resolve` is stored first.
+
+        A concurrent request may have added a row of the same organization, name and
+        provider since `resolve`; that row is returned instead, locked FOR NO KEY UPDATE
+        until the caller's transaction ends, so the caller's config points at a row that
+        still carries the name `resolve` was given. A rename of that row locks it too
+        (`check_llm_model_write`), so it either waits and then counts the caller's
+        config, or committed first: the row no longer matches, and the organization gets
+        a new row of the name instead. A row this call creates is not visible to other
+        transactions until the caller commits, so it needs no lock. Must run inside the
+        transaction that stores the config.
+        """
         if model.pk is not None:
             return model
-        provider_field = _PROVIDER_FIELDS[type(model)]
-        # get_or_create: a concurrent save may have added the same row since `resolve`.
-        saved, created = type(model).objects.get_or_create(
-            org_id=model.org_id,
-            name=model.name,
-            **{provider_field: getattr(model, provider_field)},
-            defaults={"is_custom": True, "predefined": False, "created_by": model.created_by},
+        model_class = type(model)
+        provider_field = _PROVIDER_FIELDS[model_class]
+        identity = {
+            "org_id": model.org_id,
+            "name": model.name,
+            provider_field: getattr(model, provider_field),
+        }
+        locking = model_class.objects.select_for_update(no_key=True, of=("self",))
+        # Twice at most: the second try only runs when the matching row was renamed or
+        # deleted between `get_or_create` and the lock.
+        for _attempt in range(2):
+            saved, created = model_class.objects.get_or_create(
+                **identity,
+                defaults={"is_custom": True, "predefined": False, "created_by": model.created_by},
+            )
+            if created:
+                record_user_action(action=UserAction.CREATED, org_id=saved.org_id, target=saved)
+                return saved
+            locked = locking.filter(**identity).first()
+            if locked is not None:
+                return locked
+        raise model_class.DoesNotExist(
+            f"Model '{model.name}' changed twice while it was being saved; try again."
         )
-        if created:
-            record_user_action(action=UserAction.CREATED, org_id=saved.org_id, target=saved)
-        return saved
 
     def _is_same_model(
         self, kind, row, provider_field: str, model_name: str, catalog_model

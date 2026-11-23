@@ -13,7 +13,7 @@ from tables.exceptions import ConfigNeedsReviewError
 
 from ai_models.domain.specs import ModelKind
 from ai_models.models import EmbeddingConfig, LLMConfig
-from ai_models.services.config_validation import ConfigValidationService
+from ai_models.services.config_validation import ConfigValidationService, parameters_to_send
 
 
 def embedding_config_parameters(config: EmbeddingConfig) -> dict[str, Any]:
@@ -47,8 +47,7 @@ def llm_config_parameters(config: LLMConfig) -> dict[str, Any]:
 def _run_parameters(
     kind: ModelKind, label: str, provider: str, config: EmbeddingConfig | LLMConfig
 ) -> dict[str, Any]:
-    # "Not set" is never sent, so it is never a problem either.
-    parameters = {name: value for name, value in config.parameters.items() if value is not None}
+    parameters = parameters_to_send(config.parameters)
     problems = ConfigValidationService().parameter_problems(
         kind, provider, config.model.name, parameters
     )

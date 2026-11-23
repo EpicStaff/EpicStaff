@@ -98,28 +98,20 @@ def _safe_context_window(model_str: str) -> int | None:
         return None
 
 
-def _open_sealed_secrets(config: dict, llm_name: str, cryptographer: AbstractCryptographer) -> None:
-    """Replace the transport-sealed ``api_key`` and ``extra_headers`` markers in ``config``.
+def _open_sealed_extra_headers(
+    extra_headers: dict[str, str], llm_name: str, cryptographer: AbstractCryptographer
+) -> dict[str, str]:
+    """Return ``extra_headers`` with their transport-sealed secret markers opened.
 
     Raises:
         SecretDecryptionError: A sealed value does not open with the transport key.
     """
-    # An empty api_key means no key, as it did before keys were sealed.
-    if config.get("api_key"):
-        try:
-            config["api_key"] = cryptographer.decrypt(config["api_key"])
-        except CryptographerError:
-            raise SecretDecryptionError(
-                f'LLM config "{llm_name}": api_key could not be decrypted.'
-            ) from None
-
-    if config.get("extra_headers"):
-        try:
-            config["extra_headers"] = decrypt_header_markers(config["extra_headers"], cryptographer)
-        except CryptographerError:
-            raise SecretDecryptionError(
-                f'LLM config "{llm_name}": extra_headers could not be decrypted.'
-            ) from None
+    try:
+        return decrypt_header_markers(extra_headers, cryptographer)
+    except CryptographerError:
+        raise SecretDecryptionError(
+            f'LLM config "{llm_name}": extra_headers could not be decrypted.'
+        ) from None
 
 
 def _open_sealed_connection(
@@ -180,13 +172,13 @@ def _build_model_config(context: AgentContext, cryptographer: AbstractCryptograp
         ),
     }
     if llm_config.extra_headers is not None:
-        config["extra_headers"] = llm_config.extra_headers
+        config["extra_headers"] = _open_sealed_extra_headers(
+            llm_config.extra_headers, _llm_name(context.active_llm), cryptographer
+        )
     for field_name in _PRICING_FIELDS:
         value = getattr(llm_config, field_name)
         if value is not None:
             config[field_name] = value
-
-    _open_sealed_secrets(config, _llm_name(context.active_llm), cryptographer)
 
     if provider in _STORE_OPT_OUT_PROVIDERS:
         config["store"] = False

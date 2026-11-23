@@ -1,13 +1,8 @@
 from __future__ import annotations
 
-import re
-
-from django.conf import settings
-from foundation.cryptographer import FernetRotatedCryptographer
 from pydantic import ValidationError
 from src.shared.models.ai_providers import LLMConfigData
 from tables.services.converter_service import ConverterService
-from tables.services.secrets.encryption import MAX_TEXT_BYTES
 from tables.services.secrets.pinned_principal_rules import assert_may_resolve_markers
 from tables.services.secrets.secret_resolver import (
     extract_secret_marker_names,
@@ -49,9 +44,6 @@ __all__ = [
     "get_llm_client",
 ]
 
-# The marker syntax SecretResolver seals into, opened here as a receiving service opens it.
-_SEALED_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
-
 
 def get_llm_client(
     llm_config,
@@ -83,8 +75,9 @@ def get_llm_client(
     model name is empty, ``InvalidLLMConfigError`` when a stored value (e.g.
     ``extra_headers``) has a shape LLMConfigData rejects,
     ``SecretMarkerNotReferenceableError`` when a marker names a secret
-    ``principal`` may not reference, and ``SecretResolutionError`` when a secret
-    cannot be resolved.
+    ``principal`` may not reference, ``ConfigNeedsReviewError`` when a stored
+    setting is one the model does not accept, and ``SecretResolutionError`` when
+    a secret cannot be resolved.
     """
     model = llm_config.model
     if model is None:
@@ -116,32 +109,17 @@ def _open_sealed_secrets(config: LLMConfigData) -> LLMConfigData:
     """Return `config` with the secrets `resolve_payload` sealed for transport opened again.
 
     `resolve_payload` seals every secret it fills for the service that receives it; this
-    client calls the provider from django_app itself, so it opens them with the same key.
+    client calls the provider from django_app itself, so it opens them here.
     Holds the plaintext secrets: never log the result.
     """
-    cryptographer = FernetRotatedCryptographer(
-        settings.SECRETS_TRANSPORT_KEY,
-        settings.SECRETS_TRANSPORT_PREVIOUS_KEYS,
-        hkdf_info=settings.SECRETS_TRANSPORT_HKDF_INFO.encode(),
-        max_data_size=MAX_TEXT_BYTES,
-    )
-
-    def open_markers(values: dict[str, str] | None) -> dict[str, str] | None:
-        if not values:
-            return values
-        return {
-            key: (
-                _SEALED_MARKER_RE.sub(lambda match: cryptographer.decrypt(match.group(1)), value)
-                if isinstance(value, str)
-                else value
-            )
-            for key, value in values.items()
-        }
-
     return config.model_copy(
         update={
-            "api_key": cryptographer.decrypt(config.api_key) if config.api_key else config.api_key,
-            "extra_headers": open_markers(config.extra_headers),
-            "connection": open_markers(config.connection),
+            "api_key": (
+                secret_resolver.open_sealed(value=config.api_key)
+                if config.api_key
+                else config.api_key
+            ),
+            "extra_headers": secret_resolver.open_sealed_markers(headers=config.extra_headers),
+            "connection": secret_resolver.open_sealed_markers(headers=config.connection),
         }
     )

@@ -468,16 +468,29 @@ def _check_model_switch(
 
     `data["model"]` is the row being assigned, whichever way the request named it: an
     id, or `provider` + `model_name` resolved by `CatalogModelResolver`, possibly to a
-    custom row not saved yet, read as validated. A saved model is read from its row
-    locked FOR UPDATE, not from the validated object: a concurrent rename of either
-    model locks the same row (`_check_model_destination`), so whichever write runs
-    second sees what the first committed instead of both passing on stale reads.
+    custom row not saved yet, read as validated. A saved model is read from its row,
+    locked when an organization owns it, not from the validated object: a concurrent
+    rename of either model locks the same row (`_check_model_destination`), so whichever
+    write runs second sees what the first committed instead of both passing on stale
+    reads.
     A config without a model yet, or a new one, has no destination to move: only a URL
     in the incoming model's name counts then.
 
-    Every switch locks the models, secret or not: a switch that skipped the lock would
-    update the config row first and wait for the incoming model's key-share lock second,
-    the reverse of a switch that locks, and the two could deadlock.
+    An unsaved row is not locked here: the destination it names follows from its
+    provider and name alone, and `CatalogModelResolver.save_if_new` stores it before the
+    config, returning either a row this transaction created or the existing row of that
+    organization, name and provider, locked FOR NO KEY UPDATE and read again under the
+    lock. So the config never lands on a row a concurrent rename moved elsewhere
+    unchecked: the rename either waits and then counts this config, or committed first,
+    and the row no longer matches.
+
+    Every switch locks the models, secret or not, before it updates the config row, so
+    two switches take their locks in the same order. Only organization-owned rows are
+    locked, FOR NO KEY UPDATE (`_lock_models_and_read_names`): a rename locks the same
+    row and so waits, while a config's foreign-key check takes KEY SHARE, which that
+    lock does not block. A built-in row is shared by every organization and cannot be
+    renamed, so it is read without a lock and no other organization's config write on
+    it waits for this transaction.
     """
     incoming_model = data.get("model")
     current_model_id = _persisted_value(instance, "model_id")
@@ -539,24 +552,19 @@ def _check_model_destination(
             incoming = _routed_destination(provider.name if provider else None, data["name"])
             _refuse_model_url_change_by_principal(actor, "name", (incoming[0], None), incoming)
         return
-    # Skips the lock and the config query on the usual edit (description, tags, a form
-    # resending the stored name); the locked row is compared again below.
+    # What the save writes: the serializer saves every field of `instance`, so a key
+    # absent from `data` writes the value read with the request, which a concurrent
+    # rename may have changed since. Compared with the locked row below, never with
+    # `instance`, or a stale form would revert that rename unchecked.
     incoming_provider = data.get(provider_field, getattr(instance, provider_field))
-    if data.get("name", instance.name) == instance.name and getattr(
-        incoming_provider, "pk", None
-    ) == getattr(instance, f"{provider_field}_id"):
-        return
+    incoming_provider_name = incoming_provider.name if incoming_provider else None
+    incoming_name = data.get("name", instance.name)
     # Locked before the configs are counted: a config switching to this model in a
     # concurrent request locks this row too, so it has either committed (and is
     # counted) or waits and then reads the new name. Not covered: a config that
     # already uses this model gaining a secret concurrently, as that write locks no model.
     locked_names = _lock_models_and_read_names(model_class, provider_field, (instance.pk,))
     current_provider_name, current_name = locked_names[instance.pk]
-    incoming_name = data.get("name", current_name)
-    if provider_field in data:
-        incoming_provider_name = incoming_provider.name if incoming_provider else None
-    else:
-        incoming_provider_name = current_provider_name
     current = _routed_destination(current_provider_name, current_name)
     incoming = _routed_destination(incoming_provider_name, incoming_name)
     if current == incoming:
@@ -600,19 +608,37 @@ def _refuse_model_url_change_by_principal(
 def _lock_models_and_read_names(
     model_class: type[models.Model], provider_field: str, model_ids: tuple[int | None, ...]
 ) -> dict[int, tuple[str | None, str]]:
-    """Lock the model rows and return each one's (provider name, model name) by pk.
+    """Return each model row's (provider name, model name) by pk, locking the organization-owned ones.
 
-    Locked in ascending pk order, so two configs switching between the same two models
-    in opposite directions take the locks in the same order and cannot deadlock. Only
-    the model rows are locked, not their providers.
+    Only a row an organization owns can be renamed, so only those are locked. A built-in
+    row (no org) is immutable and shared by every organization: locking it would hold
+    up every organization's config writes on it until this transaction ends. The lock
+    is FOR NO KEY UPDATE, so a rename, which locks the row too, waits for it, while the
+    KEY SHARE lock a config's foreign-key check takes does not. Locked in ascending pk
+    order, so two configs switching between the same two models in opposite directions
+    take the locks in the same order and cannot deadlock. Only the model rows are
+    locked, not their providers.
     """
-    return {
-        model_id: (provider_name, name)
-        for model_id, provider_name, name in model_class.objects.select_for_update(of=("self",))
-        .filter(pk__in=[model_id for model_id in model_ids if model_id is not None])
+    names_by_model_id, own_model_ids = {}, []
+    for model_id, org_id, provider_name, name in model_class.objects.filter(
+        pk__in=[model_id for model_id in model_ids if model_id is not None]
+    ).values_list("pk", "org_id", f"{provider_field}__name", "name"):
+        if org_id is None:
+            names_by_model_id[model_id] = (provider_name, name)
+        else:
+            own_model_ids.append(model_id)
+    if not own_model_ids:
+        return names_by_model_id
+    # Read again under the lock: a rename committed after the read above is what counts.
+    locked_rows = (
+        model_class.objects.select_for_update(no_key=True, of=("self",))
+        .filter(pk__in=own_model_ids)
         .order_by("pk")
         .values_list("pk", f"{provider_field}__name", "name")
-    }
+    )
+    for model_id, provider_name, name in locked_rows:
+        names_by_model_id[model_id] = (provider_name, name)
+    return names_by_model_id
 
 
 def _any_config_of_model_carries_secret(config_class: type[models.Model], model_row) -> bool:

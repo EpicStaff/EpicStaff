@@ -8,7 +8,8 @@ secret-bearing config of it exists yet. Both checks lock the model row
 save in one transaction (`SecretUseCheckedViewSetMixin.secret_use_check_locks_rows`), so
 whichever request runs second sees what the first committed; without the flag the mixin
 opens no transaction. Quickstart, which attaches its new secret to a model it resolves by
-name, locks an organization's own row the same way.
+name, locks an organization's own row the same way, and so does a config naming its model
+by provider and model name when a concurrent request added that row after it was resolved.
 
 These tests pin the pieces that make that hold: which queries lock, in what order, that
 the values come from the locked row, and that the lock lives as long as the save. A
@@ -20,7 +21,7 @@ what tell a mixin transaction from none.
 
 import pytest
 from ai_models.domain.specs import ModelKind
-from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
 from ai_models.services.catalog_model_resolver import CatalogModelResolver
 from ai_models.views.model_view_sets import (
     EmbeddingConfigReadWriteViewSet,
@@ -29,6 +30,7 @@ from ai_models.views.model_view_sets import (
     LLMModelReadWriteViewSet,
 )
 from django.db import connection
+from django.db.models.query import QuerySet
 from django.test.utils import CaptureQueriesContext
 from rest_framework import mixins
 from tables.models import Secret
@@ -41,6 +43,9 @@ from tables.services.secrets.secret_use_checks import (
     check_llm_model_write,
 )
 from tables.views.secret_use import SecretUseCheckedViewSetMixin
+
+from tests.custom_role_fixtures import *
+from tests.rbac_cross_org_fixtures import *
 
 ROUTING_NAME = "huggingface/https://attacker.example.com/v1"
 
@@ -95,7 +100,7 @@ def _locking_query_indexes(captured: CaptureQueriesContext, table: str) -> list[
     return [
         index
         for index, query in enumerate(captured.captured_queries)
-        if "FOR UPDATE" in query["sql"] and f'FROM "{table}"' in query["sql"]
+        if "FOR NO KEY UPDATE" in query["sql"] and f'FROM "{table}"' in query["sql"]
     ]
 
 
@@ -146,6 +151,25 @@ def test_model_switch_reads_the_name_from_the_locked_row(
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("model_class, provider_field, config_class, config_check", CONFIG_KINDS)
+def test_model_switch_between_built_in_models_locks_no_row_yet_reads_their_names(
+    make_config, secret, openai_provider, model_class, provider_field, config_class, config_check
+):
+    # A built-in row is shared by every organization and cannot be renamed: locking it
+    # would hold up every other organization's config writes on it.
+    current_model, incoming_model = (
+        model_class.objects.create(name=name, org=None, **{provider_field: openai_provider})
+        for name in ("built-in-current", ROUTING_NAME)
+    )
+    config = make_config(config_class, current_model, secret)
+
+    with CaptureQueriesContext(connection) as captured, pytest.raises(SecretUseDeniedError):
+        config_check(None, config, {"model": incoming_model})
+
+    assert _locking_query_indexes(captured, model_class._meta.db_table) == []
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize("model_class, provider_field, config_class, model_check", MODEL_ROW_KINDS)
 def test_model_rename_locks_the_model_row_before_counting_configs(
     make_model, make_config, secret, model_class, provider_field, config_class, model_check
@@ -162,6 +186,27 @@ def test_model_rename_locks_the_model_row_before_counting_configs(
     assert lock_indexes
     assert config_query_indexes
     assert lock_indexes[0] < config_query_indexes[0]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "data", [{"name": "harmless"}, {"is_visible": False}], ids=["name-resent", "name-not-sent"]
+)
+@pytest.mark.parametrize("model_class, provider_field, config_class, model_check", MODEL_ROW_KINDS)
+def test_stale_model_write_reverting_a_concurrent_rename_is_checked(
+    make_model, make_config, secret, model_class, provider_field, config_class, model_check, data
+):
+    model = make_model(model_class, provider_field, "harmless")
+    make_config(config_class, model, secret)
+    # The row read with the request still has the old name, which its save writes back,
+    # while a concurrent request has already committed the routing name.
+    stale_model = model_class.objects.get(pk=model.pk)
+    model_class.objects.filter(pk=model.pk).update(name=ROUTING_NAME)
+
+    with pytest.raises(SecretUseDeniedError) as denied:
+        model_check(None, stale_model, data)
+
+    assert denied.value.field_path == ("name",)
 
 
 @pytest.mark.django_db
@@ -221,6 +266,95 @@ def test_quickstart_resolves_again_when_its_row_was_renamed_before_the_lock(
 
     assert model.pk != own_model.pk
     assert model.name == name
+
+
+CONFIG_ENDPOINTS = [
+    pytest.param("/api/llm-configs/", LLMModel, "llm_provider", LLMConfig, id="llm"),
+    pytest.param(
+        "/api/embedding-configs/",
+        EmbeddingModel,
+        "embedding_provider",
+        EmbeddingConfig,
+        id="embedding",
+    ),
+]
+CUSTOM_MODEL_NAME = "my-custom-model"
+
+
+@pytest.fixture
+def acme_client(org_client_as, admin_acme, acme):
+    return org_client_as(admin_acme, acme)
+
+
+def _add_row_after_resolving(monkeypatch, model_class, provider_field, org):
+    """Make a concurrent request add the org's row of the name once `resolve` has found none."""
+    resolve = CatalogModelResolver.resolve
+    added = {}
+
+    def resolve_then_add(self, *args, **kwargs):
+        resolved = resolve(self, *args, **kwargs)
+        added["row"] = model_class.objects.create(
+            name=resolved.name,
+            org=org,
+            is_custom=True,
+            **{provider_field: getattr(resolved, provider_field)},
+        )
+        return resolved
+
+    monkeypatch.setattr(CatalogModelResolver, "resolve", resolve_then_add)
+    return added
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("path, model_class, provider_field, config_class", CONFIG_ENDPOINTS)
+def test_config_write_by_name_locks_the_row_a_concurrent_request_added(
+    acme_client, acme, monkeypatch, path, model_class, provider_field, config_class
+):
+    Provider.objects.get_or_create(name="openai")
+    added = _add_row_after_resolving(monkeypatch, model_class, provider_field, acme)
+
+    with CaptureQueriesContext(connection) as captured:
+        response = acme_client.post(
+            path,
+            {"custom_name": "config", "provider": "openai", "model_name": CUSTOM_MODEL_NAME},
+            format="json",
+        )
+
+    assert response.status_code == 201, response.data
+    assert config_class.objects.get(pk=response.data["id"]).model_id == added["row"].pk
+    # A rename of that row locks it too, so it waits until the config is stored.
+    assert _locking_query_indexes(captured, model_class._meta.db_table)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("path, model_class, provider_field, config_class", CONFIG_ENDPOINTS)
+def test_config_write_by_name_gets_a_new_row_when_the_added_row_was_renamed_before_the_lock(
+    acme_client, acme, monkeypatch, path, model_class, provider_field, config_class
+):
+    Provider.objects.get_or_create(name="openai")
+    added = _add_row_after_resolving(monkeypatch, model_class, provider_field, acme)
+    get_or_create = QuerySet.get_or_create
+
+    def get_or_create_then_rename(self, *args, **kwargs):
+        # A rename commits between `get_or_create` finding the row and the lock, once.
+        row, created = get_or_create(self, *args, **kwargs)
+        if self.model is model_class and not created and row.name == CUSTOM_MODEL_NAME:
+            model_class.objects.filter(pk=row.pk).update(name=ROUTING_NAME)
+        return row, created
+
+    monkeypatch.setattr(QuerySet, "get_or_create", get_or_create_then_rename)
+
+    response = acme_client.post(
+        path,
+        {"custom_name": "config", "provider": "openai", "model_name": CUSTOM_MODEL_NAME},
+        format="json",
+    )
+
+    assert response.status_code == 201, response.data
+    model = config_class.objects.get(pk=response.data["id"]).model
+    assert model.pk != added["row"].pk
+    assert (model.name, model.org_id) == (CUSTOM_MODEL_NAME, acme.pk)
+    assert model_class.objects.get(pk=added["row"].pk).name == ROUTING_NAME
 
 
 def _quickstart_model_name(kind) -> str:

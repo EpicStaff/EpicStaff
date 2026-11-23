@@ -22,6 +22,16 @@ _SECRET_FIELD = "Must be an epicstaff_secret(<name>) marker naming a secret."
 _MARKER_OUTSIDE_SECRET_FIELD = "Secret markers are only allowed in secret fields."
 
 
+def parameters_to_send(parameters: object) -> object:
+    """Return the stored settings a run sends: one stored as null is "not set" and never sent.
+
+    Anything but a dict is returned as is, for the caller to report.
+    """
+    if not isinstance(parameters, dict):
+        return parameters
+    return {name: value for name, value in parameters.items() if value is not None}
+
+
 @functools.cache
 def schema_factory(repository: CatalogRepository) -> ConfigSchemaFactory:
     """Return the one schema factory of `repository`, so its schema memo is shared process-wide."""
@@ -163,7 +173,11 @@ class ConfigValidationService:
             model.deprecation_date is not None and model.deprecation_date < datetime.now(UTC).date()
         ):
             reasons.append("Deprecated model.")
-        reasons.extend(self.parameter_problems(kind, provider, model_name, parameters))
+        # Checked as the run checks them: a null left for a setting the catalog dropped
+        # is never sent, so it never blocks a run and needs no review.
+        reasons.extend(
+            self.parameter_problems(kind, provider, model_name, parameters_to_send(parameters))
+        )
         connection_schema = self._schemas.connection_schema(provider)
         reasons.extend(_reason_lines(_errors(connection_schema, connection)))
         if isinstance(connection, dict):
