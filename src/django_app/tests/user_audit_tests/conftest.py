@@ -1,4 +1,6 @@
 import pytest
+from rest_framework.test import APIClient
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from tests.helpers import InlineExecutor
 from user_audit import background, recorder
@@ -34,3 +36,16 @@ def captured_log_output():
     sink_id = logger.add(messages.append, level="TRACE", diagnose=True, backtrace=True)
     yield messages
     logger.remove(sink_id)
+
+
+@pytest.fixture
+def token_client(admin_acme, acme):
+    """A client sending a real bearer token: the row a DELETE names is loaded before
+    authentication only for a request that carries credentials, which force_authenticate
+    does not send."""
+    client = APIClient()
+    client.credentials(
+        HTTP_AUTHORIZATION=f"Bearer {RefreshToken.for_user(admin_acme).access_token}",
+        HTTP_X_ORGANIZATION_ID=str(acme.id),
+    )
+    return client
