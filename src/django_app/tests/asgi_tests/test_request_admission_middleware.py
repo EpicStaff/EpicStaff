@@ -24,9 +24,15 @@ from django_app.admission import RequestAdmissionMiddleware, retry_after_seconds
 ALLOWED_ORIGIN = "http://allowed-frontend.test"
 OTHER_ORIGIN = "http://other-site.test"
 BUSY_ENVELOPE = {
-    "status_code": 503,
-    "code": "server_busy",
-    "message": "The server is busy. Please retry shortly.",
+    "type": "server_error",
+    "errors": [
+        {
+            "code": "server_busy",
+            "detail": "The server is busy. Please retry shortly.",
+            "attr": None,
+            "context": None,
+        }
+    ],
 }
 
 

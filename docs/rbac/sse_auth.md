@@ -109,8 +109,9 @@ If `POST /api/auth/sse-ticket/` returns `401`, the JWT is expired. Call `POST /a
 
 | Status | Body | When |
 |---|---|---|
-| 401 | `{"status_code": 401, "code": "invalid_sse_ticket", "message": "Invalid or expired SSE ticket."}` | Missing, expired, or already-consumed ticket on an SSE URL. |
-| 401 | standard DRF auth envelope | Bad JWT on `/api/auth/sse-ticket/`. |
+| 401 | `{"type": "client_error", "errors": [{"code": "invalid_sse_ticket", "detail": "Invalid or expired SSE ticket.", "attr": null, "context": null}]}` | Missing, expired, or already-consumed ticket on an SSE URL. |
+| 403 / 404 | the same shape, with the refusal's own `code` (`permission_denied`, `not_found`) | The ticket is valid, but its user may not read what the stream shows. |
+| 401 | the same shape, `code` `token_not_valid` or `not_authenticated` | Bad JWT on `/api/auth/sse-ticket/`. |
 
 The `text/event-stream` handshake never starts when the ticket is rejected; you get a normal JSON response with HTTP 401.
 

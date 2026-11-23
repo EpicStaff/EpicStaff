@@ -5,6 +5,8 @@ from asgiref.sync import markcoroutinefunction
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.http import JsonResponse
+from foundation.schemas import ErrorDetailSchema
+from utils.exception_handler import render_error
 from utils.logger import logger
 
 # The compose healthcheck polls it: liveness must not depend on load.
@@ -73,13 +75,15 @@ class RequestAdmissionMiddleware:
         self._slots.release()
 
     def _busy_response(self) -> JsonResponse:
-        # The project's error envelope, as utils/exception_handler.py renders it.
         return JsonResponse(
-            {
-                "status_code": 503,
-                "code": "server_busy",
-                "message": "The server is busy. Please retry shortly.",
-            },
+            render_error(
+                503,
+                [
+                    ErrorDetailSchema(
+                        code="server_busy", detail="The server is busy. Please retry shortly."
+                    )
+                ],
+            ),
             status=503,
             headers={"Retry-After": str(self._retry_after)},
         )

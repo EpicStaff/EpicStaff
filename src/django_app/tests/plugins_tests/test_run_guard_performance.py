@@ -162,7 +162,7 @@ def test_a_suspension_committed_while_a_run_is_built_refuses_it_before_the_publi
     )
 
     assert response.status_code == 409, response.content
-    assert response.json()["code"] == "plugin_suspended"
+    assert response.json()["errors"][0]["code"] == "plugin_suspended"
     redis_client_mock.publish.assert_not_called()
     assert list(Session.objects.filter(graph=forecast).values_list("status", flat=True)) == [
         Session.SessionStatus.STOP

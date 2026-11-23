@@ -20,9 +20,15 @@ from tests.plugins_tests.login_helpers import AUTHORIZE_URL, EPICSTAFF_ORIGIN, T
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("login_platform")]
 
 REFUSAL = {
-    "status_code": 403,
-    "code": "plugin_origin_refused",
-    "message": "Plugin pages cannot call EpicStaff's API.",
+    "type": "client_error",
+    "errors": [
+        {
+            "code": "plugin_origin_refused",
+            "detail": "Plugin pages cannot call EpicStaff's API.",
+            "attr": None,
+            "context": None,
+        }
+    ],
 }
 
 
@@ -143,7 +149,7 @@ def test_an_http_plugin_origin_on_an_https_deployment_is_refused(settings):
 def test_the_token_exchange_from_the_exact_plugin_origin_reaches_the_view(plugin_page):
     response = plugin_page.post(TOKEN_URL, {}, format="json")
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid")
     assert response["Access-Control-Allow-Origin"] == WEATHER_ORIGIN
 
 
@@ -289,7 +295,7 @@ def test_a_null_origin_is_not_refused_on_a_bearer_endpoint(jwt_tokens):
 
     response = client.post("/api/graphs/", {}, format="json")
 
-    assert response.json().get("code") != "plugin_origin_refused"
+    assert "plugin_origin_refused" not in [item["code"] for item in response.json().get("errors", [])]
     assert APIClient().post("/api/graphs/", {}, format="json", HTTP_ORIGIN="null").status_code == 401
 
 
@@ -323,7 +329,17 @@ def test_the_policy_is_inert_while_the_platform_is_off(settings):
     response = APIClient().post("/api/auth/refresh/", HTTP_ORIGIN=WEATHER_ORIGIN)
 
     assert response.status_code == 401
-    assert response.json() == {"detail": "No refresh token."}
+    assert response.json() == {
+        "type": "client_error",
+        "errors": [
+            {
+                "code": "refresh_token_missing",
+                "detail": "No refresh token.",
+                "attr": None,
+                "context": None,
+            }
+        ],
+    }
 
 
 # ---- placement, async requests and the log ----

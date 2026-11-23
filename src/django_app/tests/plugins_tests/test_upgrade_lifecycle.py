@@ -71,7 +71,7 @@ def test_uninstall_is_refused_while_an_upgrade_is_open(
 
     response = superadmin_client.post(f"{PLUGIN_URL}uninstall/")
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_upgrade_open")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_upgrade_open")
 
 
 def test_deleting_the_plugin_abandons_an_upgrade_still_being_prepared(
@@ -119,7 +119,7 @@ def test_a_restart_in_maintenance_is_refused(weather, newer, upgrade_of, node_cl
 
     response = superadmin_client.post(f"{PLUGIN_URL}restart/")
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_upgrade_open")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_upgrade_open")
 
 
 # ---- grants ----
@@ -143,7 +143,7 @@ def test_no_organization_is_granted_during_maintenance(
 
     response = superadmin_client.post(f"{PLUGIN_URL}grants/", {"organization_id": acme.pk}, format="json")
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_not_running")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_not_running")
 
 
 def test_in_maintenance_the_settings_follow_the_new_version(

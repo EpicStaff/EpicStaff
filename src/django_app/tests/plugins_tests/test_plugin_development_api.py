@@ -27,6 +27,7 @@ from tests.plugins_tests.conftest import (
 )
 from tests.plugins_tests.package_builder import backend_manifest, build_package, sample_files
 from tests.plugins_tests.upgrade_fixtures import active_grant
+from tests.error_envelope import attr_details
 
 pytestmark = [
     pytest.mark.django_db,
@@ -65,7 +66,7 @@ def page_only(running_plugin):
 
 
 def _errors(response):
-    return [error["loc"] for error in response.json()["errors"]]
+    return [error["attr"] for error in attr_details(response.json())]
 
 
 @pytest.mark.usefixtures("development_mode")
@@ -117,7 +118,7 @@ def test_an_unknown_plugin_is_not_found(superadmin_client, method):
     response = getattr(superadmin_client, method)(_url("nope"), {"backend_port": 8001}, format="json")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_not_found"
 
 
 @pytest.mark.usefixtures("development_mode")
@@ -176,7 +177,7 @@ def test_ports_cannot_be_set_while_the_mode_is_off(weather, superadmin_client):
     response = superadmin_client.put(_url(), {"backend_port": 8001}, format="json")
 
     assert response.status_code == 409
-    assert response.json()["code"] == "plugin_development_mode_off"
+    assert response.json()["errors"][0]["code"] == "plugin_development_mode_off"
     assert not PluginDevelopmentTarget.objects.exists()
 
 
@@ -187,7 +188,7 @@ def test_ports_cannot_be_set_for_a_plugin_that_is_not_running(backend_plugin, su
     response = superadmin_client.put(_url(), {"backend_port": 8001}, format="json")
 
     assert response.status_code == 409
-    assert response.json()["code"] == "plugin_not_running"
+    assert response.json()["errors"][0]["code"] == "plugin_not_running"
 
 
 @pytest.mark.usefixtures("development_mode")
@@ -197,7 +198,7 @@ def test_the_mode_is_refused_before_the_body_is_read(backend_plugin, superadmin_
 
     response = superadmin_client.put(_url(), {"backend_port": "nonsense"}, format="json")
 
-    assert response.json()["code"] == "plugin_development_mode_off"
+    assert response.json()["errors"][0]["code"] == "plugin_development_mode_off"
 
 
 @pytest.mark.parametrize(
@@ -221,7 +222,7 @@ def test_invalid_ports_are_refused_with_their_location(request, superadmin_clien
     response = superadmin_client.put(_url(plugin.identifier), body, format="json")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid"
+    assert response.json()["errors"][0]["code"] == "invalid"
     assert _errors(response) == [loc]
     assert not PluginDevelopmentTarget.objects.exists()
 
@@ -304,7 +305,7 @@ def test_the_runtime_file_needs_development_mode(granted_weather, superadmin_cli
     response = _download(superadmin_client)
 
     assert response.status_code == 409
-    assert response.json()["code"] == "plugin_development_mode_off"
+    assert response.json()["errors"][0]["code"] == "plugin_development_mode_off"
     assert not PluginServiceAccountKey.objects.filter(purpose=ServiceAccountKeyPurpose.DEVELOPMENT).exists()
 
 
@@ -313,7 +314,7 @@ def test_a_plugin_without_a_backend_has_no_runtime_file(page_only, superadmin_cl
     response = _download(superadmin_client, page_only.identifier)
 
     assert response.status_code == 409
-    assert response.json()["code"] == "plugin_has_no_backend"
+    assert response.json()["errors"][0]["code"] == "plugin_has_no_backend"
 
 
 @pytest.mark.usefixtures("development_mode")
@@ -323,7 +324,7 @@ def test_a_plugin_that_is_not_running_has_no_runtime_file(backend_plugin, supera
     response = _download(superadmin_client)
 
     assert response.status_code == 409
-    assert response.json()["code"] == "plugin_not_running"
+    assert response.json()["errors"][0]["code"] == "plugin_not_running"
 
 
 @pytest.mark.usefixtures("development_mode")
@@ -331,7 +332,7 @@ def test_an_unknown_plugin_has_no_runtime_file(superadmin_client):
     response = _download(superadmin_client, "nope")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_not_found"
 
 
 @pytest.mark.usefixtures("development_mode")

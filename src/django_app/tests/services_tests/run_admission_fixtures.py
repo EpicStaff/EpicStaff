@@ -12,7 +12,7 @@ from tables.services import run_admission
 from tables.services.run_admission import RunAdmissionRefusedError, RunSubject
 
 REFUSAL_MESSAGE = "This run is refused by the test."
-REFUSAL_EXTRA = {"refused_by": {"name": "test check"}}
+REFUSAL_CONTEXT = {"refused_by": {"name": "test check"}}
 
 
 class RefusedForTestError(RunAdmissionRefusedError):
@@ -22,7 +22,7 @@ class RefusedForTestError(RunAdmissionRefusedError):
     def __init__(self, log_key: str):
         super().__init__()
         self.log_key = log_key
-        self.extra_response_data = REFUSAL_EXTRA
+        self.context = REFUSAL_CONTEXT
 
 
 class RecordingCheck:

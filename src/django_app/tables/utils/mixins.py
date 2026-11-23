@@ -12,10 +12,12 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import connection
 from django.http import JsonResponse, StreamingHttpResponse
 from django.views import View
+from rbac.exceptions import InvalidSseTicketError
 from rbac.identity.tickets import sse_ticket_service
 from rest_framework.exceptions import APIException
 from tables.services.redis_service import RedisService
 from tables.utils.memory_trim import read_rss_mb, start_periodic_malloc_trim
+from utils.exception_handler import render_api_exception
 from utils.logger import logger
 
 redis_service = RedisService()
@@ -43,11 +45,9 @@ class SerializedEvent:
     data: str
 
 
-def _refusal(status_code: int, code: str, message: str) -> JsonResponse:
-    # The body every refused stream answers with, in the API's error shape.
-    return JsonResponse(
-        {"status_code": status_code, "code": code, "message": message}, status=status_code
-    )
+def _refusal(exc: APIException) -> JsonResponse:
+    # A refused stream answers outside DRF, so the exception handler never sees it.
+    return JsonResponse(render_api_exception(exc), status=exc.status_code)
 
 
 def _close_database_connection() -> None:
@@ -280,13 +280,13 @@ class SSEMixin(View, ABC):
 
     def refuse(self, exc: APIException) -> JsonResponse:
         """Return the response refusing the stream for `exc`, for `authorize()` to return."""
-        return _refusal(exc.status_code, exc.default_code, str(exc.detail))
+        return _refusal(exc)
 
     async def get(self, request, *args, **kwargs):
         ticket = request.GET.get("ticket", "")
         holder = await sync_to_async(sse_ticket_service.consume)(ticket)
         if holder is None:
-            return _refusal(401, "invalid_sse_ticket", "Invalid or expired SSE ticket.")
+            return _refusal(InvalidSseTicketError())
         self.user = holder.user
         self.api_key_org_id = holder.api_key_org_id
 

@@ -29,6 +29,7 @@ from tables.views import transfer_import_upload_view
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_backend_fake import FakeStorageBackend
+from tests.error_envelope import error_text
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.django_db(transaction=True)]
 
@@ -194,7 +195,7 @@ async def test_a_route_of_another_entity_refuses_a_flow_archive(
     response = await _post(path, user, acme, body)
 
     assert response.status_code == 400, response.text
-    assert response.json()["code"] == "invalid_file", response.json()
+    assert response.json()["errors"][0]["code"] == "invalid_file", response.json()
     await _no_job_left(backend, temp_files)
 
 
@@ -207,9 +208,9 @@ async def test_a_body_that_is_not_a_zip_is_refused(
     response = await _post(path, user, acme, b'{"main_entity": "Flow"}')
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_archive", response.json()
+    assert response.json()["errors"][0]["code"] == "invalid_archive", response.json()
     # Refused on its first bytes, pointing at the route plain JSON belongs to.
-    assert "import/ endpoint" in response.json()["message"]
+    assert "import/ endpoint" in error_text(response.json())
     await _no_job_left(backend, temp_files)
 
 
@@ -219,7 +220,7 @@ async def test_an_empty_body_is_refused(custom_role_user, acme, backend, enqueue
     response = await _post(FLOWS, user, acme, b"")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_archive", response.json()
+    assert response.json()["errors"][0]["code"] == "invalid_archive", response.json()
     await _no_job_left(backend, temp_files)
 
 
@@ -233,7 +234,7 @@ async def test_an_archive_older_than_version_6_is_sent_to_the_synchronous_import
     response = await _post(FLOWS, user, acme, _zip(envelope))
 
     assert response.status_code == 400
-    assert response.json()["code"] == "use_sync_import", response.json()
+    assert response.json()["errors"][0]["code"] == "use_sync_import", response.json()
     await _no_job_left(backend, temp_files)
 
 
@@ -258,8 +259,8 @@ async def test_an_archive_whose_version_is_not_a_whole_number_is_refused(
     response = await _post(FLOWS, user, acme, _zip(envelope))
 
     assert response.status_code == 400, response.text
-    assert response.json()["code"] == "invalid_file", response.json()
-    assert response.json()["message"] == f"File version must be a whole number, got {shown_as}"
+    assert response.json()["errors"][0]["code"] == "invalid_file", response.json()
+    assert response.json()["errors"][0]["detail"] == f"File version must be a whole number, got {shown_as}"
     await _no_job_left(backend, temp_files)
 
 
@@ -272,11 +273,7 @@ async def test_a_declared_size_past_the_cap_is_refused_before_reading(
     response = await _post(FLOWS, user, acme, b"PK\x03\x04" + b"x" * 200)
 
     assert response.status_code == 413
-    assert response.json() == {
-        "status_code": 413,
-        "code": "archive_too_large",
-        "message": "The archive is larger than the import size limit.",
-    }
+    assert response.json() == {"type": "client_error", "errors": [{"code": "archive_too_large", "detail": "The archive is larger than the import size limit.", "attr": None, "context": None}]}
     # Refused before the body was read.
     assert temp_files == []
     await _no_job_left(backend, temp_files)
@@ -298,7 +295,7 @@ async def test_a_streamed_body_past_the_cap_is_refused_while_reading(
     response = await _post(FLOWS, user, acme, chunks())
 
     assert response.status_code == 413
-    assert response.json()["code"] == "archive_too_large"
+    assert response.json()["errors"][0]["code"] == "archive_too_large"
     assert temp_files
     await _no_job_left(backend, temp_files)
 
@@ -413,7 +410,7 @@ async def test_the_job_limit_refuses_before_reading(
     response = await _post(FLOWS, user, acme, b"PK\x03\x04")
 
     assert response.status_code == 429
-    assert response.json()["code"] == "too_many_jobs"
+    assert response.json()["errors"][0]["code"] == "too_many_jobs"
     assert temp_files == []
     assert backend.objects == {}
 
@@ -570,7 +567,7 @@ async def test_an_upload_in_progress_counts_against_the_job_limit(
         response = await _post(FLOWS, user, acme, b"PK\x03\x04")
 
     assert response.status_code == 429
-    assert response.json()["code"] == "too_many_jobs"
+    assert response.json()["errors"][0]["code"] == "too_many_jobs"
     assert temp_files == []
 
 

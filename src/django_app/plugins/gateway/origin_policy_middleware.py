@@ -25,6 +25,7 @@ from asgiref.sync import iscoroutinefunction, markcoroutinefunction
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.utils.cache import patch_vary_headers
+from utils.exception_handler import render_api_exception
 
 from plugins.audit import log_origin_refused
 from plugins.exceptions import PluginOriginRefusedError
@@ -149,14 +150,7 @@ def _preflight_response(origin: str) -> HttpResponse:
 
 def _refusal() -> JsonResponse:
     error = PluginOriginRefusedError()
-    return JsonResponse(
-        {
-            "status_code": error.status_code,
-            "code": error.default_code,
-            "message": str(error.detail),
-        },
-        status=error.status_code,
-    )
+    return JsonResponse(render_api_exception(error), status=error.status_code)
 
 
 def _drop_cors_headers(response: HttpResponse) -> None:

@@ -33,6 +33,7 @@ from tests.storage_tests.in_memory_backend import (
     zip_bytes,
 )
 from utils import exception_handler
+from tests.error_envelope import error_text
 
 pytestmark = [pytest.mark.asyncio, pytest.mark.django_db(transaction=True)]
 
@@ -216,7 +217,7 @@ async def test_an_upload_past_the_whole_bin_is_a_413_and_purges_nothing(
         )
 
     assert response.status_code == 413
-    assert response.json()["code"] == "storage_quota_exceeded"
+    assert response.json()["errors"][0]["code"] == "storage_quota_exceeded"
     assert await StorageFile.deleted_objects.filter(org_id=org_user.org_id, path="old.txt").aexists()
     assert _trash_keys(storage, org_user.org_id, batch) != []
 
@@ -248,7 +249,7 @@ async def test_a_member_without_files_delete_gets_a_413_and_the_bin_stays_whole(
         )
 
     assert response.status_code == 413, response.text
-    assert response.json()["code"] == "storage_quota_exceeded"
+    assert response.json()["errors"][0]["code"] == "storage_quota_exceeded"
     assert await _binned_paths(org_user.org_id) == {"old.txt"}
     assert _trash_keys(storage, org_user.org_id, batch) != []
 
@@ -299,14 +300,15 @@ async def test_a_caller_without_files_read_gets_the_sizes_but_no_names(
 
 
 async def test_an_anonymous_upload_is_a_401_in_the_error_envelope():
-    # every DRF view renders {status_code, code, message}; this one must match or
-    # the frontend needs a second error parser just for it
+    # every DRF view renders {type, errors}; this one must match or the frontend
+    # needs a second error parser just for it
     async with _client() as client:
         response = await _post(client, "filename=a.txt")
 
     assert response.status_code == 401
-    assert set(response.json()) == {"status_code", "code", "message"}
-    assert response.json()["status_code"] == 401
+    assert set(response.json()) == {"type", "errors"}
+    assert response.json()["type"] == "client_error"
+    assert [item["code"] for item in response.json()["errors"]] == ["not_authenticated"]
     assert response.headers["www-authenticate"] == "Bearer"
 
 
@@ -316,7 +318,7 @@ async def test_a_viewer_without_files_create_is_denied(viewer_org_user):
         response = await _post(client, "filename=a.txt", token=token, org_id=viewer_org_user.org_id)
 
     assert response.status_code == 403
-    assert response.json()["code"] == "permission_denied"
+    assert response.json()["errors"][0]["code"] == "permission_denied"
 
 
 async def test_a_non_member_cannot_upload_into_another_org(org_user, second_org, storage):
@@ -347,7 +349,7 @@ async def test_an_executable_name_is_a_400_before_anything_is_stored(org_user, s
         )
 
     assert response.status_code == 400
-    assert "blocked executable extension" in response.json()["message"]
+    assert "blocked executable extension" in error_text(response.json())
     assert not storage._objects
 
 
@@ -356,7 +358,8 @@ async def test_a_non_post_gets_a_json_405():
         response = await client.get(f"{UPLOAD_STREAM_PATH}?filename=a.txt")
 
     assert response.status_code == 405
-    assert response.json()["status_code"] == 405
+    assert response.json()["type"] == "client_error"
+    assert [item["code"] for item in response.json()["errors"]] == ["method_not_allowed"]
 
 
 @override_settings(CORS_ALLOWED_ORIGINS=["http://localhost:4200"], CORS_ALLOW_CREDENTIALS=True)
@@ -396,7 +399,7 @@ async def test_a_query_that_is_not_utf8_is_a_400_not_a_mangled_name(
 
     status_code, body = _status_and_body(sent)
     assert status_code == 400
-    assert "UTF-8" in body["message"]
+    assert "UTF-8" in body["errors"][0]["detail"]
     stubbed_upload.assert_not_awaited()
 
 
@@ -410,11 +413,7 @@ async def test_an_unexpected_error_is_a_500_in_the_error_envelope(org_user, monk
         response = await _post(client, "filename=a.txt", token=token, org_id=org_user.org_id)
 
     assert response.status_code == 500
-    assert response.json() == {
-        "status_code": 500,
-        "code": "RuntimeError",
-        "message": "Unpredictable error",
-    }
+    assert response.json() == {"type": "server_error", "errors": [{"code": "unknown", "detail": "Internal server error.", "attr": None, "context": None}]}
 
 
 async def test_request_lifecycle_signals_fire_like_a_django_view(org_user, stubbed_upload):
@@ -467,7 +466,7 @@ async def test_archive_unpacking_past_the_free_space_is_a_413_before_any_write(o
         )
 
     assert response.status_code == 413
-    assert response.json()["code"] == "storage_quota_exceeded"
+    assert response.json()["errors"][0]["code"] == "storage_quota_exceeded"
     assert not storage._objects
 
 
@@ -482,7 +481,7 @@ async def test_a_full_worker_answers_503_with_retry_after(org_user, monkeypatch)
 
     assert response.status_code == 503
     assert response.headers["retry-after"] == "1"
-    assert response.json()["code"] == "upload_slots_busy"
+    assert response.json()["errors"][0]["code"] == "upload_slots_busy"
 
 
 async def test_an_org_over_its_upload_share_gets_429_with_retry_after(org_user, monkeypatch):
@@ -496,7 +495,7 @@ async def test_an_org_over_its_upload_share_gets_429_with_retry_after(org_user, 
 
     assert response.status_code == 429
     assert response.headers["retry-after"] == "30"
-    assert response.json()["code"] == "org_upload_limit_reached"
+    assert response.json()["errors"][0]["code"] == "org_upload_limit_reached"
 
 
 @override_settings(ORG_STORAGE_QUOTA=10**9)
@@ -512,7 +511,7 @@ async def test_unreachable_storage_is_a_503(org_user, monkeypatch):
 
     assert response.status_code == 503
     assert response.headers["retry-after"] == "30"
-    assert response.json()["code"] == "storage_unavailable"
+    assert response.json()["errors"][0]["code"] == "storage_unavailable"
     assert not await StorageFile.objects.filter(org_id=org_user.org_id).aexists()
 
 
@@ -607,6 +606,6 @@ async def test_a_silent_client_gets_408_and_leaves_nothing_behind(org_user, monk
 
     status_code, body = _status_and_body(sent)
     assert status_code == 408
-    assert body["code"] == "upload_idle_timeout"
+    assert body["errors"][0]["code"] == "upload_idle_timeout"
     assert client.aborted and client.completed is None
     assert not await StorageFile.objects.filter(org_id=org_user.org_id).aexists()

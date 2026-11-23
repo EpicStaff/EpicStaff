@@ -33,14 +33,8 @@ from tests.sealed_values import open_sealed_headers
 pytestmark = [pytest.mark.django_db]
 
 KEY_NAME = "Weather gateway key"
-REFUSAL = {
-    "status_code": 409,
-    "code": "secret_marker_not_referenceable",
-    "message": (
-        "This credential can reference only secrets it created, but a model configuration used here "
-        "names another secret in a header, so this cannot start."
-    ),
-}
+REFUSAL = {"type": "client_error", "errors": [{"code": "secret_marker_not_referenceable", "detail": "This credential can reference only secrets it created, but a model configuration used here "
+        "names another secret in a header, so this cannot start.", "attr": None, "context": None}]}
 ACCESS = [
     {"resource_type": "flows", "actions": ["read", "create", "update", "use"], "reason": "Runs the forecast flow."},
     {"resource_type": "secrets", "actions": ["read", "create", "use"], "reason": "Stores its gateway key."},
