@@ -328,7 +328,7 @@ async def test_file_extractor_node_streams_the_fact_and_logs_the_cause(monkeypat
     fact = f'{EXTRACTOR} can\'t read "report.pdf".'
     assert str(raised.value) == fact
     error_cards = [
-        message.message_data.details
+        message.message_data.error["detail"]
         for message in messages
         if getattr(message.message_data, "message_type", None) == "error"
     ]

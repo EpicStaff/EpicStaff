@@ -51,8 +51,8 @@ than left to be rediscovered:
 
 * **`error` is a flat string, not an object.** It was briefly `{"message": str}`
   purely because the model demanded a dict. An error is one human-readable
-  message, and the primary pipeline's `ErrorMessageData.details` is already a
-  bare `str(error)`.
+  message: the `detail` of the primary pipeline's `ErrorMessageData.error`
+  item, a bare string.
 
 * **`error` is `text` with an `error.raw` `wildcard` subfield**, and the two are
   not interchangeable:

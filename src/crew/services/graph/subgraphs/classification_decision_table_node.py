@@ -4,6 +4,7 @@ from typing import Any
 
 from dotdict import DotDict
 from foundation.cryptographer import AbstractCryptographer
+from foundation.schemas import ErrorDetailSchema
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
@@ -93,6 +94,8 @@ def main(expressions, variables):
 
 class ClassificationDecisionTableNodeError(Exception):
     """Custom exception for errors related to ClassificationDecisionTableNode."""
+
+    code = "classification_decision_table_failed"
 
 
 def _read_state_path(roots: DotDict, path: str) -> Any:
@@ -705,7 +708,7 @@ def main(**kwargs) -> dict:
                     writer=writer,
                     execution_order=self.execution_order(state),
                     node_type=self.TYPE,
-                    public_details=str(e),
+                    public_error=ErrorDetailSchema(code=e.code, detail=str(e)),
                 )
                 await self._publish_message(msg)
                 return state
@@ -715,14 +718,14 @@ def main(**kwargs) -> dict:
         async def route_to_error_node(
             state: State,
             writer: StreamWriter,
-            public_details: str | None,
+            public_error: ErrorDetailSchema | None,
             error: Exception | None = None,
         ):
             """Route to the error node and publish error, then finish.
 
             The finish closes the CDT message group in the UI, as on the
-            pre-computation error path. With `public_details`, the caller has
-            already logged the raw error and that text is the only one that
+            pre-computation error path. With `public_error`, the caller has
+            already logged the raw error and that item is the only one that
             reaches the client. Without it, the message writer logs `error` and
             streams its fixed `Node "<name>" failed.` fact."""
             decision_vars = state["system_variables"]["nodes"][self.node_name]
@@ -734,7 +737,7 @@ def main(**kwargs) -> dict:
                 execution_order=self.execution_order(state),
                 node_type=self.TYPE,
                 error=error,
-                public_details=public_details,
+                public_error=public_error,
             )
             await self._publish_message(msg)
             msg = self.custom_session_message_writer.add_finish_message(
@@ -894,10 +897,12 @@ def main(**kwargs) -> dict:
                         self.node_name,
                         e,
                     )
-                    return await route_to_error_node(state, writer, public_details=str(e))
+                    return await route_to_error_node(
+                        state, writer, public_error=ErrorDetailSchema(code=e.code, detail=str(e))
+                    )
                 # Raw text can name internal hosts or paths: it is logged, never streamed.
                 except Exception as e:
-                    return await route_to_error_node(state, writer, public_details=None, error=e)
+                    return await route_to_error_node(state, writer, public_error=None, error=e)
 
             decision_vars["result_node"] = (
                 matched_next_node or self.node_data.default_next_node or END
@@ -908,7 +913,9 @@ def main(**kwargs) -> dict:
                 await self._execute_post_computation(state)
             except (ClassificationDecisionTableNodeError, InvalidStatePathError) as e:
                 logger.error(f"Post-computation error: {e}")
-                return await route_to_error_node(state, writer, public_details=str(e))
+                return await route_to_error_node(
+                    state, writer, public_error=ErrorDetailSchema(code=e.code, detail=str(e))
+                )
 
             logger.debug(
                 "Classification table '{}' result: result_node={}",

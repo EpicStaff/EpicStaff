@@ -2,9 +2,18 @@ import pytest
 from dotdict import DotDict
 from loguru import logger
 
+from foundation.schemas import ErrorDetailSchema
+from services.agent_task_service import AgentTaskError, AgentTaskTimeoutError
 from services.graph.custom_message_writer import CustomSessionMessageWriter
 from services.graph.events import StopEvent
-from services.graph.exceptions import InvalidStatePathError, ReturnCodeError, StopSession
+from services.graph.exceptions import (
+    InvalidStatePathError,
+    KeyValueNodeError,
+    KnowledgeSearchError,
+    NodeConfigurationError,
+    ReturnCodeError,
+    StopSession,
+)
 from services.graph.nodes.base_node import BaseNode
 from services.graph.nodes.python_node import PythonNode
 from src.shared.flow_templates import RefusedPlaceholderError, render_template
@@ -43,6 +52,17 @@ class RefusedPlaceholderNode(BaseNode):
         return render_template("Answer {context._x}", {"context": {"_x": SECRET_TEXT}})
 
 
+class RaisingNode(BaseNode):
+    TYPE = "PYTHON"
+
+    def __init__(self, error: Exception, **kwargs):
+        super().__init__(**kwargs)
+        self.error = error
+
+    async def execute(self, state, writer, execution_order, input_):
+        raise self.error
+
+
 class RecordingNode(BaseNode):
     TYPE = "PYTHON"
 
@@ -53,6 +73,10 @@ class RecordingNode(BaseNode):
     async def execute(self, state, writer, execution_order, input_):
         self.executed = True
         return {"done": True}
+
+
+def error_item(code: str, detail: str) -> dict:
+    return {"code": code, "detail": detail, "attr": None, "context": None}
 
 
 def build_state():
@@ -83,7 +107,9 @@ async def test_failing_node_streams_the_node_failed_fact_and_reraises(captured_l
         message for message in messages if message.message_data.message_type == "error"
     ]
     assert len(error_messages) == 1
-    assert error_messages[0].message_data.details == 'Node "Save lead #3" failed.'
+    assert error_messages[0].message_data.error == error_item(
+        "node_failed", 'Node "Save lead #3" failed.'
+    )
 
 
 @pytest.mark.asyncio
@@ -101,8 +127,8 @@ async def test_raw_error_goes_to_the_log_with_session_and_node(captured_logs):
     assert "reference" not in captured_logs[0]
 
 
-def test_public_details_replace_the_generic_message_and_add_no_log_of_their_own(captured_logs):
-    """When a caller supplies public_details, it already decided the error is an
+def test_public_error_replaces_the_generic_message_and_adds_no_log_of_its_own(captured_logs):
+    """When a caller supplies public_error, it already decided the error is an
     expected, routed outcome (not an unhandled fault) and logs it in its own
     words at whatever level fits — the chokepoint must not log a duplicate."""
     messages = []
@@ -113,10 +139,14 @@ def test_public_details_replace_the_generic_message_and_add_no_log_of_their_own(
         writer=messages.append,
         error=RuntimeError(SECRET_TEXT),
         execution_order=0,
-        public_details="Variable 'user_name' is not defined",
+        public_error=ErrorDetailSchema(
+            code="decision_table_failed", detail="Variable 'user_name' is not defined"
+        ),
     )
 
-    assert messages[0].message_data.details == "Variable 'user_name' is not defined"
+    assert messages[0].message_data.error == error_item(
+        "decision_table_failed", "Variable 'user_name' is not defined"
+    )
     assert captured_logs == []
 
 
@@ -137,7 +167,7 @@ async def test_sandbox_return_code_error_keeps_its_stderr_on_the_error_card(capt
         message for message in messages if message.message_data.message_type == "error"
     ]
     assert len(error_messages) == 1
-    assert error_messages[0].message_data.details == SANDBOX_STDERR
+    assert error_messages[0].message_data.error == error_item("python_code_failed", SANDBOX_STDERR)
     assert captured_logs == []
 
 
@@ -153,9 +183,10 @@ async def test_refused_template_placeholder_is_streamed_verbatim(captured_logs):
         message for message in messages if message.message_data.message_type == "error"
     ]
     assert len(error_messages) == 1
-    assert error_messages[0].message_data.details == (
+    assert error_messages[0].message_data.error == error_item(
+        "refused_placeholder",
         "Placeholder '{context._x}' is not allowed: '_x' starts with '_'. "
-        "Rename that variable or key."
+        "Rename that variable or key.",
     )
     assert captured_logs == []
 
@@ -187,7 +218,9 @@ def test_error_passed_as_string_is_also_kept_out_of_the_stream(captured_logs):
         execution_order=0,
     )
 
-    assert messages[0].message_data.details == 'Node "Save lead #3" failed.'
+    assert messages[0].message_data.error == error_item(
+        "node_failed", 'Node "Save lead #3" failed.'
+    )
     assert SECRET_TEXT in captured_logs[0]
 
 
@@ -224,8 +257,9 @@ async def test_underscore_state_path_fails_before_execute_with_a_public_message(
         message for message in messages if message.message_data.message_type == "error"
     ]
     assert len(error_messages) == 1
-    assert error_messages[0].message_data.details == (
-        f"Variable path '{rejected_path}' is not allowed: path segments cannot start with '_'."
+    assert error_messages[0].message_data.error == error_item(
+        "invalid_state_path",
+        f"Variable path '{rejected_path}' is not allowed: path segments cannot start with '_'.",
     )
     assert captured_logs == []
 
@@ -271,7 +305,7 @@ async def test_output_path_that_does_not_exist_streams_the_fact(
         for message in messages
         if getattr(message.message_data, "message_type", None) == "error"
     ]
-    assert [message.message_data.details for message in error_messages] == [expected]
+    assert [message.message_data.error["detail"] for message in error_messages] == [expected]
 
 
 @pytest.mark.asyncio
@@ -292,9 +326,50 @@ async def test_input_map_entry_without_a_path_fails_before_execute_with_a_public
 
     assert node.executed is False
     error_details = [
-        message.message_data.details
+        message.message_data.error["detail"]
         for message in messages
         if message.message_data.message_type == "error"
     ]
     assert error_details == ["Input map entry 'user' has no variable path."]
     assert captured_logs == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "expected_code"),
+    [
+        pytest.param(ReturnCodeError("boom"), "python_code_failed", id="python-code"),
+        pytest.param(InvalidStatePathError("boom"), "invalid_state_path", id="state-path"),
+        pytest.param(KeyValueNodeError("boom"), "key_value_failed", id="key-value"),
+        pytest.param(KnowledgeSearchError("boom"), "knowledge_search_failed", id="knowledge"),
+        pytest.param(NodeConfigurationError("boom"), "node_not_configured", id="configuration"),
+        pytest.param(AgentTaskError("boom"), "agent_task_failed", id="agent-task"),
+        pytest.param(AgentTaskTimeoutError("boom"), "agent_task_timeout", id="agent-timeout"),
+    ],
+)
+async def test_an_error_written_for_the_user_is_streamed_under_its_own_code(
+    captured_logs, error, expected_code
+):
+    node = RaisingNode(error, session_id=7, node_name="node", stop_event=StopEvent())
+    messages = []
+
+    with pytest.raises(type(error)):
+        await node.run(build_state(), writer=messages.append)
+
+    error_messages = [
+        message for message in messages if message.message_data.message_type == "error"
+    ]
+    assert [message.message_data.error for message in error_messages] == [
+        error_item(expected_code, "boom")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("error_class", "expected_code"),
+    [
+        # Never streamed (a stopped node sends no error card), so pinned on the class.
+        pytest.param(StopSession, "session_stopped", id="stop-session"),
+    ],
+)
+def test_an_error_that_is_never_streamed_keeps_its_own_code(error_class, expected_code):
+    assert error_class.code == expected_code

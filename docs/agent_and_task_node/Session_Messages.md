@@ -89,10 +89,36 @@ Node completed successfully. `output.message` is what you render.
 
 ### `error`
 ```jsonc
-{ "message_type": "error", "details": "…error message…" }
+{
+  "message_type": "error",
+  "error": {
+    "code": "agent_task_failed",   // machine-readable: branch on this, not on the text
+    "detail": "…error message…",   // safe to show the user
+    "attr": null,                  // always null on a session error
+    "context": null                // always null on a session error
+  }
+}
 ```
 The run failed (LLM error, timeout, or an output schema that could not be
-satisfied) — the node raised.
+satisfied) — the node raised. `error` is the same item an HTTP error carries in
+`errors[]` (foundation `ErrorDetailSchema`). Codes these two nodes send:
+
+| `code` | meaning |
+|---|---|
+| `agent_task_failed` | The agent service reported a failure; `detail` is its user-safe text. |
+| `agent_task_timeout` | The agent service didn't answer in time. |
+| `node_not_configured` | The node has no agent or no tasks chosen. |
+| `refused_placeholder` | An instruction holds a placeholder that is never allowed. |
+| `invalid_state_path` | The input map or output path names a state path that can't be read or written. |
+| `node_failed` | Anything else; `detail` is the fixed `Node "<name>" failed.` and the raw error is only logged. |
+
+Error cards saved before this shape existed were migrated to an item with code
+`unknown`: their old text is the `detail`, or the fixed text "This error was
+recorded in an older format." when the old value was not a non-empty string.
+
+A session that fails outside any node (no error card streamed) stores the same
+kind of item in its status: `status_data.error`, code `flow_failed`, detail
+`The flow failed.`.
 
 ## `stop_reason` values (in `finish.output`)
 

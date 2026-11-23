@@ -323,7 +323,7 @@ def run_node(node: KnowledgeNode) -> list:
     with pytest.raises(KnowledgeSearchError):
         asyncio.run(node.run(state, writer=messages.append))
     return [
-        message.message_data.details
+        message.message_data.error["detail"]
         for message in messages
         if getattr(message.message_data, "message_type", None) == "error"
     ]

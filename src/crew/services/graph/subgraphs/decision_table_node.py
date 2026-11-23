@@ -1,5 +1,6 @@
 import json
 
+from foundation.schemas import ErrorDetailSchema
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
@@ -21,6 +22,8 @@ from src.shared.sandbox_errors import SANDBOX_SERVER_ERROR_MESSAGE
 
 class DecisionTableNodeDataError(Exception):
     """A condition group failed; the message is the fact streamed to the user."""
+
+    code = "decision_table_failed"
 
 
 class DecisionTableNodeSubgraph:
@@ -346,9 +349,8 @@ def main(variables: dict) -> bool:
 
                         decision_node_variables["result_node"] = condition_group.next_node
                 except DecisionTableNodeDataError as e:
-                    error = str(e)
                     logger.error(
-                        "Decision table '{}' routed to its error node: {}", self.node_name, error
+                        "Decision table '{}' routed to its error node: {}", self.node_name, e
                     )
                     decision_node_variables["result_node"] = (
                         self.decision_table_node_data.next_error_node or END
@@ -360,7 +362,7 @@ def main(variables: dict) -> bool:
                         writer=writer,
                         execution_order=self.execution_order(state),
                         node_type=self.TYPE,
-                        public_details=error,
+                        public_error=ErrorDetailSchema(code=e.code, detail=str(e)),
                     )
                     await self._publish_message(msg)
 

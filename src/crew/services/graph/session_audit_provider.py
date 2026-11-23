@@ -186,7 +186,7 @@ def emit_session_audit_event(encoded_message: str) -> None:
             )
         )
     elif message_type == "error":
-        error_detail = message_data.get("details") or "unknown error"
+        error_detail = (message_data.get("error") or {}).get("detail") or "unknown error"
         track_audit_task(
             writer.add_error_message(
                 session_id=session_id,

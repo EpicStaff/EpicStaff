@@ -50,7 +50,7 @@ async def test_underscore_variable_path_fails_with_a_public_message():
         await node.run(state, writer=messages.append)
 
     error_details = [
-        message.message_data.details for message in messages if message.message_data.message_type == "error"
+        message.message_data.error["detail"] for message in messages if message.message_data.message_type == "error"
     ]
     assert error_details == [
         "Variable path 'variables.__class__.text' is not allowed: path segments cannot start with '_'."
@@ -97,6 +97,6 @@ async def test_wrong_path_streams_the_fact(field, payload, variables, expected):
         await node.run(state, writer=messages.append)
 
     error_details = [
-        message.message_data.details for message in messages if message.message_data.message_type == "error"
+        message.message_data.error["detail"] for message in messages if message.message_data.message_type == "error"
     ]
     assert error_details == [expected]

@@ -10,11 +10,12 @@ import redis
 from clients.key_value import KeyValueClient
 from dotdict import DotDict
 from foundation.cryptographer import AbstractCryptographer
+from foundation.schemas import ErrorDetailSchema
 from loguru import logger
 from models.graph_models import GraphMessage
 from services.agent_task_service import AgentTaskService
 from services.graph.events import StopEvent
-from services.graph.exceptions import StopSession
+from services.graph.exceptions import FLOW_FAILED_CODE, StopSession
 from services.graph.graph_builder import SessionGraphBuilder
 from services.knowledge_search_service import KnowledgeSearchService
 from services.redis_service import AsyncPubsubSubscriber, RedisService
@@ -165,10 +166,10 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
     async def run_session(self, session_data: SessionData, stop_event: StopEvent):
         session_id = session_data.id
-        # The error card streamed in the current graph step, if any. A failing node
-        # streams its card right before its exception ends the run, so a session that
-        # fails with one set needs no second error text.
-        node_error_details: str | None = None
+        # The error item of the card streamed in the current graph step, if any. A failing
+        # node streams its card right before its exception ends the run, so a session that
+        # fails with one set needs no second error item.
+        node_error: dict | None = None
         try:
             audit_context = SessionAuditContext.from_session_data(session_data)
             register_session_audit_context(session_id, audit_context)
@@ -225,13 +226,13 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
                 if stream_mode == "values":
                     final_state = chunk
                     # A step that ends normally handled any error card it streamed.
-                    node_error_details = None
+                    node_error = None
                 elif stream_mode == "custom":
                     data = chunk.to_payload()
                     encoded_data = GraphMessage.encode_payload(data)
                     message_data = data.get("message_data") or {}
                     if message_data.get("message_type") == "error":
-                        node_error_details = message_data.get("details")
+                        node_error = message_data.get("error")
                     try:
                         emit_session_audit_event(encoded_data)
                     except Exception as audit_exc:
@@ -386,12 +387,18 @@ class GraphSessionManagerService(metaclass=SingletonMeta):
 
             # A node's failure is already on its error card; only a failure outside any
             # node gets the session-level fact.
-            status_kwargs = {} if node_error_details else {"error": SESSION_FAILED_MESSAGE}
+            status_kwargs = {}
+            if not node_error:
+                status_kwargs["error"] = ErrorDetailSchema(
+                    code=FLOW_FAILED_CODE, detail=SESSION_FAILED_MESSAGE
+                ).model_dump()
             await self.redis_service.aupdate_session_status(
                 session_id=session_id, status="error", **status_kwargs
             )
             audit_context = get_session_audit_context(session_id)
-            failure_details = {"error": node_error_details or SESSION_FAILED_MESSAGE}
+            failure_details = {
+                "error": node_error["detail"] if node_error else SESSION_FAILED_MESSAGE
+            }
             if audit_context is not None:
                 _dispatch_session_audit(
                     lambda: get_session_audit_writer().add_session_end(

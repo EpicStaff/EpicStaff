@@ -521,7 +521,7 @@ async def test_computation_code_error_shows_the_users_stderr_after_the_code_it_c
 
     await subgraph.ainvoke(make_state())
 
-    assert first_error_message(redis_service)["details"] == expected_details
+    assert first_error_message(redis_service)["error"]["detail"] == expected_details
 
 
 # ---------------------------------------------------------------------------
@@ -676,7 +676,7 @@ async def test_broken_expression_before_match_routes_to_error_after_earlier_rows
     ]
     assert messages[1]["group_name"] == "miss"
     assert messages[1]["result"] is False
-    assert messages[2]["details"] == (
+    assert messages[2]["error"]["detail"] == (
         "Condition \"broken\": NameError: name 'undefined_name' is not defined"
     )
 
@@ -703,7 +703,7 @@ async def test_non_boolean_expression_routes_to_error(monkeypatch):
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     )
-    assert error_message["details"] == "Condition \"not_bool\" didn't give true or false."
+    assert error_message["error"]["detail"] == "Condition \"not_bool\" didn't give true or false."
 
 
 @pytest.mark.asyncio
@@ -832,7 +832,7 @@ async def test_exit_in_expression_is_reported_against_its_row(monkeypatch):
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     )
-    assert error_message["details"] == 'Condition "exits": SystemExit: 3'
+    assert error_message["error"]["detail"] == 'Condition "exits": SystemExit: 3'
 
 
 # ---------------------------------------------------------------------------
@@ -866,7 +866,7 @@ async def run_pre_computation_input_map(monkeypatch, input_map: dict, **node_ove
 
 def error_details(redis_service: MagicMock) -> list[str]:
     return [
-        message["details"]
+        message["error"]["detail"]
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     ]
@@ -1161,7 +1161,7 @@ async def test_batch_run_failure_names_the_row_range(monkeypatch):
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     )
-    assert error_message["details"] == 'Conditions "first" to "last": boom'
+    assert error_message["error"]["detail"] == 'Conditions "first" to "last": boom'
 
 
 # ---------------------------------------------------------------------------
@@ -1236,7 +1236,7 @@ async def test_llm_failure_states_the_fact_after_the_prompt_and_logs_the_provide
         result = await subgraph.ainvoke(make_state({"text": "hello"}))
 
     assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
-    assert first_error_message(redis_service)["details"] == expected_details
+    assert first_error_message(redis_service)["error"]["detail"] == expected_details
     assert any("sk-live-abcdef" in record for record in captured_logs)
     # Only a litellm error is logged as a failed LLM call.
     llm_call_logged = any("LLM call failed" in record for record in captured_logs)
@@ -1531,7 +1531,7 @@ async def test_a_failing_system_one_entry_takes_the_error_path_with_our_own_mess
     result = await subgraph.ainvoke(make_state({"company": "Acme"}))
 
     assert result_node(result) == "error_node"
-    details = first_error_message(redis_service)["details"]
+    details = first_error_message(redis_service)["error"]["detail"]
     assert details == expected
     assert "ts-secret" not in details
     if adapter_error is None:
@@ -1607,7 +1607,7 @@ async def test_underscore_computation_output_path_routes_to_error_without_a_sand
 
     assert calls == []
     error_details = [
-        message["details"]
+        message["error"]["detail"]
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     ]
@@ -1732,7 +1732,7 @@ async def test_refused_prompt_placeholder_routes_to_the_error_node_without_an_ll
 
     mock_completion.assert_not_awaited()
     assert result["system_variables"]["nodes"]["cdt_node"]["result_node"] == "error_node"
-    details = first_error_message(redis_service)["details"]
+    details = first_error_message(redis_service)["error"]["detail"]
     assert details.startswith('Prompt "classify": ')
     assert f"'{placeholder}'" in details
     assert canary_value not in json.dumps(published_messages(redis_service))
@@ -1813,7 +1813,7 @@ async def test_failing_manipulation_run_keeps_the_sandbox_text_after_the_conditi
 
     await subgraph.ainvoke(make_state())
 
-    assert first_error_message(redis_service)["details"] == 'Condition "High score": boom'
+    assert first_error_message(redis_service)["error"]["detail"] == 'Condition "High score": boom'
 
 
 @pytest.mark.asyncio
@@ -1836,7 +1836,7 @@ async def test_unreadable_expression_result_states_a_server_error_and_logs_the_d
 
     await subgraph.ainvoke(make_state())
 
-    assert first_error_message(redis_service)["details"] == (
+    assert first_error_message(redis_service)["error"]["detail"] == (
         "Condition \"High score\": The code couldn't run because of a server error."
     )
     assert any("internal-host" in record for record in captured_logs)
@@ -1859,7 +1859,12 @@ async def test_prompt_without_an_llm_states_it(monkeypatch):
 
     await subgraph.ainvoke(make_state())
 
-    assert first_error_message(redis_service)["details"] == 'Prompt "classify" has no LLM.'
+    assert first_error_message(redis_service)["error"] == {
+        "code": "classification_decision_table_failed",
+        "detail": 'Prompt "classify" has no LLM.',
+        "attr": None,
+        "context": None,
+    }
 
 
 @pytest.mark.asyncio
@@ -1878,7 +1883,12 @@ async def test_unexpected_error_states_that_the_node_failed_and_logs_the_raw_err
     result = await subgraph.ainvoke(make_state())
 
     assert result_node(result) == "error_node"
-    assert first_error_message(redis_service)["details"] == 'Node "cdt_node" failed.'
+    assert first_error_message(redis_service)["error"] == {
+        "code": "node_failed",
+        "detail": 'Node "cdt_node" failed.',
+        "attr": None,
+        "context": None,
+    }
     assert any("internal-host" in record for record in captured_logs)
 
 
@@ -1992,7 +2002,7 @@ async def test_undecryptable_prompt_key_routes_to_the_error_node_without_an_llm_
 
     assert result_node(result) == "error_node"
     assert mock_completion.await_count == 0
-    assert first_error_message(redis_service)["details"] == (
+    assert first_error_message(redis_service)["error"]["detail"] == (
         'Prompt "classify": api_key could not be decrypted.'
     )
     assert BROKEN_TOKEN not in json.dumps(published_messages(redis_service))
@@ -2011,7 +2021,7 @@ async def test_undecryptable_system_one_key_routes_to_the_error_node_without_a_p
 
     assert result_node(result) == "error_node"
     assert adapter.states == []
-    assert first_error_message(redis_service)["details"] == (
+    assert first_error_message(redis_service)["error"]["detail"] == (
         'Prompt "company_check": api_key could not be decrypted.'
     )
     assert BROKEN_TOKEN not in json.dumps(published_messages(redis_service))
@@ -2090,7 +2100,7 @@ async def test_a_sandbox_failure_streams_its_error_detail_after_what_it_ran(
 
     await subgraph.ainvoke(make_state())
 
-    assert first_error_message(redis_service)["details"] == expected_details
+    assert first_error_message(redis_service)["error"]["detail"] == expected_details
 
 
 def _run_code_failing_with(stderr: str, error: dict):
@@ -2144,4 +2154,4 @@ async def test_computation_code_shows_the_codes_stderr_before_the_sandbox_error(
 
     await subgraph.ainvoke(make_state())
 
-    assert first_error_message(redis_service)["details"] == expected_details
+    assert first_error_message(redis_service)["error"]["detail"] == expected_details

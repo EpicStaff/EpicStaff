@@ -249,14 +249,20 @@ OTHER_NODE_MESSAGES = [
         "2026-10-07T13:00:02.600000Z",
         "python_1 #8",
         4,
-        {"message_type": "error", "details": "ZeroDivisionError"},
+        {
+            "message_type": "error",
+            "error": {"code": "python_code_failed", "detail": "ZeroDivisionError", "attr": None, "context": None},
+        },
     ),
     _message(
         66,
         "2026-10-07T13:00:02.700000Z",
         "",
         0,
-        {"message_type": "error", "error": "graph crashed"},
+        {
+            "message_type": "error",
+            "error": {"code": "node_failed", "detail": 'Node "agent" failed.', "attr": None, "context": None},
+        },
     ),
     _message(
         67,
@@ -424,6 +430,30 @@ def test_agent_session_rows():
     assert json.loads(graph_end["output"]) == {"context": {"agent_result": ANSWER}}
 
 
+@pytest.mark.parametrize(
+    ("message_data", "expected_error", "expected_details"),
+    [
+        pytest.param(
+            {"error": {"code": "node_failed", "detail": 'Node "a" failed.', "attr": None, "context": None}},
+            'Node "a" failed.',
+            "",
+            id="error-item",
+        ),
+        pytest.param({"error": "Variable 'x' is not defined"}, "Variable 'x' is not defined", "", id="plain-error"),
+        pytest.param({"details": "The flow failed."}, "The flow failed.", "", id="string-details"),
+        pytest.param({"error": "", "details": "The flow failed."}, "The flow failed.", "", id="empty-error-string-details"),
+        pytest.param({"details": {"raw": "x"}}, "", '{"details": {"raw": "x"}}', id="object-details"),
+        pytest.param({"error": None}, "", "", id="null-error"),
+    ],
+)
+def test_error_card_text_is_read_from_every_saved_shape(message_data, expected_error, expected_details):
+    message = _message(90, "2026-10-07T13:00:00.000000Z", "node #1", 0, {"message_type": "error", **message_data})
+
+    rows = _rows_by_message_id([message])
+
+    assert (rows["90"]["error"], rows["90"]["details"]) == (expected_error, expected_details)
+
+
 def test_end_node_duration_does_not_depend_on_row_order():
     end_start, end_output, end_finish = AGENT_SESSION_MESSAGES[5:8]
 
@@ -465,7 +495,7 @@ def test_other_node_message_rows():
     assert python_failed["output"] == ""
 
     assert rows["65"]["error"] == "ZeroDivisionError"
-    assert rows["66"]["error"] == "graph crashed"
+    assert rows["66"]["error"] == 'Node "agent" failed.'
 
     classification = rows["67"]
     assert classification["node_type"] == "classification_decision_table"

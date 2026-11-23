@@ -66,8 +66,11 @@ LIVE_EVENT_TYPES = frozenset(
 class AgentTaskError(Exception):
     """The agent run failed. The message is user-safe: it is shown on the error card."""
 
+    code = "agent_task_failed"
 
-class AgentTaskTimeoutError(AgentTaskError): ...
+
+class AgentTaskTimeoutError(AgentTaskError):
+    code = "agent_task_timeout"
 
 
 _LLM_REQUEST_FAILED = "The LLM request failed."

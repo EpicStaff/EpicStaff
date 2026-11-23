@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Literal
 
+from foundation.schemas import ErrorDetailSchema
 from langgraph.types import StreamWriter
 from loguru import logger
 from models.state import State
@@ -22,7 +23,7 @@ from utils.node_label import runtime_node_name_to_label
 from utils.state_path import split_state_path
 
 # Errors whose text is written for the user and carries nothing internal, so it is streamed
-# as-is instead of the fixed `Node "<name>" failed.` fact.
+# as-is, under the error class's own `code`, instead of the fixed `Node "<name>" failed.` fact.
 _PUBLIC_ERROR_TYPES = (
     ReturnCodeError,
     StopSession,
@@ -141,25 +142,25 @@ class BaseNode(ABC):
         error: Exception | str,
         execution_order: int,
         *,
-        public_details: str | None = None,
+        public_error: ErrorDetailSchema | None = None,
     ):
         """
         Add an error message to the graph.
 
         The raw error text is logged, not streamed: the client receives
-        `Node "<name>" failed.`, unless the caller supplies already-safe text in
-        `public_details` or the error is one of _PUBLIC_ERROR_TYPES, whose own
-        text is streamed.
+        `Node "<name>" failed.`, unless the caller supplies an already-safe item in
+        `public_error` or the error is one of _PUBLIC_ERROR_TYPES, whose own code
+        and text are streamed.
 
         Args:
             writer (StreamWriter): A stream writer to write the message to.
             error (Exception | str): The exception or error text that was raised.
             execution_order (int): The order of execution of the node.
-            public_details (str | None): Safe text to stream instead of the
-                fixed fact.
+            public_error (ErrorDetailSchema | None): Safe item to stream instead of
+                the fixed fact.
         """
-        if public_details is None and isinstance(error, _PUBLIC_ERROR_TYPES):
-            public_details = str(error)
+        if public_error is None and isinstance(error, _PUBLIC_ERROR_TYPES):
+            public_error = ErrorDetailSchema(code=error.code, detail=str(error))
         self.custom_session_message_writer.add_error_message(
             session_id=self.session_id,
             node_name=self.node_name,
@@ -167,7 +168,7 @@ class BaseNode(ABC):
             error=error,
             execution_order=execution_order,
             node_type=self.TYPE,
-            public_details=public_details,
+            public_error=public_error,
         )
 
     @abstractmethod

@@ -33,6 +33,7 @@ from tables.services.llm_clients.base import (
     TokenEvent,
     ToolCallEvent,
 )
+from tests.error_envelope import details_by_attr, error_codes
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -2382,6 +2383,36 @@ def test_get_session_messages_returns_trace_content(db, org_a):
 
 
 @pytest.mark.django_db
+def test_get_session_messages_returns_the_error_item_of_an_error_card(db, org_a):
+    from django.utils import timezone
+
+    from tables.models.graph_models import GraphSessionMessage
+    from tables.models.session_models import Session
+    from tables.services.flow_assistant.tools import get_session_messages
+
+    graph = Graph.objects.create(name="Failed Flow", description="", org=org_a)
+    now = timezone.now()
+    session = Session.objects.create(graph=graph, status=Session.SessionStatus.ERROR, status_updated_at=now)
+    error_item = {
+        "code": "python_code_failed",
+        "detail": "ZeroDivisionError: division by zero",
+        "attr": None,
+        "context": None,
+    }
+    GraphSessionMessage.objects.create(
+        session=session,
+        name="python #1",
+        created_at=now,
+        uuid=uuid.uuid4(),
+        message_data={"message_type": "error", "error": error_item},
+    )
+
+    [message] = get_session_messages(graph.pk, session.pk)["messages"]
+
+    assert (message["kind"], message["content"], message["extras"]) == ("error", error_item, {})
+
+
+@pytest.mark.django_db
 def test_get_session_messages_rejects_cross_graph_session(db, org_a):
     """get_session_messages returns an error when session belongs to a different graph."""
     from django.utils import timezone
@@ -2581,6 +2612,8 @@ def test_cancel_endpoint_org_scoped(
     # is owned by org_user_a, so org_user_b's resolution will return no match.
     response = auth_client_b.post(url)
     assert response.status_code == 404, response.content
+    assert error_codes(response.json()) == ["not_found"]
+    assert details_by_attr(response.json()) == {None: ["Conversation not found."]}
 
 
 @pytest.mark.asyncio

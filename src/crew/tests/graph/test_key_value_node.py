@@ -630,7 +630,9 @@ def _django_unreachable() -> httpx.MockTransport:
 
 
 def _envelope(status_code: int, code: str, message: str) -> dict:
-    return {"json": {"status_code": status_code, "code": code, "message": message}}
+    error_type = "client_error" if status_code < 500 else "server_error"
+    item = {"code": code, "detail": message, "attr": None, "context": None}
+    return {"json": {"type": error_type, "errors": [item]}}
 
 
 async def _streamed_errors(mode: str, transport: httpx.MockTransport) -> list[str]:
@@ -652,7 +654,7 @@ async def _streamed_errors(mode: str, transport: httpx.MockTransport) -> list[st
         for message in messages
     )
     return [
-        message.message_data.details
+        message.message_data.error["detail"]
         for message in messages
         if getattr(message.message_data, "message_type", None) == "error"
     ]
@@ -766,7 +768,7 @@ async def test_entry_error_is_streamed_as_its_own_text():
         await node.run(make_state({}), messages.append)
 
     error_details = [
-        message.message_data.details
+        message.message_data.error["detail"]
         for message in messages
         if getattr(message.message_data, "message_type", None) == "error"
     ]

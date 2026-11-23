@@ -97,7 +97,7 @@ async def test_matching_condition_group_routes_to_its_next_node():
 
 def error_details(redis_service: MagicMock) -> list[str]:
     return [
-        message["details"]
+        message["error"]["detail"]
         for message in published_messages(redis_service)
         if message["message_type"] == "error"
     ]
@@ -127,7 +127,18 @@ async def test_failing_condition_group_names_the_condition_before_the_stderr():
     result = await subgraph.ainvoke(make_state())
 
     assert result["system_variables"]["nodes"]["dt_node"]["result_node"] == "error_node"
-    assert error_details(redis_service) == [f'Condition "High score": {SANDBOX_STDERR}']
+    assert [
+        message["error"]
+        for message in published_messages(redis_service)
+        if message["message_type"] == "error"
+    ] == [
+        {
+            "code": "decision_table_failed",
+            "detail": f'Condition "High score": {SANDBOX_STDERR}',
+            "attr": None,
+            "context": None,
+        }
+    ]
 
 
 @pytest.mark.asyncio

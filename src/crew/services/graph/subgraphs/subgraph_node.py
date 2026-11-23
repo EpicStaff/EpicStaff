@@ -2,6 +2,7 @@ from copy import deepcopy
 from uuid import uuid4
 
 from dotdict import DotDict
+from foundation.schemas import ErrorDetailSchema
 from langgraph.graph import StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StreamWriter
@@ -13,7 +14,7 @@ from models.graph_models import (
     dataclass_to_shallow_dict,
 )
 from services.graph.custom_message_writer import CustomSessionMessageWriter
-from services.graph.exceptions import InvalidStatePathError, StopSession
+from services.graph.exceptions import SUBFLOW_FAILED_CODE, InvalidStatePathError, StopSession
 from src.shared.models import GraphData, SubGraphData, SubGraphNodeData
 from src.shared.models.storage_scope import StorageCredentials
 from utils import map_variables_to_input
@@ -349,7 +350,7 @@ class SubGraphNode:
         execution_order = sysvars.get("execution_order", 0)
         sysvars["execution_order"] = execution_order + 1
         if isinstance(error, InvalidStatePathError):
-            public_details = str(error)
+            public_error = ErrorDetailSchema(code=error.code, detail=str(error))
         else:
             logger.opt(exception=error).warning(
                 "Subflow node failed: {error} (session_id={session_id}, node_name={node_name})",
@@ -357,7 +358,7 @@ class SubGraphNode:
                 session_id=self.session_id,
                 node_name=self.node_name,
             )
-            public_details = fact
+            public_error = ErrorDetailSchema(code=SUBFLOW_FAILED_CODE, detail=fact)
         self.custom_session_message_writer.add_error_message(
             session_id=self.session_id,
             node_name=self.node_name,
@@ -365,7 +366,7 @@ class SubGraphNode:
             execution_order=execution_order,
             node_type=self.TYPE,
             error=error,
-            public_details=public_details,
+            public_error=public_error,
         )
 
     def _display_name(self) -> str:

@@ -38,6 +38,7 @@ from tests.graph.rebuild_counting_dict import RebuildCountingDict
 from tests.graph.recording_audit_client import RecordingAuditClient
 
 FLOW_FAILED = "The flow failed."
+FLOW_FAILED_ITEM = {"code": "flow_failed", "detail": FLOW_FAILED, "attr": None, "context": None}
 
 
 def make_finish_chunk(
@@ -421,7 +422,7 @@ async def test_unserialisable_final_variables_end_the_session_as_error(
     assert [call.kwargs["status"] for call in status_calls] == ["run", "error"]
     # The TypeError's text names the unserialisable value; only the public
     # message reaches Redis.
-    assert status_calls[-1].kwargs["error"] == FLOW_FAILED
+    assert status_calls[-1].kwargs["error"] == FLOW_FAILED_ITEM
 
 
 @pytest.mark.asyncio
@@ -484,7 +485,7 @@ async def test_failed_session_reports_the_flow_failed_fact_to_redis_and_audit(
 
     status_call = service.redis_service.aupdate_session_status.call_args_list[-1]
     assert status_call.kwargs["status"] == "error"
-    assert status_call.kwargs["error"] == FLOW_FAILED
+    assert status_call.kwargs["error"] == FLOW_FAILED_ITEM
 
     end_call = audit_calls[-1][1]
     assert end_call["name"] == "Session Failed"
@@ -492,7 +493,7 @@ async def test_failed_session_reports_the_flow_failed_fact_to_redis_and_audit(
     assert any(secret in line for line in captured_logs)
 
 
-def _error_chunk(session_id: int, details: str) -> tuple[str, GraphMessage]:
+def _error_chunk(session_id: int, detail: str) -> tuple[str, GraphMessage]:
     """The error card a failing node streams before its exception ends the run."""
     return (
         "custom",
@@ -500,7 +501,9 @@ def _error_chunk(session_id: int, details: str) -> tuple[str, GraphMessage]:
             session_id=session_id,
             name="Save lead #3",
             execution_order=1,
-            message_data=ErrorMessageData(details=details),
+            message_data=ErrorMessageData(
+                error={"code": "key_value_failed", "detail": detail, "attr": None, "context": None}
+            ),
         ),
     )
 
@@ -526,7 +529,7 @@ def _error_chunk(session_id: int, details: str) -> tuple[str, GraphMessage]:
         # later failure is not the node's.
         pytest.param(
             ["error", "values", "finish"],
-            {"error": FLOW_FAILED},
+            {"error": FLOW_FAILED_ITEM},
             FLOW_FAILED,
             id="failure-after-a-handled-node-error",
         ),

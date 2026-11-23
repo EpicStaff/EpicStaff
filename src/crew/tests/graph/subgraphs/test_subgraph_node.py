@@ -265,7 +265,15 @@ async def test_child_nodes_use_the_parents_services():
 
 def _error_details(messages) -> list[str]:
     return [
-        message.message_data.details
+        message.message_data.error["detail"]
+        for message in messages
+        if getattr(message.message_data, "message_type", None) == "error"
+    ]
+
+
+def _error_codes(messages) -> list[str]:
+    return [
+        message.message_data.error["code"]
         for message in messages
         if getattr(message.message_data, "message_type", None) == "error"
     ]
@@ -349,6 +357,7 @@ async def test_missing_child_flow_streams_the_fact():
         await node.run(_parent_state(), writer=messages.append)
 
     assert _error_details(messages) == ["Subflow node \"Run B #1\" couldn't start its flow."]
+    assert _error_codes(messages) == ["subflow_failed"]
 
 
 async def test_child_flow_that_cannot_be_built_streams_the_fact(monkeypatch, captured_logs):
@@ -412,4 +421,5 @@ async def test_output_path_that_does_not_exist_streams_the_fact():
     assert _error_details(messages) == [
         "Output path \"variables.records[5]\" of Subflow node \"Run B #1\" doesn't exist."
     ]
+    assert _error_codes(messages) == ["invalid_state_path"]
     assert state["variables"].deep_dump() == PARENT

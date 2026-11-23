@@ -231,7 +231,7 @@ async def _streamed_error(node) -> list[str]:
     with pytest.raises(NodeConfigurationError):
         await node.run(state=state, writer=messages.append)
     return [
-        message.message_data.details
+        message.message_data.error["detail"]
         for message in messages
         if getattr(message.message_data, "message_type", None) == "error"
     ]
@@ -292,7 +292,7 @@ async def test_error_text_names_the_node_by_its_label_and_the_message_keeps_the_
         for message in messages
         if getattr(message.message_data, "message_type", None) == "error"
     ]
-    assert error_message.message_data.details == (
+    assert error_message.message_data.error["detail"] == (
         'Agent "researcher" in Agent node "Writer #1" has no LLM.'
     )
     assert error_message.name == runtime_name
@@ -319,7 +319,7 @@ async def test_agent_task_error_streams_its_fact_on_the_error_card(
         await node.run(state=state, writer=messages.append)
 
     assert [
-        message.message_data.details
+        message.message_data.error["detail"]
         for message in messages
         if getattr(message.message_data, "message_type", None) == "error"
     ] == [fact]
@@ -502,7 +502,7 @@ async def test_refused_placeholder_fails_the_node_with_its_own_message_before_th
 
     assert service.dispatched is None
     error_details = [
-        message.message_data.details
+        message.message_data.error["detail"]
         for message in messages
         if getattr(message.message_data, "message_type", None) == "error"
     ]
