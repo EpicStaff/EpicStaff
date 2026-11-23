@@ -91,7 +91,7 @@ def _patch_venv(client, binding, data):
 
 def _assert_denied(response, field):
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    message = response.json()["message"]
+    message = response.json()["errors"][0]["detail"]
     assert message.startswith(f"{field}: ") and DENIED in message, message
 
 

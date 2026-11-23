@@ -23,6 +23,7 @@ from tables.models import (
 from tables.services.transfer_jobs import job_service
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.transfer_job_helpers import export_via_job
+from tests.error_envelope import error_text
 
 pytestmark = pytest.mark.django_db
 
@@ -115,8 +116,8 @@ def test_a_flow_zip_carrying_collections_is_sent_to_the_flow_import_job(client, 
     )
 
     assert response.status_code == 400
-    assert response.json()["code"] == "use_import_job"
-    assert "flow import job" in response.json()["message"]
+    assert response.json()["errors"][0]["code"] == "use_import_job"
+    assert "flow import job" in error_text(response.json())
     assert Graph.objects.count() == graphs_before
 
 
@@ -136,7 +137,7 @@ def test_a_zip_of_another_entity_carrying_collections_is_the_wrong_entity(client
     )
 
     assert response.status_code == 400
-    assert response.json()["code"] != "use_import_job"
+    assert response.json()["errors"][0]["code"] != "use_import_job"
     assert "Provided wrong entity" in str(response.json())
 
 
@@ -249,7 +250,7 @@ def test_a_partial_import_refuses_what_it_cannot_paste(client, target_flow, cont
     )
 
     assert response.status_code == 400
-    assert response.json()["code"] == code
+    assert response.json()["errors"][0]["code"] == code
 
 
 @pytest.mark.parametrize(
@@ -267,6 +268,6 @@ def test_use_import_job_names_the_job_that_takes_the_zip(client, target_flow, en
     )
 
     assert response.status_code == 400
-    assert response.json()["message"] == (
+    assert response.json()["errors"][0]["detail"] == (
         f"This archive carries knowledge collections; import it as {job}."
     )

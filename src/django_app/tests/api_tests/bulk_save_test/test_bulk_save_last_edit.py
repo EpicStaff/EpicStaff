@@ -17,6 +17,7 @@ from tables.models import Graph
 from tables.models.graph_models import DecisionTableNode, Edge, GraphNote, PythonNode
 from tests.fixtures import *  # noqa: F401,F403
 from tests.user_summary_helpers import expected_user_summary
+from utils import exception_handler
 
 PREVIOUS_EDIT_AT = timezone.now() - timedelta(days=2)
 
@@ -448,7 +449,12 @@ def test_nodes_and_graph_are_recorded_in_one_statement(auth_client, saved_flow, 
 
 
 @pytest.mark.django_db
-def test_failed_save_rolls_back_and_records_nothing(auth_client, saved_flow, previous_editor):
+def test_failed_save_rolls_back_and_records_nothing(
+    auth_client, saved_flow, previous_editor, monkeypatch
+):
+    # With DEBUG on, the exception handler renders nothing and the error propagates;
+    # the 500 envelope is what production answers.
+    monkeypatch.setattr(exception_handler, "DEBUG", False)
     duplicate_edge = {
         "graph": saved_flow.graph.id,
         "start_node_id": saved_flow.decision_table.id,
@@ -467,7 +473,12 @@ def test_failed_save_rolls_back_and_records_nothing(auth_client, saved_flow, pre
     response = auth_client.post(_save_url(saved_flow.graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
-    assert response.json()["code"] == "IntegrityError"
+    assert response.json() == {
+        "type": "server_error",
+        "errors": [
+            {"code": "unknown", "detail": "Internal server error.", "attr": None, "context": None}
+        ],
+    }
 
     assert GraphNote.objects.get(pk=saved_flow.note.pk).content == "note"
     _assert_previous_edit(saved_flow.note, previous_editor)

@@ -491,7 +491,7 @@ def test_dtn_both_default_next_id_and_temp_id_rejected(
     resp = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
-    assert "decision_table_node_list" in resp.data["errors"]
+    assert any(str(item["attr"]).startswith("decision_table_node_list.") for item in resp.data["errors"])
 
 
 @pytest.mark.django_db
@@ -522,7 +522,7 @@ def test_dtn_group_both_next_node_id_and_temp_id_rejected(
     resp = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
-    assert "decision_table_node_list" in resp.data["errors"]
+    assert any(str(item["attr"]).startswith("decision_table_node_list.") for item in resp.data["errors"])
 
 
 # ---------------------------------------------------------------------------
@@ -545,7 +545,7 @@ def test_dtn_unknown_default_next_temp_id_rejected(auth_client, graph):
     resp = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
-    assert "decision_table_node_list" in resp.data["errors"]
+    assert any(str(item["attr"]).startswith("decision_table_node_list.") for item in resp.data["errors"])
 
 
 @pytest.mark.django_db
@@ -569,7 +569,7 @@ def test_dtn_group_unknown_next_node_temp_id_rejected(auth_client, graph):
     resp = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
-    assert "decision_table_node_list" in resp.data["errors"]
+    assert any(str(item["attr"]).startswith("decision_table_node_list.") for item in resp.data["errors"])
 
 
 # ---------------------------------------------------------------------------

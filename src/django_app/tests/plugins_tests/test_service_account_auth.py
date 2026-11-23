@@ -41,7 +41,7 @@ def acme_key(weather, service_account_key, acme):
 
 def _refused(response):
     assert response.status_code == 401
-    assert response.json()["code"] == "service_account_not_authenticated"
+    assert response.json()["errors"][0]["code"] == "service_account_not_authenticated"
 
 
 # ---- form and storage ----
@@ -268,7 +268,7 @@ def test_with_plugins_off_a_plugin_key_is_never_read(acme_key, acme, settings):
     response = service_account_client(acme_key, acme).get("/api/graphs/")
 
     assert response.status_code == 401
-    assert response.json()["code"] == "not_authenticated"
+    assert response.json()["errors"][0]["code"] == "not_authenticated"
 
 
 # ---- node keys ----
@@ -285,14 +285,14 @@ def test_a_node_key_also_needs_the_internal_listener(plugin_node, network_secret
     response = client.get("/api/plugin-nodes/self/desired-state/")
 
     assert response.status_code == 401
-    assert response.json()["code"] == "node_not_authenticated"
+    assert response.json()["errors"][0]["code"] == "node_not_authenticated"
 
 
 def test_a_service_account_key_is_no_node_key(acme_key, acme):
     response = service_account_client(acme_key, acme).get("/api/plugin-nodes/self/desired-state/")
 
     assert response.status_code == 401
-    assert response.json()["code"] == "node_not_authenticated"
+    assert response.json()["errors"][0]["code"] == "node_not_authenticated"
 
 
 
@@ -389,7 +389,7 @@ def test_a_node_key_is_refused_with_any_development_listener_header(plugin_node,
     response = client.get(DESIRED_STATE_URL)
 
     assert response.status_code == 401
-    assert response.json()["code"] == "node_not_authenticated"
+    assert response.json()["errors"][0]["code"] == "node_not_authenticated"
 
 
 @pytest.mark.usefixtures("development_mode")

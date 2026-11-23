@@ -121,8 +121,8 @@ def test_failing_calls_with_no_api_key_return_the_missing_key_code(
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY, response.content
     body = response.json()
-    assert body["code"] == "cdt_explain_llm_config_missing_key"
-    assert f"LLM config {config_without_key.id} has no API key" in body["message"]
+    assert body["errors"][0]["code"] == "cdt_explain_llm_config_missing_key"
+    assert f"LLM config {config_without_key.id} has no API key" in body["errors"][0]["detail"]
     assert "api_key" not in acompletion.call_args.kwargs
 
 
@@ -134,7 +134,7 @@ def test_failing_calls_with_an_api_key_stay_upstream_failed(
         response = acme_client.post(_url(cdt_node.id), _body(config_with_key.id), format="json")
 
     assert response.status_code == status.HTTP_502_BAD_GATEWAY, response.content
-    assert response.json()["code"] == "cdt_explain_upstream_failed"
+    assert response.json()["errors"][0]["code"] == "cdt_explain_upstream_failed"
     assert acompletion.call_args.kwargs["api_key"] == "sk-cdt-explain"
 
 
@@ -181,7 +181,7 @@ def test_llm_config_of_another_org_returns_404_without_calling_the_provider(
         response = acme_client.post(_url(cdt_node.id), _body(beta_config.id), format="json")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
-    assert response.json()["code"] == "cdt_explain_llm_config_not_found"
+    assert response.json()["errors"][0]["code"] == "cdt_explain_llm_config_not_found"
     acompletion.assert_not_called()
 
 
@@ -191,7 +191,7 @@ def test_nonexistent_llm_config_returns_404(acme_client, cdt_node):
         response = acme_client.post(_url(cdt_node.id), _body(999_999_999), format="json")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
-    assert response.json()["code"] == "cdt_explain_llm_config_not_found"
+    assert response.json()["errors"][0]["code"] == "cdt_explain_llm_config_not_found"
     acompletion.assert_not_called()
 
 
@@ -204,7 +204,7 @@ def test_node_of_another_org_returns_404(acme_client, beta, config_without_key):
         response = acme_client.post(_url(beta_node.id), _body(config_without_key.id), format="json")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND, response.content
-    assert response.json()["code"] == "classification_decision_table_node_not_found"
+    assert response.json()["errors"][0]["code"] == "classification_decision_table_node_not_found"
     acompletion.assert_not_called()
 
 

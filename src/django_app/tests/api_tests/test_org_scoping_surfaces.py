@@ -17,6 +17,7 @@ from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from tables.models.realtime_models import ElevenLabsRealtimeConfig, OpenAIRealtimeConfig, RealtimeAgentDefinition
+from tests.error_envelope import error_text
 
 pytestmark = pytest.mark.django_db
 
@@ -138,7 +139,7 @@ def test_create_pointing_at_another_orgs_object_is_400(client_a, org_a, org_b, c
     resp = client_a.post(url, body(org_b, org_a), format="json")
 
     assert resp.status_code == 400
-    assert field in resp.data["message"]
+    assert field in error_text(resp.data)
     assert not Surface.objects.filter(org=org_a).exists()
     assert not RealtimeAgentDefinition.objects.filter(agent_definition__org=org_a).exists()
 

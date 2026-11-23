@@ -79,6 +79,7 @@ from tables.constants.decision_table_constants import (
 )
 from tables.exceptions import (
     BuiltInToolModificationError,
+    GraphNotFoundError,
 )
 from tables.filters import (
     EmbeddingModelFilter,
@@ -338,7 +339,7 @@ from tables.services.tools_usage_service import (
 )
 from tables.services.transfer_jobs.export_definitions import export_definition
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
-from tables.services.twilio_service import TwilioService, TwilioServiceError
+from tables.services.twilio_service import TwilioService
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tables.swagger_schemas.audit_filter_preset_schemas import (
     AUDIT_FILTER_PRESET_COPY,
@@ -771,8 +772,7 @@ class PythonCodeToolViewSet(
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
         body = BulkIdsSerializer(data=request.data)
-        if not body.is_valid():
-            return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        body.is_valid(raise_exception=True)
         ids = body.validated_data["ids"]
         # Each binned tool records itself; a request that binned none records nothing.
         mark_request_handled()
@@ -1153,18 +1153,14 @@ class GraphViewSet(
     def delete_by_uuid(self, request, graph_uuid: str):
         try:
             parsed_uuid = uuid.UUID(graph_uuid)
-        except ValueError:
-            return Response(
-                {"message": "Invalid graph UUID format"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        except ValueError as error:
+            raise DRFValidationError(
+                {"graph_uuid": ["Invalid graph UUID format"]}, code="invalid"
+            ) from error
 
         graph = self.get_queryset().filter(uuid=parsed_uuid).first()
         if graph is None:
-            return Response(
-                {"message": "Provided graph does not exist"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            raise GraphNotFoundError()
 
         self.perform_destroy(graph)
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -1837,15 +1833,14 @@ class RealtimeAgentChatViewSet(OrgScopedChildViewSetMixin, ReadOnlyModelViewSet)
 
         connection_key = request.data.get("connection_key")
         if not connection_key:
-            return Response(
-                {"detail": "connection_key required"},
-                status=status.HTTP_400_BAD_REQUEST,
+            raise DRFValidationError(
+                {"connection_key": ["This field is required."]}, code="required"
             )
 
         try:
             chat = RealtimeAgentChat.objects.get(connection_key=connection_key)
-        except RealtimeAgentChat.DoesNotExist:
-            return Response({"detail": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+        except RealtimeAgentChat.DoesNotExist as error:
+            raise NotFound() from error
 
         # The first end wins: a repeated call must not overwrite the earlier, more
         # accurate duration and reason. Revoking again stays harmless and retries an
@@ -1982,11 +1977,11 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
         """
         raw_token = request.query_params.get("token")
         if not raw_token:
-            return Response({"error": "token is required"}, status=status.HTTP_400_BAD_REQUEST)
+            raise DRFValidationError({"token": ["This field is required."]}, code="required")
         try:
             token = uuid.UUID(str(raw_token))
-        except (ValueError, AttributeError, TypeError):
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        except (ValueError, AttributeError, TypeError) as error:
+            raise NotFound() from error
 
         channel = (
             RealtimeChannel.enabled_objects.select_related(
@@ -1997,7 +1992,7 @@ class RealtimeChannelViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, view
             .first()
         )
         if channel is None:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+            raise NotFound()
         assert_run_admitted(RunSubject(RunKind.VOICE_CHANNEL, channel.pk, channel.org_id))
         return Response(RealtimeChannelInternalSerializer(channel).data)
 
@@ -2045,16 +2040,17 @@ class TwilioChannelViewSet(
         sid = request.query_params.get("sid")
         auth_token_secret_id = request.query_params.get("auth_token_secret_id")
 
-        if not sid or not auth_token_secret_id:
-            return Response(
-                {"error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"},
-                status=status.HTTP_400_BAD_REQUEST,
+        missing = [
+            name
+            for name, value in (("sid", sid), ("auth_token_secret_id", auth_token_secret_id))
+            if not value
+        ]
+        if missing:
+            raise DRFValidationError(
+                {name: ["This query parameter is required."] for name in missing}, code="required"
             )
 
-        try:
-            TwilioService().validate_account_sid(sid)
-        except TwilioServiceError as e:
-            return Response({"error": e.message}, status=e.status_code)
+        TwilioService().validate_account_sid(sid)
 
         # The id is client input: validate it against the active org first, so a
         # foreign or unknown id is a 400 rather than a failed stored-reference
@@ -2063,21 +2059,14 @@ class TwilioChannelViewSet(
             data={"auth_token_secret_id": auth_token_secret_id},
             context={"request": request},
         )
-        if not secret_input.is_valid():
-            return Response(
-                {"error": str(secret_input.errors["auth_token_secret_id"][0])},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        secret_input.is_valid(raise_exception=True)
 
-        try:
-            auth_token = secret_resolver.resolve(
-                secret_id=secret_input.validated_data["auth_token_secret_id"].pk,
-                org_id=resolve_active_org_id(request),
-                context="TwilioChannel.auth_token",
-            )
-            numbers = TwilioService().get_phone_numbers(sid, auth_token)
-        except TwilioServiceError as e:
-            return Response({"error": e.message}, status=e.status_code)
+        auth_token = secret_resolver.resolve(
+            secret_id=secret_input.validated_data["auth_token_secret_id"].pk,
+            org_id=resolve_active_org_id(request),
+            context="TwilioChannel.auth_token",
+        )
+        numbers = TwilioService().get_phone_numbers(sid, auth_token)
 
         return Response({"results": numbers})
 
@@ -2564,8 +2553,7 @@ class McpToolViewSet(
     @action(detail=False, methods=["post"], url_path="bulk-delete")
     def bulk_delete(self, request):
         body = BulkIdsSerializer(data=request.data)
-        if not body.is_valid():
-            return Response({"detail": body.error_message}, status=status.HTTP_400_BAD_REQUEST)
+        body.is_valid(raise_exception=True)
         ids = body.validated_data["ids"]
         # Each binned tool records itself; a request that binned none records nothing.
         mark_request_handled()
@@ -2713,14 +2701,15 @@ class WebhookTriggerViewSet(
             trigger_node_access.assert_may_write(request.user, instance.org_id)
         new_provider = request.data.get("provider_type", instance.provider_type)
         if new_provider in LOCAL_ONLY_PROVIDERS and instance.twilio_channels.exists():
-            return Response(
+            raise DRFValidationError(
                 {
-                    "provider_type": (
-                        "Cannot switch to a local-only provider while this trigger "
-                        "is linked to a Twilio channel."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+                    "provider_type": [
+                        (
+                            "Cannot switch to a local-only provider while this trigger "
+                            "is linked to a Twilio channel."
+                        )
+                    ]
+                }
             )
         return super().update(request, *args, **kwargs)
 
@@ -3247,13 +3236,10 @@ class TwilioConfigureWebhookView(generics.GenericAPIView):
         phone_sid = request.data.get("phone_sid")
         channel_token = request.data.get("channel_token")
 
-        try:
-            webhook_url = TwilioService().configure_webhook(
-                phone_sid=phone_sid,
-                channel_token=channel_token,
-                org_id=resolve_active_org_id(request),
-            )
-        except TwilioServiceError as e:
-            return Response({"error": e.message}, status=e.status_code)
+        webhook_url = TwilioService().configure_webhook(
+            phone_sid=phone_sid,
+            channel_token=channel_token,
+            org_id=resolve_active_org_id(request),
+        )
 
         return Response({"webhook_url": webhook_url})

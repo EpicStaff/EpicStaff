@@ -37,13 +37,7 @@ def client_a(member_a, org_a):
 
 def _assert_parent_error(resp):
     """Assert the response body flags `parent` as the failing field."""
-    assert "errors" not in resp.data, (
-        "structured 'errors' field appeared — update this assertion to use it "
-        "instead of string-matching 'message'"
-    )
-    message = resp.data["message"]
-    assert isinstance(message, str)
-    assert "parent" in message.lower()
+    assert [item["attr"] for item in resp.data["errors"]] == ["parent"]
 
 
 # ---- self-parent ----

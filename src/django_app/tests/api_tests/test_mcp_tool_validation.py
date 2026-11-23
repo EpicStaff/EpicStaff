@@ -3,6 +3,7 @@ import pytest
 from tables.models.mcp_models import McpTool
 from tables.services.secrets import secret_service
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 MCP_TOOLS_URL = "/api/mcp-tools/"
 
@@ -25,8 +26,8 @@ def _payload(**overrides):
 
 def _assert_invalid(response, field_name):
     assert response.status_code == 400, response.data
-    assert response.data["code"] == "invalid"
-    assert field_name in response.data["message"]
+    assert response.data["errors"][0]["code"] == "invalid"
+    assert field_name in error_text(response.data)
 
 
 @pytest.mark.django_db

@@ -19,6 +19,7 @@ from tables.models import Graph, LLMConfig
 from tables.models.llm_models import LLMModel
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 MARKER_HEADERS = {"Authorization": "Bearer epicstaff_secret(GATEWAY_TOKEN)"}
 CRUD = Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
@@ -76,7 +77,7 @@ class TestGraphImportEndpoint:
         )
 
         assert response.status_code == 400, response.json()
-        assert "extra_headers" in response.json()["message"]
+        assert "extra_headers" in error_text(response.json())
         # The LLM model was created earlier in this import; it must be rolled back too.
         assert not LLMModel.objects.filter(name="marker-import-model").exists()
         assert LLMConfig.objects.count() == configs_before
@@ -142,7 +143,7 @@ def test_partial_import_of_a_new_marker_without_use_is_rejected_and_rolled_back(
     )
 
     assert response.status_code == 400, response.json()
-    assert "extra_headers" in response.json()["message"]
+    assert "extra_headers" in error_text(response.json())
     assert not LLMModel.objects.filter(name="marker-import-model").exists()
     assert LLMConfig.objects.count() == configs_before
     assert target.agent_node_list.count() == nodes_before

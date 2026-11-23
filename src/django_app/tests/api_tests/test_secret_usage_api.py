@@ -413,7 +413,7 @@ class TestUsageDetailEndpoint:
         resp = client.get(f"/api/secrets/{secret.pk}/usage/")
 
         assert resp.status_code == 400, resp.content
-        assert resp.data["code"] == "org_context_required"
+        assert resp.data["errors"][0]["code"] == "org_context_required"
 
     def test_viewer_is_denied(self, viewer_client, secret):
         """The seeded viewer bitmask is 192 (USE|LIST) with no READ bit, and usage

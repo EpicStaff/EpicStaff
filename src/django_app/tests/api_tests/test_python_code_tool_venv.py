@@ -144,9 +144,9 @@ def test_a_venv_the_org_does_not_own_is_refused(admin_client, tool, venv, other_
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["message"] == (
-        f'python_code: venv_id: Invalid pk "{unreachable_id}" - object does not exist.'
-    )
+    assert [(item["attr"], item["detail"]) for item in response.data["errors"]] == [
+        ("python_code.venv_id", f'Invalid pk "{unreachable_id}" - object does not exist.')
+    ]
     assert venv_of(tool) == venv.pk
 
 

@@ -30,6 +30,7 @@ from tables.services.copy_services.helpers import copy_python_code
 from tables.services.secrets import secret_service
 from tables.services.secrets.secret_use_service import SecretActor
 from tests.rbac_cross_org_fixtures import acme  # noqa: F401  -- fixture
+from tests.error_envelope import details_by_attr, error_text
 
 REFUSAL_CODE = CodeWithSecretsRequiresSecretsUsePermissionError.default_code
 CODE = 'def main(**kwargs):\n    return get_secret("PY_KEY")\n'
@@ -160,8 +161,8 @@ class TestEditingDeclaringCode:
         )
 
         assert response.status_code == 400, response.json()
-        assert response.json()["message"].startswith(f"python_code: {field_name}: ")
-        assert "Changing code that reads secrets" in response.json()["message"]
+        assert response.json()["errors"][0]["attr"] == f"python_code.{field_name}"
+        assert "Changing code that reads secrets" in error_text(response.json())
         assert _snapshot(declaring_node.python_code) == before
 
     @pytest.mark.parametrize("change,field_name", CODE_CHANGES)
@@ -187,7 +188,7 @@ class TestEditingDeclaringCode:
         )
 
         assert response.status_code == 400, response.json()
-        assert response.json()["message"].startswith("python_code: code: ")
+        assert response.json()["errors"][0]["attr"] == "python_code.code"
         declaring_tool.python_code.refresh_from_db()
         assert declaring_tool.python_code.code == CODE
 
@@ -264,7 +265,7 @@ class TestEditingDeclaringCode:
         )
 
         assert response.status_code == 400, response.json()
-        assert response.json()["message"].startswith("python_code: secret_ids: ")
+        assert response.json()["errors"][0]["attr"] == "python_code.secret_ids"
 
     def test_creating_code_that_declares_a_secret_without_use_is_refused(
         self, no_use_client, graph, secret
@@ -329,9 +330,9 @@ class TestBulkSavingDeclaringCode:
         )
 
         assert response.status_code == 400, response.json()
-        [item] = response.json()["errors"]["python_node_list"]
-        assert item["index"] == 0
-        [message] = item["errors"]["python_code"]["code"]
+        errors = details_by_attr(response.json())
+        assert list(errors) == ["python_node_list.0.python_code.code"]
+        [message] = errors["python_node_list.0.python_code.code"]
         assert '"Use" permission on Secrets' in message
         declaring_node.refresh_from_db()
         assert (declaring_node.node_name, _snapshot(declaring_node.python_code)[0]) == (
@@ -362,7 +363,7 @@ class TestCopyingDeclaringCode:
         response = no_use_client.post(f"/api/python-code-tool/{declaring_tool.id}/copy/")
 
         assert response.status_code == 403, response.json()
-        assert response.json()["code"] == REFUSAL_CODE
+        assert response.json()["errors"][0]["code"] == REFUSAL_CODE
         assert PythonCodeTool.objects.count() == tools_before
         assert PythonCode.objects.count() == codes_before
 
@@ -391,7 +392,7 @@ class TestCopyingDeclaringCode:
         response = no_use_client.post(f"/api/graphs/{graph.id}/copy/")
 
         assert response.status_code == 403, response.json()
-        assert response.json()["code"] == REFUSAL_CODE
+        assert response.json()["errors"][0]["code"] == REFUSAL_CODE
         assert set(Graph.all_objects.values_list("pk", flat=True)) == graphs_before
         assert PythonNode.objects.count() == nodes_before
         assert PythonCode.objects.count() == codes_before
@@ -471,7 +472,7 @@ class TestCopyingDeclaringCode:
         response = runner_no_use_client.post(f"/api/graphs/{graph.id}/copy/")
 
         assert response.status_code == 403, response.json()
-        assert response.json()["code"] == REFUSAL_CODE
+        assert response.json()["errors"][0]["code"] == REFUSAL_CODE
         assert set(Graph.all_objects.values_list("pk", flat=True)) == graphs_before
         assert PythonCode.objects.count() == codes_before
 
@@ -482,7 +483,7 @@ class TestCopyingDeclaringCode:
 
         assert response.status_code == 403, response.json()
         assert (
-            response.json()["code"]
+            response.json()["errors"][0]["code"]
             == FlowWithTriggerNodesRequiresUsePermissionError.default_code
         )
 

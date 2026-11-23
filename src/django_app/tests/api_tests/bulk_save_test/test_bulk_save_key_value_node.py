@@ -273,8 +273,8 @@ def test_creating_a_node_needs_its_mode_permissions(
         assert KeyValueNode.objects.get(graph=graph).mode == mode
     else:
         assert response.status_code == status.HTTP_403_FORBIDDEN
-        assert response.data["code"] == "key_value_mode_denied"
-        assert response.data["message"] == DENIED_MESSAGES[mode]
+        assert response.data["errors"][0]["code"] == "key_value_mode_denied"
+        assert response.data["errors"][0]["detail"] == DENIED_MESSAGES[mode]
         assert not KeyValueNode.objects.filter(graph=graph).exists()
 
 
@@ -316,8 +316,8 @@ def test_changing_mode_without_its_permission_is_denied(client_with_key_value_ta
     response = client_with_key_value_tables(R).post(_save_url(graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert response.data["code"] == "key_value_mode_denied"
-    assert response.data["message"] == DENIED_MESSAGES["delete"]
+    assert response.data["errors"][0]["code"] == "key_value_mode_denied"
+    assert response.data["errors"][0]["detail"] == DENIED_MESSAGES["delete"]
     node.refresh_from_db()
     assert node.mode == "read"
     assert node.entries == [{"key": "k", "value": "variables.a"}]
@@ -368,7 +368,7 @@ def test_viewer_may_not_edit_entries_of_a_write_node(
     response = client_with_key_value_tables(R).post(_save_url(graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert response.data["code"] == "key_value_mode_denied"
+    assert response.data["errors"][0]["code"] == "key_value_mode_denied"
     admin_write_node.refresh_from_db()
     assert admin_write_node.entries == [{"key": "k", "value": "variables.a"}]
 

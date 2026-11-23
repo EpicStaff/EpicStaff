@@ -12,6 +12,7 @@ from tables.models.graph_models import (
     ClassificationDecisionTablePrompt,
     Graph,
 )
+from tests.error_envelope import details_by_attr
 from tests.fixtures import *  # noqa: F401,F403
 
 
@@ -62,7 +63,7 @@ def test_bulk_save_cdt_null_group_name_rejected(auth_client, graph):
     resp = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
-    assert "classification_decision_table_node_list" in resp.data["errors"]
+    assert any(str(item["attr"]).startswith("classification_decision_table_node_list.") for item in resp.data["errors"])
     body = str(resp.content)
     assert "group_name" in body
 
@@ -78,7 +79,7 @@ def test_bulk_save_cdt_empty_string_group_name_rejected(auth_client, graph):
     resp = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
-    assert "classification_decision_table_node_list" in resp.data["errors"]
+    assert any(str(item["attr"]).startswith("classification_decision_table_node_list.") for item in resp.data["errors"])
     body = str(resp.content)
     assert "group_name" in body
 
@@ -94,7 +95,7 @@ def test_bulk_save_cdt_whitespace_group_name_rejected(auth_client, graph):
     resp = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
-    assert "classification_decision_table_node_list" in resp.data["errors"]
+    assert any(str(item["attr"]).startswith("classification_decision_table_node_list.") for item in resp.data["errors"])
     body = str(resp.content)
     assert "group_name" in body
 
@@ -335,8 +336,9 @@ def test_bulk_save_unknown_group_prompt_key_unlinks_prompt(
 
 def _assert_item_rejected_and_rolled_back(resp, graph, version_before, node, *, index, error):
     assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
-    errors = resp.data["errors"]["classification_decision_table_node_list"]
-    assert errors == [{"index": index, "errors": [error]}]
+    assert details_by_attr(resp.data) == {
+        f"classification_decision_table_node_list.{index}": [error]
+    }
     # The whole save rolls back: the node, its group and the version are untouched.
     node.refresh_from_db()
     assert node.node_name == "cdt_prompt"
@@ -606,11 +608,7 @@ def test_per_node_post_soft_deleted_section_of_another_node_rejected(
     )
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.content
-    assert resp.json() == {
-        "status_code": 400,
-        "code": "section_id_conflict",
-        "message": f"Section {section_id} already belongs to another node.",
-    }
+    assert resp.json() == {"type": "client_error", "errors": [{"code": "section_id_conflict", "detail": f"Section {section_id} already belongs to another node.", "attr": None, "context": None}]}
     assert not ClassificationDecisionTableNode.objects.filter(
         node_name="cdt_section_conflict"
     ).exists()

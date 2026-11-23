@@ -18,6 +18,7 @@ from rest_framework import status
 
 from agents.models import AgentDefinition, InlineSurface, Surface
 from tables.models.graph_models import Edge, TaskNode
+from tests.error_envelope import details_by_attr, error_text
 from tests.fixtures import *  # noqa: F401,F403
 
 
@@ -248,7 +249,7 @@ def test_create_task_node_rejects_cross_org_surface(
 ):
     """`surface_list` is an org-scoped pk field, so another org's surface is
     rejected as an ordinary field error (exactly like a non-existent pk) and
-    lands under errors.task_node_list, before TaskNodeSerializer.validate()
+    is named `task_node_list.0.surface_list`, before TaskNodeSerializer.validate()
     ever sees it."""
     payload = {
         "save_version": graph.save_version,
@@ -263,9 +264,7 @@ def test_create_task_node_rejects_cross_org_surface(
     response = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    [node_error] = response.data["errors"]["task_node_list"]
-    assert node_error["index"] == 0
-    assert "surface_list" in node_error["errors"]
+    assert list(details_by_attr(response.data)) == ["task_node_list.0.surface_list"]
     assert not TaskNode.objects.filter(graph=graph, node_name="task-cross-org").exists()
 
 
@@ -293,7 +292,7 @@ def test_create_task_node_rejects_foreign_agent_owned_surface(
     response = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert "surface_list" in response.data["message"]
+    assert "surface_list" in error_text(response.data)
 
 
 @pytest.mark.django_db
@@ -304,8 +303,8 @@ def test_create_task_node_rejects_duplicate_inline_python_tools(
     DRF serializers.ValidationError) from InlineSurfaceWriteSerializer.validate().
     It is not caught by serializer.is_valid() or BulkSaveValidationError, so it
     propagates straight to DRF's exception handler as a top-level 400 — same
-    shape as the standalone /api/tasknodes/ endpoint, not nested under
-    errors.task_node_list like ordinary field validation errors."""
+    shape as the standalone /api/tasknodes/ endpoint, not named by its node list
+    and position like ordinary field validation errors."""
     payload = {
         "save_version": graph.save_version,
         "task_node_list": [
@@ -324,7 +323,7 @@ def test_create_task_node_rejects_duplicate_inline_python_tools(
     response = auth_client.post(_save_url(graph.id), payload, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert "inline_surface" in response.data["message"]
+    assert "inline_surface" in error_text(response.data)
 
 
 # ---------------------------------------------------------------------------

@@ -47,6 +47,7 @@ from tests.services_tests.test_run_code_storage_credentials import (
     ORG_CREDENTIALS_PATH,
     FakeStorageGateway,
 )
+from tests.error_envelope import error_text
 
 ALL_PERMISSIONS = Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE | Permission.USE
 ALL_THREE_MESSAGE = (
@@ -362,7 +363,7 @@ def test_restoring_a_version_needs_every_box_the_flow_has_ticked(
     allowed = _restore(admin_client, version, source)
 
     assert refused.status_code == status.HTTP_403_FORBIDDEN
-    assert refused.data["message"] == ALL_THREE_MESSAGE
+    assert refused.data["errors"][0]["detail"] == ALL_THREE_MESSAGE
     assert allowed.status_code == status.HTTP_200_OK, allowed.content
     assert _flag_state(source) == before
 
@@ -380,7 +381,7 @@ def test_restoring_over_a_flow_whose_current_grants_the_user_lacks_is_refused(
     response = _restore(no_files_client, version, plain)
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert "Files: Create, Files: Update" in response.data["message"]
+    assert "Files: Create, Files: Update" in error_text(response.data)
     assert PythonNode.objects.get(graph=plain).storage_grant_write is True
 
 
@@ -488,7 +489,7 @@ def test_a_partial_import_of_file_nodes_needs_files_read(
     allowed = attempt(reader)
 
     assert refused.status_code == status.HTTP_403_FORBIDDEN, refused.content
-    assert refused.data["message"] == FILE_NODES_NEED_READ
+    assert refused.data["errors"][0]["detail"] == FILE_NODES_NEED_READ
     assert allowed.status_code == status.HTTP_200_OK, allowed.content
 
 
@@ -503,7 +504,7 @@ def test_restoring_a_version_with_file_nodes_needs_files_read(
     allowed = _restore(reader, version, file_nodes_flow)
 
     assert refused.status_code == status.HTTP_403_FORBIDDEN, refused.content
-    assert refused.data["message"] == FILE_NODES_NEED_READ
+    assert refused.data["errors"][0]["detail"] == FILE_NODES_NEED_READ
     assert allowed.status_code == status.HTTP_200_OK, allowed.content
     assert _file_node_counts(file_nodes_flow) == (1, 1)
 

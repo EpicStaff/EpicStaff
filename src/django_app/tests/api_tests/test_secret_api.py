@@ -5,6 +5,7 @@ from tables.models import Secret
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from tables.services.secrets import secret_encryption
+from tests.error_envelope import error_text
 
 
 # ---- fixtures ----
@@ -160,7 +161,7 @@ def test_request_without_org_header_is_rejected(admin_a):
     client.force_authenticate(user=admin_a)
     resp = client.get("/api/secrets/")
     assert resp.status_code == 400
-    assert resp.data["code"] == "org_context_required"
+    assert resp.data["errors"][0]["code"] == "org_context_required"
 
 
 @pytest.mark.django_db
@@ -200,7 +201,7 @@ def test_create_without_value_returns_400(client_a):
     assert resp.status_code == 400
     # `value` is a plain required field now that there is no update path to omit
     # it on, so this is DRF's standard required-field message.
-    assert "This field is required." in resp.data["message"]
+    assert "This field is required." in error_text(resp.data)
 
 
 @pytest.mark.django_db

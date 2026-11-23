@@ -120,7 +120,7 @@ def test_builtin_patch_denied_for_org_admin(client_admin_a, provider, org_a):
             f"/api/{route}/{builtin.id}/", payload, format="json"
         )
         assert resp.status_code == 403, route
-        assert resp.data["code"] == "built_in_model_immutable", route
+        assert resp.data["errors"][0]["code"] == "built_in_model_immutable", route
 
 
 @pytest.mark.django_db
@@ -128,7 +128,7 @@ def test_builtin_delete_denied_for_org_admin(client_admin_a, provider, org_a):
     for route, builtin, _own, _payload in _builtins(provider, org_a):
         resp = client_admin_a.delete(f"/api/{route}/{builtin.id}/")
         assert resp.status_code == 403, route
-        assert resp.data["code"] == "built_in_model_immutable", route
+        assert resp.data["errors"][0]["code"] == "built_in_model_immutable", route
         assert type(builtin).objects.filter(id=builtin.id).exists(), route
 
 
@@ -141,7 +141,7 @@ def test_builtin_write_denied_for_superadmin(client_superadmin, provider, org_a)
             f"/api/{route}/{builtin.id}/", payload, format="json"
         )
         assert patch.status_code == 403, route
-        assert patch.data["code"] == "built_in_model_immutable", route
+        assert patch.data["errors"][0]["code"] == "built_in_model_immutable", route
 
         delete = client_superadmin.delete(f"/api/{route}/{builtin.id}/")
         assert delete.status_code == 403, route

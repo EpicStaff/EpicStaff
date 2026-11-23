@@ -8,6 +8,7 @@ from django.urls import reverse
 from rest_framework import status
 from tables.models import Graph, PythonCode, WebhookTrigger
 from tables.models.graph_models import TelegramTriggerNode, WebhookTriggerNode
+from tests.error_envelope import details_by_attr
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 pytestmark = pytest.mark.django_db
@@ -72,7 +73,7 @@ def _save(client, graph, list_key, entry):
 
 
 def _trigger_error(response, list_key):
-    return str(response.data["errors"][list_key][0]["errors"]["webhook_trigger"])
+    return str(details_by_attr(response.data)[f"{list_key}.0.webhook_trigger"])
 
 
 def test_saving_a_webhook_node_keeps_its_binned_trigger(acme_client, acme, graph):

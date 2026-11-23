@@ -8,6 +8,7 @@ from tables.models.graph_models import Graph, PythonNode, TelegramTriggerNode
 from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import Permission, ResourceType
 from tables.services.secrets import secret_service
+from tests.error_envelope import details_by_attr
 
 NEUTRAL_CODE = "def main(**kwargs):\n    return 1\n"
 
@@ -148,9 +149,9 @@ class TestBulkSaveUnderTheGuard:
         )
 
         assert response.status_code == 400
-        errors = response.json()["errors"]["python_node_list"]
-        assert errors[0]["index"] == 0
-        assert "secret_ids" in errors[0]["errors"]["python_code"]
+        assert list(details_by_attr(response.json())) == [
+            "python_node_list.0.python_code.secret_ids"
+        ]
 
     def test_a_rejected_save_writes_nothing(
         self, no_use_client, graph, python_node, other_secret
@@ -222,9 +223,7 @@ class TestBulkSaveUnderTheGuard:
         )
 
         assert response.status_code == 400
-        message = response.json()["errors"]["python_node_list"][0]["errors"][
-            "python_code"
-        ]["secret_ids"][0]
+        [message] = details_by_attr(response.json())["python_node_list.0.python_code.secret_ids"]
         assert 'get_secret("SOMETHING_UNDECLARED")' in message
         assert "permission" not in message
 
@@ -284,11 +283,9 @@ def test_bulk_save_telegram_bot_key_change_without_use_denied(
     )
 
     assert response.status_code == 400, response.json()
-    errors = response.json()["errors"]
-    assert list(errors) == ["telegram_trigger_node_list"]
-    [item] = errors["telegram_trigger_node_list"]
-    assert item["index"] == 0
-    [message] = item["errors"]["telegram_bot_api_key_secret_id"]
+    errors = details_by_attr(response.json())
+    assert list(errors) == ["telegram_trigger_node_list.0.telegram_bot_api_key_secret_id"]
+    [message] = errors["telegram_trigger_node_list.0.telegram_bot_api_key_secret_id"]
     assert '"Use" permission on Secrets' in message
     graph.refresh_from_db()
     telegram_node.refresh_from_db()

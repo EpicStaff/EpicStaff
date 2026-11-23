@@ -30,8 +30,8 @@ def acme_key(weather, service_account_key, acme):
 def _refused(response):
     assert response.status_code == 403
     body = response.json()
-    assert body["code"] == "on_behalf_of_not_allowed"
-    assert body["message"] == "The plugin cannot act on behalf of this person."
+    assert body["errors"][0]["code"] == "on_behalf_of_not_allowed"
+    assert body["errors"][0]["detail"] == "The plugin cannot act on behalf of this person."
 
 
 def test_a_member_who_may_use_the_plugin_is_accepted(acme_key, acme, member_only):
@@ -121,7 +121,7 @@ def test_a_malformed_value_is_a_bad_request(acme_key, acme, value):
     response = client.get(ME_URL)
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_on_behalf_of"
+    assert response.json()["errors"][0]["code"] == "invalid_on_behalf_of"
 
 
 def test_the_largest_id_is_well_formed(acme_key, acme):

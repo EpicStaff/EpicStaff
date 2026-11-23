@@ -131,7 +131,7 @@ def _trigger_count(graph):
 
 def _assert_refused(response):
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-    assert response.data["code"] == DENIED_CODE
+    assert response.data["errors"][0]["code"] == DENIED_CODE
 
 
 # ── requests ─────────────────────────────────────────────────────────────────

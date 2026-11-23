@@ -29,6 +29,7 @@ from tables.models.graph_models import (
     StartNode,
 )
 
+from tests.error_envelope import details_by_attr
 from tests.fixtures import *  # noqa: F401,F403
 
 _EDGE_REF_ERROR = "Edge references node IDs not found in this graph"
@@ -140,8 +141,8 @@ def test_group_next_node_outside_graph_rejected(request, auth_client, graph, tab
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"] == {
-        list_key: [{"index": 0, "errors": [f"{_ROUTING_REF_ERROR}: [{target.id}]"]}]
+    assert details_by_attr(response.data) == {
+        f"{list_key}.0": [f"{_ROUTING_REF_ERROR}: [{target.id}]"]
     }
     assert not node_model.objects.filter(graph=graph).exists()
     assert not group_model.objects.filter(next_node_id=target.id).exists()
@@ -168,7 +169,7 @@ def test_node_routing_outside_graph_rejected(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert field in str(response.data["errors"][list_key])
+    assert any(attr.startswith(f"{list_key}.0.{field}") for attr in details_by_attr(response.data))
     assert not node_model.objects.filter(graph=graph).exists()
     assert not node_model.all_objects.filter(**{field: target.id}).exists()
     _assert_save_version_unchanged(graph)
@@ -198,8 +199,8 @@ def test_group_next_node_outside_graph_reported_on_the_referencing_item(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"] == {
-        list_key: [{"index": 1, "errors": [f"{_ROUTING_REF_ERROR}: [{other_org_node.id}]"]}]
+    assert details_by_attr(response.data) == {
+        f"{list_key}.1": [f"{_ROUTING_REF_ERROR}: [{other_org_node.id}]"]
     }
     _assert_save_version_unchanged(graph)
 
@@ -236,7 +237,9 @@ def test_edge_end_node_in_other_org_graph_rejected(auth_client, graph, start_nod
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"]["edge_list"] == [f"{_EDGE_REF_ERROR}: [{other_org_node.id}]"]
+    assert details_by_attr(response.data) == {
+        "edge_list": [f"{_EDGE_REF_ERROR}: [{other_org_node.id}]"]
+    }
     assert not Edge.objects.filter(graph=graph).exists()
     _assert_save_version_unchanged(graph)
 
@@ -250,9 +253,9 @@ def test_edge_start_node_in_same_org_other_graph_rejected(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"]["edge_list"] == [
-        f"{_EDGE_REF_ERROR}: [{same_org_other_graph_node.id}]"
-    ]
+    assert details_by_attr(response.data) == {
+        "edge_list": [f"{_EDGE_REF_ERROR}: [{same_org_other_graph_node.id}]"]
+    }
     assert not Edge.objects.filter(graph=graph).exists()
     _assert_save_version_unchanged(graph)
 
@@ -264,7 +267,9 @@ def test_edge_end_node_soft_deleted_rejected(auth_client, graph, python_node, so
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"]["edge_list"] == [f"{_EDGE_REF_ERROR}: [{soft_deleted_node.id}]"]
+    assert details_by_attr(response.data) == {
+        "edge_list": [f"{_EDGE_REF_ERROR}: [{soft_deleted_node.id}]"]
+    }
     assert not Edge.objects.filter(graph=graph).exists()
     _assert_save_version_unchanged(graph)
 
@@ -346,7 +351,9 @@ def test_edge_end_node_deleted_in_same_request_rejected(
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"]["edge_list"] == [f"{_EDGE_REF_ERROR}: [{python_node.id}]"]
+    assert details_by_attr(response.data) == {
+        "edge_list": [f"{_EDGE_REF_ERROR}: [{python_node.id}]"]
+    }
     assert PythonNode.objects.filter(pk=python_node.pk).exists()
     assert not Edge.objects.filter(graph=graph).exists()
     _assert_save_version_unchanged(graph)
@@ -380,8 +387,8 @@ def test_group_next_node_deleted_in_same_request_rejected(auth_client, graph, st
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data["errors"] == {
-        list_key: [{"index": 0, "errors": [f"{_ROUTING_REF_ERROR}: [{start_node.id}]"]}]
+    assert details_by_attr(response.data) == {
+        f"{list_key}.0": [f"{_ROUTING_REF_ERROR}: [{start_node.id}]"]
     }
     assert StartNode.objects.filter(pk=start_node.pk).exists()
     assert not node_model.objects.filter(graph=graph).exists()

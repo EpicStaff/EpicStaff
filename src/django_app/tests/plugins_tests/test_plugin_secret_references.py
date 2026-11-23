@@ -38,6 +38,7 @@ from tables.services.secrets.secret_use_service import secret_use_service
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.plugins_tests.conftest import GATEWAY_SECRET, service_account_client
 from tests.services_tests.test_secret_reference_coverage import SECRET_USE_CHECK_BY_SERIALIZER
+from tests.error_envelope import details_by_attr, error_text
 
 pytestmark = [pytest.mark.django_db]
 
@@ -87,7 +88,7 @@ def own_secret(client):
 
 def _refused(response, field):
     assert response.status_code == 400, response.content
-    message = response.json()["message"]
+    message = response.json()["errors"][0]["detail"]
     assert field in message and REFUSED in message
     assert ORG_SECRET_NAME not in response.content.decode()
 
@@ -549,7 +550,7 @@ def test_a_bulk_save_of_an_org_flow_whose_node_uses_an_org_secret_is_refused(cli
     response = _bulk_save(client, graph, [node], code="def main(**kwargs):\n    return 2\n")
 
     assert response.status_code == 400, response.content
-    [message] = response.json()["errors"]["python_node_list"][0]["errors"]["python_code"]["secret_ids"]
+    [message] = details_by_attr(response.json())["python_node_list.0.python_code.secret_ids"]
     assert REFUSED in message
     assert ORG_SECRET_NAME not in response.content.decode()
     node.python_code.refresh_from_db()
@@ -782,7 +783,7 @@ def _create_graph_from(client, version):
 
 def _assert_recreate_refused(response):
     assert response.status_code == 403, response.content
-    assert response.json()["code"] == _RECREATE_REFUSED
+    assert response.json()["errors"][0]["code"] == _RECREATE_REFUSED
 
 
 @pytest.mark.parametrize("recreate", [_restore_version, _create_graph_from], ids=["restore", "create-graph"])
@@ -846,7 +847,7 @@ def test_a_plugin_with_secrets_use_cannot_copy_code_declaring_an_org_secret(clie
     response = copy(client, acme, org_secret)
 
     _assert_recreate_refused(response)
-    assert REFUSED in response.json()["message"]
+    assert REFUSED in error_text(response.json())
     assert ORG_SECRET_NAME not in response.content.decode()
 
 

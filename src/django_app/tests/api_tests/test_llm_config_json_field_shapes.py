@@ -21,8 +21,7 @@ def client(client_as, admin_acme, acme):
 
 
 def _error_field(response):
-    # The project exception handler flattens field errors to "<field>: <message>".
-    return response.data["message"].split(":", 1)[0]
+    return response.data["errors"][0]["attr"]
 
 
 @pytest.mark.django_db

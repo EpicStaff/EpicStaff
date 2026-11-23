@@ -120,7 +120,7 @@ def _save_url(graph):
 
 def _assert_trigger_denied(response):
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-    assert response.data["code"] == TRIGGER_CODE
+    assert response.data["errors"][0]["code"] == TRIGGER_CODE
 
 
 # ── POST /api/graphs/<id>/save/ ──────────────────────────────────────────────
@@ -223,7 +223,7 @@ class TestBulkSave:
 
         assert response.status_code == expected_status, response.content
         if expected_status == status.HTTP_403_FORBIDDEN:
-            assert response.data["code"] == TRIGGER_CODE
+            assert response.data["errors"][0]["code"] == TRIGGER_CODE
         assert ScheduleTriggerNode.objects.filter(graph=acme_graph).exists() == (
             expected_status == status.HTTP_200_OK
         )
@@ -395,7 +395,7 @@ class TestTriggerNodeViewSets:
 
         # The node has no bot key: the request reached the action itself.
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert response.data["code"] == "telegram_bot_key_not_configured"
+        assert response.data["errors"][0]["code"] == "telegram_bot_key_not_configured"
 
     @pytest.mark.parametrize("client_fixture", ["editor_client", "runner_editor_client"])
     def test_register_webhook_on_another_orgs_node_or_a_missing_id_is_404(
@@ -474,7 +474,7 @@ class TestTriggerNodeViewSets:
         )
 
         assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-        assert response.data["code"] == "permission_denied"
+        assert response.data["errors"][0]["code"] == "permission_denied"
 
     def test_read_and_delete_need_no_use(self, editor_client, acme_graph):
         schedule_node = _schedule_node(acme_graph)

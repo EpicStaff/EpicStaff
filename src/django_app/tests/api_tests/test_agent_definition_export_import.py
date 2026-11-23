@@ -223,7 +223,7 @@ def test_export_job_with_an_id_outside_the_org_is_not_found(acme_client, agent, 
     # The same 404 for another org's agent and a missing one: nothing tells them apart.
     for response in (alone, with_own):
         assert response.status_code == 404, response.content
-        assert response.json()["code"] == "export_entities_not_found"
+        assert response.json()["errors"][0]["code"] == "export_entities_not_found"
     assert not TransferJob.objects.exists()
 
 
@@ -582,8 +582,8 @@ def test_the_synchronous_import_sends_an_archive_with_knowledge_to_the_agent_imp
     response = _import(knowledge_client, exported)
 
     assert response.status_code == 400, response.content
-    assert response.json()["code"] == "use_import_job"
-    assert response.json()["message"] == (
+    assert response.json()["errors"][0]["code"] == "use_import_job"
+    assert response.json()["errors"][0]["detail"] == (
         "This archive carries knowledge collections; import it as an agent import job."
     )
     assert AgentDefinition.objects.count() == 1

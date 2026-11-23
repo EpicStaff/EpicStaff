@@ -24,6 +24,7 @@ from tables.models.graph_models import (
 from tables.models.llm_models import LLMConfig
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
+from tests.error_envelope import error_text
 
 
 CDT_URL = "/api/classification-decision-table-node/"
@@ -452,8 +453,8 @@ def test_cdt_condition_group_prompt_other_node_rejected(client_a, org_a):
     )
     # A prompt from another node is not node-local -> rejected, not silently dropped.
     assert resp.status_code == 400, resp.data
-    assert resp.data["code"] == "prompt_not_found"
-    assert str(foreign_prompt.id) in resp.data["message"]
+    assert resp.data["errors"][0]["code"] == "prompt_not_found"
+    assert str(foreign_prompt.id) in error_text(resp.data)
     assert not ClassificationConditionGroup.objects.filter(
         classification_decision_table_node=node_a
     ).exists()
@@ -598,5 +599,5 @@ def test_cdt_export_job_of_a_cross_org_node_is_not_found(client_a, org_b, export
     )
 
     assert resp.status_code == 404, resp.content
-    assert resp.data["code"] == "export_entities_not_found"
+    assert resp.data["errors"][0]["code"] == "export_entities_not_found"
     assert not TransferJob.objects.exists()

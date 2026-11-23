@@ -197,7 +197,7 @@ class TestAccess:
         response = no_webhooks_client.get(_flows_url(trigger))
 
         assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-        assert response.data["code"] == "permission_denied"
+        assert response.data["errors"][0]["code"] == "permission_denied"
 
     def test_superadmin_sees_the_names(self, superadmin_client, acme):
         trigger = _trigger(acme, "wtf-superadmin")
@@ -238,7 +238,7 @@ class TestAccess:
         response = client_as(admin_acme).get(_flows_url(trigger))
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert response.data["code"] == "org_context_required"
+        assert response.data["errors"][0]["code"] == "org_context_required"
 
 
 @pytest.mark.django_db

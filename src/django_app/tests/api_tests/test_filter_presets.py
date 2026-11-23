@@ -14,6 +14,7 @@ from rbac.models import OrganizationUser
 from tables.models.flow_filter_preset_models import FlowFilterPreset
 from tables.models.tool_filter_preset_models import ToolFilterPreset
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +322,7 @@ class TestUniqueNamePerAuthor:
             url, {"name": "Dupe", "filter_body": cfg["valid_body_alt"]}, format="json"
         )
         assert second.status_code == 400
-        assert "name" in second.json()["message"].lower()
+        assert "name" in error_text(second.json()).lower()
 
     @pytest.mark.parametrize("preset_type", ["tool", "flow"])
     def test_rename_to_existing_own_name_400(self, acme_client, preset_type):

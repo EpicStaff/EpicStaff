@@ -615,7 +615,7 @@ class TestKnowledgeNodeProportionSumAfterMerge:
         )
 
         assert resp.status_code == status.HTTP_400_BAD_REQUEST, resp.json()
-        assert resp.json()["code"] == "invalid"
+        assert resp.json()["errors"][0]["code"] == "invalid"
         node_with_proportions.refresh_from_db()
         assert node_with_proportions.node_name != "renamed"
         stored = config_model.objects.get(knowledge_node=node_with_proportions)

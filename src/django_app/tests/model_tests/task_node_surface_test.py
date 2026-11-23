@@ -11,6 +11,7 @@ import pytest
 from agents.models import AgentDefinition, Surface
 from tables.models.graph_models import Graph, TaskNode
 from rbac.models import Organization
+from tests.error_envelope import error_text
 
 
 @pytest.fixture
@@ -96,7 +97,7 @@ def test_create_accepts_only_surfaces_the_node_may_use(client, graph, agents, su
         assert set(response.data["surface_list"]) == expected
         assert _stored(TaskNode.objects.get(pk=response.data["id"])) == expected
     else:
-        assert "surface_list" in response.data["message"]
+        assert "surface_list" in error_text(response.data)
         assert not TaskNode.objects.filter(graph=graph).exists()
 
 

@@ -198,5 +198,7 @@ class TestTriggerNodeTestPayloadImportEndpoint:
         )
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-        assert response.data["message"] == "test_payload: Test payload must be a JSON object."
+        assert [(item["attr"], item["detail"]) for item in response.data["errors"]] == [
+            ("test_payload", "Test payload must be a JSON object.")
+        ]
         assert Graph.objects.count() == graph_count_before

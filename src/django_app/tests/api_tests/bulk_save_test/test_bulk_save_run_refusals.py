@@ -7,6 +7,7 @@ from rest_framework import status
 from tables.models import Graph
 from tables.models.graph_models import ClassificationDecisionTablePrompt, TaskNode
 from tables.services.graph_bulk_save_service.registry import NODE_TYPE_REGISTRY
+from tests.error_envelope import details_by_attr
 from tests.fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -44,7 +45,7 @@ def _stored_state(graph: Graph) -> tuple:
 
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    ("list_key", "item", "expected_errors"),
+    ("list_key", "item", "expected_errors_by_field"),
     [
         pytest.param(
             "task_node_list",
@@ -101,7 +102,7 @@ def _stored_state(graph: Graph) -> tuple:
                     {"prompt_key": "bad", "prompt_text": "Rate {a._b}"},
                 ],
             },
-            {"prompt_configs": [{}, {"prompt_text": [REFUSED_UNDERSCORE_KEY]}]},
+            {"prompt_configs.1.prompt_text": [REFUSED_UNDERSCORE_KEY]},
             id="classification-prompt-text",
         ),
         pytest.param(
@@ -122,11 +123,7 @@ def _stored_state(graph: Graph) -> tuple:
                     }
                 ],
             },
-            {
-                "prompt_configs": [
-                    {"input_map": [_refused_path("variables.companies[variables._id]")]}
-                ]
-            },
+            {"prompt_configs.0.input_map": [_refused_path("variables.companies[variables._id]")]},
             id="system-one-prompt-input-map",
         ),
         pytest.param(
@@ -138,7 +135,7 @@ def _stored_state(graph: Graph) -> tuple:
                     {"name": "second", "order": 1, "instructions": "Fine {topic}"},
                 ],
             },
-            {"tasks": [{"instructions": [REFUSED_CONVERSION]}, {}]},
+            {"tasks.0.instructions": [REFUSED_CONVERSION]},
             id="agent-task-instructions",
         ),
         pytest.param(
@@ -150,20 +147,22 @@ def _stored_state(graph: Graph) -> tuple:
                     {"parent": "message", "field_name": "text", "variable_path": "variables._text"}
                 ],
             },
-            {"fields": [{"variable_path": [_refused_path("variables._text")]}]},
+            {"fields.0.variable_path": [_refused_path("variables._text")]},
             id="telegram-field-variable-path",
         ),
     ],
 )
 def test_a_refused_field_is_a_400_on_its_item_and_nothing_is_written(
-    auth_client, graph, list_key, item, expected_errors
+    auth_client, graph, list_key, item, expected_errors_by_field
 ):
     state_before = _stored_state(graph)
 
     response = _save(auth_client, graph, **{list_key: [{"graph": graph.id, **item}]})
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data == {"errors": {list_key: [{"index": 0, "errors": expected_errors}]}}
+    assert details_by_attr(response.data) == {
+        f"{list_key}.0.{field}": messages for field, messages in expected_errors_by_field.items()
+    }
     assert _stored_state(graph) == state_before
 
 
@@ -179,10 +178,8 @@ def test_the_error_carries_the_index_of_the_refused_item(auth_client, graph):
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data == {
-        "errors": {
-            "task_node_list": [{"index": 1, "errors": {"instructions": [REFUSED_UNDERSCORE_KEY]}}]
-        }
+    assert details_by_attr(response.data) == {
+        "task_node_list.1.instructions": [REFUSED_UNDERSCORE_KEY]
     }
     assert not TaskNode.objects.filter(graph=graph).exists()
 
@@ -215,20 +212,12 @@ def test_a_refusal_comes_back_once_the_other_errors_of_its_item_are_fixed(auth_c
     )
 
     assert with_other_error.status_code == status.HTTP_400_BAD_REQUEST, with_other_error.content
-    assert with_other_error.data == {
-        "errors": {
-            "agent_node_list": [
-                {"index": 0, "errors": {"tasks": [{"name": ["This field is required."]}, {}]}}
-            ]
-        }
+    assert details_by_attr(with_other_error.data) == {
+        "agent_node_list.0.tasks.0.name": ["This field is required."]
     }
     assert fixed.status_code == status.HTTP_400_BAD_REQUEST, fixed.content
-    assert fixed.data == {
-        "errors": {
-            "agent_node_list": [
-                {"index": 0, "errors": {"tasks": [{}, {"instructions": [REFUSED_UNDERSCORE_KEY]}]}}
-            ]
-        }
+    assert details_by_attr(fixed.data) == {
+        "agent_node_list.0.tasks.1.instructions": [REFUSED_UNDERSCORE_KEY]
     }
 
 
@@ -289,10 +278,8 @@ def test_a_stored_refused_instruction_sent_back_unchanged_is_refused(auth_client
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    assert response.data == {
-        "errors": {
-            "task_node_list": [{"index": 0, "errors": {"instructions": [REFUSED_UNDERSCORE_KEY]}}]
-        }
+    assert details_by_attr(response.data) == {
+        "task_node_list.0.instructions": [REFUSED_UNDERSCORE_KEY]
     }
     assert _stored_state(graph) == state_before
     node.refresh_from_db()

@@ -18,6 +18,7 @@ from tables.services.copy_services.audit_filter_preset_copy_service import (
 from tests.helpers import data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.transfer_job_helpers import export_via_job, run_job
+from tests.error_envelope import error_text
 
 EXPORT_JOBS_URL = "/api/audit-filter-presets/export-jobs/"
 
@@ -224,7 +225,7 @@ class TestPresetInvisibleToOtherOrg:
         response = beta_client.post(EXPORT_JOBS_URL, {"ids": [authors_preset.id]}, format="json")
 
         assert response.status_code == 404
-        assert response.json()["code"] == "export_entities_not_found"
+        assert response.json()["errors"][0]["code"] == "export_entities_not_found"
         assert not TransferJob.objects.exists()
 
 
@@ -264,8 +265,8 @@ class TestPresetNameUniquePerAuthor:
             response = _create(author_client, taken, is_shared=is_shared)
 
             assert response.status_code == 400
-            assert response.json()["message"].startswith("name:")
-            assert NAME_TAKEN in response.json()["message"]
+            assert response.json()["errors"][0]["attr"] == "name"
+            assert NAME_TAKEN in error_text(response.json())
         assert AuditFilterPreset.objects.count() == 2
 
     def test_renaming_onto_another_own_name_400s(
@@ -424,7 +425,7 @@ class TestPrivatePresetVisibleOnlyToAuthor:
         )
 
         assert response.status_code == 404
-        assert response.json()["code"] == "export_entities_not_found"
+        assert response.json()["errors"][0]["code"] == "export_entities_not_found"
         assert not TransferJob.objects.exists()
 
     def test_a_preset_made_private_after_the_export_started_fails_the_job(
@@ -500,7 +501,7 @@ class TestSharingIsOneWay:
         )
 
         assert response.status_code == 400
-        assert response.json()["message"].startswith("is_shared:")
+        assert response.json()["errors"][0]["attr"] == "is_shared"
         authors_preset.refresh_from_db()
         assert (authors_preset.is_shared, authors_preset.name) == (True, "Failed runs")
 

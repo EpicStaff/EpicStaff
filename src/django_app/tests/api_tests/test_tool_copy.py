@@ -5,6 +5,7 @@ from tables.models.label_models import Label
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization, OrganizationUser, Role
+from tests.error_envelope import details_by_attr, error_codes
 
 
 # ---- fixtures ----
@@ -213,7 +214,10 @@ def test_python_code_tool_copy_race_on_name_returns_clean_400(
 
     resp = client_a.post(f"/api/python-code-tool/{source.id}/copy/", {}, format="json")
     assert resp.status_code == 400
-    assert "message" in resp.data
+    assert error_codes(resp.data) == ["copy_name_taken"]
+    assert details_by_attr(resp.data) == {
+        None: ["A copy with that name was just created; please retry."]
+    }
     # Must not leak raw DB internals (constraint/table/column names).
     assert "constraint" not in str(resp.data).lower()
     assert "duplicate key" not in str(resp.data).lower()

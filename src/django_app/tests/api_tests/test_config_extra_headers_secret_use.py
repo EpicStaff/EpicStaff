@@ -9,6 +9,7 @@ from rest_framework.test import APIClient
 from rbac.models.enums import Permission, ResourceType
 from tables.models import EmbeddingConfig, LLMConfig
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 MARKER_HEADERS = {"Authorization": "Bearer epicstaff_secret(GATEWAY_TOKEN)"}
 LLM_CONFIGS_CRUD = Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
@@ -62,7 +63,7 @@ class TestHeaderMarkersNeedSecretsUse:
         )
 
         assert response.status_code == 400, response.json()
-        assert "extra_headers" in response.json()["message"]
+        assert "extra_headers" in error_text(response.json())
         assert not model.objects.filter(custom_name="marker-create").exists()
 
     def test_adding_a_marker_without_use_is_rejected(
@@ -79,7 +80,7 @@ class TestHeaderMarkersNeedSecretsUse:
         )
 
         assert response.status_code == 400, response.json()
-        assert "extra_headers" in response.json()["message"]
+        assert "extra_headers" in error_text(response.json())
         config.refresh_from_db()
         assert config.extra_headers == {"X-Trace": "t"}
 

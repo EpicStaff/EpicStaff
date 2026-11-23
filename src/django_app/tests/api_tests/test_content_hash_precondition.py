@@ -50,7 +50,7 @@ class TestContentHashPreconditionViewSet:
         )
 
         assert response.status_code == status.HTTP_409_CONFLICT, response.content
-        assert response.data["code"] == "content_hash_conflict"
+        assert response.data["errors"][0]["code"] == "content_hash_conflict"
 
     def test_patch_without_hash_succeeds(self, auth_client, agent_node):
         """Omitting content_hash skips validation — backward compatible."""

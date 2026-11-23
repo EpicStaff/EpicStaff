@@ -101,9 +101,9 @@ class TestImportErrors:
             "Supported: minimal, low, medium, high."
         )
         assert response.status_code == 400, response.data
-        assert response.data["code"] == "unsupported_reasoning_effort"
-        assert response.data["errors"] == [
-            {"field": "reasoning_effort", "value": "max", "reason": reason}
+        assert response.data["errors"][0]["code"] == "unsupported_reasoning_effort"
+        assert [(item["attr"], item["detail"]) for item in response.data["errors"]] == [
+            ("reasoning_effort", reason)
         ]
         assert Graph.objects.count() == graph_count_before
         assert LLMConfig.objects.count() == config_count_before

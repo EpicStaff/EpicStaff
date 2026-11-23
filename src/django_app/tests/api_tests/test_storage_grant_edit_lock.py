@@ -30,6 +30,7 @@ from tables.models.graph_models import (
 from tables.services.storage_grants.slots import FILE_NODE_MODELS, STORAGE_GRANT_SLOTS
 from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 ALL_THREE = "This code runs with Files: Read, Files: Create, Files: Update, Files: Delete, which you don't have. Contact an admin to change it."
 READ_ONLY_MESSAGE = "This code runs with Files: Read, which you don't have. Contact an admin to change it."
@@ -226,10 +227,10 @@ def test_steering_a_node_needs_every_box_it_has_ticked(
     allowed = _steer(entry, admin_client, kind, flow, node)
 
     assert refused.status_code == status.HTTP_403_FORBIDDEN, refused.content
-    assert refused.data["message"] == ALL_THREE
-    assert refused.data["missing_grants"] == ["read", "write", "delete"]
+    assert refused.data["errors"][0]["detail"] == ALL_THREE
+    assert refused.data["errors"][0]["context"] == {"missing_grants": ["read", "write", "delete"]}
     assert partly.status_code == status.HTTP_403_FORBIDDEN
-    assert partly.data["missing_grants"] == ["write", "delete"]
+    assert partly.data["errors"][0]["context"] == {"missing_grants": ["write", "delete"]}
     assert allowed.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED), allowed.content
     assert _stored(node, field_name) == value
 
@@ -267,7 +268,7 @@ def test_member_cannot_change_code_while_delete_ticked(flow, member_client):
     response = _patch(member_client, PYTHON, node, {"python_code": OTHER_CODE})
 
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-    assert response.data["message"] == (
+    assert response.data["errors"][0]["detail"] == (
         "This code runs with Files: Delete, which you don't have. Contact an admin to change it."
     )
     assert PythonCode.objects.get(pk=node.python_code_id).code == CODE["code"]
@@ -295,7 +296,7 @@ def test_the_nested_code_is_locked_but_an_unchanged_resend_is_not(flow, viewer_c
 
     assert unchanged.status_code == status.HTTP_200_OK
     assert edited.status_code == status.HTTP_403_FORBIDDEN
-    assert edited.data["message"] == READ_ONLY_MESSAGE
+    assert edited.data["errors"][0]["detail"] == READ_ONLY_MESSAGE
 
 
 @pytest.mark.django_db
@@ -316,7 +317,7 @@ def test_each_code_slot_of_a_classification_table_is_locked_by_its_own_boxes(
 
     assert pre.status_code == status.HTTP_200_OK
     assert post.status_code == status.HTTP_403_FORBIDDEN
-    assert post.data["message"] == READ_ONLY_MESSAGE
+    assert post.data["errors"][0]["detail"] == READ_ONLY_MESSAGE
 
 
 # ---- rule 1: raising a box ---------------------------------------------------
@@ -329,7 +330,7 @@ def test_member_cannot_tick_delete(flow, member_client):
     response = _patch(member_client, PYTHON, node, {"storage_grant_delete": True})
 
     assert response.status_code == status.HTTP_403_FORBIDDEN, response.content
-    assert response.data["message"] == DELETE_ONLY
+    assert response.data["errors"][0]["detail"] == DELETE_ONLY
     assert PythonNode.objects.get(pk=node.pk).storage_grant_delete is False
 
 
@@ -355,13 +356,13 @@ def test_raising_a_box_needs_its_permission(flow, viewer_client, read_client):
     too_much = _patch(read_client, PYTHON, node, {"storage_grant_write": True})
 
     assert refused.status_code == status.HTTP_403_FORBIDDEN
-    assert refused.data["message"] == (
+    assert refused.data["errors"][0]["detail"] == (
         "Changing the files this code can access requires Files: Read, which you don't have. "
         "Contact an admin to change it."
     )
     assert allowed.status_code == status.HTTP_200_OK
     assert too_much.status_code == status.HTTP_403_FORBIDDEN
-    assert "Files: Create, Files: Update" in too_much.data["message"]
+    assert "Files: Create, Files: Update" in error_text(too_much.data)
     stored = PythonNode.objects.get(pk=node.pk)
     assert (stored.storage_grant_read, stored.storage_grant_write) == (True, False)
 
@@ -374,8 +375,8 @@ def test_write_needs_both_create_and_update(flow, make_client):
     response = _patch(create_only, PYTHON, node, {"storage_grant_write": True})
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert response.data["missing_grants"] == ["write"]
-    assert "requires Files: Update, which" in response.data["message"]
+    assert response.data["errors"][0]["context"] == {"missing_grants": ["write"]}
+    assert "requires Files: Update, which" in error_text(response.data)
 
 
 @pytest.mark.django_db
@@ -534,8 +535,8 @@ def test_user_without_files_read_cannot_update_a_file_node(
     allowed = _steer(entry, read_client, kind, flow, node)
 
     assert refused.status_code == status.HTTP_403_FORBIDDEN, refused.content
-    assert refused.data["message"] == FILE_NODE_MESSAGE
-    assert refused.data["missing_grants"] == ["read"]
+    assert refused.data["errors"][0]["detail"] == FILE_NODE_MESSAGE
+    assert refused.data["errors"][0]["context"] == {"missing_grants": ["read"]}
     assert allowed.status_code == status.HTTP_200_OK, allowed.content
     assert _stored(node, "input_map") == kind.steer["input_map"]
 
@@ -591,7 +592,7 @@ def test_user_without_files_read_cannot_create_a_file_node(
     allowed = create(read_client)
 
     assert refused.status_code == status.HTTP_403_FORBIDDEN, refused.content
-    assert refused.data["message"] == FILE_NODE_MESSAGE
+    assert refused.data["errors"][0]["detail"] == FILE_NODE_MESSAGE
     assert created_by_refused == 0
     assert allowed.status_code in (status.HTTP_200_OK, status.HTTP_201_CREATED), allowed.content
     assert kind.model.objects.filter(graph=flow).count() == 1
@@ -714,7 +715,7 @@ def test_moving_a_ticked_node_to_another_flow_needs_its_boxes(
     allowed = _patch(admin_client, kind, node, {"graph": other_flow.pk})
 
     assert refused.status_code == status.HTTP_403_FORBIDDEN
-    assert refused.data["message"].startswith("This code runs with Files: Read")
+    assert refused.data["errors"][0]["detail"].startswith("This code runs with Files: Read")
     assert stays.status_code == status.HTTP_200_OK
     assert allowed.status_code == status.HTTP_200_OK, allowed.content
     assert type(node).objects.get(pk=node.pk).graph_id == other_flow.pk

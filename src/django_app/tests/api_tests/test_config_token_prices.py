@@ -5,6 +5,7 @@ import pytest
 from django.db import IntegrityError, transaction
 
 from tables.models.llm_models import LLMConfig
+from tests.error_envelope import error_text
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 LLM_CONFIGS = "/api/llm-configs/"
@@ -18,8 +19,7 @@ def client(client_as, admin_acme, acme):
 
 
 def _error_message(response) -> str:
-    # The global exception handler folds field errors into the "message" string.
-    return response.json()["message"]
+    return error_text(response.json())
 
 
 @pytest.mark.django_db
