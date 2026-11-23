@@ -209,6 +209,18 @@ class LLMConfigStrategy(BaseConfigStrategy):
     serializer_class = LLMConfigImportSerializer
     marker_fields = ("extra_headers",)
 
+    def find_existing(self, data, id_mapper, org_id: int | None = None):
+        # Match on the timeout the serializer would store, or every re-import of a file
+        # with an out-of-range timeout would create another config.
+        if "timeout" in data:
+            timeout_field = self.serializer_class().fields["timeout"]
+            try:
+                timeout = timeout_field.run_validation(data["timeout"])
+            except ValidationError as error:
+                raise ValidationError({"timeout": error.detail}) from error
+            data = {**data, "timeout": timeout}
+        return super().find_existing(data, id_mapper, org_id=org_id)
+
 
 class EmbeddingConfigStrategy(BaseConfigStrategy):
     entity_type = EntityType.EMBEDDING_CONFIG

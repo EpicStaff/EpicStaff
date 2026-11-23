@@ -507,6 +507,7 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
             ['cdt_explain_llm_config_not_found', CDT_TREE_COPY.explainModelGone],
             ['cdt_explain_llm_config_missing_key', CDT_TREE_COPY.explainNoApiKey],
             ['cdt_explain_upstream_failed', CDT_TREE_COPY.explainUpstreamFailed],
+            ['cdt_explain_timed_out', CDT_TREE_COPY.explainTimedOut],
             ['something_else', CDT_TREE_COPY.explainFailed],
             // Not a key of the lookup, however it is spelt.
             ['constructor', CDT_TREE_COPY.explainFailed],
@@ -697,6 +698,7 @@ describe('CdtDecisionTreeDialogComponent — explanations', () => {
             ['cdt_explain_llm_config_not_found', 404, CDT_TREE_COPY.explainModelGone],
             ['cdt_explain_llm_config_missing_key', 422, CDT_TREE_COPY.explainNoApiKey],
             ['cdt_explain_upstream_failed', 502, CDT_TREE_COPY.explainUpstreamFailed],
+            ['cdt_explain_timed_out', 504, CDT_TREE_COPY.explainTimedOut],
         ])('reads a failed request’s %s the way Explain Step does', (code, status, message) => {
             mountMixed();
             explainApi.explain.mockReturnValue(throwError(() => new HttpErrorResponse({ status, error: { code } })));

@@ -15,6 +15,9 @@ from tables.models.tag_models import (
 )
 from tables.validators.finite_number_validator import validate_finite_number
 
+LLM_CONFIG_TIMEOUT_MIN_SECONDS = 1
+LLM_CONFIG_TIMEOUT_MAX_SECONDS = 600
+
 
 class LLMModel(OrgScopedModel, models.Model):
     name = models.TextField()
@@ -122,7 +125,16 @@ class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableMod
         related_name="llm_configs",
     )
     extra_headers = models.JSONField(default=dict, blank=True)
-    timeout = models.FloatField(default=120.0, null=True, blank=True)
+    timeout = models.FloatField(
+        default=120.0,
+        null=True,
+        blank=True,
+        validators=[
+            validate_finite_number,
+            MinValueValidator(LLM_CONFIG_TIMEOUT_MIN_SECONDS),
+            MaxValueValidator(LLM_CONFIG_TIMEOUT_MAX_SECONDS),
+        ],
+    )
     # Not on DefaultLLMConfig on purpose: fill_with_defaults only copies the default
     # model's fields, so a price is never inherited from the platform defaults.
     input_cost_per_token = models.FloatField(

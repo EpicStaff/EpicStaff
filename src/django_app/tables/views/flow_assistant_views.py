@@ -52,6 +52,7 @@ from tables.services.llm_clients import (
     TOOL_USE_FAILED_CODE,
     USER_VISIBLE_PROVIDER_ERROR_CODES,
     LLMProviderError,
+    LLMTimeoutError,
 )
 from tables.services.secrets import SecretResolutionError
 from tables.utils.mixins import SSEMixin
@@ -390,6 +391,9 @@ class FlowAssistantStreamView(SSEMixin):
         except LLMProviderError as exc:
             logger.warning("FlowAssistant stream provider error: {}", exc)
             error_detail = _provider_error_detail(exc)
+        except LLMTimeoutError as exc:
+            logger.warning("FlowAssistant stream timed out: {}", exc)
+            error_detail = "The model did not answer in time. Try again or choose a faster model."
         except Exception as exc:
             logger.exception("Unexpected error in FlowAssistantStreamView: {}", exc)
             error_detail = "Unexpected error."

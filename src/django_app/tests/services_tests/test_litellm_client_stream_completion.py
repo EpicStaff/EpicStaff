@@ -4,10 +4,13 @@
 returns SimpleNamespace chunks; the client's own chunk handling runs for real.
 """
 
+import asyncio
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
+import litellm
 import pytest
 from litellm.litellm_core_utils.streaming_handler import CustomStreamWrapper
 from litellm.llms.groq.chat.transformation import GroqChatCompletionStreamingHandler
@@ -105,6 +108,21 @@ async def test_unset_reasoning_effort_is_not_sent_to_litellm_acompletion():
     await collect_events([make_chunk(content="ok", finish_reason="stop")], None, received_kwargs)
 
     assert "reasoning_effort" not in received_kwargs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("config_timeout", "sent_timeout"),
+    [(None, 600), (30, 30), (600, 600)],
+    ids=["unset-gets-the-maximum", "set-is-kept", "maximum-is-kept"],
+)
+async def test_every_call_reaches_litellm_with_a_timeout(config_timeout, sent_timeout):
+    received_kwargs: dict = {}
+    client = make_client(timeout=config_timeout)
+
+    await collect_events([make_chunk(content="ok", finish_reason="stop")], client, received_kwargs)
+
+    assert received_kwargs["timeout"] == sent_timeout
 
 
 GROQ_MESSAGE = (
@@ -282,3 +300,101 @@ async def test_original_exception_wins_over_context():
         await stream_events_from(failing_stream())
 
     assert excinfo.value.message == "from original"
+
+
+@pytest.mark.asyncio
+async def test_config_timeout_surfaces_as_a_builtin_timeout_naming_the_provider():
+    # Callers (CDT explain's "every batch timed out" check) catch the builtin
+    # TimeoutError; litellm.Timeout is not one.
+    async def acompletion_timing_out(**kwargs):
+        raise litellm.Timeout(
+            message="Request timed out.", model=kwargs["model"], llm_provider="openai"
+        )
+
+    with (
+        patch(
+            "tables.services.llm_clients.litellm_client.litellm.acompletion",
+            new=acompletion_timing_out,
+        ),
+        pytest.raises(TimeoutError) as excinfo,
+    ):
+        [event async for event in make_client().stream_completion([], [])]
+
+    assert excinfo.value.provider == "openai"
+
+
+class EndlessProviderStream:
+    """Sends a chunk every 20 ms forever: always well within any per-read timeout."""
+
+    def __init__(self):
+        self.closed = False
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        await asyncio.sleep(0.02)
+        return make_chunk(content="token")
+
+    async def aclose(self):
+        self.closed = True
+
+
+@pytest.mark.asyncio
+async def test_a_provider_that_keeps_sending_is_cut_off_at_the_call_time_limit():
+    provider_stream = EndlessProviderStream()
+
+    async def acompletion_stub(**kwargs):
+        return provider_stream
+
+    stream = make_client().stream_completion([], [], time_limit_seconds=0.2)
+    loop = asyncio.get_running_loop()
+    started_at = loop.time()
+    with (
+        patch(
+            "tables.services.llm_clients.litellm_client.litellm.acompletion",
+            new=acompletion_stub,
+        ),
+        pytest.raises(TimeoutError) as excinfo,
+    ):
+        # Fetch each event in a task of its own, as SSEMixin does; the outer bound makes
+        # a limit that never fires fail the test (by the elapsed check) instead of hanging it.
+        async with asyncio.timeout(5):
+            while True:
+                await asyncio.ensure_future(anext(stream))
+
+    assert loop.time() - started_at < 1
+    assert excinfo.value.provider == "openai"
+    assert provider_stream.closed
+
+
+@pytest.mark.asyncio
+async def test_a_read_timeout_mid_stream_surfaces_as_a_builtin_timeout():
+    # Past the response headers litellm reports the read timeout wrapped in a
+    # MidStreamFallbackError, not as litellm.Timeout.
+    async def stream_timing_out():
+        raise httpx.ReadTimeout("Read timed out", request=httpx.Request("POST", "http://llm"))
+        yield
+
+    logging_obj = MagicMock(model_call_details={})
+    logging_obj.dispatch_failure_handlers = AsyncMock()
+    logging_obj.async_failure_handler = AsyncMock()
+
+    async def acompletion_stub(**kwargs):
+        return CustomStreamWrapper(
+            completion_stream=stream_timing_out(),
+            model="gpt-4o",
+            custom_llm_provider="openai",
+            logging_obj=logging_obj,
+        )
+
+    with (
+        patch(
+            "tables.services.llm_clients.litellm_client.litellm.acompletion",
+            new=acompletion_stub,
+        ),
+        pytest.raises(TimeoutError) as excinfo,
+    ):
+        [event async for event in make_client().stream_completion([], [])]
+
+    assert excinfo.value.provider == "openai"

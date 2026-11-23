@@ -928,6 +928,16 @@ class CdtExplainUpstreamError(CustomAPIExeption):
     default_code = "cdt_explain_upstream_failed"
 
 
+class CdtExplainTimedOutError(CustomAPIExeption):
+    """Raised when every batch of the explain request was cut off by the request deadline."""
+
+    status_code = 504
+    default_detail = (
+        "The model did not answer in time. Explain fewer steps or choose a faster model."
+    )
+    default_code = "cdt_explain_timed_out"
+
+
 class InUseRestrictedError(CustomAPIExeption):
     """Raised by the single-object destroy path when the entity is referenced
     from something the caller cannot see (BaseDeleteService.assert_deletable).

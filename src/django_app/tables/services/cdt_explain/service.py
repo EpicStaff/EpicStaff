@@ -14,6 +14,7 @@ from tables.exceptions import (
     CdtExplainLLMConfigInvalidError,
     CdtExplainLLMConfigMissingKeyError,
     CdtExplainLLMConfigNotFoundError,
+    CdtExplainTimedOutError,
     CdtExplainUpstreamError,
     ClassificationDecisionTableNodeNotFoundError,
 )
@@ -36,6 +37,10 @@ logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 6
 MAX_CONCURRENCY = 5
+# Under nginx's default 60s proxy_read_timeout for /api (nginx/templates/default.conf.template):
+# past it the client already has a 504 and the result is thrown away, while the sync view
+# would still hold its admission slot.
+EXPLAIN_REQUEST_DEADLINE_SECONDS = 55
 
 
 @dataclass
@@ -74,9 +79,13 @@ class CdtExplainService:
             raise CdtExplainLLMConfigInvalidError(str(exc)) from exc
 
         batches = list(self._batches(blocks))
-        texts, failed_batches = async_to_sync(self._run_batches)(client, table, batches)
+        texts, batch_errors = async_to_sync(self._run_batches)(client, table, batches)
 
-        if failed_batches == len(batches):
+        if len(batch_errors) == len(batches):
+            # Before the key check: a slow keyless model (Ollama, vLLM) would otherwise be
+            # told it lacks a key.
+            if all(isinstance(error, TimeoutError) for error in batch_errors):
+                raise CdtExplainTimedOutError()
             if not api_key:
                 raise CdtExplainLLMConfigMissingKeyError(llm_config_id)
             raise CdtExplainUpstreamError()
@@ -139,40 +148,55 @@ class CdtExplainService:
 
     async def _run_batches(
         self, client, table: dict, batches: list[list[dict]]
-    ) -> tuple[dict[str, str], int]:
+    ) -> tuple[dict[str, str], list[BaseException]]:
         semaphore = asyncio.Semaphore(MAX_CONCURRENCY)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + EXPLAIN_REQUEST_DEADLINE_SECONDS
 
         async def guarded(batch):
-            async with semaphore:
-                return await self._explain_batch(client, table, batch)
+            async with asyncio.timeout_at(deadline):
+                await semaphore.acquire()
+            # The call gets the time left rather than an outer deadline: the client closes
+            # the provider stream when its own limit runs out, not when it is cancelled.
+            try:
+                return await self._explain_batch(
+                    client, table, batch, time_limit_seconds=deadline - loop.time()
+                )
+            finally:
+                semaphore.release()
 
         results = await asyncio.gather(
             *(guarded(batch) for batch in batches), return_exceptions=True
         )
 
         texts: dict[str, str] = {}
-        failed = 0
+        errors: list[BaseException] = []
         for batch, result in zip(batches, results, strict=False):
             if isinstance(result, BaseException):
-                failed += 1
+                errors.append(result)
+                # %r: a TimeoutError from the deadline has an empty message.
                 logger.warning(
-                    "CDT explain batch failed (%d step(s)): %s",
+                    "CDT explain batch failed (%d step(s)): %r",
                     len(batch),
                     result,
                     exc_info=result,
                 )
                 continue
             texts.update(result)
-        return texts, failed
+        return texts, errors
 
-    async def _explain_batch(self, client, table: dict, batch: list[dict]) -> dict[str, str]:
+    async def _explain_batch(
+        self, client, table: dict, batch: list[dict], *, time_limit_seconds: float
+    ) -> dict[str, str]:
         messages = [
             {"role": "system", "content": build_system_prompt(b["block"] for b in batch)},
             {"role": "user", "content": render_user_message(table, batch)},
         ]
 
         chunks: list[str] = []
-        async for event in client.stream_completion(messages, []):
+        async for event in client.stream_completion(
+            messages, [], time_limit_seconds=time_limit_seconds
+        ):
             if isinstance(event, DoneEvent):
                 break
             if isinstance(event, TokenEvent):
