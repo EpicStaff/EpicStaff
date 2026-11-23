@@ -1437,5 +1437,51 @@ class ComposeLimitTests(unittest.TestCase):
         )
 
 
+class SizeWorkerMemoryFromTest(unittest.TestCase):
+    ENV_TEXT = (
+        "DJANGO_SGI_WORKERS=1\nDJANGO_MEMORY=1536m  # sized for one worker\n"
+        "CHAT_WORKERS=1\nCHAT_MEMORY=768m\nCREW_MEMORY=2g\n"
+    )
+
+    def size(self, override_text: str) -> str:
+        directory = Path(tempfile.mkdtemp())
+        env_file, override_file = directory / ".env", directory / "deploy.env"
+        env_file.write_text(self.ENV_TEXT, encoding="utf-8")
+        override_file.write_text(override_text, encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            envtool.main(
+                ["--env-file", str(env_file), "--size-worker-memory-from", str(override_file)]
+            )
+        return env_file.read_text(encoding="utf-8")
+
+    def test_override_worker_count_sizes_the_env_file_memory(self):
+        text = self.size("DJANGO_SGI_WORKERS=6\nCHAT_WORKERS=3\n")
+        self.assertEqual(
+            text,
+            "DJANGO_SGI_WORKERS=1\nDJANGO_MEMORY=4096m  # sized for one worker\n"
+            "CHAT_WORKERS=1\nCHAT_MEMORY=1280m\nCREW_MEMORY=2g\n",
+        )
+
+    def test_memory_the_override_sets_itself_is_left_alone(self):
+        text = self.size("DJANGO_SGI_WORKERS=6\nDJANGO_MEMORY=5g\nCHAT_MEMORY=1g\n")
+        self.assertEqual(text, self.ENV_TEXT)
+
+    def test_without_worker_counts_in_the_override_the_env_file_counts_apply(self):
+        self.ENV_TEXT = self.ENV_TEXT.replace("DJANGO_SGI_WORKERS=1", "DJANGO_SGI_WORKERS=2")
+        text = self.size("INSTANCE_PREFIX=dev_\n")
+        self.assertIn("DJANGO_MEMORY=2048m  # sized for one worker\n", text)
+        self.assertIn("CHAT_MEMORY=768m\n", text)
+
+    def test_a_missing_override_file_exits_and_changes_nothing(self):
+        env_file = Path(tempfile.mkdtemp()) / ".env"
+        env_file.write_text(self.ENV_TEXT, encoding="utf-8")
+        with self.assertRaises(SystemExit) as raised:
+            envtool.main(
+                ["--env-file", str(env_file), "--size-worker-memory-from", str(env_file) + ".x"]
+            )
+        self.assertIn("does not exist", str(raised.exception.code))
+        self.assertEqual(env_file.read_text(encoding="utf-8"), self.ENV_TEXT)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -40,7 +40,8 @@ proxy in front of test-3; test-3 itself filters nothing.
   - its own fresh value for every secret in `GENERATED_SECRETS` (`scripts/envtool.py`).
 
   `.env` is regenerated with `envtool.py --dev` on every deploy, and `deploy.env` comes after it, so
-  `deploy.env` always wins.
+  `deploy.env` always wins. After regenerating, `deploy.sh` sets `.env`'s `DJANGO_MEMORY` and
+  `CHAT_MEMORY` from `deploy.env`'s worker counts, unless `deploy.env` sets those limits itself.
 - **Caps.** `/etc/systemd/system/epicstaff-{dev,branch}.slice` each set `CPUQuota=300%`,
   `MemoryMax=7G` and `MemorySwapMax=0`. The host has a 4 GiB `/swapfile` for itself; containers get
   none. To see an instance's usage: `systemctl status epicstaff-dev.slice`.

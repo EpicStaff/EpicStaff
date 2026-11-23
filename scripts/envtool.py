@@ -935,6 +935,22 @@ def worker_memory_values(values: dict[str, str]) -> dict[str, str]:
     }
 
 
+def size_worker_memory_from(env_file: Path, override_file: Path) -> dict[str, str]:
+    """Rewrite the Django / chat limits in `env_file` to follow the worker counts compose will use
+    when `override_file` is loaded after it (its values win). A limit the override file sets
+    itself is left alone. Returns the values written."""
+    values = read_env_values(env_file.read_text(encoding="utf-8"))
+    overrides = read_env_values(override_file.read_text(encoding="utf-8"))
+    sized = {
+        variable: value
+        for variable, value in worker_memory_values({**values, **overrides}).items()
+        if variable not in overrides
+    }
+    if sized:
+        rewrite_env_values(env_file, sized)
+    return sized
+
+
 def _plugins_memory_mb(values: dict[str, str]) -> int:
     raw = values.get("ES_PLUGINS_MEMORY")
     if raw is None:
@@ -1425,6 +1441,12 @@ def main(argv: list[str] | None = None):
         action="store_true",
         help="Ask questions to create the env file or change its features (production unless --dev).",
     )
+    mode.add_argument(
+        "--size-worker-memory-from",
+        metavar="OVERRIDE_ENV_FILE",
+        help="Set DJANGO_MEMORY / CHAT_MEMORY in the env file from the worker counts in it and in"
+        " OVERRIDE_ENV_FILE, which compose loads after it; limits the override file sets stay.",
+    )
     parser.add_argument("--env-file", default=".env", help="Env file path.")
     parser.add_argument("--schema-file", default="env.yaml", help="Schema file path.")
 
@@ -1439,6 +1461,21 @@ def main(argv: list[str] | None = None):
                 "--setup asks questions: run it in a terminal, with `docker run -it` in Docker."
             )
         run_setup(load_schema(schema_file), target, env_file, schema_file)
+        return
+
+    if args.size_worker_memory_from:
+        override_file = BASE_DIR / args.size_worker_memory_from
+        for required in (env_file, override_file):
+            if not required.is_file():
+                sys.exit(f"{required} does not exist.")
+        sized = size_worker_memory_from(env_file, override_file)
+        print(
+            f"{env_file}: "
+            + (
+                ", ".join(f"{name}={value}" for name, value in sized.items())
+                or "no worker memory to change"
+            )
+        )
         return
 
     if args.update:
