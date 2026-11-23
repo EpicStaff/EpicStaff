@@ -14,17 +14,8 @@ from rest_framework.views import APIView
 
 from agents.models import AgentDefinition, Surface
 from rbac.models import OrganizationUser
-from tables.models import (
-    AuditFilterPreset,
-    Graph,
-    Label,
-    Provider,
-    Session,
-    SourceCollection,
-    StorageFile,
-    TransferJob,
-)
-from tables.models.default_models import DefaultModels
+from ai_models.models import DefaultModels, Provider
+from tables.models import AuditFilterPreset, Graph, Label, Session, SourceCollection, StorageFile, TransferJob
 from tables.services.quickstart_service import QuickstartService
 from tables.services.storage_service.upload import admission, archive_upload, file_upload
 from tables.models.realtime_models import RealtimeAgentDefinition

@@ -1,3 +1,4 @@
+from ai_models.models import LLMConfig
 from django.db import transaction
 from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
@@ -16,7 +17,7 @@ from tables.models.graph_models import (
     Graph,
     StartNode,
 )
-from tables.models.llm_models import LLMConfig, SystemOneConfig
+from tables.models.llm_models import SystemOneConfig
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,

@@ -155,6 +155,37 @@ make django-manage CMD=shell
 make django-manage CMD=createsuperuser
 ```
 
+### `make django-model-catalog` / `make django-model-catalog-check`
+
+Rebuild or check the AI model catalog.
+
+
+`src/django_app/ai_models/data/catalog.json` holds the models and settings the AI Models
+page offers. It is built from the pinned LiteLLM release and the hand-written
+`ai_models/data/parameter_registry.yaml`. Rebuild it after you upgrade LiteLLM or edit
+the registry, and commit both files together:
+
+```bash
+# Rewrite catalog.json and print what changed (models added/removed, settings, drafts)
+make django-model-catalog
+
+# Write nothing; list what keeps catalog.json from being complete and current, exit 1 on any error
+make django-model-catalog-check
+```
+
+Both targets set the two variables `build_model_catalog` refuses to run without, so the
+catalog always comes from the model list bundled with the pinned LiteLLM, never from
+LiteLLM's GitHub. Running the command through `make django-manage` needs them on the
+command line yourself:
+
+- `LITELLM_LOCAL_MODEL_COST_MAP=True` stops LiteLLM from downloading its model list on import.
+- `LITELLM_MODEL_COST_REFRESH_ENABLED=False` turns off EpicStaff's daily refresh of that list.
+
+A setting LiteLLM reports that the registry does not describe is added as a draft;
+describe it under `parameters` or list it under `hidden`. The CI job
+`model-catalog-check` runs the `--check` form and fails the PR while a draft is left or
+`catalog.json` is out of date.
+
 ### `make django-tests ARGS=<pytest-args>`
 
 Run the Django test suite with `pytest`. **Always** use this instead of running

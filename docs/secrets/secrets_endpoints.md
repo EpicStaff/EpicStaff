@@ -284,16 +284,15 @@ Nested fields are named along their path (`ngrok_config: auth_token_secret_id: â
 instead, under that node's list key (`{"errors": {"python_node_list": [{"index": 0, "errors":
 {"python_code": {"secret_ids": ["â€¦"]}}}]}}`).
 
-An `extra_headers` marker is a secret reference too: **adding** an
-`epicstaff_secret(<name>)` name to an LLM or embedding config's `extra_headers` needs
-`secrets:USE`; keeping or removing markers does not. Importing a config that carries markers
+An `extra_headers` or `connection` marker is a secret reference too: **adding** an
+`epicstaff_secret(<name>)` name to an LLM or embedding config's `extra_headers` or `connection`
+needs `secrets:USE`; keeping or removing markers does not. Importing a config that carries markers
 needs it as well, since every marker in a new row is new.
 
 Pointing a resource that carries a secret at a new destination needs `secrets:USE` the same
-way: an LLM or embedding config's `base_url` (or a `model` switch to one with another
-`base_url`), an OpenAI realtime config's `base_url`, an MCP tool's `transport`, and a custom
-model's `base_url` while a secret-bearing config uses it. `null` and `""` are the same
-destination. Those refusals name the field too, with this message: *"Changing where this sends
+way: an LLM or embedding config's `connection` endpoint fields (`connection.base_url`, an Azure
+`deployment_id`, a cloud region or project), an OpenAI realtime config's `base_url` and an MCP
+tool's `transport`. `null`, `""` and a missing key are the same destination. Those refusals name the field too, with this message: *"Changing where this sends
 its secrets requires the "Use" permission on Secrets. The existing value was left unchanged.
 Ask an organization admin to grant it."*
 

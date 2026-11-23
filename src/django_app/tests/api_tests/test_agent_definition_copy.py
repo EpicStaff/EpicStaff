@@ -22,7 +22,8 @@ from agents.models.surface_models import (
 from rbac.access.catalog import grantable_bits_for
 from rbac.models import ResourceLastEdit
 from rbac.models.enums import Permission, ResourceType
-from tables.models import Label, LLMConfig, McpTool, SourceCollection, StorageFile
+from tables.models import Label, McpTool, SourceCollection, StorageFile
+from ai_models.models import LLMConfig
 from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgentDefinition
 from tests.fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403

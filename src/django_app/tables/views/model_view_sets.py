@@ -47,7 +47,6 @@ from rbac.scoping.mixins import (
     OrgScopedChildViewSetMixin,
     OrgScopedHybridViewSetMixin,
     OrgScopedViewSetMixin,
-    SuperadminWriteMixin,
 )
 from rest_framework import (
     filters as drf_filters,
@@ -62,7 +61,6 @@ from rest_framework import (
 from rest_framework.decorators import action
 from rest_framework.exceptions import (
     NotFound,
-    PermissionDenied,
 )
 from rest_framework.exceptions import (
     ValidationError as DRFValidationError,
@@ -82,12 +80,9 @@ from tables.exceptions import (
     BulkSaveValidationError,
 )
 from tables.filters import (
-    EmbeddingModelFilter,
     KeyValueTableEntryOrderingFilter,
     LabelFilterBackend,
-    LLMModelFilter,
     McpToolFilter,
-    ProviderFilter,
     PythonCodeToolFilter,
     WebhookTriggerFilter,
 )
@@ -109,8 +104,6 @@ from tables.models import (
     AgentNodeTask,
     AudioTranscriptionNode,
     Edge,
-    EmbeddingConfig,
-    EmbeddingModel,
     FileExtractorNode,
     Graph,
     GraphSessionMessage,
@@ -118,9 +111,6 @@ from tables.models import (
     KeyValueNode,
     KeyValueTable,
     KeyValueTableEntry,
-    LLMConfig,
-    LLMModel,
-    Provider,
     PythonCodeResult,
     PythonCodeTool,
     PythonNode,
@@ -214,7 +204,6 @@ from tables.serializers.model_serializers import (
     LabelSerializer,
     McpToolSerializer,
     OpenAIRealtimeConfigSerializer,
-    ProviderSerializer,
     PythonCodeResultSerializer,
     PythonCodeToolConfigSerializer,
     PythonCodeToolSerializer,
@@ -242,21 +231,13 @@ from tables.serializers.model_serializers import (
     WebhookTriggerNodeReadSerializer,
     WebhookTriggerNodeSerializer,
 )
-from tables.serializers.model_serializers.embedding_serializers import (
-    EmbeddingConfigSerializer,
-    EmbeddingModelSerializer,
-)
 from tables.serializers.model_serializers.key_value_serializers import (
     KeyValueKeysSerializer,
     KeyValueTableEntryListSerializer,
     KeyValueTableEntrySerializer,
     KeyValueTableSerializer,
 )
-from tables.serializers.model_serializers.llm_serializers import (
-    LLMConfigSerializer,
-    LLMModelSerializer,
-    SystemOneConfigSerializer,
-)
+from tables.serializers.model_serializers.llm_serializers import SystemOneConfigSerializer
 from tables.serializers.model_serializers.realtime_serializers import (
     TwilioAuthTokenSecretSerializer,
 )
@@ -284,11 +265,9 @@ from tables.services.copy_services import (
 )
 from tables.services.delete_services import (
     ElevenLabsRealtimeConfigDeleteService,
-    EmbeddingConfigDeleteService,
     GeminiRealtimeConfigDeleteService,
     GraphDeleteService,
     GraphVersionDeleteService,
-    LLMConfigDeleteService,
     OpenAIRealtimeConfigDeleteService,
     SystemOneConfigDeleteService,
 )
@@ -304,21 +283,13 @@ from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.services.redis_service import RedisService
 from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
 from tables.services.secrets import secret_resolver, secret_usage_service
-from tables.services.secrets.pinned_principal_rules import (
-    EMBEDDING_MODEL_ENDPOINT_FIELDS,
-    LLM_MODEL_ENDPOINT_FIELDS,
-)
 from tables.services.secrets.secret_code_inspector import (
     SecretCodeInspector,
     secret_code_access,
 )
 from tables.services.secrets.secret_use_checks import (
     check_elevenlabs_realtime_config_write,
-    check_embedding_config_write,
-    check_embedding_model_write,
     check_gemini_realtime_config_write,
-    check_llm_config_write,
-    check_llm_model_write,
     check_mcp_tool_write,
     check_openai_realtime_config_write,
     check_python_code_tool_config_write,
@@ -349,11 +320,9 @@ from tables.swagger_schemas.audit_filter_preset_schemas import (
 )
 from tables.swagger_schemas.bulk_delete_schemas import (
     ELEVENLABS_REALTIME_CONFIG_BULK_DELETE_POST,
-    EMBEDDING_CONFIG_BULK_DELETE_POST,
     GEMINI_REALTIME_CONFIG_BULK_DELETE_POST,
     GRAPH_BULK_DELETE_POST,
     GRAPH_VERSION_BULK_DELETE_POST,
-    LLM_CONFIG_BULK_DELETE_POST,
     OPENAI_REALTIME_CONFIG_BULK_DELETE_POST,
     SYSTEM_ONE_CONFIG_BULK_DELETE_POST,
 )
@@ -421,7 +390,6 @@ from tables.views.mixins import (
 )
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
 from tables.views.secret_use import (
-    ModelEndpointsGuardedViewSetMixin,
     SecretUseCheckedViewSetMixin,
 )
 from tables.views.storage_grants import StorageGrantCheckedViewSetMixin
@@ -433,96 +401,6 @@ from utils.logger import logger
 from utils.pagination import DefaultLimitOffsetPagination
 
 redis_service = RedisService()
-
-
-class BasePredefinedRestrictedViewSet(ModelViewSet):
-    """
-    Base ViewSet class for predefined models.
-    Allows updating non-critical fields of predefined objects.
-    Prevents deletion of predefined objects.
-    """
-
-    # No permission_classes / rbac_resource_type here on purpose: this is an
-    # abstract base. Every concrete subclass (LLMModelReadWriteViewSet,
-    # EmbeddingModelReadWriteViewSet) declares its own gate.
-
-    def get_queryset(self):
-        if self.action == "destroy":
-            return self.queryset.filter(predefined=False)
-
-        return self.queryset
-
-    def perform_create(self, serializer):
-        if serializer.validated_data.get("predefined", False):
-            e = f"Attempt to create predefined {self.queryset.model.__name__.lower()}"
-            logger.error(e)
-            raise PermissionDenied(e)
-        serializer.save()
-
-    def perform_update(self, serializer):
-        instance = self.get_object()
-        validated_data = serializer.validated_data
-
-        if instance.predefined:
-            # Should not be able to change name
-            if "name" in validated_data and validated_data["name"] != instance.name:
-                e = f"Cannot change the name of a predefined {self.queryset.model.__name__.lower()}"
-                logger.warning(e)
-                raise ValidationError({"name": e})
-
-            # Should not be able to remove predefined
-            if "predefined" in validated_data and validated_data["predefined"] is False:
-                e = "Cannot unset predefined status for this object"
-                logger.warning(e)
-                raise ValidationError({"predefined": e})
-
-        else:
-            if validated_data.get("predefined", False):
-                e = f"Attempt to set predefined=True for custom {self.queryset.model.__name__.lower()}"
-                logger.error(e)
-                raise PermissionDenied(e)
-
-        serializer.save()
-
-    def perform_destroy(self, instance):
-        if instance.predefined:
-            e = f"Attempt to delete predefined {self.queryset.model.__name__.lower()}"
-            logger.error(e)
-            raise PermissionDenied(e)
-        instance.delete()
-
-
-@extend_schema_view(bulk_delete=extend_schema(**LLM_CONFIG_BULK_DELETE_POST))
-class LLMConfigReadWriteViewSet(
-    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet
-):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
-    delete_service_class = LLMConfigDeleteService
-    secret_use_check = check_llm_config_write
-    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
-    secret_use_check_locks_rows = True
-
-    class LLMConfigFilter(filters.FilterSet):
-        model_provider_id = filters.CharFilter(
-            field_name="model__llm_provider__id", lookup_expr="icontains"
-        )
-
-        class Meta:
-            model = LLMConfig
-            fields = [
-                "custom_name",
-                "model",
-                "is_visible",
-            ]
-
-    queryset = LLMConfig.objects.select_related("api_key_secret").prefetch_related(
-        *authorship_prefetches()
-    )
-    serializer_class = LLMConfigSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_class = LLMConfigFilter
 
 
 @extend_schema_view(bulk_delete=extend_schema(**SYSTEM_ONE_CONFIG_BULK_DELETE_POST))
@@ -538,117 +416,6 @@ class SystemOneConfigReadWriteViewSet(
         "api_key_secret", "llm_config"
     ).prefetch_related(*authorship_prefetches())
     serializer_class = SystemOneConfigSerializer
-
-
-class ProviderReadWriteViewSet(SuperadminWriteMixin, ModelViewSet):
-    # No rbac_resource_type: Provider is a global catalog (no org column).
-    # SuperadminWriteMixin gates writes to a superadmin's session (rows are
-    # seeded via the upload_models command; no API key may write them) and
-    # provides the permission classes. Reads are intentionally
-    # global-readable — the frontend lists providers here
-    # (LLMProvidersService.getProviders).
-    uses_organization_context = False
-    queryset = Provider.objects.all()
-    serializer_class = ProviderSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_class = ProviderFilter
-
-
-class LLMModelReadWriteViewSet(
-    # A plugin's endpoint change is refused first (400), as validation would.
-    # Built-in protection runs before the secret check: a built-in model is
-    # immutable (403) whatever the caller holds, and the secret check counts the
-    # configs of every org that uses it. All three mixins hand every perform_* they
-    # override on to super(), so the hybrid org mixin after them still runs: it
-    # scopes get_queryset and stamps the org on create.
-    ModelEndpointsGuardedViewSetMixin,
-    BuiltInWriteProtectedMixin,
-    SecretUseCheckedViewSetMixin,
-    OrgScopedHybridViewSetMixin,
-    BasePredefinedRestrictedViewSet,
-):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
-    model_endpoint_fields = LLM_MODEL_ENDPOINT_FIELDS
-    secret_use_check = check_llm_model_write
-    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
-    secret_use_check_locks_rows = True
-    global_visibility_q = Q(is_custom=False)
-    # force created rows into the org's custom, non-predefined subset (also
-    # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
-    custom_create_values = {"is_custom": True, "predefined": False}
-    queryset = LLMModel.objects.select_related("llm_provider").prefetch_related(
-        "tags", *authorship_prefetches(last_edit=False)
-    )
-    serializer_class = LLMModelSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_class = LLMModelFilter
-
-
-class EmbeddingModelReadWriteViewSet(
-    # A plugin's endpoint change is refused first (400), as validation would.
-    # Built-in protection runs before the secret check: a built-in model is
-    # immutable (403) whatever the caller holds, and the secret check counts the
-    # configs of every org that uses it. All three mixins hand every perform_* they
-    # override on to super(), so the hybrid org mixin after them still runs: it
-    # scopes get_queryset and stamps the org on create.
-    ModelEndpointsGuardedViewSetMixin,
-    BuiltInWriteProtectedMixin,
-    SecretUseCheckedViewSetMixin,
-    OrgScopedHybridViewSetMixin,
-    BasePredefinedRestrictedViewSet,
-):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP}
-    model_endpoint_fields = EMBEDDING_MODEL_ENDPOINT_FIELDS
-    secret_use_check = check_embedding_model_write
-    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
-    secret_use_check_locks_rows = True
-    global_visibility_q = Q(is_custom=False)
-    # force created rows into the org's custom, non-predefined subset (also
-    # preserves BasePredefinedRestrictedViewSet's "no creating predefined" rule)
-    custom_create_values = {"is_custom": True, "predefined": False}
-    queryset = EmbeddingModel.objects.select_related("embedding_provider").prefetch_related(
-        "tags", *authorship_prefetches(last_edit=False)
-    )
-    serializer_class = EmbeddingModelSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_class = EmbeddingModelFilter
-
-
-@extend_schema_view(bulk_delete=extend_schema(**EMBEDDING_CONFIG_BULK_DELETE_POST))
-class EmbeddingConfigReadWriteViewSet(
-    SecretUseCheckedViewSetMixin, OrgScopedViewSetMixin, BulkDeleteActionMixin, ModelViewSet
-):
-    permission_classes = [IsAuthenticated, HasOrgPermission]
-    rbac_resource_type = ResourceType.LLM_CONFIGS
-    rbac_action_map = {**DEFAULT_ACTION_MAP, "bulk_delete": Permission.DELETE}
-    delete_service_class = EmbeddingConfigDeleteService
-    secret_use_check = check_embedding_config_write
-    # The check locks the model row it reads; see SecretUseCheckedViewSetMixin.
-    secret_use_check_locks_rows = True
-
-    class EmbeddingConfigFilter(filters.FilterSet):
-        model_provider_id = filters.CharFilter(
-            field_name="model__embedding_provider__id", lookup_expr="icontains"
-        )
-
-        class Meta:
-            model = EmbeddingConfig
-            fields = [
-                "custom_name",
-                "model",
-                "is_visible",
-            ]
-
-    queryset = EmbeddingConfig.objects.select_related("api_key_secret").prefetch_related(
-        *authorship_prefetches()
-    )
-    serializer_class = EmbeddingConfigSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_class = EmbeddingConfigFilter
 
 
 class ContentHashPreconditionMixin:
@@ -2477,6 +2244,7 @@ class ClassificationDecisionTableNodeModelViewSet(
             llm_config_id=data["llm_config"],
             table=data["table"],
             blocks=data["blocks"],
+            user=request.user,
         )
         return Response(
             {"explanations": result.explanations, "failures": result.failures},

@@ -1,0 +1,219 @@
+<section
+    #library
+    class="llm-library"
+    [class.llm-library--select-mode]="selectMode()"
+>
+    <app-llm-library-header
+        [searchQuery]="searchQuery()"
+        [selectMode]="selectMode()"
+        [selectedCount]="selectedCount()"
+        [allSelected]="allVisibleSelected()"
+        [showSelect]="selectMode() || hasAnyCard()"
+        [isDeleting]="isDeleting()"
+        (searchChange)="onSearchChange($event)"
+        (sectionFilterChange)="onSectionFilterChange($event)"
+        (selectModeEntered)="enterSelectMode()"
+        (selectModeExited)="exitSelectMode()"
+        (selectAllToggled)="toggleSelectAll()"
+        (selectionCleared)="clearSelection()"
+        (addClicked)="onAdd($event)"
+        (deleteClicked)="deleteSelected()"
+    />
+
+    @if (status() !== 'loaded') {
+        <app-loading-spinner message="Loading Configurations data" />
+    } @else if (hasNoMatches()) {
+        <p class="empty-hint">No configurations match.</p>
+    } @else {
+        <div
+            #sectionList
+            class="sections"
+            [style.--llm-card-gap.px]="cardGap"
+            [style.--llm-cards-per-row]="cardsPerRow()"
+        >
+            @for (section of sections(); track section.key) {
+                @let expanded = expandedSections().has(section.key);
+                @let total = section.selectionKeys.length;
+                <section
+                    class="library-section"
+                    [class.library-section--collapsed]="!expanded"
+                >
+                    <div
+                        #sectionHeader
+                        class="section-header"
+                    >
+                        <!-- A disclosure heading: the heading holds the button that collapses its section. -->
+                        <h4 class="section-heading">
+                            <button
+                                type="button"
+                                class="section-toggle"
+                                [attr.aria-expanded]="expanded"
+                                [attr.aria-controls]="'ai-models-section-' + section.key"
+                                (click)="toggleSection(section.key)"
+                            >
+                                <app-svg-icon
+                                    class="section-chevron"
+                                    [icon]="expanded ? 'chevron-up' : 'chevron-down'"
+                                    size="20px"
+                                />
+                                <span class="section-title">{{ section.title }}</span>
+                                @if (!selectMode()) {
+                                    <span class="section-count">{{ total }}</span>
+                                    @if (!expanded && section.providerList) {
+                                        <span class="section-providers">{{ section.providerList }}</span>
+                                    }
+                                }
+                            </button>
+                        </h4>
+
+                        @if (section.needsReviewCount > 0 && !selectMode()) {
+                            <span class="section-review">
+                                <app-svg-icon
+                                    icon="alert-triangle"
+                                    size="12px"
+                                    aria-hidden="true"
+                                />
+                                {{ section.needsReviewCount }} needs review
+                            </span>
+                        }
+
+                        @if (selectMode()) {
+                            @let ticked = tickedCount(section);
+                            <app-checkbox
+                                #sectionBox
+                                class="section-checkbox"
+                                color="secondary"
+                                [ariaLabel]="'Select all ' + section.title + ' configs'"
+                                [checked]="ticked > 0 && ticked === total"
+                                [indeterminate]="ticked > 0 && ticked < total"
+                                [disabled]="isDeleting() || total === 0"
+                                (changed)="onSectionCheckboxChange(section, sectionBox)"
+                            />
+                            <span class="section-selection">
+                                <span
+                                    class="section-selection__ticked"
+                                    [class.section-selection__ticked--none]="ticked === 0"
+                                    >{{ ticked }}</span
+                                ><span class="section-selection__total"> / {{ total }}</span>
+                            </span>
+                        }
+
+                        <app-button
+                            *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
+                            class="section-add"
+                            type="outline-ghost"
+                            leftIcon="plus"
+                            iconSize="16px"
+                            [ariaLabel]="'Add ' + section.title + ' config'"
+                            (click)="onAdd(section.key)"
+                        >
+                            Add
+                        </app-button>
+                    </div>
+
+                    <!-- Inert while collapsed, as only its zero height hides it. -->
+                    <div
+                        class="grid-collapsible"
+                        [id]="'ai-models-section-' + section.key"
+                        [class.expanded]="expanded"
+                        [attr.inert]="expanded ? null : ''"
+                    >
+                        <div class="section-body">
+                            @for (error of section.errors; track error.key) {
+                                <app-fetch-error-state
+                                    mod="small"
+                                    [title]="error.title"
+                                    message="Check your connection and try again."
+                                    (retry)="retrySection(error.key)"
+                                />
+                            }
+
+                            @if (section.errors.length === 0 && total === 0) {
+                                <p class="empty-hint">No configurations yet.</p>
+                            }
+
+                            @for (row of section.rows; track $index) {
+                                <div class="provider-row">
+                                    @for (group of row; track group.id) {
+                                        <div class="provider-group">
+                                            @if (group.name !== null) {
+                                                <div class="provider-header">
+                                                    <app-svg-icon
+                                                        class="provider-icon"
+                                                        [class.provider-icon--tinted]="group.isTinted"
+                                                        [icon]="group.icon"
+                                                        size="20px"
+                                                    />
+                                                    <span class="provider-name">{{ group.name }}</span>
+                                                </div>
+                                            }
+
+                                            <div class="cards">
+                                                @for (card of group.cards; track card.selectionKey) {
+                                                    <app-llm-library-card
+                                                        [model]="card.model"
+                                                        [selectMode]="selectMode()"
+                                                        [selected]="isCardSelected(card)"
+                                                        [isDeleting]="isDeleting()"
+                                                        [defaultRoles]="defaultRoles().get(card.selectionKey) ?? []"
+                                                        (selectedChange)="onCardSelectedChange(card, $event)"
+                                                        (editClick)="card.edit()"
+                                                        (deleteClick)="card.remove()"
+                                                        (viewDetailsClick)="card.viewDetails($event.trigger)"
+                                                    />
+                                                }
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </section>
+            }
+
+            @if (showDefaults()) {
+                @let defaultsExpanded = expandedSections().has('defaults');
+                <section
+                    class="library-section"
+                    [class.library-section--collapsed]="!defaultsExpanded"
+                >
+                    <div
+                        #sectionHeader
+                        class="section-header"
+                    >
+                        <h4 class="section-heading">
+                            <button
+                                type="button"
+                                class="section-toggle"
+                                [attr.aria-expanded]="defaultsExpanded"
+                                aria-controls="ai-models-section-defaults"
+                                (click)="toggleSection('defaults')"
+                            >
+                                <app-svg-icon
+                                    class="section-chevron"
+                                    [icon]="defaultsExpanded ? 'chevron-up' : 'chevron-down'"
+                                    size="20px"
+                                />
+                                <span class="section-title">Default Models</span>
+                                <span class="section-count">{{ assignedRolesCount() }}</span>
+                                <span class="section-providers">of {{ totalRolesCount }} roles assigned</span>
+                            </button>
+                        </h4>
+                    </div>
+
+                    <div
+                        id="ai-models-section-defaults"
+                        class="grid-collapsible"
+                        [class.expanded]="defaultsExpanded"
+                        [attr.inert]="defaultsExpanded ? null : ''"
+                    >
+                        <div class="section-body">
+                            <app-default-llms-section />
+                        </div>
+                    </div>
+                </section>
+            }
+        </div>
+    }
+</section>

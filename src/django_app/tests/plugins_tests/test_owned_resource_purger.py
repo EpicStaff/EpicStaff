@@ -20,12 +20,8 @@ from plugins.ownership.owned_resource_purger import (
 )
 from plugins.ownership.ownership_recorder import ownable_models
 from tables.models import (
-    DefaultModels,
-    EmbeddingConfig,
-    EmbeddingModel,
     Graph,
     KeyValueTable,
-    LLMModel,
     McpTool,
     PythonCode,
     PythonCodeTool,
@@ -34,6 +30,12 @@ from tables.models import (
     SourceCollection,
     StorageFile,
     WebhookTrigger,
+)
+from ai_models.models import (
+    DefaultModels,
+    EmbeddingConfig,
+    EmbeddingModel,
+    LLMModel,
 )
 from tables.models.llm_models import (
     RealtimeConfig,
@@ -91,8 +93,8 @@ ROOTS = {
     "tables.SourceCollection": lambda organization: SourceCollection.objects.create(
         org=organization, collection_name=_unique("Forecasts")
     ),
-    "tables.LLMConfig": lambda organization: llm_config(organization, _unique("Weather summaries")),
-    "tables.EmbeddingConfig": lambda organization: EmbeddingConfig.objects.create(
+    "ai_models.LLMConfig": lambda organization: llm_config(organization, _unique("Weather summaries")),
+    "ai_models.EmbeddingConfig": lambda organization: EmbeddingConfig.objects.create(
         org=organization, custom_name=_unique("Weather embeddings")
     ),
     "tables.RealtimeConfig": _realtime_config,
@@ -106,8 +108,8 @@ ROOTS = {
     "tables.GeminiRealtimeConfig": lambda organization: GeminiRealtimeConfig.objects.create(
         org=organization, custom_name=_unique("Gemini voice")
     ),
-    "tables.LLMModel": lambda organization: LLMModel.objects.create(org=organization, name=_unique("weather-llm")),
-    "tables.EmbeddingModel": lambda organization: EmbeddingModel.objects.create(
+    "ai_models.LLMModel": lambda organization: LLMModel.objects.create(org=organization, name=_unique("weather-llm")),
+    "ai_models.EmbeddingModel": lambda organization: EmbeddingModel.objects.create(
         org=organization, name=_unique("weather-embedder")
     ),
     "tables.RealtimeModel": lambda organization: RealtimeModel.objects.create(org=organization, name=_unique("voice")),
@@ -189,9 +191,9 @@ def test_the_extra_order_lists_exactly_the_ownable_models_outside_the_bin():
 def test_users_go_before_what_they_use():
     order = [model._meta.label for model in owned_purge_order()]
 
-    assert order.index("tables.Graph") < order.index("agents.AgentDefinition") < order.index("tables.LLMConfig")
-    assert order.index("tables.StorageFile") < order.index("tables.LLMConfig") < order.index("tables.Secret")
-    assert order.index("tables.LLMConfig") < order.index("tables.LLMModel") < order.index("tables.KeyValueTable")
+    assert order.index("tables.Graph") < order.index("agents.AgentDefinition") < order.index("ai_models.LLMConfig")
+    assert order.index("tables.StorageFile") < order.index("ai_models.LLMConfig") < order.index("tables.Secret")
+    assert order.index("ai_models.LLMConfig") < order.index("ai_models.LLMModel") < order.index("tables.KeyValueTable")
 
 
 def test_every_ownable_model_has_a_builder_here():
@@ -328,6 +330,35 @@ def test_the_organization_s_rows_lose_what_they_used_and_its_flow_stays(grant, a
     assert DefaultModels.objects.get(org=acme).agent_llm_config_id is None
     assert Graph.objects.filter(pk=digest.pk).exists()
     assert AgentDefinition.objects.filter(pk=writer.pk).exists()
+
+
+def test_a_custom_model_a_person_s_config_reuses_is_kept_and_only_its_ownership_goes(grant, acme, storage):
+    # The plugin named a model the catalog does not know: its config created the custom row,
+    # and a person's config of the same model reuses that row.
+    model = LLMModel.objects.create(org=acme, name="weather-fine-tune", is_custom=True)
+    own(model, grant)
+    own(llm_config(acme, "Weather summaries", model=model), grant)
+    persons_config = llm_config(acme, "Team summaries", model=model)
+
+    first = _purge(grant)
+    second = _purge(grant)
+
+    assert (first.purged, first.failed, first.remaining) == (2, 0, 0)
+    assert _exists(model) and _exists(persons_config)
+    assert not PluginOwnedResource.objects.exists()
+    assert (second.purged, second.failed, second.remaining) == (0, 0, 0)
+
+
+def test_a_model_only_the_plugin_s_configs_use_goes_with_them(grant, acme, storage):
+    model = EmbeddingModel.objects.create(org=acme, name="weather-embed", is_custom=True)
+    own(model, grant)
+    config = EmbeddingConfig.objects.create(org=acme, custom_name="Weather embeddings", model=model)
+    own(config, grant)
+
+    result = _purge(grant)
+
+    assert (result.purged, result.failed, result.remaining) == (2, 0, 0)
+    assert not _exists(model) and not _exists(config)
 
 
 # ---- what is held back ----

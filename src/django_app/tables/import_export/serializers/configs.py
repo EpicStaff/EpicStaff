@@ -1,10 +1,12 @@
-from rest_framework import serializers
-
-from tables.models import (
+from ai_models.models import (
     EmbeddingConfig,
     EmbeddingModel,
     LLMConfig,
     LLMModel,
+)
+from rest_framework import serializers
+
+from tables.models import (
     RealtimeConfig,
     RealtimeModel,
     RealtimeTranscriptionConfig,
@@ -21,10 +23,6 @@ from tables.serializers.model_serializers.llm_serializers import (
     SYSTEM_ONE_FORBIDDEN_FIELDS,
     system_one_model_error,
 )
-from tables.serializers.utils.llm_config_data_validation import (
-    LLMConfigDataFieldsValidationMixin,
-)
-from tables.utils.litellm_model_info import validate_reasoning_effort
 from tables.validators.extra_headers_validator import validate_extra_headers
 from tables.validators.token_price_validator import validate_token_prices_set_together
 
@@ -51,7 +49,7 @@ class BaseConfigImportSerializer(serializers.ModelSerializer):
         return fields
 
 
-class LLMConfigImportSerializer(LLMConfigDataFieldsValidationMixin, BaseConfigImportSerializer):
+class LLMConfigImportSerializer(BaseConfigImportSerializer):
     model_class = LLMModel
     provider_field = "llm_provider"
     model_fk_field = "model"
@@ -72,7 +70,6 @@ class LLMConfigImportSerializer(LLMConfigDataFieldsValidationMixin, BaseConfigIm
         validate_token_prices_set_together(
             attrs.get("input_cost_per_token"), attrs.get("output_cost_per_token")
         )
-        validate_reasoning_effort(attrs.get("model"), attrs.get("reasoning_effort"))
         return attrs
 
 

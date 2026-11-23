@@ -4,8 +4,7 @@
 import pytest
 from django.utils.module_loading import import_string
 
-from tables.models.embedding_models import EmbeddingConfig
-from tables.models.llm_models import LLMConfig
+from ai_models.models import EmbeddingConfig, LLMConfig
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 CONFIG_ENDPOINTS = [

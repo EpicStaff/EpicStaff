@@ -87,7 +87,8 @@ class OpenAIRealtimeModelNameValidationMixin(serializers.Serializer):
 
         Raises ValidationError if no matching RealtimeModel is found.
         """
-        from tables.models import Provider, RealtimeModel
+        from ai_models.models import Provider
+        from tables.models import RealtimeModel
 
         try:
             openai_provider = Provider.objects.get(name="openai")

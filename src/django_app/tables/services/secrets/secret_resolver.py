@@ -23,9 +23,10 @@ _NAMED_NAMES_FIELD = "secret_names"
 _NAMED_VALUES_FIELD = "secrets"
 
 # Third convention: `epicstaff_secret(<name>)` markers embedded in the string
-# values of any header dict whose field name ends with "extra_headers"
-# (`extra_headers`, `embedder_extra_headers`, `rag_llm_extra_headers`, ...).
-_HEADER_FIELD_SUFFIX = "extra_headers"
+# values of any dict whose field name ends with one of these: header dicts
+# (`extra_headers`, `embedder_extra_headers`, `rag_llm_extra_headers`, ...) and a
+# model config's provider `connection` fields (e.g. an AWS access key id).
+_MARKER_FIELD_SUFFIXES = ("extra_headers", "connection")
 
 
 def extract_secret_marker_names(headers: dict | None) -> set[str]:
@@ -165,7 +166,7 @@ class SecretResolver:
                 self._fill_named(model=model, org_id=org_id)
                 continue
 
-            if field_name.endswith(_HEADER_FIELD_SUFFIX):
+            if field_name.endswith(_MARKER_FIELD_SUFFIXES):
                 self._fill_header_markers(model=model, field_name=field_name, org_id=org_id)
                 continue
 
@@ -243,7 +244,7 @@ class SecretResolver:
             raise SecretResolutionError(
                 detail=(
                     f"{context}: unknown secret name(s) {sorted(missing)} "
-                    f"referenced in a header marker."
+                    f"referenced in a secret marker."
                 )
             )
 
@@ -258,8 +259,36 @@ class SecretResolver:
             for key, value in headers.items()
         }
 
+    def open_sealed(self, *, value: str) -> str:
+        """Return the plaintext of a value `resolve_sealed` sealed for transport.
+
+        For a caller that uses the secret in django_app itself instead of sending it on.
+        Never log the result.
+        """
+        return self._transport_cryptographer.decrypt(value)
+
+    def open_sealed_markers(self, *, headers: dict[str, str] | None) -> dict[str, str] | None:
+        """Return `headers` with each marker `resolve_header_markers` sealed holding its plaintext.
+
+        The counterpart of `resolve_header_markers` for a caller in django_app itself:
+        `epicstaff_secret(<ciphertext>)` becomes the secret's value, without the marker.
+        Returns a new dict. Never log the result.
+        """
+        if not headers:
+            return headers
+        return {
+            key: (
+                _SECRET_MARKER_RE.sub(
+                    lambda match: self._transport_cryptographer.decrypt(match.group(1)), value
+                )
+                if isinstance(value, str)
+                else value
+            )
+            for key, value in headers.items()
+        }
+
     def _fill_header_markers(self, *, model: BaseModel, field_name: str, org_id: int) -> None:
-        """Replace each marker name in a header dict with its secret's value, sealed for transport."""
+        """Replace each marker name in a header or connection dict with its secret's value, sealed for transport."""
         headers = getattr(model, field_name)
         if not headers:
             return

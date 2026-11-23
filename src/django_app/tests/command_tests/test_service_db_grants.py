@@ -1,6 +1,9 @@
+import pytest
+from django.db import connection
 from tables.service_db_grants import (
     DELETE,
     SELECT,
+    SERVICE_ROLE_GRANTS,
     UPDATE,
     ServiceRoleGrants,
     TableGrant,
@@ -46,3 +49,22 @@ def test_column_names_are_quoted():
     assert _statements(TableGrant("t", (), select_columns=('we"ird',)))[-1] == (
         'GRANT SELECT ("we""ird") ON TABLE "t" TO "test_role"'
     )
+
+
+@pytest.mark.django_db
+def test_every_granted_table_and_column_exists_after_the_migrations():
+    # apply_service_grants runs right after migrate; a column a migration dropped would
+    # fail it and stop the container from starting.
+    with connection.cursor() as cursor:
+        existing_tables = set(connection.introspection.table_names(cursor))
+        for service_grants in SERVICE_ROLE_GRANTS:
+            for table_grant in service_grants.tables:
+                assert table_grant.table in existing_tables, table_grant.table
+                columns = {
+                    column.name
+                    for column in connection.introspection.get_table_description(
+                        cursor, table_grant.table
+                    )
+                }
+                granted = {*table_grant.select_columns, *table_grant.update_columns}
+                assert granted <= columns, (table_grant.table, sorted(granted - columns))

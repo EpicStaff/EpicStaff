@@ -29,6 +29,7 @@ export class ButtonComponent {
         | 'primary-white'
         | 'secondary'
         | 'ghost'
+        | 'outline-ghost'
         | 'icon'
         | 'outline-primary'
         | 'outline-secondary'

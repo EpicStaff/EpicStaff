@@ -26,8 +26,6 @@ class LLMModel(BaseModel):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False)
-    base_url = Column(Text, nullable=True)
-    api_version = Column(Text, nullable=True)
 
     llm_provider_id = Column(Integer, ForeignKey("tables_provider.id"), nullable=True)
 
@@ -41,24 +39,17 @@ class LLMModel(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    """Generation parameters and prices for invoking an `LLMModel`.
+    """Generation settings and prices for invoking an `LLMModel`.
 
     Maps only the columns the knowledge role may read: KNOWLEDGE_LLM_CONFIG_COLUMNS in
-    src/django_app/tables/service_db_grants.py. Credentials such as extra_headers are
-    deliberately absent; they arrive resolved in each request.
+    src/django_app/tables/service_db_grants.py. `connection` and `extra_headers` are
+    deliberately absent: they can name secrets, and arrive resolved in each request, as do
+    the `parameters` the model catalog allows.
     """
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    temperature = Column(Float, default=0.5, nullable=True)
-    top_p = Column(Float, default=1.0, nullable=True)
-    max_tokens = Column(Integer, nullable=True)
-    presence_penalty = Column(Float, nullable=True)
-    frequency_penalty = Column(Float, nullable=True)
-    logit_bias = Column(JSON, nullable=True)
-    seed = Column(Integer, nullable=True)
     input_cost_per_token = Column(Float, nullable=True)
     output_cost_per_token = Column(Float, nullable=True)
-    reasoning_effort = Column(Text, nullable=True)
 
     model_id = Column(Integer, ForeignKey("tables_llmmodel.id"), nullable=True)
 

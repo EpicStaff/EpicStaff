@@ -1,3 +1,5 @@
+from typing import Any
+
 from domain.enums import RAGStrategy
 from domain.models import ChunkingConfig, FoundChunk, SearchConfig, SearchUsage
 from presentation.rest.schemas.base import BaseSchema
@@ -10,6 +12,10 @@ class IndexInputSchema(BaseSchema):
     llm_api_key: str | None = None
     embedding_extra_headers: dict[str, str] = Field(default_factory=dict)
     llm_extra_headers: dict[str, str] = Field(default_factory=dict)
+    embedding_connection: dict[str, str] = Field(default_factory=dict)
+    embedding_parameters: dict[str, Any] = Field(default_factory=dict)
+    llm_connection: dict[str, str] = Field(default_factory=dict)
+    llm_parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class PrechunkInputSchema(BaseSchema):
@@ -30,6 +36,10 @@ class SearchInputSchema(BaseSchema):
     llm_api_key: str | None = None
     embedding_extra_headers: dict[str, str] = Field(default_factory=dict)
     llm_extra_headers: dict[str, str] = Field(default_factory=dict)
+    embedding_connection: dict[str, str] = Field(default_factory=dict)
+    embedding_parameters: dict[str, Any] = Field(default_factory=dict)
+    llm_connection: dict[str, str] = Field(default_factory=dict)
+    llm_parameters: dict[str, Any] = Field(default_factory=dict)
 
 
 class SearchOutputSchema(BaseSchema):

@@ -1,5 +1,5 @@
 """
-Tests for v1→v2, v2→v3, v3→v4 and v4→v5 import/export version conversion,
+Tests for v1→v2, v2→v3, v3→v4, v4→v5 and v5→v6 import/export version conversion,
 and the shared variable_conversion helper.
 
 These tests are pure dict-transform tests — no DB access required.
@@ -24,6 +24,7 @@ from tables.import_export.version_conversions.convertions import (
     v2_to_v3,
     v3_to_v4,
     v4_to_v5,
+    v5_to_v6,
 )
 from tables.utils.legacy_node_number import split_legacy_node_name
 
@@ -982,3 +983,131 @@ class TestV4ToV5:
         for venv in data.get(EntityType.VENV, []):
             serializer = VenvImportSerializer(data=venv)
             assert serializer.is_valid(), serializer.errors
+
+
+GATEWAY = "https://gateway.example/openai"
+
+
+def _v5_llm_model(**fields) -> dict:
+    return {"id": 7, "name": "gateway-gpt", "provider_name": "azure", "is_custom": True, **fields}
+
+
+def _v5_llm_config(**fields) -> dict:
+    return {"id": 70, "custom_name": "gateway config", "model": 7, **fields}
+
+
+class TestV5ToV6:
+    """Setting columns fold into `parameters`, endpoint columns into `connection`.
+
+    The same fold the database migration did: only non-null settings, only non-empty
+    endpoints, and a model row's endpoint only when the row is the organization's own.
+    """
+
+    def test_llm_setting_columns_become_parameters(self):
+        data = v5_to_v6(
+            {
+                EntityType.LLM_CONFIG: [
+                    _v5_llm_config(temperature=0.3, max_tokens=1000, top_p=None, stop=["END"])
+                ]
+            }
+        )
+
+        [config] = data[EntityType.LLM_CONFIG]
+        assert config["parameters"] == {"temperature": 0.3, "max_tokens": 1000, "stop": ["END"]}
+        assert "temperature" not in config and "top_p" not in config
+
+    def test_a_custom_model_s_endpoint_moves_onto_the_config(self):
+        data = v5_to_v6(
+            {
+                EntityType.LLM_MODEL: [
+                    _v5_llm_model(base_url=GATEWAY, api_version="2024-06-01", deployment_id="prod")
+                ],
+                EntityType.LLM_CONFIG: [_v5_llm_config(base_url=None, api_version=None)],
+            }
+        )
+
+        assert data[EntityType.LLM_CONFIG][0]["connection"] == {
+            "base_url": GATEWAY,
+            "api_version": "2024-06-01",
+            "deployment_id": "prod",
+        }
+        model = data[EntityType.LLM_MODEL][0]
+        assert not {"base_url", "api_version", "deployment_id"} & model.keys()
+
+    def test_the_model_s_endpoint_wins_over_the_config_s_own(self):
+        # Runs read the endpoint from the model row only; the config's fills what the row lacks.
+        data = v5_to_v6(
+            {
+                EntityType.LLM_MODEL: [_v5_llm_model(base_url=GATEWAY, api_version="")],
+                EntityType.LLM_CONFIG: [
+                    _v5_llm_config(base_url="https://own.example", api_version="2024-06-01")
+                ],
+            }
+        )
+
+        assert data[EntityType.LLM_CONFIG][0]["connection"] == {
+            "base_url": GATEWAY,
+            "api_version": "2024-06-01",
+        }
+
+    def test_a_built_in_model_s_endpoint_is_not_copied(self):
+        data = v5_to_v6(
+            {
+                EntityType.LLM_MODEL: [_v5_llm_model(is_custom=False, base_url=GATEWAY)],
+                EntityType.LLM_CONFIG: [_v5_llm_config()],
+            }
+        )
+
+        assert data[EntityType.LLM_CONFIG][0]["connection"] == {}
+        assert "base_url" not in data[EntityType.LLM_MODEL][0]
+
+    def test_embedding_task_type_and_model_endpoint_are_folded(self):
+        data = v5_to_v6(
+            {
+                EntityType.EMBEDDING_MODEL: [
+                    {"id": 3, "name": "embedder", "is_custom": True, "base_url": GATEWAY, "deployment": "emb"}
+                ],
+                EntityType.EMBEDDING_CONFIG: [
+                    {"id": 30, "custom_name": "embed", "model": 3, "task_type": "retrieval_document"}
+                ],
+            }
+        )
+
+        [config] = data[EntityType.EMBEDDING_CONFIG]
+        assert config["parameters"] == {"task_type": "retrieval_document"}
+        assert config["connection"] == {"base_url": GATEWAY, "deployment_id": "emb"}
+        assert "task_type" not in config
+        assert not {"base_url", "deployment"} & data[EntityType.EMBEDDING_MODEL][0].keys()
+
+    def test_a_config_whose_model_is_not_in_the_file_gets_only_its_own_values(self):
+        data = v5_to_v6({EntityType.LLM_CONFIG: [_v5_llm_config(model=999, base_url=GATEWAY)]})
+
+        assert data[EntityType.LLM_CONFIG][0]["connection"] == {"base_url": GATEWAY}
+
+    def test_a_file_without_configs_passes_through(self):
+        bundle = {"version": 5, EntityType.GRAPH: [{"id": 1, "nodes": []}]}
+
+        assert v5_to_v6(copy.deepcopy(bundle)) == bundle
+
+    def test_a_version_1_file_reaches_the_current_version_with_its_settings(self):
+        """v2->v3 strips fields the current model lacks; the folded columns must survive it."""
+        bundle = {
+            EntityType.LLM_MODEL: [_v5_llm_model(base_url=GATEWAY)],
+            EntityType.LLM_CONFIG: [
+                _v5_llm_config(temperature=0.2, base_url=None, headers={"X-Legacy": "1"})
+            ],
+            EntityType.EMBEDDING_CONFIG: [
+                {"id": 30, "custom_name": "embed", "model": 3, "task_type": "retrieval_query"}
+            ],
+        }
+
+        converted = VersionConverter.convert(bundle)
+
+        assert converted["version"] == IMPORT_VERSION == 6
+        [config] = converted[EntityType.LLM_CONFIG]
+        assert config["parameters"] == {"temperature": 0.2}
+        assert config["connection"] == {"base_url": GATEWAY}
+        assert config["extra_headers"] == {"X-Legacy": "1"}
+        assert converted[EntityType.EMBEDDING_CONFIG][0]["parameters"] == {
+            "task_type": "retrieval_query"
+        }

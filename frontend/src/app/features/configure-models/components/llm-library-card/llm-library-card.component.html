@@ -6,11 +6,12 @@
 >
     <div class="llm-card__top">
         <span
-            class="llm-card__model"
+            class="llm-card__label"
             appTooltipOnOverflow
             [matTooltip]="model().customName"
-            >{{ model().customName }}</span
         >
+            {{ model().customName }}
+        </span>
         @if (selectMode()) {
             <div
                 class="llm-card__checkbox"
@@ -67,17 +68,9 @@
         {{ model().modelName }}
     </div>
 
-    @if (model().tags.length > 0) {
-        <div class="llm-card__tags">
-            @for (tag of model().tags; track tag) {
-                <span class="llm-card__tag">#{{ tag.name }}</span>
-            }
-        </div>
-    }
-
-    @let temperature = model().temperature;
-    @if (temperature !== null || model().isDeprecated) {
+    @if (hasBottomRow()) {
         <div class="llm-card__bottom">
+            @let temperature = model().temperature;
             @if (temperature !== null) {
                 <div class="llm-card__temp">
                     <app-svg-icon
@@ -89,16 +82,38 @@
                 </div>
             }
 
-            @if (model().isDeprecated) {
-                <div class="llm-card__deprecated">
-                    <app-svg-icon
-                        icon="warning"
-                        size="16px"
-                        aria-hidden="true"
-                    />
-                    <span>Deprecated</span>
-                </div>
-            }
+            <div class="llm-card__badges">
+                @if (model().needsReview) {
+                    <span
+                        class="llm-card__badge llm-card__badge--review"
+                        tabindex="0"
+                        matTooltipClass="multiline-tooltip"
+                        [matTooltip]="reviewTooltip()"
+                    >
+                        <app-svg-icon
+                            icon="alert-triangle"
+                            size="12px"
+                            aria-hidden="true"
+                        />
+                        Needs review
+                    </span>
+                }
+                @if (defaultRoles().length > 0) {
+                    <span
+                        class="llm-card__badge llm-card__badge--default"
+                        tabindex="0"
+                        matTooltipClass="multiline-tooltip"
+                        [matTooltip]="defaultTooltip()"
+                    >
+                        <app-svg-icon
+                            icon="robot"
+                            size="12px"
+                            aria-hidden="true"
+                        />
+                        Default
+                    </span>
+                }
+            </div>
         </div>
     }
 </article>

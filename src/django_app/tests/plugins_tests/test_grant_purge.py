@@ -23,7 +23,8 @@ from plugins.models import (
     PluginState,
 )
 from rest_framework.test import APIClient
-from tables.models import DefaultModels, PythonNode, Session, StorageFile
+from tables.models import PythonNode, Session, StorageFile
+from ai_models.models import DefaultModels
 from tables.services.session_manager_service import SessionManagerService
 
 from tests.plugins_tests.suspension_helpers import agent, agent_node_flow, flow, llm_config, own, secret_row, set_state

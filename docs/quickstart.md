@@ -32,12 +32,17 @@ These are intentionally separate actions so you can review what was created befo
 
 ## Supported Providers
 
-| Provider | LLM Model | Embedding Model | Realtime | Transcription |
-|----------|-----------|----------------|----------|---------------|
-| `openai` | gpt-4o-mini | text-embedding-3-small | gpt-4o-mini-realtime-preview-2024-12-17 | whisper-1 |
-| `gemini` | gemini-1.5-pro | text-embedding-004 | — | — |
-| `cohere` | command-r-plus | embed-english-v3.0 | — | — |
+| Provider | LLM Model | Embedding Model | Voice (realtime / transcription) | System One |
+|----------|-----------|-----------------|----------------------------------|------------|
+| `openai` | gpt-6-luna | text-embedding-3-small | gpt-realtime-1.5 / whisper-1 | gpt-6-luna |
+| `gemini` | gemini-3.8-flash | gemini-embedding-001 | gemini-3.1-flash-live-preview / — | — |
+| `cohere` | command-a-03-2025 | embed-english-v3.0 | — | — |
 | `mistral` | mistral-large-latest | mistral-embed | — | — |
+
+The models are set in `QuickstartService.PROVIDER_CONFIGS` (`src/django_app/tables/services/quickstart_service.py`); the voice models are the defaults of `OpenAIRealtimeConfig` / `GeminiRealtimeConfig`. Each LLM and embedding config starts with the model's catalog defaults, with two exceptions:
+
+- **OpenAI LLM:** `reasoning_effort: low` and `max_tokens: 100000`. gpt-6-luna's reasoning tokens count against `max_tokens`, so the default 4096 can cut a long agent step short.
+- **Gemini embedding:** `dimensions: 1536`, the size the GraphRAG vector store in `knowledge_new` holds (the model returns 3072 by default).
 
 ---
 
@@ -47,10 +52,11 @@ For each run, quickstart creates the following configs in the database:
 
 - **LLMConfig** — used by agents and memory LLM
 - **EmbeddingConfig** — used by memory embedding
-- **RealtimeConfig** — used by voice (OpenAI only)
-- **RealtimeTranscriptionConfig** — used by transcription (OpenAI only)
+- **OpenAIRealtimeConfig** — voice, with whisper-1 for transcription (OpenAI only)
+- **GeminiRealtimeConfig** — voice (Gemini only)
+- **SystemOneConfig** — System One decisions (OpenAI only)
 
-All created configs receive the predefined tag `quickstart:latest`, which is automatically moved to the newest config on every subsequent quickstart run.
+All configs share one secret holding the API key. The LLM and embedding configs receive the predefined tag `quickstart:latest`, which is automatically moved to the newest config on every subsequent quickstart run.
 
 ---
 
@@ -119,17 +125,8 @@ Creates configs for the given provider and API key. Does **not** apply them to t
 }
 ```
 
-**Response `400 Bad Request`** — if quickstart refuses to attach the key to an existing model. Nothing is created:
-
-```json
-{
-  "detail": "Error quickstart",
-  "error": "The organization's custom model \"gpt-4o-mini\" sends requests to a custom URL, so quickstart will not attach a key to it."
-}
-```
-
 **Notes:**
-- Quickstart attaches the key to the built-in catalog model of the provider when one exists. It only falls back to an organization's own model of the same name when that model has no `base_url` of its own; with one, the request is refused as above, so a key is never sent to a URL somebody else chose.
+- Quickstart attaches the key to the provider's built-in catalog model when one exists, and otherwise to the organization's own model of the same name. Its configs have an empty `connection`, so the key goes to the provider's own endpoint. An organization's own model row is locked until quickstart commits, so a concurrent rename of that model cannot redirect the key.
 - Instead of `api_key`, the body may carry `api_key_secret_id` to reuse an existing secret. Referencing a secret this way needs the `Use` permission on Secrets (a plain `api_key` does not); without it the response is a `400` whose `message` names `api_key_secret_id`.
 - After this call, `GET /api/quickstart/` will show `is_synced: false` until apply is called.
 - Each call creates a new set of configs with a unique name (see [Running Quickstart Multiple Times](#running-quickstart-multiple-times)).

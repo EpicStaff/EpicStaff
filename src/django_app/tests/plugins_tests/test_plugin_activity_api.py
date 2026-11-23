@@ -10,7 +10,8 @@ from plugins.models import Plugin, PluginActivityEvent, PluginGrant
 from plugins.ownership.request_scope import PluginRequestScope
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
-from tables.models import Graph, LLMConfig
+from tables.models import Graph
+from ai_models.models import LLMConfig
 
 from tests.plugins_tests.conftest import GATEWAY_SECRET, WEATHER_ACCESS, service_account_client, upload_file
 from tests.plugins_tests.package_builder import GEOCODING_HOST, backend_manifest, build_package

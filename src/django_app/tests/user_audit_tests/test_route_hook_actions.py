@@ -31,16 +31,13 @@ from tables.models import (
     StorageFile,
     TransferJob,
 )
-from tables.models.default_models import DefaultModels
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
+from ai_models.models import DefaultModels, EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
 from tables.models.knowledge_models import (
     BaseRagType,
     GraphRag,
     NaiveRag,
     NaiveRagDocumentConfig,
 )
-from tables.models.llm_models import LLMConfig, LLMModel
-from tables.models.provider import Provider
 from tables.models.webhook_models import (
     NgrokWebhookConfig,
     ProviderType,

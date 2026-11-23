@@ -12,10 +12,8 @@ from django.utils import timezone
 from plugins.models import GrantState, PluginGrant, PluginOwnedResource
 from tables.models import (
     BaseRagType,
-    EmbeddingConfig,
     Graph,
     KeyValueTable,
-    LLMConfig,
     McpTool,
     PythonCode,
     PythonCodeTool,
@@ -24,6 +22,7 @@ from tables.models import (
     StorageFile,
     WebhookTrigger,
 )
+from ai_models.models import EmbeddingConfig, LLMConfig
 from tables.models.graph_models import (
     AgentNode,
     ClassificationDecisionTableNode,

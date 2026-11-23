@@ -18,7 +18,7 @@ from src.shared.models import (
     S3FileSpec,
     SearchConfigEntry,
 )
-from tables.exceptions import ConfigProviderMissingError
+from tables.exceptions import ConfigNeedsReviewError, ConfigProviderMissingError
 from tables.models.graph_models import GraphStorageFile, StorageFile
 from tables.models.knowledge_models.collection_models import SourceCollection
 from tables.models.knowledge_models.graphrag_models import GraphRag
@@ -82,8 +82,8 @@ class BaseNodePayloadService:
         """Convert the agent's fallback LLM config, or skip it when it cannot be used.
 
         A broken fallback must not stop a run that works without it, unlike the primary.
-        It is dropped when its model lost its provider or its API key secret cannot be
-        resolved. The key is only probed here: the payload keeps the secret id and
+        It is dropped when its model lost its provider, its settings need review or its
+        API key secret cannot be resolved. The key is only probed here: the payload keeps the secret id and
         `redis_service` resolves it when the run is published.
 
         Returns:
@@ -112,7 +112,7 @@ class BaseNodePayloadService:
                 org_id=agent_definition.org_id,
                 context="AgentDefinition.fallback_llm",
             )
-        except (ConfigProviderMissingError, SecretResolutionError) as error:
+        except (ConfigProviderMissingError, ConfigNeedsReviewError, SecretResolutionError) as error:
             error_name = type(error).__name__
             logger.warning(
                 "Fallback LLM config {} of agent definition {} is unavailable ({}), skipping it.",

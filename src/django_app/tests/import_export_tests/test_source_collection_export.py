@@ -16,7 +16,7 @@ from tables.import_export.enums import EntityType
 from tables.import_export.permissions import ExportAccessPolicy
 from tables.import_export.strategies import source_collection as strategy_module
 from tables.import_export.strategies.source_collection import SourceCollectionStrategy
-from tables.models import LLMConfig
+from ai_models.models import LLMConfig
 from tables.models.knowledge_models import (
     GraphRag,
     GraphRagDocument,

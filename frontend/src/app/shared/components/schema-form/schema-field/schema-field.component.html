@@ -1,0 +1,124 @@
+@let schema = property();
+@switch (widget()) {
+    @case ('slider') {
+        <app-slider-with-stepper
+            [label]="label()"
+            [tooltipText]="helpText()"
+            [required]="required()"
+            [min]="schema.minimum ?? 0"
+            [max]="schema.maximum ?? 1"
+            [step]="step()"
+            [optional]="nullable()"
+            [formControl]="control()"
+        />
+    }
+    @case ('percent') {
+        <app-slider-with-stepper
+            suffix="%"
+            [label]="label()"
+            [tooltipText]="helpText()"
+            [required]="required()"
+            [min]="schema.minimum ?? 0"
+            [max]="schema.maximum ?? 1"
+            [step]="step()"
+            [scale]="schema['x-scale'] ?? 100"
+            [optional]="nullable()"
+            [formControl]="control()"
+        />
+    }
+    @case ('stepper') {
+        <app-number-stepper
+            [label]="label()"
+            [tooltipText]="helpText()"
+            [ariaLabel]="label()"
+            [min]="schema.minimum ?? null"
+            [max]="schema.maximum ?? null"
+            [step]="step()"
+            [integer]="integer()"
+            [allowEmpty]="nullable()"
+            [alwaysShowButtons]="true"
+            [formControl]="control()"
+        />
+    }
+    @case ('toggle') {
+        <app-toggle-switch
+            [label]="label()"
+            [tooltipText]="helpText()"
+            [required]="required()"
+            [ariaLabel]="label()"
+            [formControl]="control()"
+        />
+    }
+    @case ('select') {
+        <app-select
+            placeholder="Not set"
+            [label]="label()"
+            [tooltipText]="helpText()"
+            [required]="required()"
+            [invalid]="!!error()"
+            [items]="selectItems()"
+            [formControl]="control()"
+        />
+    }
+    @case ('chips') {
+        <app-chips-input
+            [label]="label()"
+            [tooltipText]="helpText()"
+            [required]="required()"
+            [formControl]="control()"
+        />
+    }
+    @case ('json') {
+        <app-json-editor-form-field
+            [label]="label()"
+            [tooltipText]="helpText()"
+            [required]="required()"
+            [editorHeight]="120"
+            [formControl]="control()"
+        />
+    }
+    @case ('secret') {
+        <app-select
+            placeholder="Select a secret"
+            searchPlaceholder="Search a secret..."
+            [showSearch]="true"
+            [label]="label()"
+            [tooltipText]="helpText()"
+            [required]="required()"
+            [invalid]="!!error()"
+            [items]="secretItems()"
+            [formControl]="control()"
+        />
+    }
+    @case ('textarea') {
+        <app-textarea
+            [label]="label()"
+            [tooltipText]="helpText()"
+            [required]="required()"
+            [invalid]="!!error()"
+            [rows]="4"
+            [formControl]="control()"
+        />
+    }
+    @default {
+        <app-custom-input
+            [label]="label()"
+            [tooltipText]="helpText()"
+            [required]="required()"
+            [id]="fieldId()"
+            [placeholder]="placeholder()"
+            [errorMessage]="error()"
+            [formControl]="control()"
+        />
+    }
+}
+
+<!-- A text input shows its error itself; the other controls get it here, announced. -->
+@if (widget() !== 'text' && error()) {
+    <p
+        class="schema-field__error text-body-small"
+        role="alert"
+    >
+        {{ error() }}
+    </p>
+}
