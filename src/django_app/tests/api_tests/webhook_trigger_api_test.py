@@ -19,6 +19,7 @@ from tables.models import PythonCode
 from tables.services.secrets import secret_service
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from rest_framework.test import APIClient
+from tests.error_envelope import error_text
 
 # `NgrokWebhookConfig.auth_token` is now a Secret reference
 # (`auth_token_secret`) rather than a plaintext CharField — every place this
@@ -747,6 +748,57 @@ def test_renaming_a_trigger_onto_a_free_path_succeeds(auth_client, default_org):
     assert response.status_code == 200, response.json()
     trigger.refresh_from_db()
     assert trigger.path == "brand-new-unique-path"
+
+
+_FORMAT_ERROR = "path: Path may only contain letters, numbers, hyphens, and underscores"
+
+# Each breaks the path format. The slash cases also collide with another path once
+# the webhook service strips "/" before it matches.
+_MALFORMED_PATHS = ["foo/", "/foo", "foo/bar", "-foo", "foo bar"]
+
+
+@pytest.mark.django_db
+def test_a_path_with_a_slash_cannot_shadow_another_orgs_trigger(
+    other_org_client, default_org
+):
+    _localhost_trigger(default_org, "foo")
+
+    response = other_org_client.post(
+        reverse("webhooktrigger-list"),
+        {"path": "foo/", "provider_type": "localhost", "localhost_config": {"name": "lh"}},
+        format="json",
+    )
+
+    assert response.status_code == 400, response.json()
+    assert _FORMAT_ERROR in error_text(response.json())
+    assert list(WebhookTrigger.objects.values_list("path", flat=True)) == ["foo"]
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("path", _MALFORMED_PATHS)
+def test_creating_a_trigger_with_a_malformed_path_is_a_400(auth_client, path):
+    response = auth_client.post(
+        reverse("webhooktrigger-list"),
+        {"path": path, "provider_type": "localhost", "localhost_config": {"name": "lh"}},
+        format="json",
+    )
+
+    assert response.status_code == 400, response.json()
+    assert _FORMAT_ERROR in error_text(response.json())
+    assert not WebhookTrigger.objects.exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("path", _MALFORMED_PATHS)
+def test_renaming_a_trigger_to_a_malformed_path_is_a_400(auth_client, default_org, path):
+    trigger = _localhost_trigger(default_org, "my-own-path")
+
+    response = auth_client.patch(_trigger_detail(trigger), {"path": path}, format="json")
+
+    assert response.status_code == 400, response.json()
+    assert _FORMAT_ERROR in error_text(response.json())
+    trigger.refresh_from_db()
+    assert trigger.path == "my-own-path"
 
 
 @pytest.mark.django_db

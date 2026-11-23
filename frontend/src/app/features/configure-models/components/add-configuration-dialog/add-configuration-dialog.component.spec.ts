@@ -609,6 +609,28 @@ describe('AddConfigurationDialogComponent embedding and realtime save errors', (
         expect(bannerText(fixture)).toBe(SHOWN_REFUSAL);
     });
 
+    it('shows a duplicate embedding name from the server in the banner, not in a toast', async () => {
+        const duplicateName = new HttpErrorResponse({
+            status: 400,
+            error: {
+                type: 'client_error',
+                errors: [
+                    {
+                        code: 'unique',
+                        detail: 'An embedding config with this name already exists.',
+                        attr: 'custom_name',
+                        context: null,
+                    },
+                ],
+            },
+        });
+
+        const fixture = await submitEmbedding(duplicateName);
+
+        expect(bannerText(fixture)).toBe('Custom name: An embedding config with this name already exists.');
+        expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
+    });
+
     it('reports a server error on the embedding tab in a toast', async () => {
         const fixture = await submitEmbedding(SERVER_ERROR);
 

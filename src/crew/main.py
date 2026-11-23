@@ -3,6 +3,7 @@ import gc
 
 import settings
 from clients.key_value import KeyValueClient
+from clients.knowledge import KnowledgeClient
 from clients.sandbox import SandboxClient
 from foundation.cryptographer import FernetRotatedCryptographer
 from services.agent_task_service import AgentTaskService
@@ -34,7 +35,12 @@ async def main():
     python_code_executor_service = RunPythonCodeService(
         redis_service=redis_service, sandbox_client=sandbox_client
     )
-    knowledge_search_service = KnowledgeSearchService(redis_service=redis_service)
+    knowledge_client = KnowledgeClient(
+        base_url=f"http://{settings.KNOWLEDGE_HOST}:{settings.KNOWLEDGE_PORT}"
+    )
+    knowledge_search_service = KnowledgeSearchService(
+        redis_service=redis_service, knowledge_client=knowledge_client
+    )
     agent_task_service = AgentTaskService(
         redis_service=redis_service,
         request_stream=settings.AGENT_REQUEST_STREAM,
@@ -95,6 +101,7 @@ async def main():
     finally:
         await key_value_client.stop()
         await sandbox_client.aclose()
+        await knowledge_client.aclose()
         logger.info("Shutting down...")
         # Best-effort drain of whatever's still queued in the audit client.
         # NOTE: this only runs on an exception or KeyboardInterrupt (Ctrl+C) -

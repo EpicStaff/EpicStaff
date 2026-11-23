@@ -163,18 +163,26 @@ def _upstream_envelope(exc: ClientError) -> tuple[int, ErrorResponseSchema] | No
     return response.status_code, envelope
 
 
-def _client_error_as_api_exception(exc: ClientError) -> APIException:
+def client_error_as_api_exception(exc: ClientError) -> APIException:
     """Translate a transport error from a proxied microservice into a DRF exception.
 
-    Used for an answer that is not the shared envelope, whose body can be an HTML
-    page or a service's internals, so it goes to the log and the caller gets a fixed
-    text. An upstream 4xx is the caller's own request coming back refused, so it keeps
-    its status: a conflict stays a conflict rather than becoming a gateway failure the
+    An upstream 4xx answered in the shared envelope already says what is wrong in
+    words meant for the caller, so its details are kept. Any other answer can be an
+    HTML page or a service's internals, so it goes to the log and the caller gets a
+    fixed text. An upstream 4xx is the caller's own request coming back refused, so it
+    keeps its status: a conflict stays a conflict rather than becoming a gateway failure the
     caller can do nothing about. A dependency that could not be reached at all is
     service unavailable, which tells the caller the request is worth retrying. What is
     left - a timeout, an upstream 5xx, a response with no status at all - is this
     gateway's dependency failing, and is reported as a bad gateway.
     """
+    upstream = _upstream_envelope(exc)
+    if upstream is not None:
+        upstream_status, envelope = upstream
+        return _api_exception(
+            upstream_status, envelope.errors[0].code, [item.detail for item in envelope.errors]
+        )
+
     response = getattr(exc, "response", None)
     status_code = getattr(response, "status_code", None)
     logger.warning(
@@ -209,7 +217,7 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
     )
 
 
-def _api_exception(status_code: int, code: str, detail: str) -> APIException:
+def _api_exception(status_code: int, code: str, detail: str | list[str]) -> APIException:
     error = APIException(detail, code=code)
     error.status_code = status_code
     error.default_code = code
@@ -295,7 +303,7 @@ def custom_exception_handler(exc, context):
             upstream_status, envelope = upstream
             set_rollback()
             return Response(render_error(upstream_status, envelope.errors), status=upstream_status)
-        exc = _client_error_as_api_exception(exc)
+        exc = client_error_as_api_exception(exc)
     elif isinstance(exc, OutboundClientError):
         exc = _outbound_client_error_as_api_exception(exc)
     elif _is_database_pool_exhausted(exc):

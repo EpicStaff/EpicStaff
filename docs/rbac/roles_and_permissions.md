@@ -1069,6 +1069,13 @@ Two patterns beyond plain org ownership:
 | FILES | storage | C R U E | C R U D E |
 | API_KEYS † | admin/api-keys | — | R D |
 
+**A flow's nodes, edges and notes need `flows:update` for every write.** Creating,
+editing or deleting one through its own endpoint (`/api/pythonnodes/`, `/api/edges/`,
+`/api/graph-notes/`, `/api/webhook-trigger-nodes/`, …) edits the flow, so it needs
+`flows:update`, the same as the bulk save (`POST /api/graphs/{id}/save/`). `flows:create`
+and `flows:delete` gate creating and deleting the flow itself, not its content. Reads need
+`flows:read`.
+
 † `API_KEYS` is cross-org rather than active-org scoped — it is governed by `?org_ids=` against
 each key's own organization, not the `X-Organization-Id` header. See
 [api_keys.md](api_keys.md).

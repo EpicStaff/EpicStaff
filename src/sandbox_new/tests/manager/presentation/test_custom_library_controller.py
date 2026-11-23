@@ -199,3 +199,51 @@ def test_remove_answers_409_for_a_library_a_venv_uses(client, uow):
 
     assert response.status_code == status_codes.HTTP_409_CONFLICT
     assert response.json()["errors"][0]["code"] == "conflict"
+
+
+def test_create_puts_the_library_in_the_scope_sent_with_the_file(client, uow):
+    response = client.post(
+        "/custom-libraries",
+        files=upload(WHEEL_NAME, wheel_bytes()),
+        data={"scope": "org-1"},
+    )
+
+    assert response.status_code == status_codes.HTTP_201_CREATED
+    assert uow.custom_library_repo.rows[response.json()["id"]].scope == "org-1"
+
+
+def test_create_answers_201_for_a_name_another_scope_has(client, uow):
+    client.post(
+        "/custom-libraries", files=upload(WHEEL_NAME, wheel_bytes()), data={"scope": "org-1"}
+    )
+
+    response = client.post(
+        "/custom-libraries", files=upload(WHEEL_NAME, wheel_bytes()), data={"scope": "org-2"}
+    )
+
+    assert response.status_code == status_codes.HTTP_201_CREATED
+
+
+def test_update_moves_the_library_to_a_scope(client, uow):
+    stored = uow.custom_library_repo.seed(CustomLibrary(name="my-library"))[0]
+
+    response = client.patch(f"/custom-libraries/{stored.id}", json={"scope": "org-1"})
+
+    assert response.status_code == status_codes.HTTP_200_OK
+    assert response.json()["name"] == "my-library"
+    assert uow.custom_library_repo.rows[stored.id].scope == "org-1"
+
+
+def test_update_answers_409_when_the_scope_has_the_name(client, uow):
+    uow.custom_library_repo.seed(CustomLibrary(name="my-library", scope="org-1"))
+    stored = uow.custom_library_repo.seed(CustomLibrary(name="my-library"))[0]
+
+    response = client.patch(f"/custom-libraries/{stored.id}", json={"scope": "org-1"})
+
+    assert response.status_code == status_codes.HTTP_409_CONFLICT
+
+
+def test_update_answers_404_for_a_library_that_is_not_there(client):
+    response = client.patch("/custom-libraries/404", json={"scope": "org-1"})
+
+    assert response.status_code == status_codes.HTTP_404_NOT_FOUND

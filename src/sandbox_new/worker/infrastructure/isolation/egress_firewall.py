@@ -1,9 +1,9 @@
 """Per-uid egress firewall that keeps user code off private networks.
 
-Ported from the legacy sandbox (src/sandbox/egress_firewall.py). sandbox-network is an
+Ported from the legacy sandbox (src/sandbox/egress_firewall.py). sandbox-worker-network is an
 ordinary Docker bridge, so without this an execution can reach the Docker host (on
 Docker Desktop even services bound to the host's 127.0.0.1, via host.docker.internal),
-the LAN, cloud metadata (169.254.169.254) and every container on sandbox-network. One
+the LAN, cloud metadata (169.254.169.254) and every container on sandbox-worker-network. One
 worker serves every organization on the instance, which makes that both a host and a
 cross-tenant exposure. Dropping `extra_hosts` does not close it: Docker Desktop resolves
 host.docker.internal regardless, and on Linux the bridge gateway stays reachable.
@@ -55,7 +55,7 @@ _CHAIN = "SANDBOX_EGRESS"
 # random port, so no port-based carve-out could keep it open.
 # NOTE: these are the standard private/reserved ranges. A Docker daemon whose
 # default-address-pools (or a compose ipam subnet) uses public-looking
-# addresses puts sandbox-network outside them, and its containers become
+# addresses puts sandbox-worker-network outside them, and its containers become
 # reachable again.
 BLOCKED_IPV4_RANGES: tuple[str, ...] = (
     "0.0.0.0/8",

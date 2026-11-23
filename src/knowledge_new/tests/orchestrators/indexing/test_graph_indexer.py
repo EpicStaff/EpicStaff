@@ -391,9 +391,10 @@ async def test_cancellation_while_building_marks_rag_cancelled(monkeypatch):
 
     monkeypatch.setattr(graph_indexer, "build_index", cancelled_build_index)
 
-    await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
-        _make_request(frozenset({7}))
-    )
+    with pytest.raises(asyncio.CancelledError):
+        await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+            _make_request(frozenset({7}))
+        )
 
     assert repo.rag_status_log == [IndexStatusEnum.PROCESSING, IndexStatusEnum.CANCELLED]
     assert repo.status_updates == []
@@ -544,7 +545,8 @@ async def test_full_reindex_cancelled_clears_target_and_keeps_slot(monkeypatch):
 
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
 
-    await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
+    with pytest.raises(asyncio.CancelledError):
+        await GraphIndexOrchestrator(uow, CRYPTOGRAPHER).execute(request)
     assert rag.slot == SlotEnum.A
     assert rag.status == IndexStatusEnum.CANCELLED
     assert cleared_prefixes == ["graphrag/rag_1/b"]

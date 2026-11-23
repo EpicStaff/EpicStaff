@@ -337,6 +337,8 @@ class SessionViewSet(
 
 
 class RunSession(APIView):
+    uses_organization_context = False
+
     @extend_schema(**RUN_SESSION_POST)
     @not_a_user_change
     def post(self, request):
@@ -504,6 +506,8 @@ class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
 
 
 class GetUpdates(APIView):
+    uses_organization_context = False
+
     @extend_schema(**GET_UPDATES_GET)
     def get(self, request, *args, **kwargs):
         session = get_accessible_session(
@@ -517,6 +521,8 @@ class GetUpdates(APIView):
 
 
 class StopSession(APIView):
+    uses_organization_context = False
+
     @extend_schema(**STOP_SESSION_POST)
     @not_a_user_change
     def post(self, request, *args, **kwargs):
@@ -545,6 +551,7 @@ class NotifyEmailView(APIView):
     plugin's declared access could not cap it."""
 
     permission_classes = [IsAuthenticated, DenyPluginCredential]
+    uses_organization_context = False
     # Extends the defaults rather than replacing them, so a default throttle
     # (such as the per-plugin request rate) still applies here.
     throttle_classes = [*api_settings.DEFAULT_THROTTLE_CLASSES, NotifyEmailThrottle]
@@ -1082,6 +1089,8 @@ class TelegramTriggerNodeAvailableFieldsView(APIView):
     GET endpoint that returns all possible fields that can be created
     for TelegramTriggerNode.
     """
+
+    uses_organization_context = False
 
     @extend_schema(**TELEGRAM_TRIGGER_AVAILABLE_FIELDS_GET)
     def get(self, request, format=None):

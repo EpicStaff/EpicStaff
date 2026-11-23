@@ -4,7 +4,7 @@ import { Provider, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ExportOptions, LabelColor, LabelDto } from '@shared/models';
 import { ExportOptionsDialogService } from '@shared/services';
-import { EMPTY, Observable, of } from 'rxjs';
+import { EMPTY, Observable, of, Subject, throwError } from 'rxjs';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
 import { ProfileService } from '../../../services/auth/profile.service';
@@ -13,6 +13,7 @@ import { ToastService } from '../../../services/notifications';
 import { storedZip } from '../../../shared/utils/read-export-envelope.testing';
 import { AgentDefinition, CreateAgentDefinitionRequest } from '../models/agent-definition.model';
 import { Surface } from '../models/surface.model';
+import { SurfaceUsage } from '../models/surface-usage.model';
 import { BranchTreeNode, ExplorerGroupBlock } from '../models/tree-node.model';
 import { AgentDefinitionsApiService } from './agent-definitions-api.service';
 import { AgentGroupsApiService } from './agent-groups-api.service';
@@ -42,11 +43,18 @@ function surface(id: number, name: string, groupId: number | null, ownerAgentId:
     return { id, name, group: groupId, owner_agent: ownerAgentId } as Partial<Surface> as Surface;
 }
 
+const NO_USAGE: SurfaceUsage = { agents: [], flows: [], hiddenAgentCount: 0, hiddenFlowCount: 0 };
+
 /**
  * The real store over fake HTTP edges, loaded with the given rows. Like the API, PATCH and POST answer
  * with the saved row, and a group DELETE succeeds.
  */
-function loadStore(rows: { agents: AgentDefinition[]; surfaces?: Surface[]; groups?: LabelDto[] }): AgentsPageStore {
+function loadStore(rows: {
+    agents: AgentDefinition[];
+    surfaces?: Surface[];
+    groups?: LabelDto[];
+    getUsage?: (id: number) => Observable<SurfaceUsage>;
+}): AgentsPageStore {
     const surfaces = rows.surfaces ?? [];
     TestBed.configureTestingModule({
         providers: [
@@ -64,6 +72,7 @@ function loadStore(rows: { agents: AgentDefinition[]; surfaces?: Surface[]; grou
                 provide: SurfacesApiService,
                 useValue: {
                     getSurfaces: () => of(surfaces),
+                    getUsage: rows.getUsage ?? (() => of(NO_USAGE)),
                     partialUpdate: (id: number, body: Partial<Surface>) =>
                         of({ ...surfaces.find((row) => row.id === id)!, ...body }),
                 },
@@ -916,5 +925,130 @@ describe('AgentsPageStore agent import', () => {
 
         expect(toast.success).toHaveBeenCalledExactlyOnceWith('Agents imported successfully.');
         expectReload();
+    });
+});
+
+describe('AgentsPageStore surface usage', () => {
+    const flowUsage = (flowName: string): SurfaceUsage => ({
+        ...NO_USAGE,
+        flows: [{ flowId: 7, flowName, nodes: [] }],
+    });
+
+    /** Lets the resource's effect start its request and the (synchronous) fake answer land. */
+    async function settle(): Promise<void> {
+        TestBed.tick();
+        await Promise.resolve();
+        TestBed.tick();
+    }
+
+    it('loads nothing until a surface is selected, then loads that surface from the server', async () => {
+        const getUsage = vi.fn((id: number) => of(flowUsage(`flow of ${id}`)));
+        const store = loadStore({ agents: [], surfaces: [surface(10, 'CRM access', null)], getUsage });
+        await settle();
+        expect(getUsage).not.toHaveBeenCalled();
+
+        store.selectSurface(10);
+        await settle();
+
+        expect(getUsage).toHaveBeenCalledExactlyOnceWith(10);
+        expect(store.selectedSurfaceUsage.value()?.flows[0].flowName).toBe('flow of 10');
+    });
+
+    it('loads the usage of any surface for the dialog, again on each open, and lets go on close', async () => {
+        const getUsage = vi.fn((id: number) => of(flowUsage(`flow of ${id}`)));
+        const store = loadStore({
+            agents: [],
+            surfaces: [surface(10, 'CRM access', null), surface(11, 'Billing', null)],
+            getUsage,
+        });
+
+        const usage = store.openSurfaceUsage(11);
+        await settle();
+        expect(getUsage).toHaveBeenCalledExactlyOnceWith(11);
+        expect(usage.value()?.flows[0].flowName).toBe('flow of 11');
+
+        store.openSurfaceUsage(11);
+        await settle();
+        expect(getUsage).toHaveBeenCalledTimes(2);
+
+        store.closeSurfaceUsage();
+        await settle();
+        expect(usage.value()).toBeUndefined();
+    });
+
+    it('drops the answer of the previous surface when another is selected', async () => {
+        const pending = new Subject<SurfaceUsage>();
+        const getUsage = (id: number): Observable<SurfaceUsage> => (id === 10 ? pending : of(flowUsage('flow of 11')));
+        const store = loadStore({
+            agents: [],
+            surfaces: [surface(10, 'CRM access', null), surface(11, 'Billing', null)],
+            getUsage,
+        });
+        store.selectSurface(10);
+        await settle();
+
+        store.selectSurface(11);
+        await settle();
+        pending.next(flowUsage('stale flow of 10'));
+        await settle();
+
+        expect(store.selectedSurfaceUsage.value()?.flows[0].flowName).toBe('flow of 11');
+    });
+
+    it('loads again once an agent starts using the selected surface', async () => {
+        const getUsage = vi.fn(() => of(NO_USAGE));
+        const holder = agent(1, 'Researcher', null);
+        const store = loadStore({ agents: [holder], surfaces: [surface(10, 'CRM access', null)], getUsage });
+        store.selectSurface(10);
+        await settle();
+        expect(getUsage).toHaveBeenCalledTimes(1);
+
+        store.agents.set([{ ...holder, default_surfaces: [{ surface: 10, place: 'chat' }] }]);
+        await settle();
+
+        expect(getUsage).toHaveBeenCalledTimes(2);
+    });
+
+    it('does not load again when an agent changes without touching the selected surface', async () => {
+        const getUsage = vi.fn(() => of(NO_USAGE));
+        const holder = agent(1, 'Researcher', null);
+        const store = loadStore({ agents: [holder], surfaces: [surface(10, 'CRM access', null)], getUsage });
+        store.selectSurface(10);
+        await settle();
+
+        store.agents.set([{ ...holder, name: 'Renamed' }]);
+        await settle();
+
+        expect(getUsage).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not load again when only the order of the agents changes', async () => {
+        const getUsage = vi.fn(() => of(NO_USAGE));
+        const first = agent(1, 'Researcher', null, [10]);
+        const second = agent(2, 'Writer', null, [10]);
+        const store = loadStore({ agents: [first, second], surfaces: [surface(10, 'CRM access', null)], getUsage });
+        store.selectSurface(10);
+        await settle();
+        expect(getUsage).toHaveBeenCalledTimes(1);
+
+        store.agents.set([second, first]);
+        await settle();
+
+        expect(getUsage).toHaveBeenCalledTimes(1);
+    });
+
+    it('reports a failed load for the delete confirmation as null and tells the user', () => {
+        const error = vi.fn();
+        const store = loadStore({
+            agents: [],
+            getUsage: () => throwError(() => new Error('boom')),
+        });
+        TestBed.inject(ToastService).error = error;
+        let result: SurfaceUsage | null | undefined;
+
+        store.loadSurfaceUsage(10).subscribe((usage) => (result = usage));
+
+        expect(result).toBeNull();
+        expect(error).toHaveBeenCalledOnce();
     });
 });

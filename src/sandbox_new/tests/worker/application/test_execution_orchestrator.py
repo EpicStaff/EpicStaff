@@ -9,7 +9,8 @@ from foundation.schemas import ErrorDetailSchema
 
 from worker.application.orchestrator import ExecutionOrchestrator
 from worker.application.pipeline import Pipeline
-from worker.domain.models import StorageMutations
+from worker.application.steps import ConfigureStorageStep
+from worker.domain.models import StorageCredentials, StorageMutations
 from tests.builders import make_worker_job
 
 
@@ -77,6 +78,127 @@ async def test_masking_can_be_turned_off(result_sink):
     await orchestrator.execute(make_worker_job(secrets={"TOKEN": "s3cret"}))
 
     assert result_sink.sent[0][0].stdout == "token is s3cret"
+
+
+@pytest.mark.parametrize("mask_secrets", [True, False], ids=["masking-on", "masking-off"])
+async def test_always_masked_values_are_scrubbed_whatever_the_masking_flag(
+    result_sink, mask_secrets
+):
+    async def step(context):
+        context.mask_always("issued-secret")
+        context.returncode = 0
+        context.stdout = "key is issued-secret"
+        context.stderr = "failed with issued-secret"
+        context.result_data = '"issued-secret"'
+        context.complete()
+
+    orchestrator = build(Pipeline().register(step), result_sink, mask_secrets=mask_secrets)
+
+    await orchestrator.execute(make_worker_job())
+
+    result, _ = result_sink.sent[0]
+    assert result.stdout == "key is [REDACTED]"
+    assert result.stderr == "failed with [REDACTED]"
+    assert result.result == '"[REDACTED]"'
+
+
+async def test_masking_off_still_leaves_user_secrets_visible_next_to_always_masked_ones(
+    result_sink,
+):
+    async def step(context):
+        context.mask_always("issued-secret")
+        context.returncode = 0
+        context.stdout = "token=s3cret key=issued-secret"
+        context.complete()
+
+    orchestrator = build(Pipeline().register(step), result_sink, mask_secrets=False)
+
+    await orchestrator.execute(make_worker_job(secrets={"TOKEN": "s3cret"}))
+
+    assert result_sink.sent[0][0].stdout == "token=s3cret key=[REDACTED]"
+
+
+@pytest.mark.parametrize("mask_secrets", [True, False], ids=["masking-on", "masking-off"])
+async def test_storage_credentials_a_run_prints_never_reach_the_result(
+    tmp_path, result_sink, mask_secrets
+):
+    exec_dir = tmp_path / "exec-1"
+    exec_dir.mkdir()
+
+    async def prepare_exec_dir(context):
+        context.exec_dir = exec_dir
+
+    async def child_that_echoes_its_storage_env(context):
+        context.returncode = 0
+        context.stdout = f"secret={context.env['STORAGE_SECRET_KEY']}"
+        context.stderr = f"access={context.env['STORAGE_ACCESS_KEY']}"
+        context.result_data = f'"{context.env["STORAGE_SECRET_KEY"]}"'
+        context.complete()
+
+    pipeline = (
+        Pipeline()
+        .register(prepare_exec_dir)
+        .register(
+            ConfigureStorageStep(storage_endpoint="http://storage:9000", storage_bucket="sandbox")
+        )
+        .register(child_that_echoes_its_storage_env)
+    )
+    orchestrator = build(pipeline, result_sink, mask_secrets=mask_secrets)
+
+    await orchestrator.execute(
+        make_worker_job(
+            use_storage=True,
+            storage_org_prefix="org1",
+            storage_credentials=StorageCredentials(
+                access_key="ISSUEDACCESSKEY", secret_key="issuedsecretkey123"
+            ),
+        )
+    )
+
+    result, _ = result_sink.sent[0]
+    assert result.stdout == "secret=[REDACTED]"
+    assert result.stderr == "access=[REDACTED]"
+    assert result.result == '"[REDACTED]"'
+
+
+async def test_a_user_secret_named_like_a_storage_variable_is_still_masked(
+    tmp_path, result_sink
+):
+    # A user keeping their own S3 credentials may well name a secret STORAGE_SECRET_KEY.
+    # The worker-issued value must be masked alongside it, not in its place.
+    exec_dir = tmp_path / "exec-1"
+    exec_dir.mkdir()
+
+    async def prepare_exec_dir(context):
+        context.exec_dir = exec_dir
+
+    async def child_that_prints_both_values(context):
+        context.returncode = 0
+        context.stdout = f"user=user-value issued={context.env['STORAGE_SECRET_KEY']}"
+        context.complete()
+
+    pipeline = (
+        Pipeline()
+        .register(prepare_exec_dir)
+        .register(
+            ConfigureStorageStep(storage_endpoint="http://storage:9000", storage_bucket="sandbox")
+        )
+        .register(child_that_prints_both_values)
+    )
+    orchestrator = build(pipeline, result_sink)
+
+    await orchestrator.execute(
+        make_worker_job(
+            secrets={"STORAGE_SECRET_KEY": "user-value"},
+            use_storage=True,
+            storage_org_prefix="org1",
+            storage_credentials=StorageCredentials(
+                access_key="ISSUEDACCESSKEY", secret_key="issuedsecretkey123"
+            ),
+        )
+    )
+
+    assert result_sink.sent[0][0].stdout == "user=[REDACTED] issued=[REDACTED]"
 
 
 async def test_the_execution_directory_is_removed_after_the_run(tmp_path, result_sink):

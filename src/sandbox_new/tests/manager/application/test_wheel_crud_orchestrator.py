@@ -141,6 +141,14 @@ async def test_a_wheel_names_a_library_that_has_none_yet(orchestrator, uow):
     assert uow.custom_library_repo.rows[unnamed.id].name == "my-library"
 
 
+async def test_a_wheel_may_name_a_library_after_one_of_another_scope(orchestrator, uow, library):
+    unnamed = uow.custom_library_repo.seed(CustomLibrary(name=None, scope="org-1"))[0]
+
+    await orchestrator.upload(unnamed.id, upload(WHEEL_NAME))
+
+    assert uow.custom_library_repo.rows[unnamed.id].name == "my-library"
+
+
 async def test_a_wheel_refuses_to_name_a_library_after_another_librarys_name(orchestrator, uow, library):
     unnamed = uow.custom_library_repo.seed(CustomLibrary(name=None))[0]
 

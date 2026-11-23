@@ -101,11 +101,16 @@ class ExecutionOrchestrator:
         stdout = context.stdout
         stderr = context.stderr
         result_data = context.result_data
-        if self._mask_secrets:
-            secrets = context.job.secrets or {}
-            stdout = scrub(text=stdout, secrets=secrets) or ""
-            stderr = scrub(text=stderr, secrets=secrets) or ""
-            result_data = scrub(text=result_data, secrets=secrets)
+        # User secrets are masked only when MASK_SECRET is on; values the steps
+        # registered as always-masked (worker-issued credentials) are masked regardless.
+        user_secret_values = (
+            list((context.job.secrets or {}).values()) if self._mask_secrets else []
+        )
+        masked_values = [*user_secret_values, *context.always_masked]
+        if masked_values:
+            stdout = scrub(text=stdout, values=masked_values) or ""
+            stderr = scrub(text=stderr, values=masked_values) or ""
+            result_data = scrub(text=result_data, values=masked_values)
         return ExecutionResult(
             execution_id=context.job.execution_id,
             result=result_data,

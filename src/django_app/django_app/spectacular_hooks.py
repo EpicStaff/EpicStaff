@@ -5,6 +5,8 @@ from tables.views.transfer_import_upload_view import (
     FLOW_IMPORT_JOBS_ROUTE,
 )
 
+from django_app.spectacular_schema import ORG_HEADER_SCHEME
+
 TAG_MAP = [
     # Authentication
     ("api/auth/", "Authentication"),
@@ -226,34 +228,6 @@ def assign_tags_postprocessing_hook(result, generator, request, public, **kwargs
     return result
 
 
-ORG_HEADER_SCHEME = "OrganizationId"
-
-
-def add_org_header_postprocessing_hook(result, generator, request, public, **kwargs):
-    components = result.setdefault("components", {})
-    security_schemes = components.setdefault("securitySchemes", {})
-    security_schemes[ORG_HEADER_SCHEME] = {
-        "type": "apiKey",
-        "in": "header",
-        "name": "X-Organization-Id",
-        "description": (
-            "Active organization context. Required by org-scoped endpoints "
-            "(e.g. /api/admin/roles/). Click Authorize and paste the org UUID; "
-            "Swagger will send it on every request."
-        ),
-    }
-
-    for path_item in result.get("paths", {}).values():
-        for operation in path_item.values():
-            if not isinstance(operation, dict):
-                continue
-            security = operation.setdefault("security", [])
-            if not any(ORG_HEADER_SCHEME in entry for entry in security):
-                security.append({ORG_HEADER_SCHEME: []})
-
-    return result
-
-
 _UPLOAD_STREAM_RESPONSE = {
     "type": "object",
     "required": ["status", "path", "recycle_bin_purged"],
@@ -297,7 +271,7 @@ def add_stream_upload_postprocessing_hook(result, generator, request, public, **
     result.setdefault("paths", {})[UPLOAD_STREAM_PATH] = {
         "post": {
             "operationId": "storage_upload_stream",
-            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+            "security": [{"BearerAuth": [], ORG_HEADER_SCHEME: []}, {"ApiKeyAuth": []}],
             "description": (
                 "Stream one file straight into storage: the raw body is the file, "
                 "proxied to object storage in bounded memory. A plain file may be at most "
@@ -440,7 +414,7 @@ def add_import_job_upload_postprocessing_hook(result, generator, request, public
     paths[FLOW_IMPORT_JOBS_ROUTE.path] = {
         "post": {
             "operationId": "graphs_import_jobs_create",
-            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+            "security": [{"BearerAuth": [], ORG_HEADER_SCHEME: []}, {"ApiKeyAuth": []}],
             "description": _IMPORT_JOB_DESCRIPTION,
             "parameters": [
                 _FILE_NAME_PARAMETER,
@@ -476,7 +450,7 @@ def add_import_job_upload_postprocessing_hook(result, generator, request, public
     paths[COLLECTION_IMPORT_JOBS_ROUTE.path] = {
         "post": {
             "operationId": "source_collections_import_jobs_create",
-            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+            "security": [{"BearerAuth": [], ORG_HEADER_SCHEME: []}, {"ApiKeyAuth": []}],
             "description": _IMPORT_JOB_DESCRIPTION,
             "parameters": [_FILE_NAME_PARAMETER],
             "requestBody": _ZIP_BODY,
@@ -486,7 +460,7 @@ def add_import_job_upload_postprocessing_hook(result, generator, request, public
     paths[AGENT_DEFINITION_IMPORT_JOBS_ROUTE.path] = {
         "post": {
             "operationId": "agent_definitions_import_jobs_create",
-            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+            "security": [{"BearerAuth": [], ORG_HEADER_SCHEME: []}, {"ApiKeyAuth": []}],
             "description": _IMPORT_JOB_DESCRIPTION,
             "parameters": [
                 _FILE_NAME_PARAMETER,

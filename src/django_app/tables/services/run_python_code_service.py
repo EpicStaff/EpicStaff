@@ -11,7 +11,7 @@ from rbac.authorship import resolve_author
 from src.shared.models import CodeResultData, CodeTaskData
 from src.shared.models.storage_scope import StorageAction, StorageCredentials, StorageGrant
 from src.shared.sandbox_errors import SANDBOX_SERVER_ERROR_MESSAGE
-from storage_credentials.exceptions import StorageCredentialError
+from storage_credentials.exceptions import CredentialScopeValidationError, StorageCredentialError
 from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.clients import SandboxExecutionClient
@@ -37,7 +37,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
     _INVALID_REQUEST_LOG = "Invalid code execution request (execution_id={})"
     _INVALID_REQUEST_STDERR = "Invalid code execution request."
     _CREDENTIAL_ISSUE_LOG = (
-        "Failed to issue storage credentials for code execution (execution_id={})"
+        "Failed to issue storage credentials for code execution (execution_id={}): {}"
     )
     _CREDENTIAL_ISSUE_STDERR = "Could not grant file storage access for this run."
     _SUBMIT_FAILED_LOG = "Failed to submit code execution to the sandbox (execution_id={}, {})"
@@ -293,12 +293,19 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 ),
                 True,
             )
-        except StorageCredentialError:
+        except StorageCredentialError as error:
+            # A scope refusal is written for the user; other storage errors may carry internals.
+            stderr = (
+                str(error)
+                if isinstance(error, CredentialScopeValidationError)
+                else self._CREDENTIAL_ISSUE_STDERR
+            )
             self._fail_execution(
                 execution_id=execution_id,
                 use_storage=use_storage,
                 log_message=self._CREDENTIAL_ISSUE_LOG,
-                stderr=self._CREDENTIAL_ISSUE_STDERR,
+                stderr=stderr,
+                log_args=(error,),
             )
             return None, False
 

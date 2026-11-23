@@ -1,6 +1,5 @@
 import asyncio
 import uuid
-from collections.abc import Awaitable
 from functools import partial
 from typing import Any
 
@@ -10,7 +9,7 @@ from foundation.schemas import ErrorDetailSchema
 from loguru import logger
 from models.state import State
 from pydantic import ValidationError
-from services.graph.events import StopEvent
+from services.graph.events import StopEvent, until_stopped
 from services.redis_service import AsyncPubsubSubscriber, RedisService
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.models import CodeResultData, ExecutionRequest, PythonCodeData
@@ -26,9 +25,6 @@ from utils.singleton_meta import SingletonMeta
 
 # Matches the sandbox's own timeout exit code, so callers need no new branch.
 TIMEOUT_RETURNCODE = 124
-# The session's StopEvent is a threading.Event and cannot be awaited, so the submit
-# and the result wait wake up this often to check it.
-STOP_CHECK_INTERVAL_S = 0.5
 
 
 def build_state_globals(state: State) -> dict[str, Any]:
@@ -127,7 +123,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 execution_request,
                 on_rejected=partial(_log_rejected, python_code_data.session_id, execution_id),
             )
-            await _until_stopped(submitting, stop_event)
+            await until_stopped(submitting, stop_event)
             logger.log(
                 BENCH_LEVEL,
                 "bench {checkpoint}",
@@ -138,7 +134,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             logger.debug("Waiting for code result {}", execution_id)
             return await self.sandbox_client.wait_for_result(
                 execution_id,
-                _until_stopped(result_future, stop_event),
+                until_stopped(result_future, stop_event),
                 backstop=settings.CODE_RESULT_TIMEOUT,
             )
         except SandboxResultTimeoutError as error:
@@ -174,23 +170,6 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         if result_future is None or result_future.done():
             return
         result_future.set_result(code_result_data.model_dump())
-
-
-async def _until_stopped[T](awaitable: Awaitable[T], stop_event: StopEvent | None) -> T:
-    """Await `awaitable`, checking `stop_event` every STOP_CHECK_INTERVAL_S.
-
-    Raises:
-        StopSession: `stop_event` was set first; `awaitable` is cancelled.
-    """
-    task = asyncio.ensure_future(awaitable)
-    try:
-        while not task.done():
-            if stop_event is not None:
-                stop_event.check_stop()
-            await asyncio.wait({task}, timeout=STOP_CHECK_INTERVAL_S)
-        return task.result()
-    finally:
-        task.cancel()
 
 
 def _log_rejected(

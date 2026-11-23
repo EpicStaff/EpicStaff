@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Any
@@ -27,12 +28,27 @@ __all__ = [
 DEFAULT_VENV_NAME = "default"
 WHEEL_SUFFIX = ".whl"
 SOURCE_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz", ".zip")
-DISTRIBUTION_NAME_PATTERN = r"^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$"
+DISTRIBUTION_NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
+DISTRIBUTION_NAME_PATTERN = rf"^{DISTRIBUTION_NAME}$"
+# A distribution name, optionally followed by extras that are distribution names
+# themselves: `requests`, `requests[socks]`, `requests[socks,security]`. Used with
+# `fullmatch`, never anchored with `$`, which also matches before a trailing newline.
+LIBRARY_NAME_RE = re.compile(
+    rf"{DISTRIBUTION_NAME}(?:\[{DISTRIBUTION_NAME}(?:,{DISTRIBUTION_NAME})*\])?"
+)
 VERSION_PATTERN = r"^([1-9][0-9]*!)?(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*))*((a|b|rc)(0|[1-9][0-9]*))?(\.post(0|[1-9][0-9]*))?(\.dev(0|[1-9][0-9]*))?(\+[a-z0-9]+([-_\.][a-z0-9]+)*)?$"
 
 
 class Library(ValueObject):
-    name: str = Field(min_length=1)
+    """A package a venv declares, resolved from the index or from a custom library.
+
+    `requirement` becomes one line of the requirements `uv pip compile` reads on
+    stdin, so neither `name` nor `specification` may carry anything uv would read as
+    a second line, an option (`-i`, `-r`, `-e`) or a path: `name` is a distribution
+    name with optional extras, without markers, a specifier or a URL.
+    """
+
+    name: str
     description: str | None = None
     specification: str = ""
     version: str | None = Field(default=None, pattern=VERSION_PATTERN)
@@ -41,16 +57,65 @@ class Library(ValueObject):
     @field_validator("name")
     @classmethod
     def normalize_name(cls, value: str) -> str:
+        # Checked before canonicalizing, so the refusal names what was sent. A regex,
+        # not `canonicalize_name(validate=True)`: packaging 24 lets that accept a name
+        # followed by a newline.
+        if LIBRARY_NAME_RE.fullmatch(value) is None:
+            raise ValueError(
+                f"Library name {value!r} is not a package name. Use letters, digits and "
+                "'.', '_' or '-' between them, optionally followed by extras in brackets, "
+                "for example 'requests' or 'requests[socks,security]'; put a version in "
+                "the specification."
+            )
         return canonicalize_name(value)
 
     @field_validator("specification")
     @classmethod
     def validate_version_specification(cls, value: str) -> str:
+        # `SpecifierSet` reads any whitespace around an operator as padding, a line
+        # break included, so the break would reach uv inside the requirement line.
+        if any(character.isspace() and character != " " for character in value):
+            raise ValueError(
+                f"Version specification {value!r} must not contain whitespace other than "
+                "plain spaces: no line breaks, tabs or other space characters."
+            )
         try:
-            SpecifierSet(value)
+            specifiers = SpecifierSet(value)
         except InvalidSpecifier as e:
             raise ValueError(f"Invalid version specification: '{value}'") from e
+        # packaging skips an empty clause. uv refuses a leading or doubled comma, which
+        # would only surface as a failed build, and accepts a trailing one; all three are
+        # refused here so the rule stays one rule and the error comes at declaration.
+        if value.strip() and any(not clause.strip() for clause in value.split(",")):
+            raise ValueError(
+                f"Version specification {value!r} has an empty clause: remove the leading, "
+                "trailing or doubled comma, for example '>=1,<2'."
+            )
+        # Arbitrary equality takes any token as its version, `===/etc` and `=== -r/x`
+        # included, so the requirement line would hand uv whatever follows it.
+        if any(specifier.operator == "===" for specifier in specifiers):
+            raise ValueError(
+                f"Version specification {value!r} uses arbitrary equality ('==='); "
+                "use '==' to pin a version, for example '==1.0'."
+            )
         return value
+
+    @model_validator(mode="after")
+    def reject_extras_on_a_custom_library(self) -> "Library":
+        """Refuse extras on a stored library.
+
+        A stored library is looked up, guarded against deletion and pinned by its
+        bare name, so `acme[extra]` would name a library nothing stores.
+
+        Raises:
+            ValueError: A custom library carries extras.
+        """
+        if self.is_custom and self.distribution_name != self.name:
+            raise ValueError(
+                f"Custom library {self.name!r} cannot take extras; "
+                f"declare it as {self.distribution_name!r}."
+            )
+        return self
 
     @model_validator(mode="after")
     def validate_version_against_specification(self) -> "Library":
@@ -61,6 +126,11 @@ class Library(ValueObject):
                 f"Version '{self.version}' does not satisfy specification '{self.specification}'"
             )
         return self
+
+    @property
+    def distribution_name(self) -> str:
+        """The package itself, without extras: what uv resolves and pins."""
+        return self.name.partition("[")[0]
 
     @property
     def requirement(self) -> LibraryString:
@@ -83,11 +153,19 @@ class Library(ValueObject):
 
 class Venv(Entity):
     id: int | None = Field(default=None, frozen=True)
-    name: str = Field(min_length=1, pattern=r"^[A-Za-z0-9 _-]+$")
+    # At most the 255 characters of its column, so a longer name is refused as invalid
+    # instead of failing at the database.
+    name: str = Field(min_length=1, max_length=255, pattern=r"^[A-Za-z0-9 _-]+$")
     libs: list[Library] = Field(default_factory=list)
     hash: str | None = None
     status: VenvStatus = VenvStatus.DECLARED
     error: str | None = None
+    # The shared fallback for code submitted without a venv. Found by this flag, never
+    # by name: a name is something any tenant can type.
+    is_default: bool = Field(default=False, frozen=True)
+    # The namespace the venv's custom libraries are looked up in: the gateway passes an
+    # opaque value per tenant, the sandbox only compares it. None for the default venv.
+    scope: str | None = Field(default=None, min_length=1, max_length=255)
     # Assigned by the database, never by the domain: unset until the venv is stored.
     created_at: datetime | None = Field(default=None, frozen=True)
     updated_at: datetime | None = Field(default=None, frozen=True)
@@ -97,18 +175,23 @@ class Venv(Entity):
     def reject_repeated_libraries(cls, value: list[Library]) -> list[Library]:
         """Reject a library declared twice, whatever spelling each entry used.
 
-        Two entries for one package give the resolver two requirements it cannot both
-        honour, and it fails the whole build over it. Names reach here canonicalized,
-        so `Pydantic` and `pydantic` count as the same package.
+        One entry per package: a build stamps the version it installed by package
+        name, so two entries would leave it unclear which one holds it, and each
+        would carry its own specification for the same package. Names reach here
+        canonicalized, so `Pydantic` and `pydantic` count as the same package.
+        Extras do not make another package: `requests` next to `requests[socks]` is
+        refused, and the two are declared as one entry, `requests[socks]`.
 
         Raises:
             ValueError: Some package is declared more than once.
         """
         seen: set[str] = set()
         for library in value:
-            if library.name in seen:
-                raise ValueError(f"Library '{library.name}' is declared more than once.")
-            seen.add(library.name)
+            if library.distribution_name in seen:
+                raise ValueError(
+                    f"Library '{library.distribution_name}' is declared more than once."
+                )
+            seen.add(library.distribution_name)
         return value
 
     def rename(self, value: str, /):
@@ -118,15 +201,20 @@ class Venv(Entity):
         self.libs = value
         self.mark_as_declared()
 
+    def set_scope(self, value: str, /):
+        self.scope = value
+
     def apply_resolved_versions(self, versions: dict[str, str], /):
         """Record what the build installed, keyed by canonical name.
 
         `versions` also carries the transitive packages uv resolved; only declared
         libraries are stamped, and one the build did not resolve is left as declared.
+        A lock pins the package, not its extras, so `requests[socks]` is looked up as
+        `requests`.
         """
         self.libs = [
-            library.with_resolved_version(versions[library.name])
-            if library.name in versions
+            library.with_resolved_version(versions[library.distribution_name])
+            if library.distribution_name in versions
             else library
             for library in self.libs
         ]
@@ -240,6 +328,8 @@ class CustomLibrary(Entity):
     # Deletion is a mark, not a statement: the artifacts in the object store outlive
     # the call, and a background task removes them and the row afterwards.
     is_deleted: bool = False
+    # The namespace the name is unique in, the same opaque value a venv carries.
+    scope: str | None = Field(default=None, min_length=1, max_length=255)
     # Assigned by the database, never by the domain: unset until the library is stored.
     created_at: datetime | None = Field(default=None, frozen=True)
     updated_at: datetime | None = Field(default=None, frozen=True)
@@ -260,6 +350,9 @@ class CustomLibrary(Entity):
         if self.name is not None:
             raise ValueError("This library already has a name.")
         self.name = value
+
+    def set_scope(self, value: str, /):
+        self.scope = value
 
     def mark_as_deleted(self):
         self.is_deleted = True

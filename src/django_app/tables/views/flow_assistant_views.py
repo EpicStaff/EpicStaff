@@ -417,6 +417,7 @@ class FlowAssistantAuditView(APIView):
     """
 
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, IsSuperadmin]
+    uses_organization_context = False
     pagination_class = DefaultLimitOffsetPagination
 
     def get(self, request):

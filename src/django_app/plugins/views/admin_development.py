@@ -30,6 +30,7 @@ from plugins.views.admin_plugins import ADMIN_AUTHENTICATION, ADMIN_PERMISSIONS
 class PluginDevelopmentView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
     _service = DevelopmentTargetService()
 
     @extend_schema(responses=PluginDevelopmentSerializer)
@@ -74,6 +75,7 @@ class PluginDevelopmentRuntimeFileView(APIView):
 
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
     @extend_schema(request=None, responses={200: OpenApiTypes.OBJECT})
     def post(self, request, identifier: str):

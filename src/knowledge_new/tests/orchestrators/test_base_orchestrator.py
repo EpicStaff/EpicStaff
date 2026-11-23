@@ -48,7 +48,8 @@ def log_messages():
     ids=["index", "search"],
 )
 async def test_cancel_log_names_the_rag_without_provider_keys(command, log_messages):
-    await CancelledOrchestrator(uow=None).execute(command)
+    with pytest.raises(asyncio.CancelledError):
+        await CancelledOrchestrator(uow=None).execute(command)
 
     cancel_log = "".join(log_messages)
     assert f"rag_id={RAG_ID}" in cancel_log

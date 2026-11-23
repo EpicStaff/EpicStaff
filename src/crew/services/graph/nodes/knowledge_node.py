@@ -1,7 +1,6 @@
-import asyncio
 from typing import Any
 
-from clients.errors import ClientError
+from foundation.transport.http import ClientError
 from langgraph.types import StreamWriter
 from loguru import logger
 from models.state import State
@@ -95,8 +94,7 @@ class KnowledgeNode(BaseNode):
 
         rag_search_config = self.rag_search_config.model_dump() if self.rag_search_config else {}
         try:
-            results = await asyncio.to_thread(
-                self.knowledge_search_service.search_knowledges,
+            results = await self.knowledge_search_service.search_knowledges(
                 sender="node",
                 knowledge_collection_id=self.collection_id,
                 rag_type_id=self.rag_type_id,

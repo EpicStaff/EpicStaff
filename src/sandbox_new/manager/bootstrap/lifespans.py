@@ -8,7 +8,6 @@ from piccolo.engine import Engine, engine_finder
 
 from manager import settings
 from manager.application.orchestrators import VenvBuildOrchestrator, VenvCRUDOrchestrator
-from manager.domain.models import DEFAULT_VENV_NAME
 from manager.infrastructure.database.unit_of_work import PiccoloUnitOfWork
 from manager.infrastructure.providers import FileStorage, UVProvider
 
@@ -60,7 +59,7 @@ async def create_default_venv_if_not_exist(app: Litestar):
     venv_crud_orchestrator = VenvCRUDOrchestrator(uow)
     venv = await venv_crud_orchestrator.retrieve_default()
     if venv is None:
-        venv = await venv_crud_orchestrator.create(name=DEFAULT_VENV_NAME, libs=[])
+        venv = await venv_crud_orchestrator.create_default()
 
     uv_provider = UVProvider()
     venv_build_orchestrator = VenvBuildOrchestrator(

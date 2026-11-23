@@ -23,6 +23,7 @@ from rbac.validation.api_key import ApiKeyValidationService
 class ProfileApiKeysView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, DenyApiKeyAuth]
+    uses_organization_context = False
 
     _service = ApiKeyService()
     _validator = ApiKeyValidationService()
@@ -52,6 +53,7 @@ class ProfileApiKeysView(APIView):
 class ProfileApiKeyDetailView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, DenyApiKeyAuth]
+    uses_organization_context = False
 
     _service = ApiKeyService()
 
@@ -64,6 +66,7 @@ class ProfileApiKeyDetailView(APIView):
 class ProfileApiKeyRevokeView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, DenyApiKeyAuth]
+    uses_organization_context = False
 
     _service = ApiKeyService()
 

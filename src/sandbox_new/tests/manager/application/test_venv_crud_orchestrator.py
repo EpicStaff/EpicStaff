@@ -8,7 +8,7 @@ import pytest
 
 from manager.application.orchestrators import VenvCRUDOrchestrator
 from manager.domain.enums import VenvStatus
-from manager.domain.errors import VenvNotFoundError
+from manager.domain.errors import DefaultVenvProtectedError, VenvNotFoundError
 from tests.builders import make_library, make_venv
 
 
@@ -133,7 +133,66 @@ async def test_retrieve_default_returns_none_when_there_is_no_default(uow):
     assert await VenvCRUDOrchestrator(uow).retrieve_default() is None
 
 
-async def test_retrieve_default_finds_the_venv_named_default(uow):
+async def test_retrieve_default_finds_the_flagged_venv_not_a_tenant_venv_of_that_name(uow):
+    uow.venv_repo.seed(make_venv(name="default"))
+    flagged = uow.venv_repo.seed(make_venv(name="default", is_default=True))[0]
+
+    assert (await VenvCRUDOrchestrator(uow).retrieve_default()).id == flagged.id
+
+
+async def test_retrieve_default_ignores_a_venv_only_named_default(uow):
     uow.venv_repo.seed(make_venv(name="default"))
 
-    assert (await VenvCRUDOrchestrator(uow).retrieve_default()).name == "default"
+    assert await VenvCRUDOrchestrator(uow).retrieve_default() is None
+
+
+async def test_create_default_stores_a_flagged_venv_without_libraries(uow):
+    venv = await VenvCRUDOrchestrator(uow).create_default()
+
+    assert uow.venv_repo.rows[venv.id].is_default
+    assert venv.libs == []
+    assert uow.commits == 1
+    assert (await VenvCRUDOrchestrator(uow).retrieve_default()).id == venv.id
+
+
+async def test_create_never_stores_a_default_venv(uow):
+    venv = await VenvCRUDOrchestrator(uow).create("default", [])
+
+    assert not uow.venv_repo.rows[venv.id].is_default
+
+
+async def test_update_of_the_default_venv_is_refused_and_not_committed(uow):
+    stored = uow.venv_repo.seed(make_venv(name="default", is_default=True))[0]
+
+    with pytest.raises(DefaultVenvProtectedError):
+        await VenvCRUDOrchestrator(uow).update(
+            stored.id, name="renamed", libs=[make_library(name="numpy")]
+        )
+    assert uow.venv_repo.rows[stored.id].name == "default"
+    assert uow.venv_repo.rows[stored.id].libs == []
+    assert uow.commits == 0
+
+
+async def test_remove_of_the_default_venv_is_refused_and_not_committed(uow):
+    stored = uow.venv_repo.seed(make_venv(name="default", is_default=True))[0]
+
+    with pytest.raises(DefaultVenvProtectedError):
+        await VenvCRUDOrchestrator(uow).remove(stored.id)
+    assert stored.id in uow.venv_repo.rows
+    assert uow.commits == 0
+
+
+async def test_create_stores_the_scope(uow):
+    venv = await VenvCRUDOrchestrator(uow).create("data", [], scope="org-1")
+
+    assert uow.venv_repo.rows[venv.id].scope == "org-1"
+
+
+async def test_update_of_the_scope_alone_does_not_rebuild(uow):
+    """The scope says where custom libraries are looked up, not what was built."""
+    stored = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    venv = await VenvCRUDOrchestrator(uow).update(stored.id, name=None, libs=None, scope="org-1")
+
+    assert venv.scope == "org-1"
+    assert venv.status is VenvStatus.COMPLETED

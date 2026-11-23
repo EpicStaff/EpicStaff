@@ -18,6 +18,7 @@ from rbac.models.enums import Permission, ResourceType
 from tables.models import PythonCode, PythonCodeTool, PythonCodeToolConfig
 from tables.services.secrets import secret_service
 from tests.custom_role_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import details_by_attr
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 CLIENT_PATH = "proxies.sandbox.services.VenvService.client_class"
@@ -91,8 +92,8 @@ def _patch_venv(client, binding, data):
 
 def _assert_denied(response, field):
     assert response.status_code == status.HTTP_400_BAD_REQUEST, response.content
-    message = response.json()["errors"][0]["detail"]
-    assert message.startswith(f"{field}: ") and DENIED in message, message
+    details = details_by_attr(response.json())
+    assert any(DENIED in detail for detail in details.get(field, [])), details
 
 
 NEW_LIBS = [{"name": "requests", "specification": "", "version": "2.32.3"}, {"name": "evil-pth"}]

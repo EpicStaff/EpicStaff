@@ -974,8 +974,9 @@ class TestV4ToV5:
         ["httpx>=0.28", "requests[socks]>=2", "httpx ../../etc/passwd", "pydantic==2.0,<3"],
     )
     @pytest.mark.parametrize("owner", ["x", "Tool #2", "Інструмент", "y" * 400])
-    def test_what_it_produces_is_accepted_by_the_importer(self, libraries, owner):
-        """The converter feeds the venv serializer, so its output has to pass it."""
+    def test_what_it_produces_has_the_shape_the_importer_reads(self, libraries, owner):
+        """The converter feeds the venv serializer, so its output has to pass it.
+        Whether the values build is the sandbox's call, not checked here."""
         data = v4_to_v5({EntityType.PYTHON_CODE_TOOL: [_tool(owner, libraries)]})
 
         for venv in data.get(EntityType.VENV, []):

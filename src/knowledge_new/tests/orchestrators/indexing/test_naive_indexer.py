@@ -265,7 +265,8 @@ async def test_cancelled_run_marks_rag_cancelled_and_restores_the_document(
         ),
     )
 
-    await _index(repo, 7)
+    with pytest.raises(asyncio.CancelledError):
+        await _index(repo, 7)
 
     assert repo.rag_status_log == expected_rag_log
     assert repo.doc_status_log == expected_doc_log
@@ -589,7 +590,8 @@ async def test_cancelled_run_records_tokens_consumed_so_far(embedding_api):
     embedding_api.side_effect = [_provider_response(prompt_tokens=10), asyncio.CancelledError()]
     repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
 
-    await _index(repo, 7)
+    with pytest.raises(asyncio.CancelledError):
+        await _index(repo, 7)
 
     (run,) = repo.usage_runs
     assert run.embedding_tokens == 10

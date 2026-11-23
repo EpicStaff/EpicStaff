@@ -308,9 +308,10 @@ async def test_a_cancelled_restore_removes_what_was_already_written(tmp_path):
     store = FailingAfterFirstPutStore(asyncio.CancelledError())
     orchestrator = GraphArtifactRestoreOrchestrator(NoDatabaseUoW(), store)
 
-    await orchestrator.execute(
-        RestoreGraphArtifacts(rag_id=9, archive_path=_write_archive(tmp_path, VALID_MEMBERS))
-    )
+    with pytest.raises(asyncio.CancelledError):
+        await orchestrator.execute(
+            RestoreGraphArtifacts(rag_id=9, archive_path=_write_archive(tmp_path, VALID_MEMBERS))
+        )
 
     assert store.objects == {}
 

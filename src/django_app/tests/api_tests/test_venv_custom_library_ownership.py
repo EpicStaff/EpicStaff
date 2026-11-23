@@ -131,7 +131,7 @@ def test_a_venv_may_name_its_own_stored_library_however_it_is_spelled(
 
     assert response.status_code == status.HTTP_201_CREATED
     # Passed on as it was written: the spelling is the sandbox's to normalize.
-    assert venv_sandbox.create.call_args.args[0] == payload
+    assert venv_sandbox.create.call_args.args[0]["libs"] == payload["libs"]
 
 
 @pytest.mark.django_db

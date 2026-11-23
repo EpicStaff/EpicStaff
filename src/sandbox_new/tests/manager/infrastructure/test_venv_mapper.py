@@ -9,6 +9,9 @@ string depending on its configuration, so both shapes are covered.
 
 from datetime import UTC, datetime
 
+import pytest
+from pydantic import ValidationError
+
 from manager.domain.enums import VenvStatus
 from manager.infrastructure.database.venvs.mappers import VenvMapper
 from manager.infrastructure.database.venvs.tables import VenvTable
@@ -23,6 +26,7 @@ def make_row(**overrides):
         "hash": "1abc",
         "status": "completed",
         "error": None,
+        "is_default": False,
         "created_at": datetime(2026, 10, 14, 11, 17, 37, tzinfo=UTC),
         "updated_at": datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC),
     }
@@ -51,6 +55,11 @@ def test_to_domain_treats_a_null_libraries_column_as_empty():
     assert VenvMapper.to_domain(make_row(libs=None)).libs == []
 
 
+def test_to_domain_carries_the_default_flag():
+    assert VenvMapper.to_domain(make_row(is_default=True)).is_default
+    assert not VenvMapper.to_domain(make_row()).is_default
+
+
 def test_to_domain_carries_the_error_text():
     assert VenvMapper.to_domain(make_row(status="failed", error="uv blew up")).error == "uv blew up"
 
@@ -72,3 +81,12 @@ def test_to_domain_carries_the_database_timestamps():
 
     assert venv.created_at == datetime(2026, 10, 14, 11, 17, 37, tzinfo=UTC)
     assert venv.updated_at == datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC)
+
+
+def test_to_domain_refuses_a_library_the_rules_refuse():
+    """The data migration rewrote every stored entry an earlier release accepted, so a
+    row that still holds one is a defect: the read fails and names it."""
+    with pytest.raises(ValidationError, match="numpy>=1"):
+        VenvMapper.to_domain(
+            make_row(libs=[{"name": "numpy>=1", "specification": "", "version": None}])
+        )
