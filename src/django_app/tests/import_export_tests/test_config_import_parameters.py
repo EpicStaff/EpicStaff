@@ -64,7 +64,7 @@ def test_a_version_5_llm_config_imports_with_parameters_and_its_custom_model_s_e
                 "temperature": 0.3,
                 "max_tokens": 1000,
                 "logprobs": None,
-                # Azure's custom models take no reasoning effort: dropped, not refused.
+                # A custom model takes its provider's common settings; Azure's include it.
                 "reasoning_effort": "high",
                 "base_url": None,
                 "api_version": None,
@@ -78,7 +78,11 @@ def test_a_version_5_llm_config_imports_with_parameters_and_its_custom_model_s_e
 
     config = LLMConfig.objects.get(pk=id_mapper.get(EntityType.LLM_CONFIG, 70))
     assert config.org_id == acme.id
-    assert config.parameters == {"temperature": 0.3, "max_tokens": 1000}
+    assert config.parameters == {
+        "temperature": 0.3,
+        "max_tokens": 1000,
+        "reasoning_effort": "high",
+    }
     assert config.connection == {
         "base_url": GATEWAY,
         "api_version": "2024-06-01",
