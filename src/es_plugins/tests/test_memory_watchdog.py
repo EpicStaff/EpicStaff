@@ -42,6 +42,38 @@ def test_rss_is_summed_over_every_process_of_a_uid(tmp_path):
     assert table.living_pids_of_uid(20001) == [30, 31, 77]
 
 
+def write_thread(proc_root, pid, thread_id, state, with_status=True):
+    directory = proc_root / str(pid) / "task" / str(thread_id)
+    directory.mkdir(parents=True)
+    if not with_status:
+        return
+    (directory / "status").write_text(f"Name:\tpython\nState:\t{state}\nUid:\t20001\t20001\t20001\t20001\n")
+
+
+def test_a_zombie_leader_with_a_running_thread_is_living(tmp_path):
+    write_status(tmp_path, 40, 20001, state="Z (zombie)")
+    write_thread(tmp_path, 40, 40, "Z (zombie)")
+    write_thread(tmp_path, 40, 41, "S (sleeping)")
+
+    assert ProcessTable(tmp_path).living_pids_of_uid(20001) == [40]
+
+
+def test_a_zombie_whose_threads_are_all_zombies_is_not_living(tmp_path):
+    write_status(tmp_path, 40, 20001, state="Z (zombie)")
+    write_thread(tmp_path, 40, 40, "Z (zombie)")
+    write_thread(tmp_path, 40, 41, "Z (zombie)")
+
+    assert ProcessTable(tmp_path).living_pids_of_uid(20001) == []
+
+
+def test_a_zombie_whose_thread_vanished_mid_read_is_not_living(tmp_path):
+    write_status(tmp_path, 40, 20001, state="Z (zombie)")
+    write_thread(tmp_path, 40, 40, "Z (zombie)")
+    write_thread(tmp_path, 40, 41, "S (sleeping)", with_status=False)
+
+    assert ProcessTable(tmp_path).living_pids_of_uid(20001) == []
+
+
 def test_the_interpreter_and_libraries_every_process_maps_are_not_counted(tmp_path):
     # Two workers of one plugin, each mapping the same 30 MB of interpreter and libraries.
     write_status(tmp_path, 30, 20001, 10_000, file_kib=30_000)
