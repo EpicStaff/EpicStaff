@@ -887,8 +887,9 @@ def ask_server_size(
     ):
         # The operator picks the size now: keep only the part that stays true whatever they pick.
         screen.notes[screen.notes.index(size_note)] = f"{detected}."
-        return ask_advanced(screen, schema, enabled, detected_size=size, memory_mb=memory_mb)
-    values = advanced_values(size, None, None, enabled, schema)
+        values, fit = ask_advanced(screen, schema, enabled, detected_size=size, memory_mb=memory_mb)
+    else:
+        values = advanced_values(size, None, None, enabled, schema)
     return (values | fit.values, fit) if fit else (values, None)
 
 
@@ -1091,8 +1092,9 @@ def ask_advanced(
 ) -> tuple[dict[str, str], MemoryFit | None]:
     """Ask the advanced questions; with `current` (an existing file) each can keep its value.
 
-    `detected_size` is the server size an empty answer keeps. The memory question is asked only
-    with `memory_mb` (the host RAM); the returned fit is None when the limits were not fitted.
+    `detected_size` is the server size an empty answer keeps. With `memory_mb` (the host RAM) the
+    limits are fitted, after asking whether to when `current` has limits to keep. The fit comes
+    back apart from the values, so the caller can still drop it; it is None when not fitted.
     """
     keep = {}
     if current is not None:
@@ -1118,13 +1120,11 @@ def ask_advanced(
     log_level = screen.ask(
         "Logging", "Log level for every service?", choices=keep.get("log", {}) | LOG_CHOICES
     )
-    memory = "keep"
-    if memory_mb is not None:
+    memory = "keep" if memory_mb is None else "fit"
+    # A new file has no current limits to keep, so there is nothing to ask.
+    if memory_mb is not None and current is not None:
         memory = screen.ask(
-            "Memory limits",
-            "Memory limits of the containers?",
-            choices=MEMORY_CHOICES if current is not None else {"fit": MEMORY_CHOICES["fit"]},
-            default="fit",
+            "Memory limits", "Memory limits of the containers?", MEMORY_CHOICES, default="fit"
         )
     values = advanced_values(
         None if size == "keep" else size,
@@ -1137,7 +1137,7 @@ def ask_advanced(
     if memory == "keep":
         return values, None
     fit = fit_memory_limits(memory_mb, enabled_profiles(enabled), {**(current or {}), **values})
-    return values | fit.values, fit
+    return values, fit
 
 
 def carried_over(
@@ -1254,9 +1254,11 @@ def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev
     if target == "prod" and memory_mb is None:
         screen.notes.append(MEMORY_UNKNOWN_NOTE)
     notes_before_features = len(screen.notes)
+    old_feature_profiles = {feature.profile for feature in FEATURES} & set(profiles)
     while True:
         enabled, plugin_values = ask_changed_features(screen, old, current, target)
-        if memory_mb is None:
+        # Unchanged profiles start no new service: leave the limits, hand edits included.
+        if memory_mb is None or set(enabled_profiles(enabled)) == old_feature_profiles:
             break
         # The file holds the worker counts and plugin memory in effect.
         fit = fit_memory_limits(memory_mb, enabled_profiles(enabled), old)
@@ -1320,8 +1322,9 @@ def tune_settings(
     if target == "prod" and memory_mb is None:
         screen.notes.append(MEMORY_UNKNOWN_NOTE)
     values, fit = ask_advanced(screen, schema, enabled, current=old, memory_mb=memory_mb)
-    if fit and not confirm_memory_fit(screen, fit):
-        values = {name: value for name, value in values.items() if name not in fit.values}
+    # No keeps the old scaled limits; Django's and chat's still follow a new size in `values`.
+    if fit and confirm_memory_fit(screen, fit):
+        values |= fit.values
     screen.draw()
     # Rewrite only what actually changes, so hand-tuned neighbours stay byte-identical.
     changed = {name: value for name, value in values.items() if old.get(name) != value}

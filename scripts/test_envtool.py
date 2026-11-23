@@ -625,7 +625,7 @@ class SetupWizardTest(unittest.TestCase):
     def test_production_advanced_settings(self):
         values, _ = self.run_setup(
             "prod",
-            ["https://es.example.com", "1", "y", "n", "n", "n", "v1", "1", "y", "3", "3", "1", ""],
+            ["https://es.example.com", "1", "y", "n", "n", "n", "v1", "1", "y", "3", "3", "1"],
         )
         self.assertEqual(values["DJANGO_SGI_WORKERS"], "6")
         self.assertEqual(values["DJANGO_DB_POOL_MAX_SIZE"], "15")
@@ -655,18 +655,17 @@ class SetupWizardTest(unittest.TestCase):
 
     def test_advanced_settings_keep_the_detected_size_on_enter_and_take_another_choice(self):
         self.cpu_count.return_value = 4
-        # Advanced settings opened: server size, then code time limit 30 minutes, logging INFO,
-        # memory fitted.
+        # Advanced settings opened: server size, then code time limit 30 minutes, logging INFO.
         opened = ["https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "y"]
-        kept, _ = self.run_setup("prod", [*opened, "", "2", "2", ""])
+        kept, _ = self.run_setup("prod", [*opened, "", "2", "2"])
         self.assertEqual(kept["DJANGO_SGI_WORKERS"], "3")
         self.env_file.unlink()
-        overridden, output = self.run_setup("prod", [*opened, "1", "2", "2", ""])
+        overridden, output = self.run_setup("prod", [*opened, "1", "2", "2"])
         self.assertEqual(overridden["DJANGO_SGI_WORKERS"], "1")
         # Every screen after the size question shows the chosen size and no other one.
         screens = output.split("EpicStaff setup")
         after_size = [screen for screen in screens if "Server size: Small" in screen]
-        self.assertEqual(len(after_size), 4)  # code time limit, logging, memory, the final screen
+        self.assertEqual(len(after_size), 3)  # code time limit, logging, the final screen
         for screen in after_size:
             self.assertIn("Detected 4 CPUs.", screen)
             self.assertNotIn("Medium server size", screen)
@@ -698,7 +697,7 @@ class SetupWizardTest(unittest.TestCase):
     def test_verbose_logging_reminds_to_switch_back(self):
         _, created = self.run_setup(
             "prod",
-            ["https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "y", "1", "2", "1", ""],
+            ["https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "y", "1", "2", "1"],
         )
         self.assertIn("back to INFO", created)
         # Tune lists "Keep current" first, so DEBUG is 2 and WARNING is 4.
@@ -927,20 +926,20 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(values["DJANGO_MEMORY"], "1536m")  # still follows the Small size
         self.assertIn("Could not detect the memory", output)
 
-    def test_first_setup_advanced_asks_memory_and_fits_at_the_chosen_size(self):
+    def test_first_setup_advanced_fits_at_the_chosen_size_without_asking(self):
         self.memory_mb.return_value = 8192
-        answers = [*NO_FEATURES_ADVANCED_ANSWERS, "1", "2", "2", ""]
+        answers = [*NO_FEATURES_ADVANCED_ANSWERS, "1", "2", "2"]
         values, output = self.run_setup("prod", answers)
-        self.assertIn("Memory limits: Fit to this machine", output)
-        self.assertNotIn("Keep current", output)
+        self.assertNotIn("Memory limits of the containers?", output)
+        self.assertIn("Memory limits:", output.split("EpicStaff setup")[-1])
         self.assertEqual(values["DJANGO_MEMORY"], "1536m")
         self.assertNotEqual(values["CREW_MEMORY"], "2g")
 
     def test_first_setup_advanced_size_too_big_warns(self):
         self.memory_mb.return_value = 6144
         # Large on 6 GiB: No re-asks the features and the size question.
-        answers = [*NO_FEATURES_ADVANCED_ANSWERS, "3", "2", "2", "", "n"]
-        answers += ["n", "n", "n", "n", "y", "1", "2", "2", ""]
+        answers = [*NO_FEATURES_ADVANCED_ANSWERS, "3", "2", "2", "n"]
+        answers += ["n", "n", "n", "n", "y", "1", "2", "2"]
         values, output = self.run_setup("prod", answers)
         self.assertIn("Memory limits do not fit", output)
         self.assertEqual(values["DJANGO_SGI_WORKERS"], "1")
@@ -971,26 +970,16 @@ class SetupWizardTest(unittest.TestCase):
         )
         self.assertIn("Memory limits:", output)
 
-    def test_tune_too_small_and_declined_keeps_the_old_memory_values(self):
-        self.memory_mb.return_value = 4096
-        self.prod_file_with(DJANGO_SGI_WORKERS="1", DJANGO_MEMORY="1536m")
-        # Tune: Medium, five minutes, keep logging, fit memory, then No.
-        values, output = self.run_setup("prod", ["2", "3", "2", "1", "", ""])
-        self.assertIn("Memory limits do not fit", output)
-        self.assertEqual(values["DJANGO_SGI_WORKERS"], "3")
-        self.assertEqual(values["SANDBOX_MAX_EXECUTION_TIMEOUT"], "5m")
-        self.assertEqual(values["DJANGO_MEMORY"], "1536m")
-        self.assertEqual(values["CREW_MEMORY"], "2g")
-
     def test_change_features_refits_and_warns_when_it_no_longer_fits(self):
         self.memory_mb.return_value = 8192
         self.prod_file_with(DJANGO_SGI_WORKERS="1", CHAT_WORKERS="1")
-        # Chat and both audit trails on, No to Continue anyway, then everything off.
-        answers = ["1", "y", "y", "y", "n", "", "n", "n", "n", "n"]
+        # Chat and both audit trails on, No to Continue anyway, then chat alone.
+        answers = ["1", "y", "y", "y", "n", "", "y", "n", "n", "n"]
         values, output = self.run_setup("prod", answers)
         self.assertIn("Memory limits do not fit", output)
-        self.assertEqual(values["CHAT_ENABLED"], "false")
-        self.assertEqual(values["COMPOSE_PROFILES"], "none")
+        self.assertEqual(values["SESSION_AUDIT_TRAIL_ENABLED"], "false")
+        self.assertEqual(values["COMPOSE_PROFILES"], "chat")
+        self.assertEqual(values["CHAT_MEMORY"], "768m")
         self.assertEqual(values["DJANGO_MEMORY"], "1536m")
         self.assertNotEqual(values["CREW_MEMORY"], "2g")
         self.assertIn("Memory limits:", output.split("EpicStaff setup")[-1])
@@ -1003,6 +992,24 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(values["COMPOSE_PROFILES"], "chat,auditor")
         self.assertEqual(values["CHAT_MEMORY"], "1024m")
         self.assertEqual(values["OPENSEARCH_MEMORY"], "1600m")
+
+    def test_tune_too_small_and_declined_still_sizes_worker_memory(self):
+        self.memory_mb.return_value = 6144
+        self.prod_file_with(DJANGO_SGI_WORKERS="1", DJANGO_MEMORY="1536m", CREW_MEMORY="1g")
+        # Tune: Large, five minutes, keep logging, fit memory, then No.
+        values, output = self.run_setup("prod", ["2", "4", "2", "1", "", ""])
+        self.assertIn("Memory limits do not fit", output)
+        self.assertEqual(values["DJANGO_SGI_WORKERS"], "6")
+        self.assertEqual(values["SANDBOX_MAX_EXECUTION_TIMEOUT"], "5m")
+        self.assertEqual(values["DJANGO_MEMORY"], "4096m")
+        self.assertEqual(values["CREW_MEMORY"], "1g")
+
+    def test_change_features_that_change_nothing_keep_hand_edited_memory(self):
+        self.memory_mb.return_value = 4096  # too small: a refit would warn
+        self.prod_file_with(CREW_MEMORY="1234m")
+        values, output = self.run_setup("prod", ["1", "", "", "", ""])
+        self.assertEqual(values["CREW_MEMORY"], "1234m")
+        self.assertNotIn("Memory limits", output)
 
     def test_change_features_on_dev_does_not_fit(self):
         self.memory_mb.return_value = 1024
