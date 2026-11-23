@@ -490,6 +490,7 @@ async def test_embedding_api_key_never_reaches_the_service_output(embedding_api,
     captured = capsys.readouterr()
     service_output = captured.out + captured.err + "".join(logged)
     assert embedding_api.await_args.kwargs["api_key"] == "sk-test"
+    assert logged
     assert "sk-test" not in service_output
     assert sealed_api_key not in service_output
 
