@@ -3,9 +3,11 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from opensearchpy.exceptions import ConnectionError as OpenSearchConnectionError
 from opensearchpy.exceptions import RequestError as OpenSearchRequestError
 
 from app.controllers.query_routes import build_search_router
+from app.domains.base import MissingScopeError
 from app.domains.sessions.domain import SESSIONS
 from app.main import register_exception_handlers
 from src.shared.models import SessionAuditEvent
@@ -17,6 +19,14 @@ pytestmark = pytest.mark.asyncio
 ORG_ID = 7
 NOW = datetime.now(timezone.utc)
 SEARCH_PATH = "/api/audit/sessions/search"
+FAILED_STATUS_FILTER = {"filters": {"field": "status", "op": "equals", "value": "failed"}}
+
+
+def _error_body(error_type: str, code: str, detail: str, attr: str | None = None) -> dict:
+    return {
+        "type": error_type,
+        "errors": [{"code": code, "detail": detail, "attr": attr, "context": None}],
+    }
 
 
 class RaisingRepository:
@@ -43,7 +53,7 @@ def _opensearch_error(error: dict) -> OpenSearchRequestError:
 
 
 @pytest.mark.parametrize(
-    ("error", "expected_status", "expected_detail", "must_not_leak"),
+    ("error", "expected_status", "expected_body", "must_not_leak"),
     [
         (
             {
@@ -57,8 +67,12 @@ def _opensearch_error(error: dict) -> OpenSearchRequestError:
                 },
             },
             400,
-            "failed to parse date field [2026.09.09] with format "
-            "[strict_date_optional_time||epoch_millis]",
+            _error_body(
+                "client_error",
+                "invalid_query",
+                "failed to parse date field [2026.09.09] with format "
+                "[strict_date_optional_time||epoch_millis]",
+            ),
             "search_phase_execution_exception",
         ),
         (
@@ -68,7 +82,7 @@ def _opensearch_error(error: dict) -> OpenSearchRequestError:
                 "reason": "top level reason",
             },
             400,
-            "root cause reason",
+            _error_body("client_error", "invalid_query", "root cause reason"),
             "top level reason",
         ),
         (
@@ -79,7 +93,7 @@ def _opensearch_error(error: dict) -> OpenSearchRequestError:
                 "caused_by": {"type": "number_format_exception", "reason": 'For input string: "abc"'},
             },
             400,
-            'For input string: "abc"',
+            _error_body("client_error", "invalid_query", 'For input string: "abc"'),
             "query_shard_exception",
         ),
         (
@@ -92,7 +106,7 @@ def _opensearch_error(error: dict) -> OpenSearchRequestError:
                 "caused_by": {"type": "illegal_argument_exception", "reason": "internal detail"},
             },
             500,
-            "Internal server error",
+            _error_body("server_error", "unknown", "Internal server error."),
             "internal detail",
         ),
     ],
@@ -104,27 +118,69 @@ def _opensearch_error(error: dict) -> OpenSearchRequestError:
     ],
 )
 async def test_opensearch_rejection_is_reported_without_leaking_internals(
-    error, expected_status, expected_detail, must_not_leak
+    error, expected_status, expected_body, must_not_leak
 ):
     async with _client(RaisingRepository(_opensearch_error(error))) as client:
-        response = await client.post(
-            SEARCH_PATH, json={"filters": {"field": "status", "op": "equals", "value": "failed"}}
-        )
+        response = await client.post(SEARCH_PATH, json=FAILED_STATUS_FILTER)
 
     assert response.status_code == expected_status
-    assert response.json()["detail"] == expected_detail
+    assert response.json() == expected_body
     assert must_not_leak not in response.text
 
 
 async def test_opensearch_error_without_a_body_is_a_500_without_leaking():
     """Nothing ties the failure to the caller's input, so it is not blamed on them."""
     async with _client(RaisingRepository(OpenSearchRequestError(400, "some_error", None))) as client:
-        response = await client.post(
-            SEARCH_PATH, json={"filters": {"field": "status", "op": "equals", "value": "failed"}}
-        )
+        response = await client.post(SEARCH_PATH, json=FAILED_STATUS_FILTER)
 
     assert response.status_code == 500
-    assert response.json()["detail"] == "Internal server error"
+    assert response.json() == _error_body("server_error", "unknown", "Internal server error.")
+    assert "some_error" not in response.text
+
+
+async def test_unreachable_opensearch_is_a_503_without_the_connection_error():
+    unreachable = OpenSearchConnectionError(
+        "N/A", "connect to opensearch:9200 refused", OSError("Connection refused")
+    )
+
+    async with _client(RaisingRepository(unreachable)) as client:
+        response = await client.post(SEARCH_PATH, json=FAILED_STATUS_FILTER)
+
+    assert response.status_code == 503
+    assert response.json() == _error_body(
+        "server_error", "search_unavailable", "Audit search backend is temporarily unavailable."
+    )
+    assert "opensearch:9200" not in response.text
+
+
+async def test_missing_org_scope_is_a_500_without_the_error_text():
+    unscoped = MissingScopeError("Refusing to compile an audit query with no org_id scope.")
+
+    async with _client(RaisingRepository(unscoped)) as client:
+        response = await client.post(SEARCH_PATH, json=FAILED_STATUS_FILTER)
+
+    assert response.status_code == 500
+    assert response.json() == _error_body("server_error", "unknown", "Internal server error.")
+    assert "org_id" not in response.text
+
+
+@pytest.mark.parametrize(
+    ("body", "expected_detail"),
+    [
+        (
+            {"filters": {"field": "no_such_field", "op": "equals", "value": "x"}},
+            "filters: 'no_such_field' is not a known filterable field",
+        ),
+        ({"query": "   "}, "Empty query"),
+    ],
+    ids=["unknown-field-in-filters", "unparseable-query"],
+)
+async def test_invalid_filter_is_a_400_invalid_filter(body, expected_detail):
+    async with _client(InMemoryFakeRepository(_tree_events())) as client:
+        response = await client.post(SEARCH_PATH, json=body)
+
+    assert response.status_code == 400
+    assert response.json() == _error_body("client_error", "invalid_filter", expected_detail)
 
 
 def _tree_events() -> list[SessionAuditEvent]:

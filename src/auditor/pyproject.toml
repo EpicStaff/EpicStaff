@@ -9,6 +9,7 @@ authors = [
 requires-python = "==3.12.10"
 dependencies = [
     "fastapi>=0.141.1,<0.142.0",
+    "foundation",
     "loguru>=0.7.3,<0.8.0",
     "opensearch-py[async]>=3.2.0,<4.0.0",
     "pydantic==2.13.4",
@@ -40,6 +41,9 @@ transitive-pins = [
 
 [tool.uv]
 package = false
+
+[tool.uv.sources]
+foundation = { path = "../foundation", editable = true }
 
 [tool.pytest.ini_options]
 pythonpath = [".", "../.."]

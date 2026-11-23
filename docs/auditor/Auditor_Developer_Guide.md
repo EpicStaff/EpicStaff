@@ -133,7 +133,8 @@ schedules the actual query/write as a `BackgroundTasks` task, returning
   `require_audit_action(domain, "export")`.
 - `GET /api/audit/{domain.name}/export/{job_id}` — poll status; while
   pending/failed returns `{"status": ...}` (`404` if the job isn't found,
-  isn't yours, or belongs to a different domain; `500` if it failed). Once
+  isn't yours, or belongs to a different domain; `500` with code
+  `export_failed` if it failed). Once
   `completed`, streams the file back as a `FileResponse` (`410` if the file
   already expired off disk). CSV columns come from
   `SessionAuditEvent.model_fields`, not from the first row, so an empty result

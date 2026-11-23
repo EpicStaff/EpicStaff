@@ -1,12 +1,23 @@
 import asyncio
 import json
+from collections.abc import Mapping
+from http import HTTPStatus
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.concurrency import asynccontextmanager
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from foundation.cryptographer import FernetRotatedCryptographer
+from foundation.schemas import (
+    INTERNAL_ERROR_DETAIL,
+    UNKNOWN_ERROR_CODE,
+    ErrorDetailSchema,
+    ErrorResponseSchema,
+)
 from loguru import logger
 from src.shared.models import WebhookConfigData
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.controllers import webhook_routes
 from app.core.settings import settings
@@ -21,6 +32,71 @@ from app.services.tunnel_registry import TunnelRegistry
 # Kept short: Docker kills the container 10s after SIGTERM by default, and uvicorn drains
 # connections before this budget (listener stop plus tunnel unregistering) starts.
 TUNNEL_SHUTDOWN_TIMEOUT_SECONDS = 8
+
+# The first `loc` entry of a request validation error names the part of the request the
+# value came from, not a field, so it never belongs in `attr`.
+_REQUEST_PARTS = frozenset({"body", "query", "path", "header", "cookie"})
+
+
+def _error_response(
+    status_code: int,
+    errors: list[ErrorDetailSchema],
+    headers: Mapping[str, str] | None = None,
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content=ErrorResponseSchema.for_status(status_code, errors).model_dump(mode="json"),
+        headers=headers,
+    )
+
+
+def _validation_error_attr(error: dict) -> str | None:
+    # An unparseable body reports the character offset where parsing stopped; that is
+    # not a field of the request.
+    if error["type"] == "json_invalid":
+        return None
+    location = error["loc"]
+    if location and location[0] in _REQUEST_PARTS:
+        location = location[1:]
+    return ".".join(str(part) for part in location) or None
+
+
+def register_exception_handlers(app: FastAPI) -> None:
+    """Answer framework refusals and any unhandled error with foundation's error envelope."""
+
+    @app.exception_handler(Exception)
+    async def _server_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        # The fallback for any exception no more specific handler claims. Not logged here:
+        # Starlette re-raises it after this answer, and the server logs it with its traceback.
+        return _error_response(
+            500, [ErrorDetailSchema(code=UNKNOWN_ERROR_CODE, detail=INTERNAL_ERROR_DETAIL)]
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http_exception_handler(
+        request: Request, exc: StarletteHTTPException
+    ) -> JSONResponse:
+        code = HTTPStatus(exc.status_code).phrase.lower().replace(" ", "_")
+        return _error_response(
+            exc.status_code,
+            [ErrorDetailSchema(code=code, detail=exc.detail)],
+            headers=exc.headers,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def _request_validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        # Built from `type`, `msg` and `loc` only: `input` would echo the sender's value.
+        return _error_response(
+            422,
+            [
+                ErrorDetailSchema(
+                    code=error["type"], detail=error["msg"], attr=_validation_error_attr(error)
+                )
+                for error in exc.errors()
+            ],
+        )
 
 
 async def listen_redis(redis_service: RedisService, tunnel_registry: TunnelRegistry):
@@ -117,6 +193,8 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    register_exception_handlers(app)
 
     app.include_router(webhook_routes.router)
 

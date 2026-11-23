@@ -6,6 +6,7 @@ from app.core import settings
 from app.domains.base import AuditDomain
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
+from loguru import logger
 from src.shared.audit.token import AUDIT_TOKEN_ISSUER
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -44,8 +45,11 @@ async def verify_user_jwt(
             issuer=AUDIT_TOKEN_ISSUER,
             options={"require": ["exp", "iat", "iss", "org_id", "user_id"]},
         )
-    except jwt.PyJWTError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid or expired token: {e}") from e
+    except jwt.PyJWTError as error:
+        # pyjwt's message names the failed check (signature, issuer, a missing claim),
+        # which helps whoever forges a token more than whoever holds an expired one.
+        logger.warning("Rejected an audit token: {}", error)
+        raise HTTPException(status_code=401, detail="Invalid or expired token") from error
 
 
 def _granted_actions(claims: dict, resource: str) -> list:
