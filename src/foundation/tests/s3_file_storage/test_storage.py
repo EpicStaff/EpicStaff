@@ -1,4 +1,5 @@
 import io
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -83,6 +84,16 @@ class TestBucketObjects:
             bucket.object(f"key-{i}").write(b"x")
         assert len(bucket.objects(max=2)) == 2
 
+    def test_listed_objects_carry_their_size(self, storage, bucket_name):
+        bucket = storage.bucket(bucket_name)
+        bucket.create()
+        bucket.object("a").write(b"12345")
+        bucket.object("empty").write(b"")
+        assert {o.key: o.size for o in bucket.objects()} == {"a": 5, "empty": 0}
+
+    def test_a_handle_not_from_a_listing_has_no_size(self, storage, bucket_name):
+        assert storage.bucket(bucket_name).object("a").size is None
+
     def test_empty_bucket_returns_empty_list(self, storage, bucket_name):
         bucket = storage.bucket(bucket_name)
         bucket.create()
@@ -95,6 +106,47 @@ class TestBucketObjects:
         bucket.object("k").write(b"v")
         result = await bucket.aobjects()
         assert [o.key for o in result] == ["k"]
+
+    def test_delete_objects_removes_listed_keys_only(self, storage, bucket_name):
+        bucket = storage.bucket(bucket_name)
+        bucket.create()
+        for key in ("a", "b", "keep"):
+            bucket.object(key).write(b"x")
+        bucket.delete_objects(["a", "b"])
+        assert [o.key for o in bucket.objects()] == ["keep"]
+
+    def test_delete_objects_skips_missing_keys(self, storage, bucket_name):
+        bucket = storage.bucket(bucket_name)
+        bucket.create()
+        bucket.object("a").write(b"x")
+        bucket.delete_objects(["a", "missing"])
+        assert bucket.objects() == []
+
+    def test_delete_objects_with_no_keys_does_nothing(self, storage, bucket_name):
+        bucket = storage.bucket(bucket_name)
+        bucket.create()
+        bucket.object("a").write(b"x")
+        bucket.delete_objects([])
+        assert [o.key for o in bucket.objects()] == ["a"]
+
+    @pytest.mark.asyncio
+    async def test_adelete_objects_matches_sync(self, storage, bucket_name):
+        bucket = storage.bucket(bucket_name)
+        bucket.create()
+        bucket.object("a").write(b"x")
+        await bucket.adelete_objects(iter(["a"]))
+        assert bucket.objects() == []
+
+    @pytest.mark.slow
+    def test_delete_objects_spans_several_requests(self, storage, bucket_name):
+        """One DeleteObjects request names at most 1000 keys, so 1001 keys need two."""
+        bucket = storage.bucket(bucket_name)
+        bucket.create()
+        keys = [f"k/{i:05d}" for i in range(1001)]
+        for key in keys:
+            bucket.object(key).write(b"")
+        bucket.delete_objects(keys)
+        assert bucket.objects() == []
 
     @pytest.mark.slow
     def test_paginates_across_real_server_pages(self, storage, bucket_name):
@@ -145,6 +197,57 @@ class TestObject:
         storage.bucket(bucket_name).create()
         with pytest.raises(errors.S3ObjectNotExistError):
             storage.bucket(bucket_name).object("missing.txt").read()
+
+    def test_iter_chunks_yields_the_body_in_pieces(self, storage, bucket_name):
+        storage.bucket(bucket_name).create()
+        obj = storage.bucket(bucket_name).object("file.bin")
+        obj.write(b"abcdefghij")
+        assert list(obj.iter_chunks(chunk_size=4)) == [b"abcd", b"efgh", b"ij"]
+
+    def test_iter_chunks_of_an_empty_object_yields_nothing(self, storage, bucket_name):
+        storage.bucket(bucket_name).create()
+        obj = storage.bucket(bucket_name).object("empty.bin")
+        obj.write(b"")
+        assert list(obj.iter_chunks()) == []
+
+    def test_iter_chunks_missing_raises_not_exist(self, storage, bucket_name):
+        storage.bucket(bucket_name).create()
+        with pytest.raises(errors.S3ObjectNotExistError):
+            next(storage.bucket(bucket_name).object("missing.bin").iter_chunks())
+
+    @pytest.mark.asyncio
+    async def test_aiter_chunks_matches_sync(self, storage, bucket_name):
+        storage.bucket(bucket_name).create()
+        obj = storage.bucket(bucket_name).object("file.bin")
+        obj.write(b"abcdefghij")
+        assert [chunk async for chunk in obj.aiter_chunks(chunk_size=4)] == [b"abcd", b"efgh", b"ij"]
+
+    @pytest.mark.asyncio
+    async def test_aiter_chunks_missing_raises_not_exist(self, storage, bucket_name):
+        storage.bucket(bucket_name).create()
+        with pytest.raises(errors.S3ObjectNotExistError):
+            async for _ in storage.bucket(bucket_name).object("missing.bin").aiter_chunks():
+                pass
+
+    def test_last_modified_is_the_write_time(self, storage, bucket_name):
+        storage.bucket(bucket_name).create()
+        obj = storage.bucket(bucket_name).object("file.txt")
+        before = datetime.now(UTC) - timedelta(seconds=5)
+        obj.write(b"data")
+        last_modified = obj.last_modified()
+        assert before <= last_modified <= datetime.now(UTC) + timedelta(seconds=5)
+
+    def test_last_modified_missing_raises_not_exist(self, storage, bucket_name):
+        storage.bucket(bucket_name).create()
+        with pytest.raises(errors.S3ObjectNotExistError):
+            storage.bucket(bucket_name).object("missing.txt").last_modified()
+
+    @pytest.mark.asyncio
+    async def test_alast_modified_matches_sync(self, storage, bucket_name):
+        storage.bucket(bucket_name).create()
+        obj = storage.bucket(bucket_name).object("file.txt")
+        obj.write(b"data")
+        assert await obj.alast_modified() == obj.last_modified()
 
     @pytest.mark.asyncio
     async def test_async_crud_matches_sync(self, storage, bucket_name):
