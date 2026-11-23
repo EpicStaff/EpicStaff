@@ -167,7 +167,10 @@ def client_error_as_api_exception(exc: ClientError) -> APIException:
     """Translate a transport error from a proxied microservice into a DRF exception.
 
     An upstream 4xx answered in the shared envelope already says what is wrong in
-    words meant for the caller, so its details are kept. Any other answer can be an
+    words meant for the caller, so its details are kept, collapsed into one message:
+    the first item's code and every item's detail, without `attr` or `context`. That
+    suits a caller reporting one message (a transfer job); `custom_exception_handler`
+    hands the envelope on whole before it gets here. Any other answer can be an
     HTML page or a service's internals, so it goes to the log and the caller gets a
     fixed text. An upstream 4xx is the caller's own request coming back refused, so it
     keeps its status: a conflict stays a conflict rather than becoming a gateway failure the

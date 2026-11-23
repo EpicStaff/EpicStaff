@@ -192,7 +192,7 @@ echo "# through the internal API listener, from $network"
 
 status=$(internal /plugin-runtime/me/)
 expect "the key authenticates through the internal listener" 200 "$status" \
-  "body['errors'][0]['context']['plugin']['identifier'] == '$plugin' and body['organization']['id'] == $org_id and body['on_behalf_of'] is None"
+  "body['plugin']['identifier'] == '$plugin' and body['organization']['id'] == $org_id and body['on_behalf_of'] is None"
 if [ "$status" != 200 ]; then
   bail_out "the key does not work through the internal listener; the other checks need it"
 fi

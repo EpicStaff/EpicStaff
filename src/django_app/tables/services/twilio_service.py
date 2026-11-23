@@ -97,6 +97,8 @@ class TwilioNoAnswerError(TwilioServiceError):
     """
 
     status_code = 503
+    # Shared with TwilioUnavailableError on purpose: callers re-raise this as that error,
+    # and to a client both mean the same thing.
     default_code = "twilio_unavailable"
 
     def __init__(self):
