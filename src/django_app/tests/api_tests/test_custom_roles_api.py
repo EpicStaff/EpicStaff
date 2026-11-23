@@ -119,7 +119,7 @@ def test_create_role_escalation_denied(auth_client, django_user_model, acme):
     }
     resp = auth_client(manager).post("/api/admin/roles/", payload, format="json")
     assert resp.status_code == status.HTTP_403_FORBIDDEN
-    assert resp.json()["code"] == "permission_escalation_denied"
+    assert resp.json()["errors"][0]["code"] == "permission_escalation_denied"
 
 
 @pytest.mark.django_db
@@ -128,7 +128,7 @@ def test_update_builtin_is_403(auth_client, admin_acme, role_member):
         f"/api/admin/roles/{role_member.id}/", {"name": "X"}, format="json"
     )
     assert resp.status_code == status.HTTP_403_FORBIDDEN
-    assert resp.json()["code"] == "built_in_role_immutable"
+    assert resp.json()["errors"][0]["code"] == "built_in_role_immutable"
 
 
 @pytest.mark.django_db
@@ -177,7 +177,7 @@ def test_delete_own_role_403(auth_client, django_user_model, acme):
     ):
         resp = auth_client(holder).delete(url)
         assert resp.status_code == status.HTTP_403_FORBIDDEN, url
-        assert resp.json()["code"] == "cannot_delete_own_role", url
+        assert resp.json()["errors"][0]["code"] == "cannot_delete_own_role", url
     assert Role.objects.filter(pk=own.id).exists()
 
 
@@ -413,7 +413,7 @@ def test_a_role_the_caller_cannot_read_is_not_found_for_every_verb(request, auth
     resp = getattr(client, method)(f"/api/admin/roles/{target.id}/", {"name": "X"}, format="json")
 
     assert resp.status_code == status.HTTP_404_NOT_FOUND
-    assert resp.json()["code"] == "role_not_found"
+    assert resp.json()["errors"][0]["code"] == "role_not_found"
     assert Role.objects.get(pk=target.id).name == "Hidden-api"
 
 
@@ -445,7 +445,7 @@ def test_patch_role_with_read_but_no_update_is_403(
     )
 
     assert resp.status_code == status.HTTP_403_FORBIDDEN
-    assert resp.json()["code"] == "permission_denied"
+    assert resp.json()["errors"][0]["code"] == "permission_denied"
 
 
 # ---- ?assignable_org_ids= : only roles the caller may actually assign ----
@@ -594,7 +594,7 @@ def test_assignable_filter_non_integer_is_400(auth_client, admin_acme):
     resp = auth_client(admin_acme).get(f"{ROLES_URL}?assignable_org_ids=abc")
 
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.json()["code"] == "org_context_required"
+    assert resp.json()["errors"][0]["code"] == "org_context_required"
 
 
 @pytest.mark.django_db

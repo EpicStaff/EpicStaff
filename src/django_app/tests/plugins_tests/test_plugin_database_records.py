@@ -99,7 +99,7 @@ def test_without_a_database_server_the_approval_is_refused_and_nothing_is_approv
         f"/api/admin/plugins/packages/{package.pk}/approve/", {"untrusted_acknowledged": True}, format="json"
     )
 
-    assert (response.status_code, response.json()["code"]) == (409, "no_plugin_database_server")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "no_plugin_database_server")
     package.refresh_from_db()
     assert package.review_state == ReviewState.PENDING
     plugin = Plugin.objects.get()

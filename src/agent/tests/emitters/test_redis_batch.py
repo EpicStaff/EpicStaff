@@ -379,6 +379,7 @@ async def test_on_error_keeps_the_exception_text_out_of_the_log_and_the_payload(
         "code": "agent_failed",
         "detail": "The agent failed.",
         "attr": None,
+        "context": None,
     }
 
 
@@ -398,6 +399,7 @@ async def test_on_error_keeps_the_exception_text_out_of_the_log_and_the_payload(
                 "code": "llm_rate_limit",
                 "detail": "The provider's rate limit for model \"gpt-4o\" was reached.",
                 "attr": None,
+                "context": None,
             },
         ),
     ],
@@ -430,4 +432,5 @@ async def test_on_error_publishes_the_detail_an_agent_service_error_carries():
         "code": "llm_auth",
         "detail": 'The provider rejected the API key for model "gpt-4o".',
         "attr": None,
+        "context": None,
     }

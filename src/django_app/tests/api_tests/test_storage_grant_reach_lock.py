@@ -71,7 +71,7 @@ def test_changing_a_venv_that_ticked_code_runs_in_needs_those_boxes(
     allowed = admin_client.patch(f"/api/venvs/{venv.pk}/", {"libs": ["requests"]}, format="json")
 
     assert refused.status_code == status.HTTP_403_FORBIDDEN
-    assert refused.data["message"] == READ_AND_WRITE
+    assert refused.data["errors"][0]["detail"] == READ_AND_WRITE
     assert allowed.status_code == status.HTTP_200_OK, allowed.content
     assert upstream.call_count == 1
 

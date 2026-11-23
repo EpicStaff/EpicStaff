@@ -19,9 +19,10 @@ def test_denial_renders_as_400_envelope_with_field_name():
 
     assert response.status_code == 400
     assert response.data == {
-        "status_code": 400,
-        "code": "invalid",
-        "message": f"api_key_secret_id: {_MESSAGE}",
+        "type": "client_error",
+        "errors": [
+            {"code": "invalid", "detail": _MESSAGE, "attr": "api_key_secret_id", "context": None}
+        ],
     }
 
 
@@ -31,7 +32,9 @@ def test_nested_path_renders_all_segments():
     )
 
     assert response.status_code == 400
-    assert response.data["message"] == f"python_code: secret_ids: {_MESSAGE}"
+    assert [(item["attr"], item["detail"]) for item in response.data["errors"]] == [
+        ("python_code.secret_ids", _MESSAGE)
+    ]
 
 
 @pytest.mark.parametrize(

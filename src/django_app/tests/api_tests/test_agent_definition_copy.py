@@ -408,7 +408,7 @@ class TestInvalidRequest:
         response = auth_client.post(_copy_url(source_agent.id), body, format="json")
 
         assert response.status_code == 400, response.data
-        assert response.data["message"].startswith("name: ")
+        assert response.data["errors"][0]["attr"] == "name"
         assert AgentDefinition.all_objects.count() == agents_before
         assert Surface.all_objects.count() == surfaces_before
 

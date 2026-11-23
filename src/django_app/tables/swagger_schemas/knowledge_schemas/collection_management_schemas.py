@@ -9,6 +9,7 @@ from tables.serializers.utils.bulk_ids import BULK_DELETE_MAX_IDS
 from tables.swagger_schemas.common_schemas import (
     INTERNAL_SERVER_ERROR_500_RESPONSE,
     UNAUTHORIZED_401_RESPONSE,
+    error_example,
 )
 
 SOURCE_COLLECTIONS_GET = {
@@ -33,7 +34,9 @@ SOURCE_COLLECTION_GET = {
             examples=[
                 OpenApiExample(
                     name="Not Found",
-                    value={"error": "Collection not found."},
+                    value=error_example(
+                        "not_found", "No SourceCollection matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -65,7 +68,9 @@ SOURCE_COLLECTION_PATCH = {
             examples=[
                 OpenApiExample(
                     name="Not Found",
-                    value={"error": "Collection not found."},
+                    value=error_example(
+                        "not_found", "No SourceCollection matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -87,7 +92,9 @@ SOURCE_COLLECTION_PUT = {
             examples=[
                 OpenApiExample(
                     name="Not Found",
-                    value={"error": "Collection not found."},
+                    value=error_example(
+                        "not_found", "No SourceCollection matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -123,7 +130,9 @@ SOURCE_COLLECTION_DELETE = {
             examples=[
                 OpenApiExample(
                     name="Not Found",
-                    value={"error": "Collection not found."},
+                    value=error_example(
+                        "not_found", "No SourceCollection matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -163,21 +172,25 @@ SOURCE_COLLECTION_BULK_DELETE_POST = {
             examples=[
                 OpenApiExample(
                     name="Empty collection_ids",
-                    value={"error": "collection_ids must not be empty."},
+                    value=error_example("empty", "Must not be empty.", "collection_ids"),
                     response_only=True,
                     status_codes=["400"],
                 ),
                 OpenApiExample(
                     name="Invalid collection_ids",
-                    value={"error": "collection_ids must be a list of positive integers."},
+                    value=error_example(
+                        "invalid_item", "Must be a list of positive integers.", "collection_ids"
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 ),
                 OpenApiExample(
                     name="Too many collection_ids",
-                    value={
-                        "error": f"collection_ids must have at most {BULK_DELETE_MAX_IDS} items."
-                    },
+                    value=error_example(
+                        "max_length",
+                        f"Must have at most {BULK_DELETE_MAX_IDS} items.",
+                        "collection_ids",
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 ),
@@ -222,7 +235,9 @@ SOURCE_COLLECTION_COPY_POST = {
             examples=[
                 OpenApiExample(
                     name="Not Found",
-                    value={"error": "Collection not found."},
+                    value=error_example(
+                        "not_found", "No SourceCollection matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -272,7 +287,9 @@ SOURCE_COLLECTION_AVAILABLE_RAGS_GET = {
             examples=[
                 OpenApiExample(
                     name="Not Found",
-                    value={"error": "Collection not found."},
+                    value=error_example(
+                        "not_found", "No SourceCollection matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )

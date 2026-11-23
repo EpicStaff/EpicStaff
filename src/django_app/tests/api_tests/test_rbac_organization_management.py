@@ -155,7 +155,7 @@ def test_org_names_must_be_present_and_unique_ignoring_case(
         response = client.patch(f"{URL}{other.id}/", {"name": name}, format="json")
 
     assert response.status_code == 400
-    assert response.json()["code"] == code
+    assert response.json()["errors"][0]["code"] == code
     assert Organization.objects.filter(name__iexact="acme").count() == 1
     other.refresh_from_db()
     assert other.name == "Other"
@@ -191,7 +191,7 @@ def test_the_last_active_org_cannot_be_deactivated(api_client, superadmin_jwt, o
     response = _auth(api_client, superadmin_jwt).post(f"{URL}{only_active.id}/deactivate/")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "last_active_organization"
+    assert response.json()["errors"][0]["code"] == "last_active_organization"
     only_active.refresh_from_db()
     assert only_active.is_active is True
 

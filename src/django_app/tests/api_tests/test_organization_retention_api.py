@@ -8,6 +8,7 @@ from rbac.models.enums import Permission
 from src.shared.retention import DataType, RetentionPolicy, RetentionRule
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 
 def retention_url(org_id):
@@ -148,14 +149,9 @@ def test_rejects_value_outside_list(client_as, admin_acme, acme, value):
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["code"] == "invalid"
-    assert response.json()["message"] == "Invalid sessions_days."
+    assert response.json()["errors"][0]["code"] == "invalid"
     assert response.json()["errors"] == [
-        {
-            "field": "sessions_days",
-            "value": value,
-            "reason": "Must be one of [0, 30, 90, 180, 365], or null for the instance default.",
-        }
+        {"code": "invalid", "detail": "Must be one of [0, 30, 90, 180, 365], or null for the instance default.", "attr": "sessions_days", "context": None}
     ]
     assert_retention_never_changed(acme)
 
@@ -168,7 +164,7 @@ def test_rejects_value_above_cap(client_as, admin_acme, acme, cap_sessions_at_90
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "sessions_days" in response.json()["message"]
+    assert "sessions_days" in error_text(response.json())
     assert_retention_never_changed(acme)
 
 
@@ -223,7 +219,7 @@ def test_non_integer_equal_to_the_stored_value_is_rejected(client_as, admin_acme
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["errors"][0]["field"] == "sessions_days"
+    assert response.json()["errors"][0]["attr"] == "sessions_days"
 
 
 @pytest.mark.django_db
@@ -233,8 +229,8 @@ def test_one_invalid_field_rejects_the_whole_body(client_as, admin_acme, acme):
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "audit_days" in response.json()["message"]
-    assert [error["field"] for error in response.json()["errors"]] == ["audit_days"]
+    assert "audit_days" in error_text(response.json())
+    assert [error["attr"] for error in response.json()["errors"]] == ["audit_days"]
     assert_retention_never_changed(acme)
 
 
@@ -343,11 +339,7 @@ def test_rejects_audit_value_below_the_floor(client_as, admin_acme, acme, audit_
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.json()["errors"] == [
-        {
-            "field": "audit_days",
-            "value": 30,
-            "reason": "Must be one of [0, 90, 180, 365], or null for the instance default.",
-        }
+        {"code": "invalid", "detail": "Must be one of [0, 90, 180, 365], or null for the instance default.", "attr": "audit_days", "context": None}
     ]
     assert_retention_never_changed(acme)
 
@@ -427,7 +419,7 @@ def test_other_org_returns_404(client_as, admin_acme, beta, method):
         response = client.patch(retention_url(beta.id), {"sessions_days": 30}, format="json")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.json()["code"] == "organization_not_found"
+    assert response.json()["errors"][0]["code"] == "organization_not_found"
     assert stored_retention(beta)[0] == 180
 
 
@@ -442,7 +434,7 @@ def test_member_without_organizations_permission_is_denied(client_as, member_onl
         response = client.patch(retention_url(acme.id), {"sessions_days": 30}, format="json")
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert response.json()["code"] == "permission_denied"
+    assert response.json()["errors"][0]["code"] == "permission_denied"
     assert_retention_never_changed(acme)
 
 
@@ -463,7 +455,7 @@ def test_patch_with_read_but_no_update_is_403(
 
     assert get_response.status_code == status.HTTP_200_OK
     assert patch_response.status_code == status.HTTP_403_FORBIDDEN
-    assert patch_response.json()["code"] == "permission_denied"
+    assert patch_response.json()["errors"][0]["code"] == "permission_denied"
     assert_retention_never_changed(acme)
 
 
@@ -502,7 +494,7 @@ def test_superadmin_gets_404_for_missing_org(client_as, superadmin, method):
         response = client.patch(retention_url(999_999), {"sessions_days": 30}, format="json")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.json()["code"] == "organization_not_found"
+    assert response.json()["errors"][0]["code"] == "organization_not_found"
 
 
 @pytest.mark.django_db
@@ -517,7 +509,7 @@ def test_org_without_config_returns_404(client_as, superadmin, method):
         response = client.patch(retention_url(orphan.id), {"sessions_days": 30}, format="json")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.json()["code"] == "organization_not_found"
+    assert response.json()["errors"][0]["code"] == "organization_not_found"
     assert not OrganizationConfig.objects.filter(org=orphan).exists()
 
 
@@ -537,5 +529,5 @@ def test_user_api_key_cannot_patch(issue_api_key, admin_acme, acme):
     response = client.patch(retention_url(acme.id), {"sessions_days": 30}, format="json")
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert response.json()["message"] == RestrictApiKeyToUserKeyReads.write_message
+    assert response.json()["errors"][0]["detail"] == RestrictApiKeyToUserKeyReads.write_message
     assert_retention_never_changed(acme)

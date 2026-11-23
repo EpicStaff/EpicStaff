@@ -1,7 +1,7 @@
 import math
 from typing import TYPE_CHECKING
 
-from rest_framework.exceptions import Throttled
+from rest_framework.exceptions import Throttled, ValidationError
 from utils.exceptions import CustomAPIExeption
 
 from tables.constants.knowledge_constants import (
@@ -391,7 +391,7 @@ class TelegramApiError(Exception):
 class TelegramRegistrationBlockedError(CustomAPIExeption):
     """Raised when a node's configuration makes registering its webhook impossible.
 
-    The response also carries `registration_blocker: {code, message}`, the same
+    The error's `context` carries `registration_blocker: {code, message}`, the same
     object the webhook-info endpoint reports.
     """
 
@@ -401,9 +401,7 @@ class TelegramRegistrationBlockedError(CustomAPIExeption):
 
     def __init__(self, blocker_code: str, blocker_message: str):
         super().__init__()
-        self.extra_response_data = {
-            "registration_blocker": {"code": blocker_code, "message": blocker_message}
-        }
+        self.context = {"registration_blocker": {"code": blocker_code, "message": blocker_message}}
 
 
 class TelegramRegistrationFailedError(CustomAPIExeption):
@@ -475,9 +473,10 @@ class InvalidFileTypeException(DocumentUploadException):
 
 
 class CollectionNotFoundException(DocumentUploadException):
-    """Raised when source collection is not found."""
+    """Raised when the source collection a URL addresses is not found."""
 
     status_code = 404
+    default_code = "collection_not_found"
 
     def __init__(self, collection_id):
         self.collection_id = collection_id
@@ -492,9 +491,10 @@ class NoFilesProvidedException(DocumentUploadException):
 
 
 class DocumentNotFoundException(DocumentUploadException):
-    """Raised when document is not found."""
+    """Raised when the document a URL addresses is not found."""
 
     status_code = 404
+    default_code = "document_not_found"
 
     def __init__(self, document_id):
         self.document_id = document_id
@@ -532,7 +532,7 @@ class StorageImportLimitExceededException(DocumentUploadException):
 class NothingToImportException(DocumentUploadException):
     """Raised when every selected storage file was skipped.
 
-    The response also carries `skipped`: one `{storage_file_id, path, reason}`
+    The error's `context` carries `skipped`: one `{storage_file_id, path, reason}`
     per file, the same items a successful import lists.
     """
 
@@ -542,7 +542,7 @@ class NothingToImportException(DocumentUploadException):
     def __init__(self, skipped: list["SkippedStorageFile"]):
         super().__init__()
         self.skipped = skipped
-        self.extra_response_data = {"skipped": [item.to_dict() for item in skipped]}
+        self.context = {"skipped": [item.to_dict() for item in skipped]}
 
 
 class InvalidFieldType(CustomAPIExeption):
@@ -565,16 +565,11 @@ class RagException(CustomAPIExeption):
     default_code = "rag_error"
 
 
-class RagTypeNotFoundException(RagException):
-    """Raised when RAG type is not found."""
-
-    def __init__(self, rag_type_id):
-        self.rag_type_id = rag_type_id
-        super().__init__(f"RAG type with id {rag_type_id} not found")
-
-
 class NaiveRagNotFoundException(RagException):
-    """Raised when NaiveRag is not found."""
+    """Raised when the NaiveRag a URL addresses is not found."""
+
+    status_code = 404
+    default_code = "naive_rag_not_found"
 
     def __init__(self, naive_rag_id):
         self.naive_rag_id = naive_rag_id
@@ -582,7 +577,10 @@ class NaiveRagNotFoundException(RagException):
 
 
 class DocumentConfigNotFoundException(RagException):
-    """Raised when document config is not found."""
+    """Raised when the document config a URL addresses is not found."""
+
+    status_code = 404
+    default_code = "document_config_not_found"
 
     def __init__(self, msg: str = "", config_id=None):
         if msg:
@@ -592,28 +590,38 @@ class DocumentConfigNotFoundException(RagException):
             super().__init__(f"Document config with id {config_id} not found")
 
 
-class EmbedderNotFoundException(RagException):
-    """Raised when embedder is not found."""
+class EmbedderNotFoundException(CustomAPIExeption):
+    """Raised when the `embedder_id` a request body names is not found."""
+
+    status_code = 400
+    default_code = "embedder_not_found"
 
     def __init__(self, embedder_id):
         self.embedder_id = embedder_id
-        super().__init__(f"Embedder with id {embedder_id} not found")
+        super().__init__({"embedder_id": [f"Embedder with id {embedder_id} not found"]})
 
 
-class InvalidChunkParametersException(RagException):
-    """Raised when chunk parameters are invalid."""
+class InvalidChunkParametersException(CustomAPIExeption):
+    """Raised when chunk parameters are invalid.
 
-    def __init__(self, detail=None, errors=None):
-        self.errors = errors or []
-        super().__init__(detail=detail)
+    `detail` is a message, or `{field: [message]}` when the fault lies in named fields.
+    """
+
+    status_code = 400
+    default_code = "invalid_chunk_parameters"
 
 
-class DocumentsNotFoundException(RagException):
-    """Raised when documents are not found."""
+class DocumentsNotFoundException(CustomAPIExeption):
+    """Raised when some of the `document_ids` a request names are not found."""
+
+    status_code = 400
+    default_code = "documents_not_found"
 
     def __init__(self, document_ids):
         self.document_ids = document_ids
-        super().__init__(f"Documents not found: {', '.join(map(str, document_ids))}")
+        super().__init__(
+            {"document_ids": [f"Documents not found: {', '.join(map(str, document_ids))}"]}
+        )
 
 
 class NaiveRagAlreadyExistsException(RagException):
@@ -634,27 +642,25 @@ class RagNotReadyForIndexingException(RagException):
 
 
 class GraphRagNotFoundException(RagException):
-    """Raised when GraphRag is not found."""
+    """Raised when the GraphRag a URL addresses is not found."""
+
+    status_code = 404
+    default_code = "graph_rag_not_found"
 
     def __init__(self, graph_rag_id):
         self.graph_rag_id = graph_rag_id
         super().__init__(f"GraphRag with id {graph_rag_id} not found")
 
 
-class LLMConfigNotFoundException(RagException):
-    """Raised when LLM config is not found."""
+class LLMConfigNotFoundException(CustomAPIExeption):
+    """Raised when the `llm_id` a request body names is not found."""
+
+    status_code = 400
+    default_code = "llm_config_not_found"
 
     def __init__(self, llm_id):
         self.llm_id = llm_id
-        super().__init__(f"LLM config with id {llm_id} not found")
-
-
-class GraphRagIndexConfigNotFoundException(RagException):
-    """Raised when GraphRag index config is not found."""
-
-    def __init__(self, config_id):
-        self.config_id = config_id
-        super().__init__(f"GraphRag index config with id {config_id} not found")
+        super().__init__({"llm_id": [f"LLM config with id {llm_id} not found"]})
 
 
 class InvalidGraphRagParametersException(RagException):
@@ -662,7 +668,10 @@ class InvalidGraphRagParametersException(RagException):
 
 
 class GraphRagDocumentNotFoundException(RagException):
-    """Raised when a document is not linked to the specified GraphRag."""
+    """Raised when the document a URL addresses is not linked to the GraphRag."""
+
+    status_code = 404
+    default_code = "graph_rag_document_not_found"
 
     def __init__(self, msg: str = "", document_id=None, graph_rag_id=None):
         if msg:
@@ -715,10 +724,12 @@ class ScheduleTriggerValidationError(CustomAPIExeption):
     default_code = "schedule_trigger_validation_error"
 
 
-class BulkSaveValidationError(CustomAPIExeption):
-    def __init__(self, errors: dict):
-        self.errors = errors
-        super().__init__(str(errors))
+class BulkSaveValidationError(ValidationError):
+    """A flow save that failed validation; nothing of it was written.
+
+    `detail` nests every problem under the part of the payload it is in, a node by its
+    list and position: `{"llm_node_list": {"3": {"prompt_configs": ...}}}`.
+    """
 
 
 class RagIndexNotReadyException(RagException):
@@ -802,6 +813,36 @@ class NaiveRagIndexNotReadyException(RagIndexNotReadyException):
         )
 
 
+class QuickstartRefusedError(CustomAPIExeption):
+    """Quickstart refused the request for a reason the caller can fix; the text says which."""
+
+    status_code = 400
+    default_code = "quickstart_refused"
+
+
+class QuickstartFailedError(CustomAPIExeption):
+    """Quickstart failed unexpectedly; the text is the generic one, the cause is in the log."""
+
+    status_code = 500
+    default_code = "quickstart_failed"
+
+
+class QuickstartNotFoundError(CustomAPIExeption):
+    """The organization has no quickstart configuration to apply yet."""
+
+    status_code = 404
+    default_detail = "No quickstart config found. Run POST /quickstart/ first."
+    default_code = "quickstart_not_found"
+
+
+class NotificationEmailNotSentError(CustomAPIExeption):
+    """The mail transport failed to send a notification email; the cause is in the log."""
+
+    status_code = 502
+    default_detail = "The notification email could not be sent."
+    default_code = "notification_email_not_sent"
+
+
 class LLMConfigMissingError(CustomAPIExeption):
     """Raised when FlowAssistant.llm_config is None."""
 
@@ -845,9 +886,7 @@ class ConfigProviderMissingError(CustomAPIExeption):
 class UnsupportedReasoningEffortError(CustomAPIExeption):
     """Raised when an LLM config's reasoning effort is one its model cannot take.
 
-    The response carries `errors=[{"field", "value", "reason"}]` for the client to mark
-    the field. Deliberately not a ValidationError: DRF's Serializer.run_validation
-    re-raises a ValidationError from validate() as a new one, which drops `errors`.
+    The detail names the `reasoning_effort` field, for the client to mark it.
     """
 
     status_code = 400
@@ -855,8 +894,7 @@ class UnsupportedReasoningEffortError(CustomAPIExeption):
     default_code = "unsupported_reasoning_effort"
 
     def __init__(self, reasoning_effort: str, reason: str):
-        self.errors = [{"field": "reasoning_effort", "value": reasoning_effort, "reason": reason}]
-        super().__init__(detail=reason)
+        super().__init__(detail={"reasoning_effort": [reason]})
 
 
 class ToolExecutionError(CustomAPIExeption):
@@ -1017,6 +1055,16 @@ class StoragePathIsFile(CustomAPIExeption):
         )
 
 
+class StoragePathExists(CustomAPIExeption):
+    """A folder was asked to be created where a file or folder already exists."""
+
+    status_code = 409
+    default_code = "storage_path_exists"
+
+    def __init__(self, path: str):
+        super().__init__(f"Path already exists: {path}")
+
+
 class OverwriteNotPermitted(CustomAPIExeption):
     """Replacing an existing file needs FILES:UPDATE on top of FILES:CREATE."""
 
@@ -1151,7 +1199,6 @@ class InvalidTestRunPayloadError(CustomAPIExeption):
     default_code = "test_run_payload_invalid"
 
     def __init__(self, messages: list[str]):
-        self.errors = messages
         super().__init__(detail={"payload": messages}, code=self.default_code)
 
 
@@ -1270,6 +1317,4 @@ class ImportArchiveRejectedError(CustomAPIExeption):
     default_code = "invalid_file"
 
     def __init__(self, code: str, message: str):
-        super().__init__(detail=message)
-        # The error envelope reads the code from default_code.
-        self.default_code = code
+        super().__init__(detail=message, code=code)

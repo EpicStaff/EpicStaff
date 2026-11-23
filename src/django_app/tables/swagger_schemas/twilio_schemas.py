@@ -1,7 +1,7 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiParameter, OpenApiResponse
 
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE, error_example
 
 TWILIO_CHANNEL_PHONE_NUMBERS_GET = {
     "summary": "Return the list of incoming phone numbers from Twilio.",
@@ -53,9 +53,7 @@ TWILIO_CHANNEL_PHONE_NUMBERS_GET = {
             examples=[
                 OpenApiExample(
                     "Missing parameters",
-                    value={
-                        "error": "Both 'sid' and 'auth_token_secret_id' query parameters are required"
-                    },
+                    value=error_example("required", "This query parameter is required.", "sid"),
                     response_only=True,
                 ),
             ],
@@ -67,7 +65,11 @@ TWILIO_CHANNEL_PHONE_NUMBERS_GET = {
             examples=[
                 OpenApiExample(
                     "Twilio API error",
-                    value={"error": "Unable to reach Twilio API"},
+                    value=error_example(
+                        "twilio_request_failed",
+                        "Failed to communicate with Twilio",
+                        status_code=502,
+                    ),
                     response_only=True,
                 ),
             ],
@@ -105,7 +107,7 @@ REALTIME_CHANNEL_LOOKUP_BY_TOKEN_GET = {
             examples=[
                 OpenApiExample(
                     "Missing token",
-                    value={"error": "token is required"},
+                    value=error_example("required", "This field is required.", "token"),
                     response_only=True,
                 ),
             ],
@@ -146,19 +148,25 @@ TWILIO_CONFIGURE_WEBHOOK_POST = {
             examples=[
                 OpenApiExample(
                     "Missing phone_sid",
-                    value={"error": "phone_sid is required"},
+                    value=error_example(
+                        "twilio_invalid_request", "phone_sid and channel_token are required"
+                    ),
                     response_only=True,
                 ),
                 OpenApiExample(
                     "Missing Twilio credentials",
-                    value={"error": "Twilio Account SID and Auth Token are required"},
+                    value=error_example(
+                        "twilio_invalid_request",
+                        "No Twilio credentials configured for this channel",
+                    ),
                     response_only=True,
                 ),
                 OpenApiExample(
                     "No voice stream URL",
-                    value={
-                        "error": "No voice stream URL configured — set up an ngrok tunnel first"
-                    },
+                    value=error_example(
+                        "twilio_invalid_request",
+                        "Webhook tunnel is not running and has no domain configured",
+                    ),
                     response_only=True,
                 ),
             ],
@@ -170,7 +178,11 @@ TWILIO_CONFIGURE_WEBHOOK_POST = {
             examples=[
                 OpenApiExample(
                     "Twilio API error",
-                    value={"error": "Unable to reach Twilio API"},
+                    value=error_example(
+                        "twilio_request_failed",
+                        "Failed to communicate with Twilio",
+                        status_code=502,
+                    ),
                     response_only=True,
                 ),
             ],

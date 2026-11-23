@@ -142,14 +142,23 @@ class KeyValueClient:
 
 
 def _django_reason(response: httpx.Response) -> str | None:
-    """Return the `message` of Django's error body, or None when the body isn't one.
+    """Return the reason in Django's error envelope, or None when the body isn't one.
 
-    Django answers an error with `{"status_code", "code", "message"}`. Any other body, such
-    as a proxy's HTML page, is not Django's reason and is never shown.
+    Django answers an error with `{"type", "errors": [{"code", "detail", "attr", "context"}]}`;
+    the reason is every item's `detail`, led by its `attr` when it names a field, joined with
+    `; `. Any other body, such as a proxy's HTML page, is not Django's reason and is never
+    shown.
     """
     try:
         body = response.json()
     except ValueError:
         return None
-    message = body.get("message") if isinstance(body, dict) else None
-    return message if isinstance(message, str) and message else None
+    items = body.get("errors") if isinstance(body, dict) else None
+    if not isinstance(items, list):
+        return None
+    reasons = [
+        f"{item['attr']}: {item['detail']}" if item.get("attr") else item["detail"]
+        for item in items
+        if isinstance(item, dict) and isinstance(item.get("detail"), str) and item["detail"]
+    ]
+    return "; ".join(reasons) or None

@@ -138,7 +138,7 @@ def test_an_invalid_export_request_creates_no_job(client_in, exporter, acme, enq
 
     assert response.status_code == 400
     # Refused for its shape, before any id is looked up.
-    assert response.json()["code"] != "export_entities_not_found"
+    assert response.json()["errors"][0]["code"] != "export_entities_not_found"
     assert not TransferJob.objects.exists()
     assert enqueued == []
 
@@ -149,7 +149,7 @@ def test_a_flow_of_another_org_is_not_exported(client_in, exporter, acme, beta, 
     response = _create_flow_job(client_in(exporter, acme), {"ids": [foreign.id]})
 
     assert response.status_code == 404
-    assert response.json()["code"] == "export_entities_not_found"
+    assert response.json()["errors"][0]["code"] == "export_entities_not_found"
     assert not TransferJob.objects.exists()
 
 
@@ -222,7 +222,7 @@ def test_one_user_may_have_three_unfinished_jobs(
         assert response.status_code == 202
     else:
         assert response.status_code == 429
-        assert response.json()["code"] == "too_many_jobs"
+        assert response.json()["errors"][0]["code"] == "too_many_jobs"
         assert TransferJob.objects.count() == unfinished + 2
 
 
@@ -358,7 +358,7 @@ def test_only_a_completed_export_can_be_downloaded(client_in, exporter, acme, ba
     response = client_in(exporter, acme).get(reverse("transfer-jobs-download", args=[job.id]))
 
     assert response.status_code == 409
-    assert response.json()["code"] == "job_not_ready"
+    assert response.json()["errors"][0]["code"] == "job_not_ready"
 
 
 def test_download_needs_export_rights_at_download_time(client_in, exporter, acme, backend):
@@ -529,7 +529,7 @@ def test_no_ticket_for_an_unfinished_export(client_in, exporter, acme, backend, 
     )
 
     assert response.status_code == 409
-    assert response.json()["code"] == "job_not_ready"
+    assert response.json()["errors"][0]["code"] == "job_not_ready"
 
 
 @pytest.mark.parametrize(
@@ -591,4 +591,4 @@ def test_an_export_whose_archive_was_removed_answers_gone(
         response = client.post(reverse(route, args=[job.id]))
 
     assert response.status_code == 410
-    assert response.json()["code"] == "archive_removed"
+    assert response.json()["errors"][0]["code"] == "archive_removed"

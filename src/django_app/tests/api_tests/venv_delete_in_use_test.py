@@ -19,6 +19,7 @@ from rest_framework import status
 
 from tables.models import PythonCode, PythonCodeTool
 from tables.models.graph_models import Graph, PythonNode
+from tests.error_envelope import error_text
 
 UPSTREAM_ID = "4711"
 CLIENT_PATH = "proxies.sandbox.services.VenvService.client_class"
@@ -72,7 +73,7 @@ def test_a_venv_a_tool_runs_in_is_refused(auth_client, default_org, binding, san
     response = delete_venv(auth_client, binding)
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert "Extract PDF" in response.data["message"]
+    assert "Extract PDF" in error_text(response.data)
     # Nothing was released: refusing after the upstream delete would leave the
     # binding pointing at a venv that no longer exists.
     sandbox_client.remove.assert_not_called()
@@ -90,7 +91,7 @@ def test_a_venv_a_node_runs_in_is_refused(auth_client, default_org, binding, san
     response = delete_venv(auth_client, binding)
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert "Transform" in response.data["message"]
+    assert "Transform" in error_text(response.data)
     sandbox_client.remove.assert_not_called()
 
 
@@ -104,7 +105,7 @@ def test_a_venv_held_only_by_orphaned_code_says_so(auth_client, binding, sandbox
     response = delete_venv(auth_client, binding)
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert "no tool or node uses any more" in response.data["message"]
+    assert "no tool or node uses any more" in error_text(response.data)
     sandbox_client.remove.assert_not_called()
 
 
@@ -128,9 +129,9 @@ def test_an_owner_in_the_recycle_bin_still_holds_it_and_says_so(
     response = delete_venv(auth_client, binding)
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert "Python-Node #1" in response.data["message"]
-    assert "recycle bin" in response.data["message"]
-    assert "Move them" not in response.data["message"]
+    assert "Python-Node #1" in error_text(response.data)
+    assert "recycle bin" in error_text(response.data)
+    assert "Move them" not in error_text(response.data)
     sandbox_client.remove.assert_not_called()
 
 
@@ -157,9 +158,9 @@ def test_a_live_owner_is_named_rather_than_a_binned_one(
     response = delete_venv(auth_client, binding)
 
     assert response.status_code == status.HTTP_409_CONFLICT
-    assert "Live node" in response.data["message"]
-    assert "Binned node" not in response.data["message"]
-    assert "Move them" in response.data["message"]
+    assert "Live node" in error_text(response.data)
+    assert "Binned node" not in error_text(response.data)
+    assert "Move them" in error_text(response.data)
 
 
 @pytest.mark.django_db

@@ -69,7 +69,7 @@ def test_one_byte_changed_in_a_signed_file_is_rejected(installation, superadmin,
     with pytest.raises(InvalidPluginError) as raised:
         _upload(installation, superadmin, build_package(files, contents=contents, signature=signature))
 
-    assert raised.value.errors[0]["loc"].endswith(".sha256")
+    assert next(iter(raised.value.detail)).endswith(".sha256")
 
 
 def test_one_byte_changed_in_signed_contents_is_rejected(installation, superadmin, trusts_release_key):
@@ -102,7 +102,7 @@ def test_a_malformed_signature_file_is_an_invalid_package(installation, superadm
     with pytest.raises(InvalidPluginError) as raised:
         _upload(installation, superadmin, build_package(signature="untrusted comment: x\nnot base64\n"))
 
-    assert [error["loc"] for error in raised.value.errors] == ["signature"]
+    assert list(raised.value.detail) == ["signature"]
 
 
 def test_the_upload_api_answers_invalid_signature(plugins_enabled, package_store, spa_root, superadmin_client, trusts_release_key):
@@ -115,4 +115,4 @@ def test_the_upload_api_answers_invalid_signature(plugins_enabled, package_store
     )
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_signature"
+    assert response.json()["errors"][0]["code"] == "invalid_signature"

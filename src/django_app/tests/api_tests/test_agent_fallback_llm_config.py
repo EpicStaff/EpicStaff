@@ -41,7 +41,7 @@ def _detail(agent):
 def _assert_invalid(response, field_name):
     body = response.json()
     assert response.status_code == 400, body
-    assert field_name in body["message"]
+    assert field_name in body["errors"][0]["detail"]
 
 
 @pytest.mark.django_db

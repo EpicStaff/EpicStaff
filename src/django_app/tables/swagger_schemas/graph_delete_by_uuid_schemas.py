@@ -1,7 +1,7 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE, error_example
 
 GRAPH_DELETE_BY_UUID_DELETE = {
     "summary": "Delete a graph by its UUID",
@@ -19,7 +19,7 @@ GRAPH_DELETE_BY_UUID_DELETE = {
             examples=[
                 OpenApiExample(
                     "Invalid UUID",
-                    value={"message": "Invalid graph UUID format"},
+                    value=error_example("invalid", "Invalid graph UUID format", "graph_uuid"),
                     response_only=True,
                     status_codes=["400"],
                 ),
@@ -35,7 +35,9 @@ GRAPH_DELETE_BY_UUID_DELETE = {
             examples=[
                 OpenApiExample(
                     "Not found",
-                    value={"message": "Provided graph does not exist"},
+                    value=error_example(
+                        "graph_not_found", "Provided graph does not exist", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 ),

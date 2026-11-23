@@ -17,7 +17,7 @@ class NodeRef:
 class ParsedNodeRef:
     """Result of parsing a node reference from payload data."""
 
-    error: dict | str | None = None
+    error: str | None = None
     ref: NodeRef | None = None
 
 
@@ -25,7 +25,8 @@ class ParsedNodeRef:
 class BuildSaveableResult:
     """Result of building a saveable from validated data."""
 
-    error: dict | None = None
+    # The item's problems: a DRF detail dict, or a list of messages and detail dicts.
+    error: dict | list | None = None
     inner_saveable: Any = None
     deferred_saveable: Any = None
     # Client-sent uuid of a node being created; None on update or when omitted.
@@ -36,7 +37,8 @@ class BuildSaveableResult:
 class NodeListValidationResult:
     """Result of validating all items in one node list."""
 
-    errors: list = field(default_factory=list)
+    # (payload index, problems) of each item that failed.
+    errors: list[tuple[int, Any]] = field(default_factory=list)
     node_saveables: list = field(default_factory=list)
     deferred_saveables: list = field(default_factory=list)
     # (payload index, uuid) of each node being created with a client-sent uuid.
@@ -49,6 +51,7 @@ class NodeListValidationResult:
 class EdgeListValidationResult:
     """Result of validating all items in an edge list."""
 
-    errors: list = field(default_factory=list)
+    # (payload index, problems) of each edge that failed.
+    errors: list[tuple[int, Any]] = field(default_factory=list)
     saveables: list = field(default_factory=list)
     real_node_ids: set[int] = field(default_factory=set)

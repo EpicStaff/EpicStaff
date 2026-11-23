@@ -1,11 +1,21 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
+from foundation.schemas import ErrorDetailSchema
+from utils.exception_handler import render_error
 
 from tables.exceptions import (
     CodeWithSecretsRequiresSecretsUsePermissionError,
     FlowWithTriggerNodesRequiresUsePermissionError,
     TriggerNodesRequireUsePermissionError,
 )
+
+
+def error_example(
+    code: str, detail: str, attr: str | None = None, *, status_code: int = 400
+) -> dict:
+    """Return the body of an error answer naming one problem, for an `OpenApiExample` value."""
+    return render_error(status_code, [ErrorDetailSchema(code=code, detail=detail, attr=attr)])
+
 
 UNAUTHORIZED_401_RESPONSE = OpenApiResponse(
     response=OpenApiTypes.STR,
@@ -14,9 +24,15 @@ UNAUTHORIZED_401_RESPONSE = OpenApiResponse(
         OpenApiExample(
             "Not authenticated",
             value={
-                "status_code": 401,
-                "code": "not_authenticated",
-                "message": "NotAuthenticated: Authentication credentials were not provided.",
+                "type": "client_error",
+                "errors": [
+                    {
+                        "code": "not_authenticated",
+                        "detail": "Authentication credentials were not provided.",
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
             },
             response_only=True,
             status_codes=["401"],
@@ -33,9 +49,15 @@ INTERNAL_SERVER_ERROR_500_RESPONSE = OpenApiResponse(
         OpenApiExample(
             "Server error",
             value={
-                "status_code": 500,
-                "code": "OperationalError",
-                "message": "Unpredictable error",
+                "type": "server_error",
+                "errors": [
+                    {
+                        "code": "unknown",
+                        "detail": "Internal server error.",
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
             },
             response_only=True,
             status_codes=["500"],
@@ -54,9 +76,15 @@ TRIGGER_NODES_REQUIRE_USE_403_RESPONSE = OpenApiResponse(
         OpenApiExample(
             "Trigger nodes require Use",
             value={
-                "status_code": 403,
-                "code": TriggerNodesRequireUsePermissionError.default_code,
-                "message": TriggerNodesRequireUsePermissionError.default_detail,
+                "type": "client_error",
+                "errors": [
+                    {
+                        "code": TriggerNodesRequireUsePermissionError.default_code,
+                        "detail": TriggerNodesRequireUsePermissionError.default_detail,
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
             },
             response_only=True,
             status_codes=["403"],
@@ -75,9 +103,15 @@ FLOW_WITH_TRIGGER_NODES_403_RESPONSE = OpenApiResponse(
         OpenApiExample(
             "Flow with trigger nodes requires Use",
             value={
-                "status_code": 403,
-                "code": FlowWithTriggerNodesRequiresUsePermissionError.default_code,
-                "message": FlowWithTriggerNodesRequiresUsePermissionError.default_detail,
+                "type": "client_error",
+                "errors": [
+                    {
+                        "code": FlowWithTriggerNodesRequiresUsePermissionError.default_code,
+                        "detail": FlowWithTriggerNodesRequiresUsePermissionError.default_detail,
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
             },
             response_only=True,
             status_codes=["403"],
@@ -88,9 +122,15 @@ FLOW_WITH_TRIGGER_NODES_403_RESPONSE = OpenApiResponse(
 _CODE_WITH_SECRETS_403_EXAMPLE = OpenApiExample(
     "Code with secrets requires Use on secrets",
     value={
-        "status_code": 403,
-        "code": CodeWithSecretsRequiresSecretsUsePermissionError.default_code,
-        "message": CodeWithSecretsRequiresSecretsUsePermissionError.default_detail,
+        "type": "client_error",
+        "errors": [
+            {
+                "code": CodeWithSecretsRequiresSecretsUsePermissionError.default_code,
+                "detail": CodeWithSecretsRequiresSecretsUsePermissionError.default_detail,
+                "attr": None,
+                "context": None,
+            }
+        ],
     },
     response_only=True,
     status_codes=["403"],

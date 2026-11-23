@@ -18,13 +18,7 @@ def test_set_rejects_password_like_the_accounts_email_without_saving(account):
     with pytest.raises(FormValidationError) as error:
         PasswordWriter().set(account, ACCOUNT_EMAIL)
 
-    assert error.value.errors == [
-        {
-            "field": "new_password",
-            "value": "***",
-            "reason": "The password is too similar to the email.",
-        }
-    ]
+    assert error.value.field_errors == {"new_password": ["The password is too similar to the email."]}
     account.refresh_from_db()
     assert account.check_password(ORIGINAL_PASSWORD)
 

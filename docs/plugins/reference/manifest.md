@@ -465,18 +465,26 @@ plugin=<id> version=<version> contents_sha256=<SHA-256 of CONTENTS.json, lower-c
 
 ## Errors
 
-An upload that breaks a rule is answered `400` with code `invalid_plugin` and one entry per
-problem in `errors`. `epicstaff-plugin validate` prints the same problems as `loc: message`
-lines.
+An upload that breaks a rule is answered `400` with code `invalid_plugin` and one item per
+problem in `errors`, its `attr` the problem's location (`loc`). `epicstaff-plugin validate`
+prints the same problems as `loc: message` lines.
 
 ```json
 {
-  "status_code": 400,
-  "code": "invalid_plugin",
-  "message": "The plugin package is invalid. 2 problems found.",
+  "type": "client_error",
   "errors": [
-    { "loc": "manifest.id", "message": "'admin' is reserved" },
-    { "loc": "package.spa/app.js", "message": "is not listed in CONTENTS.json" }
+    {
+      "code": "invalid_plugin",
+      "detail": "'admin' is reserved",
+      "attr": "manifest.id",
+      "context": null
+    },
+    {
+      "code": "invalid_plugin",
+      "detail": "is not listed in CONTENTS.json",
+      "attr": "package.spa/app.js",
+      "context": null
+    }
   ]
 }
 ```

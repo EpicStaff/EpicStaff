@@ -1049,11 +1049,8 @@ class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetM
             )
         except DocumentConfigNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except InvalidChunkParametersException as e:
-            return Response(
-                {"error": e.errors[0]["reason"], "errors": e.errors},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        except InvalidChunkParametersException:
+            raise
 
         try:
             with KnowledgeClient(timeout=self._KNOWLEDGE_TIMEOUT_SECONDS) as client:

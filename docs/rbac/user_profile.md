@@ -76,7 +76,7 @@ This is a deliberate, sequenced UX. Do not collapse into one form submit.
 
 Errors:
 - `400 invalid_current_password` → keep the user on step 1; show "Wrong password."
-- `400 invalid` → missing field; render the FieldError envelope.
+- `400 invalid` → missing field; render each item of `errors[]` next to the field its `attr` names.
 - `429` → "Too many attempts, try again in N seconds" (parse `Retry-After` header).
 
 **Step 2 — new password.**
@@ -87,9 +87,9 @@ Errors:
 
 Errors and recovery:
 - `400 invalid_password_change_ticket` → the ticket is unknown, expired (default 5 min), already used, or doesn't belong to this user. UI: "Session timed out, please re-enter your current password." Drop the user back to step 1.
-- `400 invalid` with FieldError envelope → weak new password (including one too similar to the account's email). The ticket is not consumed: keep on step 2 and retry with it. Render messages from `errors[]`.
+- `400 invalid` with `attr: "new_password"` → weak new password (including one too similar to the account's email). The ticket is not consumed: keep on step 2 and retry with it. Render the `detail` of each item in `errors[]`.
 
-Submitted password values are redacted (`"value": "***"`) in error responses.
+A submitted value is never sent back in an error response.
 
 ### 6. Migrating from `/api/auth/me/` and `/api/auth/password-change/`
 
@@ -225,27 +225,26 @@ See [roles_and_permissions.md](roles_and_permissions.md) for the catalog endpoin
 
 ## Errors
 
-Every error follows the project envelope:
-
-```json
-{ "detail": "...", "code": "..." }
-```
-
-Or, for multi-field validation:
+Every error follows the project envelope: one item per problem, `attr` naming the field at
+fault (null for an error of the request as a whole). A submitted value is never sent back.
 
 ```json
 {
-  "detail": "Validation failed",
-  "code": "invalid",
+  "type": "client_error",
   "errors": [
-    { "field": "new_password", "value": "***", "reason": "This password is too short." }
+    {
+      "code": "invalid",
+      "detail": "This password is too short. It must contain at least 8 characters.",
+      "attr": "new_password",
+      "context": null
+    }
   ]
 }
 ```
 
 | Status | Code | Meaning |
 |---|---|---|
-| 400 | `invalid` | One or more fields failed validation. See `errors[]`. |
+| 400 | `invalid` | One or more fields failed validation: one item in `errors[]` per problem, `attr` the field. |
 | 400 | `invalid_current_password` | Step 1 received a wrong current password. |
 | 400 | `invalid_password_change_ticket` | Ticket is unknown, expired, already used, or does not belong to the calling user. |
 | 400 | `invalid_avatar` | Upload is not a valid JPEG or PNG. |

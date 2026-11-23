@@ -141,14 +141,14 @@ def test_another_node_s_placement_is_not_found(weather, other_node_client):
     response = other_node_client.post(_credentials_url(weather.placement.pk))
 
     assert response.status_code == 404
-    assert response.json()["code"] == "placement_not_found"
+    assert response.json()["errors"][0]["code"] == "placement_not_found"
 
 
 def test_an_unknown_placement_is_not_found(plugin_node, node_client):
     response = node_client.post(_credentials_url(999999))
 
     assert response.status_code == 404
-    assert response.json()["code"] == "placement_not_found"
+    assert response.json()["errors"][0]["code"] == "placement_not_found"
 
 
 SECRET_VALUE = "s3cret-forecast-token"
@@ -361,7 +361,7 @@ def test_another_node_never_gets_a_database_s_password(database_plugin, other_no
 
     response = other_node_client.post(_credentials_url(plugin.placement.pk))
 
-    assert (response.status_code, response.json()["code"]) == (404, "placement_not_found")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (404, "placement_not_found")
     assert app_password_of(PluginDatabase.objects.get()) not in response.content.decode()
 
 
@@ -405,7 +405,7 @@ def test_a_plugin_out_of_service_gets_its_app_password_until_removal_is_requeste
 
     assert kept.status_code == 200, kept.content
     assert kept.json()["database"] == {"app_password": app_password_of(PluginDatabase.objects.get(plugin=weather))}
-    assert (refused.status_code, refused.json()["code"]) == (404, "placement_not_found")
+    assert (refused.status_code, refused.json()["errors"][0]["code"]) == (404, "placement_not_found")
 
 
 @pytest.mark.usefixtures("development_mode")

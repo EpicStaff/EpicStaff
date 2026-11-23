@@ -1,5 +1,4 @@
 from rest_framework import serializers
-from rest_framework.settings import api_settings
 from tables.serializers.utils.list_fields import BoundedListField
 
 # Largest number of ids one bulk request may carry. The shared frontend bulk delete
@@ -28,22 +27,18 @@ class StrictPositiveIntegerField(serializers.IntegerField):
 
 
 class BulkIdListField(BoundedListField):
-    """A non-empty id list whose messages are fragments, for BulkIdListSerializer only.
+    """A required, non-empty list of at most BULK_DELETE_MAX_IDS positive integer ids.
 
-    Required, non-empty, at most BULK_DELETE_MAX_IDS positive integer ids. Every
-    error message is a predicate (`"must not be empty."`) that
-    BulkIdListSerializer.error_message prefixes with the field name, so the
-    field reads wrongly in a plain DRF error response. Any invalid item yields
-    one message instead of one error per index.
+    Any invalid item yields one message for the whole list instead of one error per
+    index: the client marks the field, not a position in it.
     """
 
     default_error_messages = {
-        "required": "is required.",
-        "null": "must be a list of positive integers.",
-        "not_a_list": "must be a list of positive integers.",
-        "invalid_item": "must be a list of positive integers.",
-        "empty": "must not be empty.",
-        "max_length": "must have at most {max_length} items.",
+        "null": "Must be a list of positive integers.",
+        "not_a_list": "Must be a list of positive integers.",
+        "invalid_item": "Must be a list of positive integers.",
+        "empty": "Must not be empty.",
+        "max_length": "Must have at most {max_length} items.",
     }
 
     def __init__(self, **kwargs):
@@ -60,20 +55,3 @@ class BulkIdListField(BoundedListField):
             if isinstance(error.detail, dict):
                 self.fail("invalid_item")
             raise
-
-
-class BulkIdListSerializer(serializers.Serializer):
-    """Base for a request body that holds one BulkIdListField.
-
-    Bulk endpoints that predate the shared bulk-delete action answer a bad body
-    with a single sentence under their own key (`detail` or `error`), so the
-    serializer exposes its first error as that sentence.
-    """
-
-    @property
-    def error_message(self) -> str:
-        """Return the first validation error as a sentence; call after is_valid() fails."""
-        field_name, messages = next(iter(self.errors.items()))
-        if field_name == api_settings.NON_FIELD_ERRORS_KEY:
-            return str(messages[0])
-        return f"{field_name} {messages[0]}"

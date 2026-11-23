@@ -6,11 +6,35 @@ from django.db.models import Case, IntegerField, Q, QuerySet, Value, When
 from proxies.sandbox.models import SandboxVenvBinding
 from rbac.models import Organization
 from rest_framework.exceptions import ValidationError
+from rest_framework.settings import api_settings
 
 from tables.import_export.constants import OWNED_SURFACE_ENTRIES_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.models.label_models import Label
+
+# Keys DRF generates itself; naming them back at the reader adds no information.
+_UNLABELLED_ERROR_KEYS = frozenset({api_settings.NON_FIELD_ERRORS_KEY, "detail"})
+
+
+def flatten_error_detail(detail) -> str:
+    """Render DRF's nested error detail as one line of text, for a transfer job's message.
+
+    A job reports one `{code, message}`, not the error items an HTTP answer lists, so
+    each message is prefixed with the field it is about.
+    """
+    if isinstance(detail, dict):
+        return "; ".join(
+            flatten_error_detail(value)
+            if key in _UNLABELLED_ERROR_KEYS
+            else f"{key}: {flatten_error_detail(value)}"
+            for key, value in detail.items()
+        )
+
+    if isinstance(detail, (list, tuple)):
+        return "; ".join(flatten_error_detail(item) for item in detail)
+
+    return str(detail)
 
 
 def clean_base_name(base_name: str) -> str:

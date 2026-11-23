@@ -79,7 +79,6 @@ from tables.constants.decision_table_constants import (
 )
 from tables.exceptions import (
     BuiltInToolModificationError,
-    BulkSaveValidationError,
 )
 from tables.filters import (
     EmbeddingModelFilter,
@@ -1109,19 +1108,16 @@ class GraphViewSet(
     @action(detail=True, methods=["post"], url_path="save")
     def save_flow(self, request, pk=None):
         input_serializer = GraphBulkSaveInputSerializer(data=request.data)
-        if not input_serializer.is_valid():
-            return Response({"errors": input_serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
+        input_serializer.is_valid(raise_exception=True)
 
         graph = self.get_object()
         # Creating or editing a trigger node, even only moving it, needs USE; deleting
         # one does not. Checked after get_object so a foreign flow stays a 404.
         if any(input_serializer.validated_data[key] for key in TRIGGER_NODE_LIST_KEYS):
             trigger_node_access.assert_may_write(request.user, graph.org_id)
-        try:
-            GraphBulkSaveService().save(graph, input_serializer.validated_data, request=request)
-        except BulkSaveValidationError as exc:
-            return Response({"errors": exc.errors}, status=status.HTTP_400_BAD_REQUEST)
-        # GraphSaveVersionConflictError propagates → DRF returns 409 automatically.
+        # BulkSaveValidationError (400) and GraphSaveVersionConflictError (409) reach the
+        # exception handler, which names each problem by its node list, position and field.
+        GraphBulkSaveService().save(graph, input_serializer.validated_data, request=request)
 
         refreshed = self.get_queryset().get(pk=pk)
 

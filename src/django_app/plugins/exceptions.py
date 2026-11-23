@@ -15,16 +15,13 @@ if TYPE_CHECKING:
 
 
 class _ProblemListError(CustomAPIExeption):
-    """An error whose `errors` lists every `{loc, message}` problem found."""
+    """An error with one item per problem found, its `attr` the problem's `loc`."""
 
     def __init__(self, problems: Iterable[Problem]):
-        self.errors = [problem.as_dict() for problem in problems]
-        summary = (
-            self.errors[0]["message"]
-            if len(self.errors) == 1
-            else f"{len(self.errors)} problems found."
-        )
-        super().__init__(detail=f"{self.default_detail} {summary}")
+        messages_by_loc: dict[str, list[str]] = {}
+        for problem in problems:
+            messages_by_loc.setdefault(problem.loc, []).append(problem.message)
+        super().__init__(detail=messages_by_loc)
 
 
 class InvalidPluginError(_ProblemListError):
@@ -67,7 +64,7 @@ class PluginVersionNotNewerError(CustomAPIExeption):
         else:
             detail = f"{version} is not newer than {latest_version}, the version being installed"
         super().__init__(detail=detail)
-        self.extra_response_data = {
+        self.context = {
             "installed_version": installed_version,
             "latest_version": latest_version,
         }
@@ -429,7 +426,7 @@ class PluginSuspendedError(RunAdmissionRefusedError):
                 "in this organization."
             )
         )
-        self.extra_response_data = {
+        self.context = {
             "plugin": {"identifier": owner.plugin_identifier, "name": owner.plugin_name},
             "organization": {"id": organization_id},
         }

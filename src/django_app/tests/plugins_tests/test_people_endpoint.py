@@ -113,7 +113,7 @@ def test_anyone_who_may_not_use_the_plugin_is_not_found(
     response = client.get(_person_url(user_id))
 
     assert response.status_code == 404
-    assert response.json()["code"] == "person_not_found"
+    assert response.json()["errors"][0]["code"] == "person_not_found"
 
 
 def test_nobody_is_found_while_the_grant_is_not_active(client, member_only):
@@ -174,7 +174,7 @@ def test_a_malformed_lookup_is_invalid(client, body):
     response = client.post(LOOKUP_URL, body, format="json")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid"
+    assert response.json()["errors"][0]["code"] == "invalid"
 
 
 # ---- me ----
@@ -222,7 +222,7 @@ def test_another_organization_s_header_is_not_found(weather, service_account_key
         client.post(LOOKUP_URL, {"user_ids": [member_only.pk]}, format="json"),
     ):
         assert response.status_code == 404
-        assert response.json()["code"] == "organization_not_found"
+        assert response.json()["errors"][0]["code"] == "organization_not_found"
 
 
 def test_a_person_s_token_is_not_accepted(admin_acme, acme, weather, member_only):

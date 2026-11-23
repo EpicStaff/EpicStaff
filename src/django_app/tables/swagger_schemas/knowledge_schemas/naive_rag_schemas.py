@@ -10,6 +10,7 @@ from tables.serializers.serializers import ProcessRagIndexingSerializer
 from tables.swagger_schemas.common_schemas import (
     INTERNAL_SERVER_ERROR_500_RESPONSE,
     UNAUTHORIZED_401_RESPONSE,
+    error_example,
 )
 
 NAIVE_RAG_DOCUMENT_CONFIGS_GET = {
@@ -68,7 +69,9 @@ NAIVE_RAG_DOCUMENT_CONFIGS_GET = {
             examples=[
                 OpenApiExample(
                     name="NaiveRag not found",
-                    value={"error": "NaiveRag not found."},
+                    value=error_example(
+                        "not_found", "No NaiveRag matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -96,7 +99,7 @@ NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET = {
             examples=[
                 OpenApiExample(
                     name="Invalid parameters",
-                    value={"error": "limit and offset must be integers"},
+                    value=error_example("invalid", "A valid integer is required.", "limit"),
                     response_only=True,
                     status_codes=["400"],
                 )
@@ -109,7 +112,11 @@ NAIVE_RAG_DOCUMENT_CONFIGS_CHUNK_GET = {
             examples=[
                 OpenApiExample(
                     name="DocumentConfig not found",
-                    value={"error": "DocumentConfig 5 not found for NaiveRag 1"},
+                    value=error_example(
+                        "not_found",
+                        "No NaiveRagDocumentConfig matches the given query.",
+                        status_code=404,
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -154,7 +161,11 @@ NAIVE_RAG_DOCUMENT_CONFIG_GET = {
             examples=[
                 OpenApiExample(
                     name="Not found",
-                    value={"error": "Document config [1] for naive_rag_id [2] not found"},
+                    value=error_example(
+                        "document_config_not_found",
+                        "Document config [1] for naive_rag_id [2] not found",
+                        status_code=404,
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -215,7 +226,11 @@ NAIVE_RAG_DOCUMENT_CONFIG_PUT = {
             examples=[
                 OpenApiExample(
                     name="Not found",
-                    value={"error": "Document config [1] for naive_rag_id [2] not found"},
+                    value=error_example(
+                        "document_config_not_found",
+                        "Document config [1] for naive_rag_id [2] not found",
+                        status_code=404,
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -252,7 +267,11 @@ NAIVE_RAG_DOCUMENT_CONFIG_DELETE = {
             examples=[
                 OpenApiExample(
                     name="Not found",
-                    value={"error": "Document config [1] not found"},
+                    value=error_example(
+                        "document_config_not_found",
+                        "Document config with id 1 not found",
+                        status_code=404,
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -395,7 +414,11 @@ NAIVE_RAG_DOCUMENT_CONFIGS_BULK_UPDATE_PUT = {
             examples=[
                 OpenApiExample(
                     name="Not found",
-                    value={"error": "Document config [1] not found"},
+                    value=error_example(
+                        "document_config_not_found",
+                        "Document config with id 1 not found",
+                        status_code=404,
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -431,7 +454,9 @@ NAIVE_RAG_DOCUMENT_CONFIGS_BULK_DELETE_POST = {
             examples=[
                 OpenApiExample(
                     name="Invalid parameters",
-                    value={"error": "config_ids list cannot be empty"},
+                    value=error_example(
+                        "invalid_chunk_parameters", "config_ids list cannot be empty"
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 )
@@ -444,7 +469,9 @@ NAIVE_RAG_DOCUMENT_CONFIGS_BULK_DELETE_POST = {
             examples=[
                 OpenApiExample(
                     name="Not found",
-                    value={"error": "NaiveRag not found."},
+                    value=error_example(
+                        "not_found", "No NaiveRag matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -524,7 +551,9 @@ NAIVE_RAG_DOCUMENT_CONFIGS_INITIALIZE_POST = {
             examples=[
                 OpenApiExample(
                     name="NaiveRag not found",
-                    value={"error": "NaiveRag not found."},
+                    value=error_example(
+                        "not_found", "No NaiveRag matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -604,7 +633,9 @@ NAIVE_RAG_GET = {
             examples=[
                 OpenApiExample(
                     name="NaiveRag not found",
-                    value={"error": "NaiveRag not found."},
+                    value=error_example(
+                        "not_found", "No NaiveRag matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -642,7 +673,9 @@ NAIVE_RAG_DELETE = {
             examples=[
                 OpenApiExample(
                     name="NaiveRag not found",
-                    value={"error": "NaiveRag not found."},
+                    value=error_example(
+                        "not_found", "No NaiveRag matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -714,7 +747,11 @@ NAIVE_RAG_DOCUMENT_CONFIGS_PROCESS_CHUNKING_POST = {
             examples=[
                 OpenApiExample(
                     name="DocumentConfig not found",
-                    value={"error": "DocumentConfig 5 not found for NaiveRag 1"},
+                    value=error_example(
+                        "not_found",
+                        "No NaiveRagDocumentConfig matches the given query.",
+                        status_code=404,
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -813,7 +850,9 @@ NAIVE_RAG_COLLECTIONS_POST = {
             examples=[
                 OpenApiExample(
                     name="Collection not found",
-                    value={"error": "Collection not found."},
+                    value=error_example(
+                        "not_found", "No SourceCollection matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -860,7 +899,11 @@ NAIVE_RAG_COLLECTIONS_GET = {
             examples=[
                 OpenApiExample(
                     name="Not found",
-                    value={"error": "NaiveRag not found for collection 7"},
+                    value=error_example(
+                        "naive_rag_not_found",
+                        "NaiveRag for collection 7 does not exist. Create a NaiveRag for this collection first.",
+                        status_code=404,
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 )
@@ -925,9 +968,15 @@ PROCESS_RAG_INDEXING_POST = {
                 OpenApiExample(
                     name="RAG not ready",
                     value={
-                        "status_code": 400,
-                        "code": "rag_error",
-                        "message": "<detail>",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "rag_error",
+                                "detail": "<detail>",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -942,9 +991,15 @@ PROCESS_RAG_INDEXING_POST = {
                 OpenApiExample(
                     name="NaiveRag not found",
                     value={
-                        "status_code": 400,
-                        "code": "rag_error",
-                        "message": "NaiveRag with id 1 not found",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "rag_error",
+                                "detail": "NaiveRag with id 1 not found",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["404"],

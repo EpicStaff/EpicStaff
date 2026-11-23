@@ -76,7 +76,7 @@ def test_list_rejects_bad_filters(client_as, admin_acme, beta, query, status_cod
 
     assert response.status_code == status_code
     if status_code == 400:
-        assert response.json()["code"] == "invalid"
+        assert response.json()["errors"][0]["code"] == "invalid"
 
 
 @pytest.mark.django_db
@@ -150,7 +150,7 @@ def test_a_key_the_caller_may_not_manage_looks_like_it_does_not_exist(
 
     assert key.name not in listed
     assert response.status_code == status.HTTP_404_NOT_FOUND
-    assert response.json()["code"] == "api_key_not_found"
+    assert response.json()["errors"][0]["code"] == "api_key_not_found"
     key.refresh_from_db()
     assert key.revoked_at is None
 

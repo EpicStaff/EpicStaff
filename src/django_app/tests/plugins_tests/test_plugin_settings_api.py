@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 from tables.services.secrets import secret_encryption
 
 from tests.plugins_tests.package_builder import TOKEN_SETTING, UNITS_SETTING
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -152,8 +153,8 @@ def test_each_validation_rule(weather, superadmin_client, values, loc):
     response = superadmin_client.patch(SETTINGS_URL, {"values": values}, format="json")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_plugin_settings"
-    assert [error["loc"] for error in response.json()["errors"]] == [loc]
+    assert response.json()["errors"][0]["code"] == "invalid_plugin_settings"
+    assert [error["attr"] for error in attr_details(response.json())] == [loc]
     assert not PluginSettingValue.objects.exists()
 
 
@@ -231,11 +232,11 @@ def test_a_plugin_without_a_backend_has_no_settings(running_plugin, superadmin_c
     response = superadmin_client.get(SETTINGS_URL)
 
     assert response.status_code == 409
-    assert response.json()["code"] == "plugin_has_no_backend"
+    assert response.json()["errors"][0]["code"] == "plugin_has_no_backend"
 
 
 def test_an_unknown_plugin_is_not_found(superadmin_client):
-    assert superadmin_client.get("/api/admin/plugins/nothing/settings/").json()["code"] == "plugin_not_found"
+    assert superadmin_client.get("/api/admin/plugins/nothing/settings/").json()["errors"][0]["code"] == "plugin_not_found"
 
 
 def test_an_org_admin_is_refused(weather, client_as, admin_acme):

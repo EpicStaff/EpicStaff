@@ -81,7 +81,7 @@ def test_a_migration_of_the_new_version_in_the_ledger_is_a_change(
     )
 
     assert _detail(superadmin_client)["open_upgrade"]["database_changed"] is True
-    assert superadmin_client.post(f"{PLUGIN_URL}upgrade/cancel/").json()["code"] == "upgrade_not_cancellable"
+    assert superadmin_client.post(f"{PLUGIN_URL}upgrade/cancel/").json()["errors"][0]["code"] == "upgrade_not_cancellable"
 
 
 @pytest.fixture

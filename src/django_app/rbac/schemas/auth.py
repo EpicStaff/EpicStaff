@@ -1,6 +1,6 @@
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE, error_example
 
 from rbac.serializers.auth import (
     FirstSetupRequestSerializer,
@@ -52,7 +52,7 @@ API_KEY_VALIDATE_GET = {
             examples=[
                 OpenApiExample(
                     "API key missing",
-                    value={"detail": "API key required"},
+                    value=error_example("permission_denied", "API key required", status_code=403),
                     response_only=True,
                 ),
             ],
@@ -90,19 +90,19 @@ FIRST_SETUP_POST = {
                 OpenApiExample(
                     "Missing fields",
                     value={
-                        "status_code": 400,
-                        "code": "invalid",
-                        "message": "Validation failed",
+                        "type": "client_error",
                         "errors": [
                             {
-                                "field": "email",
-                                "value": None,
-                                "reason": "This field is required.",
+                                "code": "invalid",
+                                "detail": "This field is required.",
+                                "attr": "email",
+                                "context": None,
                             },
                             {
-                                "field": "password",
-                                "value": "***",
-                                "reason": "This field is required.",
+                                "code": "invalid",
+                                "detail": "This field is required.",
+                                "attr": "password",
+                                "context": None,
                             },
                         ],
                     },
@@ -112,19 +112,19 @@ FIRST_SETUP_POST = {
                 OpenApiExample(
                     "Invalid email / weak password",
                     value={
-                        "status_code": 400,
-                        "code": "invalid",
-                        "message": "Validation failed",
+                        "type": "client_error",
                         "errors": [
                             {
-                                "field": "email",
-                                "value": "not-an-email",
-                                "reason": "Enter a valid email address.",
+                                "code": "invalid",
+                                "detail": "Enter a valid email address.",
+                                "attr": "email",
+                                "context": None,
                             },
                             {
-                                "field": "password",
-                                "value": "***",
-                                "reason": "This password is too short. It must contain at least 8 characters.",
+                                "code": "invalid",
+                                "detail": "This password is too short. It must contain at least 8 characters.",
+                                "attr": "password",
+                                "context": None,
                             },
                         ],
                     },
@@ -150,9 +150,15 @@ FIRST_SETUP_POST = {
                 OpenApiExample(
                     "Setup already completed",
                     value={
-                        "status_code": 409,
-                        "code": "setup_already_completed",
-                        "message": "Setup has already been completed",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "setup_already_completed",
+                                "detail": "Setup has already been completed",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["409"],
@@ -182,9 +188,15 @@ TOKEN_INTROSPECT_POST = {
                 OpenApiExample(
                     "Missing token field",
                     value={
-                        "status_code": 400,
-                        "code": "invalid",
-                        "message": "token: This field is required.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "required",
+                                "detail": "This field is required.",
+                                "attr": "token",
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -198,9 +210,9 @@ TOKEN_INTROSPECT_POST = {
             examples=[
                 OpenApiExample(
                     "System API key required",
-                    value={
-                        "detail": "System API key required",
-                    },
+                    value=error_example(
+                        "permission_denied", "System API key required", status_code=403
+                    ),
                     response_only=True,
                     status_codes=["403"],
                 ),
@@ -234,19 +246,19 @@ LOGIN_POST = {
                 OpenApiExample(
                     "Missing fields",
                     value={
-                        "status_code": 400,
-                        "code": "invalid",
-                        "message": "Validation failed",
+                        "type": "client_error",
                         "errors": [
                             {
-                                "field": "email",
-                                "value": None,
-                                "reason": "This field is required.",
+                                "code": "invalid",
+                                "detail": "This field is required.",
+                                "attr": "email",
+                                "context": None,
                             },
                             {
-                                "field": "password",
-                                "value": "***",
-                                "reason": "This field is required.",
+                                "code": "invalid",
+                                "detail": "This field is required.",
+                                "attr": "password",
+                                "context": None,
                             },
                         ],
                     },
@@ -288,9 +300,15 @@ LOGOUT_POST = {
                 OpenApiExample(
                     "Invalid or expired refresh token",
                     value={
-                        "status_code": 400,
-                        "code": "invalid_or_expired_refresh",
-                        "message": "Refresh token is invalid, expired, or already revoked.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "invalid_or_expired_refresh",
+                                "detail": "Refresh token is invalid, expired, or already revoked.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -319,13 +337,17 @@ REFRESH_POST = {
             examples=[
                 OpenApiExample(
                     "No refresh token",
-                    value={"detail": "No refresh token."},
+                    value=error_example(
+                        "refresh_token_missing", "No refresh token.", status_code=401
+                    ),
                     response_only=True,
                     status_codes=["401"],
                 ),
                 OpenApiExample(
                     "Token expired",
-                    value={"detail": "Token is invalid or expired."},
+                    value=error_example(
+                        "refresh_token_rejected", "Token is invalid or expired.", status_code=401
+                    ),
                     response_only=True,
                     status_codes=["401"],
                 ),
@@ -353,19 +375,19 @@ RESET_USER_POST = {
                 OpenApiExample(
                     "Missing fields",
                     value={
-                        "status_code": 400,
-                        "code": "invalid",
-                        "message": "Validation failed",
+                        "type": "client_error",
                         "errors": [
                             {
-                                "field": "email",
-                                "value": None,
-                                "reason": "This field is required.",
+                                "code": "invalid",
+                                "detail": "This field is required.",
+                                "attr": "email",
+                                "context": None,
                             },
                             {
-                                "field": "password",
-                                "value": "***",
-                                "reason": "This field is required.",
+                                "code": "invalid",
+                                "detail": "This field is required.",
+                                "attr": "password",
+                                "context": None,
                             },
                         ],
                     },
@@ -395,7 +417,11 @@ SSE_TICKET_POST = {
             examples=[
                 OpenApiExample(
                     "No user context",
-                    value={"detail": "This endpoint requires a user context."},
+                    value=error_example(
+                        "permission_denied",
+                        "This endpoint requires a user context.",
+                        status_code=403,
+                    ),
                     response_only=True,
                     status_codes=["403"],
                 ),
@@ -416,29 +442,23 @@ SWAGGER_TOKEN_POST = {
         200: SwaggerTokenResponseSerializer,
         401: OpenApiResponse(
             response=OpenApiTypes.STR,
-            description="Invalid credentials — username/password combination is wrong.",
+            description="Invalid credentials — username or password is blank, or the pair matches no active account.",
             examples=[
                 OpenApiExample(
                     "Invalid credentials",
-                    value={"error": "Invalid credentials"},
-                    response_only=True,
-                    status_codes=["401"],
-                ),
-            ],
-        ),
-        403: OpenApiResponse(
-            response=OpenApiTypes.STR,
-            description="Authentication failed.",
-            examples=[
-                OpenApiExample(
-                    "Authentication failed",
                     value={
-                        "status_code": 403,
-                        "code": "authentication_failed",
-                        "message": "AuthenticationFailed: No active account found with the given credentials",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "invalid_credentials",
+                                "detail": "Invalid credentials",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
-                    status_codes=["403"],
+                    status_codes=["401"],
                 ),
             ],
         ),
@@ -479,7 +499,11 @@ WS_TICKET_POST = {
             examples=[
                 OpenApiExample(
                     "No user context",
-                    value={"detail": "This endpoint requires a user context."},
+                    value=error_example(
+                        "permission_denied",
+                        "This endpoint requires a user context.",
+                        status_code=403,
+                    ),
                     response_only=True,
                     status_codes=["403"],
                 ),

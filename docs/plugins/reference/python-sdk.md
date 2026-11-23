@@ -284,7 +284,7 @@ The same functions are in `epicstaff_plugin.contracts.versions`.
 | `org.run_flow(graph_id, variables)` | Starts a run; returns its session id |
 | `org.session(session_id)`, `org.wait_for_session(session_id, *, timeout, poll_seconds=2)` | `FlowSession` (`id`, `status`, `finished`, `succeeded`, `variables`, `document`) |
 | `org.upload_file(folder, filename, content)` | Stores bytes in the organization's storage |
-| `EpicStaffApiError` | EpicStaff answered 400 or more: `status`, `code`, `message`, `errors` |
+| `EpicStaffApiError` | EpicStaff answered 400 or more: `status`; `code`, the first item's code; `message`, every item's `detail` (led by `attr: ` when it names a field) joined with `; `; `errors`, the [envelope](error-codes.md)'s items as they came. An answer in another shape gives `code` and `errors` as `None` and its text as `message` |
 | `ServiceAccountUnavailable` | The runtime file holds no key for the organization: `org_id` |
 
 The client never uses a proxy, never follows redirects, reads the organization's key from the

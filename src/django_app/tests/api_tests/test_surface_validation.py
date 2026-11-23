@@ -3,6 +3,7 @@ import pytest
 from agents.models import Surface
 from tables.models.knowledge_models.collection_models import BaseRagType, SourceCollection
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.error_envelope import error_text
 
 SURFACES_URL = "/api/surfaces/"
 MAX_TOKENS = 2_000_000
@@ -126,7 +127,7 @@ def _config_with(field_name, value):
 def _assert_invalid(response, *fragments):
     assert response.status_code == 400, response.data
     for fragment in fragments:
-        assert fragment in response.data["message"]
+        assert fragment in error_text(response.data)
 
 
 @pytest.mark.django_db

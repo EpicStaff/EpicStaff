@@ -190,7 +190,7 @@ def test_list_rejects_malformed_filters(superadmin, query, code):
     response = client_for(superadmin).get(f"{USERS_LIST}?{query}")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == code
+    assert response.data["errors"][0]["code"] == code
 
 
 @pytest.mark.django_db
@@ -269,11 +269,9 @@ def test_create_user_into_an_org(superadmin, org_acme, role_member, role_org_adm
 @pytest.mark.parametrize(
     ("body", "expected"),
     [
-        ({"display_name": "   "}, [{"field": "display_name", "value": "   ",
-                                    "reason": "Must not be blank. Omit it or use null to derive it from the email."}]),
-        ({"display_name": "x" * 256}, [{"field": "display_name", "value": "x" * 256,
-                                        "reason": "Must be 255 characters or fewer."}]),
-        ({"display_name": 123}, [{"field": "display_name", "value": 123, "reason": "Must be a string or null."}]),
+        ({"display_name": "   "}, [{"code": "invalid", "detail": "Must not be blank. Omit it or use null to derive it from the email.", "attr": "display_name", "context": None}]),
+        ({"display_name": "x" * 256}, [{"code": "invalid", "detail": "Must be 255 characters or fewer.", "attr": "display_name", "context": None}]),
+        ({"display_name": 123}, [{"code": "invalid", "detail": "Must be a string or null.", "attr": "display_name", "context": None}]),
         ({"email": "not-an-email", "display_name": "   "}, {"email", "display_name"}),
         ({"email": "not-an-email"}, {"email"}),
         ({"password": "123"}, {"password"}),
@@ -287,13 +285,13 @@ def test_create_user_rejects_invalid_input(superadmin, django_user_model, body, 
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "invalid"
+    assert response.data["errors"][0]["code"] == "invalid"
     errors = response.data["errors"]
     if isinstance(expected, set):
-        assert expected <= {error["field"] for error in errors}
+        assert expected <= {error["attr"] for error in errors}
     else:
         assert errors == expected
-    assert all(error["value"] == "***" for error in errors if error["field"] == "password")
+    assert all("value" not in error for error in errors if error["attr"] == "password")
     assert django_user_model.objects.count() == 1
 
 
@@ -305,7 +303,7 @@ def test_create_user_with_a_taken_email_is_rejected(superadmin):
     response = client.post(USERS_LIST, {"email": "dup@x.com", "password": "StrongPass123!"}, format="json")
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "email_already_exists"
+    assert response.data["errors"][0]["code"] == "email_already_exists"
 
 
 # ---- Superadmin flag and activation ----
@@ -360,7 +358,7 @@ def test_the_last_active_superadmin_cannot_be_removed(superadmin, action):
     response = client_for(superadmin).post(user_action_url(superadmin.pk, action))
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.data["code"] == "last_superadmin"
+    assert response.data["errors"][0]["code"] == "last_superadmin"
     superadmin.refresh_from_db()
     assert (superadmin.is_superadmin, superadmin.is_active) == (True, True)
 

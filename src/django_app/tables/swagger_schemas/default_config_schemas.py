@@ -5,7 +5,7 @@ from tables.serializers.default_config_serializers import (
     DefaultModelsSerializer,
 )
 from tables.serializers.quickstart_serializers import QuickstartSerializer
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE, error_example
 
 DEFAULT_MODELS_GET = {
     "summary": "Get default models",
@@ -19,7 +19,7 @@ DEFAULT_MODELS_GET = {
             examples=[
                 OpenApiExample(
                     "Not found",
-                    value={"detail": "Not found."},
+                    value=error_example("not_found", "Not found.", status_code=404),
                     response_only=True,
                 ),
             ],
@@ -50,7 +50,7 @@ DEFAULT_MODELS_PUT = {
             examples=[
                 OpenApiExample(
                     "Not found",
-                    value={"detail": "Not found."},
+                    value=error_example("not_found", "Not found.", status_code=404),
                     response_only=True,
                 ),
             ],
@@ -84,7 +84,7 @@ QUICKSTART_GET = {
             examples=[
                 OpenApiExample(
                     "Internal server error",
-                    value={"detail": "Failed to retrieve quickstart status"},
+                    value=error_example("unknown", "Internal server error.", status_code=500),
                     response_only=True,
                 ),
             ],
@@ -131,11 +131,11 @@ QUICKSTART_POST = {
             examples=[
                 OpenApiExample(
                     "Quickstart error",
-                    value={
-                        "detail": "Error quickstart",
-                        "error": "Unsupported provider: anthropic. Supported providers: "
+                    value=error_example(
+                        "quickstart_refused",
+                        "Unsupported provider: anthropic. Supported providers: "
                         "openai, gemini, cohere, mistral",
-                    },
+                    ),
                     response_only=True,
                 ),
             ],
@@ -147,10 +147,11 @@ QUICKSTART_POST = {
             examples=[
                 OpenApiExample(
                     "Quickstart failure",
-                    value={
-                        "detail": "Error quickstart",
-                        "error": "Quickstart failed. Please try again or contact support.",
-                    },
+                    value=error_example(
+                        "quickstart_failed",
+                        "Quickstart failed. Please try again or contact support.",
+                        status_code=500,
+                    ),
                     response_only=True,
                 ),
             ],
@@ -170,7 +171,11 @@ QUICKSTART_APPLY_POST = {
             examples=[
                 OpenApiExample(
                     "No quickstart config",
-                    value={"detail": "No quickstart config found. Run POST /quickstart/ first."},
+                    value=error_example(
+                        "quickstart_not_found",
+                        "No quickstart config found. Run POST /quickstart/ first.",
+                        status_code=404,
+                    ),
                     response_only=True,
                 ),
             ],

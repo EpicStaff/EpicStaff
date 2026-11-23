@@ -200,12 +200,12 @@ def test_uninstalling_twice_is_refused(grants, superadmin_client):
 
     response = _uninstall(superadmin_client)
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_not_uninstallable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_not_uninstallable")
 
 
 def test_an_unknown_plugin_is_not_found(superadmin_client):
-    assert _uninstall(superadmin_client, "missing").json()["code"] == "plugin_not_found"
-    assert _reinstall(superadmin_client, "missing").json()["code"] == "plugin_not_found"
+    assert _uninstall(superadmin_client, "missing").json()["errors"][0]["code"] == "plugin_not_found"
+    assert _reinstall(superadmin_client, "missing").json()["errors"][0]["code"] == "plugin_not_found"
 
 
 def test_an_org_admin_cannot_uninstall(grants, client_as, admin_acme, acme):
@@ -314,7 +314,7 @@ def test_upload_approve_and_restart_are_refused_while_uninstalled_or_deleting(
         approved = superadmin_client.post(f"/api/admin/plugins/packages/{pending_package.pk}/approve/", {}, format="json")
         restarted = superadmin_client.post("/api/admin/plugins/weather/restart/")
         for response in (uploaded, approved, restarted):
-            assert (response.status_code, response.json()["code"]) == (409, "plugin_uninstalling"), response.content
+            assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_uninstalling"), response.content
 
 
 def test_a_grant_is_refused_while_uninstalled(grants, superadmin_client, make_organization):
@@ -323,7 +323,7 @@ def test_a_grant_is_refused_while_uninstalled(grants, superadmin_client, make_or
 
     response = superadmin_client.post("/api/admin/plugins/weather/grants/", {"organization_id": newcomer.pk}, format="json")
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_not_running")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_not_running")
 
 
 def test_settings_and_limits_stay_editable_while_uninstalled_but_not_while_deleting(grants, superadmin_client, weather):
@@ -340,7 +340,7 @@ def test_settings_and_limits_stay_editable_while_uninstalled_but_not_while_delet
         superadmin_client.patch("/api/admin/plugins/weather/settings/", settings_change, format="json"),
         superadmin_client.patch("/api/admin/plugins/weather/limits/", limits_change, format="json"),
     ):
-        assert (response.status_code, response.json()["code"]) == (409, "plugin_uninstalling")
+        assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_uninstalling")
 
 
 def test_grant_actions_other_than_purge_are_refused_while_uninstalled(grants, superadmin_client):
@@ -349,7 +349,7 @@ def test_grant_actions_other_than_purge_are_refused_while_uninstalled(grants, su
 
     response = superadmin_client.post(f"/api/admin/plugins/weather/grants/{grant.pk}/resume/")
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_uninstalling")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_uninstalling")
     [row] = [
         row
         for row in superadmin_client.get("/api/admin/plugins/weather/grants/").json()["results"]
@@ -394,7 +394,7 @@ def test_a_frontend_only_plugin_is_running_again_at_once(running_plugin, superad
 def test_reinstalling_a_plugin_that_is_not_uninstalled_is_refused(grants, superadmin_client):
     response = _reinstall(superadmin_client)
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_not_uninstalling")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_not_uninstalling")
 
 
 def test_a_grant_suspended_on_its_own_after_the_uninstall_stays_suspended(grants, superadmin_client, superadmin):

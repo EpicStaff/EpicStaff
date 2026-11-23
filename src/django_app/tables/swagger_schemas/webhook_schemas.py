@@ -121,12 +121,16 @@ _TELEGRAM_BOT_KEY_REJECTED_422 = OpenApiResponse(
         OpenApiExample(
             "Bot key rejected",
             value={
-                "status_code": 422,
-                "code": "telegram_bot_key_rejected",
-                "message": (
-                    "Telegram rejected this bot key. Check the secret selected as the bot "
-                    "key on this node."
-                ),
+                "type": "client_error",
+                "errors": [
+                    {
+                        "code": "telegram_bot_key_rejected",
+                        "detail": "Telegram rejected this bot key. Check the secret selected as the bot "
+                        "key on this node.",
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
             },
             response_only=True,
             status_codes=["422"],
@@ -166,9 +170,15 @@ TELEGRAM_TRIGGER_NODE_WEBHOOK_INFO_GET = {
                 OpenApiExample(
                     "No bot key",
                     value={
-                        "status_code": 400,
-                        "code": "telegram_bot_key_not_configured",
-                        "message": "This Telegram trigger node has no bot key configured.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "telegram_bot_key_not_configured",
+                                "detail": "This Telegram trigger node has no bot key configured.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -191,9 +201,15 @@ TELEGRAM_TRIGGER_NODE_WEBHOOK_INFO_GET = {
                 OpenApiExample(
                     "Telegram unavailable",
                     value={
-                        "status_code": 502,
-                        "code": "telegram_webhook_info_unavailable",
-                        "message": "Could not fetch webhook info from Telegram.",
+                        "type": "server_error",
+                        "errors": [
+                            {
+                                "code": "telegram_webhook_info_unavailable",
+                                "detail": "Could not fetch webhook info from Telegram.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["502"],
@@ -224,9 +240,15 @@ TELEGRAM_TRIGGER_NODE_REGISTER_WEBHOOK_POST = {
                 OpenApiExample(
                     "No bot key",
                     value={
-                        "status_code": 400,
-                        "code": "telegram_bot_key_not_configured",
-                        "message": "This Telegram trigger node has no bot key configured.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "telegram_bot_key_not_configured",
+                                "detail": "This Telegram trigger node has no bot key configured.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -250,18 +272,23 @@ TELEGRAM_TRIGGER_NODE_REGISTER_WEBHOOK_POST = {
                 OpenApiExample(
                     "No Telegram secret on the trigger",
                     value={
-                        "status_code": 409,
-                        "code": "telegram_registration_blocked",
-                        "message": (
-                            "This node's configuration does not allow registering its webhook."
-                        ),
-                        "registration_blocker": {
-                            "code": "no_telegram_secret",
-                            "message": (
-                                "No Telegram secret configured for this webhook trigger. Set "
-                                "one via the trigger's `auth_secret_id` before registering."
-                            ),
-                        },
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "telegram_registration_blocked",
+                                "detail": "This node's configuration does not allow registering its webhook.",
+                                "attr": None,
+                                "context": {
+                                    "registration_blocker": {
+                                        "code": "no_telegram_secret",
+                                        "message": (
+                                            "No Telegram secret configured for this webhook trigger. Set "
+                                            "one via the trigger's `auth_secret_id` before registering."
+                                        ),
+                                    }
+                                },
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["409"],
@@ -277,12 +304,16 @@ TELEGRAM_TRIGGER_NODE_REGISTER_WEBHOOK_POST = {
                 OpenApiExample(
                     "Tunnel unavailable",
                     value={
-                        "status_code": 503,
-                        "code": "telegram_tunnel_unavailable",
-                        "message": (
-                            "The webhook tunnel is not available yet. Check the trigger's "
-                            "tunnel and try again."
-                        ),
+                        "type": "server_error",
+                        "errors": [
+                            {
+                                "code": "telegram_tunnel_unavailable",
+                                "detail": "The webhook tunnel is not available yet. Check the trigger's "
+                                "tunnel and try again.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["503"],
@@ -301,12 +332,16 @@ TELEGRAM_TRIGGER_NODE_REGISTER_WEBHOOK_POST = {
                 OpenApiExample(
                     "Registration failed",
                     value={
-                        "status_code": 502,
-                        "code": "telegram_registration_failed",
-                        "message": (
-                            "Telegram could not register the webhook. Check the panel "
-                            "status and try again."
-                        ),
+                        "type": "server_error",
+                        "errors": [
+                            {
+                                "code": "telegram_registration_failed",
+                                "detail": "Telegram could not register the webhook. Check the panel "
+                                "status and try again.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["502"],

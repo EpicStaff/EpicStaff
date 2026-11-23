@@ -12,7 +12,7 @@ from tables.serializers.serializers import (
 )
 from tables.serializers.storage_serializers import SessionOutputFileSerializer
 from tables.serializers.utils.bulk_ids import BULK_DELETE_MAX_IDS
-from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
+from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE, error_example
 
 RUN_SESSION_POST = {
     "summary": "Start a new session",
@@ -59,19 +59,21 @@ RUN_SESSION_POST = {
             examples=[
                 OpenApiExample(
                     "File size exceeded",
-                    value={"files": ["Total files size exceeds 10.00 MB (got 15.32 MB)"]},
+                    value=error_example(
+                        "invalid", "Total files size exceeds 10.00 MB (got 15.32 MB)", "files"
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 ),
                 OpenApiExample(
                     "Validation error",
-                    value={"graph_id": ["A valid integer is required."]},
+                    value=error_example("invalid", "A valid integer is required.", "graph_id"),
                     response_only=True,
                     status_codes=["400"],
                 ),
                 OpenApiExample(
-                    "Internal error",
-                    value={"error": "Connection refused"},
+                    "Flow cannot start",
+                    value=error_example("error", "No node connected to start node"),
                     response_only=True,
                     status_codes=["400"],
                 ),
@@ -85,9 +87,15 @@ RUN_SESSION_POST = {
                 OpenApiExample(
                     "Permission denied",
                     value={
-                        "status_code": 403,
-                        "code": "permission_denied",
-                        "message": "You do not have permission to perform this action.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "permission_denied",
+                                "detail": "You do not have permission to perform this action.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["403"],
@@ -104,9 +112,15 @@ RUN_SESSION_POST = {
                 OpenApiExample(
                     "Graph not found",
                     value={
-                        "status_code": 404,
-                        "code": "graph_not_found",
-                        "message": "Provided graph does not exist",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "graph_not_found",
+                                "detail": "Provided graph does not exist",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["404"],
@@ -178,9 +192,15 @@ RUN_SESSION_TEST_POST = {
                 OpenApiExample(
                     "Payload is not an object",
                     value={
-                        "status_code": 400,
-                        "code": "invalid",
-                        "message": "payload: Test payload must be a JSON object.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "invalid",
+                                "detail": "Test payload must be a JSON object.",
+                                "attr": "payload",
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -188,10 +208,15 @@ RUN_SESSION_TEST_POST = {
                 OpenApiExample(
                     "Payload does not fit the Telegram node",
                     value={
-                        "status_code": 400,
-                        "code": "test_run_payload_invalid",
-                        "message": "payload: 'message.photo': field not selected on this node",
-                        "errors": ["'message.photo': field not selected on this node"],
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "test_run_payload_invalid",
+                                "detail": "'message.photo': field not selected on this node",
+                                "attr": "payload",
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -206,9 +231,15 @@ RUN_SESSION_TEST_POST = {
                 OpenApiExample(
                     "Permission denied",
                     value={
-                        "status_code": 403,
-                        "code": "permission_denied",
-                        "message": "You do not have permission to perform this action.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "permission_denied",
+                                "detail": "You do not have permission to perform this action.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["403"],
@@ -225,9 +256,15 @@ RUN_SESSION_TEST_POST = {
                 OpenApiExample(
                     "Node not found",
                     value={
-                        "status_code": 404,
-                        "code": "not_found",
-                        "message": "Not found.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "not_found",
+                                "detail": "Not found.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["404"],
@@ -478,7 +515,9 @@ SESSION_RETRIEVE_GET = {
             examples=[
                 OpenApiExample(
                     "Not found",
-                    value={"detail": "No Session matches the given query."},
+                    value=error_example(
+                        "not_found", "No Session matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 ),
@@ -499,7 +538,9 @@ SESSION_DESTROY_DELETE = {
             examples=[
                 OpenApiExample(
                     "Not found",
-                    value={"detail": "No Session matches the given query."},
+                    value=error_example(
+                        "not_found", "No Session matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 ),
@@ -571,13 +612,17 @@ SESSION_BULK_DELETE_POST = {
             examples=[
                 OpenApiExample(
                     "Invalid ids",
-                    value={"detail": "ids must be a list of positive integers."},
+                    value=error_example(
+                        "invalid_item", "Must be a list of positive integers.", "ids"
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 ),
                 OpenApiExample(
                     "Too many ids",
-                    value={"detail": f"ids must have at most {BULK_DELETE_MAX_IDS} items."},
+                    value=error_example(
+                        "max_length", f"Must have at most {BULK_DELETE_MAX_IDS} items.", "ids"
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 ),
@@ -616,7 +661,9 @@ SESSION_WARNINGS_GET = {
             examples=[
                 OpenApiExample(
                     "Not found",
-                    value={"detail": "No Session matches the given query."},
+                    value=error_example(
+                        "not_found", "No Session matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 ),
@@ -651,9 +698,15 @@ STOP_SESSION_POST = {
                 OpenApiExample(
                     "Permission denied",
                     value={
-                        "status_code": 403,
-                        "code": "permission_denied",
-                        "message": "You do not have permission to perform this action.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "permission_denied",
+                                "detail": "You do not have permission to perform this action.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["403"],
@@ -670,9 +723,15 @@ STOP_SESSION_POST = {
                 OpenApiExample(
                     "Session not found",
                     value={
-                        "status_code": 404,
-                        "code": "session_not_found",
-                        "message": "Session not found.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "session_not_found",
+                                "detail": "Session not found.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["404"],
@@ -709,9 +768,15 @@ GET_UPDATES_GET = {
                 OpenApiExample(
                     "Session not found",
                     value={
-                        "status_code": 404,
-                        "code": "session_not_found",
-                        "message": "Session not found.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "session_not_found",
+                                "detail": "Session not found.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["404"],
@@ -736,7 +801,9 @@ SESSION_OUTPUT_FILES_GET = {
             examples=[
                 OpenApiExample(
                     "Not found",
-                    value={"detail": "No Session matches the given query."},
+                    value=error_example(
+                        "not_found", "No Session matches the given query.", status_code=404
+                    ),
                     response_only=True,
                     status_codes=["404"],
                 ),

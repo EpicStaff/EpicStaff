@@ -1,9 +1,9 @@
 from typing import Any
 
 from django.conf import settings
+from rest_framework.settings import api_settings
 from src.shared.retention import DataType, allowed_org_values
 
-from rbac.exceptions import FormValidationError
 from rbac.models import OrganizationConfig
 from rbac.validation.base import BaseRBACValidator, FieldError
 
@@ -20,8 +20,7 @@ REQUEST_FIELD_BY_DATA_TYPE: dict[DataType, str] = {
 class OrganizationRetentionValidationService(BaseRBACValidator):
     """Validates the organization retention PATCH body against the instance policy.
 
-    Raises `FormValidationError` with one `FieldError` per rejected field; the message
-    names the rejected fields as well.
+    Raises `FormValidationError` with one `FieldError` per rejected field.
     """
 
     def validate_update(self, data: Any, current: OrganizationConfig) -> dict[DataType, int | None]:
@@ -37,8 +36,13 @@ class OrganizationRetentionValidationService(BaseRBACValidator):
         """
         fields = REQUEST_FIELD_BY_DATA_TYPE
         if not isinstance(data, dict) or not any(name in data for name in fields.values()):
-            self._raise(
-                [FieldError("body", None, f"Send at least one of: {', '.join(fields.values())}.")]
+            self._raise_if_any(
+                [
+                    FieldError(
+                        api_settings.NON_FIELD_ERRORS_KEY,
+                        f"Send at least one of: {', '.join(fields.values())}.",
+                    )
+                ]
             )
 
         errors: list[FieldError] = []
@@ -51,7 +55,7 @@ class OrganizationRetentionValidationService(BaseRBACValidator):
             if error is not None:
                 errors.append(error)
             values[data_type] = value
-        self._raise(errors)
+        self._raise_if_any(errors)
         return values
 
     @staticmethod
@@ -63,7 +67,7 @@ class OrganizationRetentionValidationService(BaseRBACValidator):
         # The policy is read per request: it differs between deployments and tests.
         allowed = list(allowed_org_values(settings.RETENTION_POLICY.rules[data_type]))
         error = FieldError(
-            field_name, value, f"Must be one of {allowed}, or null for the instance default."
+            field_name, f"Must be one of {allowed}, or null for the instance default."
         )
         # Type first: bool is an int subclass and 30.0 == 30, so the comparisons below
         # would otherwise accept `true` or a float.
@@ -72,11 +76,3 @@ class OrganizationRetentionValidationService(BaseRBACValidator):
         if value == current.chosen_retention_days(data_type) or value in allowed:
             return None
         return error
-
-    @staticmethod
-    def _raise(errors: list[FieldError]) -> None:
-        if errors:
-            raise FormValidationError(
-                [error.to_dict() for error in errors],
-                detail="Invalid " + ", ".join(error.field for error in errors) + ".",
-            )

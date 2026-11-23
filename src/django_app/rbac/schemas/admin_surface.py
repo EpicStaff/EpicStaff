@@ -15,7 +15,12 @@ def permission_denied_example(name: str, message: str) -> OpenApiExample:
     """Return a 403 `permission_denied` envelope example carrying `message`."""
     return OpenApiExample(
         name,
-        value={"status_code": 403, "code": "permission_denied", "message": message},
+        value={
+            "type": "client_error",
+            "errors": [
+                {"code": "permission_denied", "detail": message, "attr": None, "context": None}
+            ],
+        },
         response_only=True,
         status_codes=["403"],
     )

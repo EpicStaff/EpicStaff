@@ -121,7 +121,7 @@ def test_a_migration_of_the_new_version_in_the_ledger_prevents_the_cancel(
 
     response = _cancel(superadmin_client)
 
-    assert (response.status_code, response.json()["code"]) == (409, "upgrade_not_cancellable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "upgrade_not_cancellable")
     detail = superadmin_client.get(PLUGIN_URL).json()
     assert detail["open_upgrade"]["database_changed"] is True
     assert "cancel_upgrade" not in detail["allowed_actions"]
@@ -145,7 +145,7 @@ def test_a_migrating_upgrade_still_working_cannot_be_cancelled(
 ):
     _to(node_client, upgrade_of(newer()), "migrating", django_capture_on_commit_callbacks)
 
-    assert _cancel(superadmin_client).json()["code"] == "upgrade_not_cancellable"
+    assert _cancel(superadmin_client).json()["errors"][0]["code"] == "upgrade_not_cancellable"
 
 
 def test_an_upgrade_that_adds_a_backend_cannot_be_cancelled(
@@ -157,7 +157,7 @@ def test_an_upgrade_that_adds_a_backend_cannot_be_cancelled(
 
     response = _cancel(superadmin_client)
 
-    assert (response.status_code, response.json()["code"]) == (409, "upgrade_not_cancellable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "upgrade_not_cancellable")
 
 
 def test_an_open_restore_prevents_the_cancel(
@@ -174,11 +174,11 @@ def test_an_open_restore_prevents_the_cancel(
         requested_by=superadmin,
     )
 
-    assert _cancel(superadmin_client).json()["code"] == "upgrade_not_cancellable"
+    assert _cancel(superadmin_client).json()["errors"][0]["code"] == "upgrade_not_cancellable"
 
 
 def test_without_an_open_upgrade_there_is_nothing_to_cancel(weather, superadmin_client):
-    assert _cancel(superadmin_client).json()["code"] == "upgrade_not_cancellable"
+    assert _cancel(superadmin_client).json()["errors"][0]["code"] == "upgrade_not_cancellable"
 
 
 def test_the_cancelled_version_can_be_uploaded_again(weather, newer, upgrade_of, superadmin_client):
@@ -253,7 +253,7 @@ def test_a_working_upgrade_is_not_replaced(weather, newer, upgrade_of, superadmi
         format="json",
     )
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_not_upgradable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_not_upgradable")
     assert PluginUpgrade.objects.get(pk=upgrade.pk).to_version == "0.7.0"
 
 

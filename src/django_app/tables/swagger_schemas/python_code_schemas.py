@@ -53,18 +53,30 @@ RUN_PYTHON_CODE_POST = {
                 OpenApiExample(
                     "Both or neither given",
                     value={
-                        "code": "invalid",
-                        "message": "Provide exactly one of `target` or `python_code_id`.",
-                        "status_code": 400,
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "invalid",
+                                "detail": "Provide exactly one of `target` or `python_code_id`.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                 ),
                 OpenApiExample(
                     "Target not found",
                     value={
-                        "code": "invalid",
-                        "message": 'target: Invalid pk "42" - object does not exist.',
-                        "status_code": 400,
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "invalid",
+                                "detail": 'target: Invalid pk "42" - object does not exist.',
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                 ),

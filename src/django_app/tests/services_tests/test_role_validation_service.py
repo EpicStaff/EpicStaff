@@ -69,14 +69,17 @@ def _create(**fields):
         (_create(name="   "), "name", None),
         (lambda validator: validator.validate_create({"name": "X"}), "org_id", None),
         # secrets has no "export" among its applicable actions.
-        (_create(permissions=[{"resource_type": "secrets", "actions": ["export"]}]), "secrets", None),
+        (
+            _create(permissions=[{"resource_type": "secrets", "actions": ["export"]}]),
+            "permissions.0.actions", "not applicable to secrets",
+        ),
         (_create(permissions=[{"resource_type": "nope", "actions": ["read"]}]), "resource_type", None),
         # Two entries for one resource_type would hit the (role, resource_type) unique
         # constraint at write time: a 400 here instead of a 500 there.
         (
             _create(permissions=[{"resource_type": "secrets", "actions": ["read"]},
                                  {"resource_type": "secrets", "actions": ["use"]}]),
-            "permissions[1].resource_type", None,
+            "permissions.1.resource_type", None,
         ),
         (
             lambda validator: validator.validate_update({"permissions": [
@@ -97,10 +100,12 @@ def test_invalid_role_is_rejected_naming_the_field(validator, call, field_fragme
     with pytest.raises(FormValidationError) as exc:
         call(validator)
 
+    field_errors = exc.value.field_errors
     if field_fragment:
-        assert any(field_fragment in error["field"] for error in exc.value.errors), exc.value.errors
+        assert any(field_fragment in field for field in field_errors), field_errors
     if reason_fragment:
-        assert reason_fragment in " ".join(error["reason"] for error in exc.value.errors).lower()
+        reasons = " ".join(reason for reasons in field_errors.values() for reason in reasons)
+        assert reason_fragment in reasons.lower()
 
 
 def test_granting_flows_use_is_accepted(validator):
@@ -125,7 +130,9 @@ def test_granting_use_on_agents_is_rejected(validator):
                 "permissions": [{"resource_type": "agents", "actions": ["use"]}],
             }
         )
-    assert any("agents" in e["field"] for e in exc.value.errors)
+    assert exc.value.field_errors == {
+        "permissions.0.actions": ["Actions ['use'] are not applicable to agents."]
+    }
 
 
 def test_run_is_not_an_action_code(validator):
@@ -137,4 +144,5 @@ def test_run_is_not_an_action_code(validator):
                 "permissions": [{"resource_type": "flows", "actions": ["read", "run"]}],
             }
         )
-    assert any("flows" in e["field"] for e in exc.value.errors)
+    assert list(exc.value.field_errors) == ["permissions.0.actions"]
+    assert "flows" in exc.value.field_errors["permissions.0.actions"][0]

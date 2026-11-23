@@ -65,7 +65,7 @@ def test_adding_a_member_with_a_role_above_the_assigner_s_plugin_actions_is_refu
     response = _add(client_as(assigner), acme, forecasters, newcomer)
 
     assert response.status_code == 403
-    assert response.json()["code"] == "permission_escalation_denied"
+    assert response.json()["errors"][0]["code"] == "permission_escalation_denied"
     assert not OrganizationUser.objects.filter(user=newcomer).exists()
 
 
@@ -81,7 +81,7 @@ def test_a_built_in_role_s_manifest_defaults_count_too(client_as, assigner, acme
     allowed = _add(client_as(assigner), acme, role_viewer, other)
 
     assert refused.status_code == 403
-    assert refused.json()["code"] == "permission_escalation_denied"
+    assert refused.json()["errors"][0]["code"] == "permission_escalation_denied"
     assert allowed.status_code == 201
 
 
@@ -92,7 +92,7 @@ def test_changing_a_member_s_role_above_the_assigner_s_plugin_actions_is_refused
     response = _change(client_as(assigner), membership, forecasters)
 
     assert response.status_code == 403
-    assert response.json()["code"] == "permission_escalation_denied"
+    assert response.json()["errors"][0]["code"] == "permission_escalation_denied"
     membership.refresh_from_db()
     assert membership.role == role_viewer
 
@@ -124,7 +124,7 @@ def test_the_plugin_ceiling_applies_while_plugins_are_off(client_as, assigner, a
     response = _add(client_as(assigner), acme, forecasters, newcomer)
 
     assert response.status_code == 403
-    assert response.json()["code"] == "permission_escalation_denied"
+    assert response.json()["errors"][0]["code"] == "permission_escalation_denied"
 
 
 def test_an_organization_without_grants_costs_the_check_one_query(admin_acme, beta, newcomer, role_member, django_assert_num_queries, settings):

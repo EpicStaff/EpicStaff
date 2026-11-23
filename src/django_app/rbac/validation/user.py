@@ -3,6 +3,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from django.core.files.uploadedfile import UploadedFile
+from rest_framework.settings import api_settings
 from tables.models.user import (
     SHORTCUTS_MAX_CUSTOM_ENTRIES,
     SHORTCUTS_MAX_OVERRIDE_ENTRIES,
@@ -27,15 +28,10 @@ class UserValidationService(BaseRBACValidator):
     """Validates request payloads for Story 5 user-management endpoints.
 
     Each public method runs every applicable check, accumulates failures as
-    `FieldError`, and raises a single `FormValidationError` carrying the
-    structured `errors[]` list. Returns the cleaned payload on success.
-
-    Sensitive submitted values (password) are redacted from the echoed
-    error responses; non-sensitive values (email, role_id, user_id) are
-    echoed as-is so the FE can highlight the offending input.
+    `FieldError`, and raises a single `FormValidationError` naming every
+    rejected field. Returns the cleaned payload on success. A submitted
+    value is never echoed back.
     """
-
-    _redacted_fields = frozenset({"password", "new_password", "current_password", "ticket"})
 
     # ---- create_user ----
 
@@ -99,12 +95,11 @@ class UserValidationService(BaseRBACValidator):
             errors.append(
                 FieldError(
                     "email",
-                    email,
                     "Provide exactly one of email or user_id, not both.",
                 )
             )
         elif not has_email and not has_user_id:
-            errors.append(FieldError("email", None, "Provide exactly one of email or user_id."))
+            errors.append(FieldError("email", "Provide exactly one of email or user_id."))
         elif has_email:
             errors.extend(self._validate_email_field(email))
         else:
@@ -146,7 +141,7 @@ class UserValidationService(BaseRBACValidator):
             return None, []
         if raw in ("active", "inactive"):
             return raw, []
-        return None, [FieldError("status", raw, "Must be one of: active, inactive.")]
+        return None, [FieldError("status", "Must be one of: active, inactive.")]
 
     # ---- list-users query params ----
 
@@ -174,7 +169,6 @@ class UserValidationService(BaseRBACValidator):
                 errors.append(
                     FieldError(
                         "is_superadmin",
-                        is_superadmin_raw,
                         "Must be one of: true, false, 1, 0.",
                     )
                 )
@@ -215,7 +209,13 @@ class UserValidationService(BaseRBACValidator):
         the whole PATCH.
         """
         if not isinstance(data, Mapping):
-            self._raise_if_any([FieldError("body", None, "Request body must be a JSON object.")])
+            self._raise_if_any(
+                [
+                    FieldError(
+                        api_settings.NON_FIELD_ERRORS_KEY, "Request body must be a JSON object."
+                    )
+                ]
+            )
 
         cleaned: dict = {}
         errors: list[FieldError] = []
@@ -233,7 +233,7 @@ class UserValidationService(BaseRBACValidator):
             if custom_shortcuts_reason is None:
                 cleaned["custom_shortcuts"] = data["custom_shortcuts"]
             else:
-                errors.append(FieldError("custom_shortcuts", None, custom_shortcuts_reason))
+                errors.append(FieldError("custom_shortcuts", custom_shortcuts_reason))
 
         self._raise_if_any(errors)
         return cleaned
@@ -298,9 +298,9 @@ class UserValidationService(BaseRBACValidator):
         file = data.get("avatar") if hasattr(data, "get") else None
         errors: list[FieldError] = []
         if file is None:
-            errors.append(FieldError("avatar", None, "This field is required."))
+            errors.append(FieldError("avatar", "This field is required."))
         elif not isinstance(file, UploadedFile):
-            errors.append(FieldError("avatar", "<non-file>", "Must be a file upload."))
+            errors.append(FieldError("avatar", "Must be a file upload."))
         self._raise_if_any(errors)
         return file
 
@@ -315,15 +315,12 @@ class UserValidationService(BaseRBACValidator):
         errors: list[FieldError] = []
         if len(tour_key) > TOUR_KEY_MAX_LENGTH:
             errors.append(
-                FieldError(
-                    "tour_key", tour_key, f"Must be {TOUR_KEY_MAX_LENGTH} characters or fewer."
-                )
+                FieldError("tour_key", f"Must be {TOUR_KEY_MAX_LENGTH} characters or fewer.")
             )
         elif not _TOUR_KEY.fullmatch(tour_key):
             errors.append(
                 FieldError(
                     "tour_key",
-                    tour_key,
                     "Use lowercase letters and digits, in words joined by single hyphens.",
                 )
             )

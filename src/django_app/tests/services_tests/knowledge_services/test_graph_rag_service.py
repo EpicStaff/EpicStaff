@@ -4,6 +4,7 @@ Real DB, no mocking — these services touch neither Redis nor LLM APIs.
 """
 
 import pytest
+from rest_framework.exceptions import ValidationError
 
 from tables.models.knowledge_models import (
     DocumentContent,
@@ -257,11 +258,14 @@ class TestRemoveDocumentsFromGraphRag:
             embedder_id=test_embedding_config.pk,
             llm_id=llm_config.pk,
         )
-        with pytest.raises(GraphRagDocumentNotFoundException):
+        with pytest.raises(ValidationError) as refused:
             GraphRagService.remove_documents_from_graph_rag(
                 graph_rag_id=rag.graph_rag_id,
                 document_ids=[999999],
             )
+
+        # The ids came in the body: a 400 naming the field, not a 404.
+        assert refused.value.get_codes() == {"document_ids": ["graph_rag_document_not_found"]}
 
 
 # ---------------------------------------------------------------------------

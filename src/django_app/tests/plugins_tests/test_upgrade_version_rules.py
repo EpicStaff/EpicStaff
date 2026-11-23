@@ -16,6 +16,7 @@ from tests.plugins_tests.upgrade_fixtures import (  # noqa: F401 (fixtures)
     weather,
     weather_manifest,
 )
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -41,8 +42,8 @@ def test_a_version_that_is_not_newer_is_refused_naming_both_versions(weather, su
 
     assert response.status_code == 409
     body = response.json()
-    assert body["code"] == "plugin_version_not_newer"
-    assert body["message"] == f"{version} is not newer than the installed 0.6.0"
+    assert body["errors"][0]["code"] == "plugin_version_not_newer"
+    assert body["errors"][0]["detail"] == f"{version} is not newer than the installed 0.6.0"
     assert (body["installed_version"], body["latest_version"]) == ("0.6.0", "0.6.0")
     assert PluginPackage.objects.filter(plugin=weather).count() == 1
 
@@ -53,9 +54,9 @@ def test_a_version_not_newer_than_an_open_upgrade_s_target_is_refused(weather, n
     response = _upload(superadmin_client, weather_manifest("0.7.0"))
 
     body = response.json()
-    assert (response.status_code, body["code"]) == (409, "plugin_version_not_newer")
+    assert (response.status_code, body["errors"][0]["code"]) == (409, "plugin_version_not_newer")
     assert (body["installed_version"], body["latest_version"]) == ("0.6.0", "0.7.0")
-    assert body["message"] == "0.7.0 is not newer than 0.7.0, the version being installed"
+    assert body["errors"][0]["detail"] == "0.7.0 is not newer than 0.7.0, the version being installed"
 
 
 def test_a_newer_upload_replaces_the_pending_one(weather, newer):
@@ -91,8 +92,8 @@ def test_a_new_version_cannot_drop_the_backend_or_the_database(weather, superadm
 
     assert response.status_code == 409
     body = response.json()
-    assert body["code"] == "plugin_upgrade_unavailable"
-    assert {"loc": loc, "message": message} in body["errors"]
+    assert body["errors"][0]["code"] == "plugin_upgrade_unavailable"
+    assert {"attr": loc, "detail": message} in attr_details(body)
 
 
 def test_a_changed_file_of_the_installed_package_is_refused(weather, superadmin_client):
@@ -102,11 +103,8 @@ def test_a_changed_file_of_the_installed_package_is_refused(weather, superadmin_
     response = _upload(superadmin_client, manifest, files)
 
     assert response.status_code == 409
-    assert response.json()["errors"] == [
-        {
-            "loc": "package.database/migrations/001_places.sql",
-            "message": "001_places.sql is already applied; a new version must keep it unchanged",
-        }
+    assert attr_details(response.json()) == [
+        {"attr": "package.database/migrations/001_places.sql", "detail": "001_places.sql is already applied; a new version must keep it unchanged"}
     ]
 
 
@@ -145,7 +143,7 @@ def test_an_upload_while_the_plugin_is_uninstalled_is_refused(weather, superadmi
 
     response = _upload(superadmin_client, weather_manifest("0.7.0"))
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_uninstalling")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_uninstalling")
 
 
 def test_an_upload_during_maintenance_is_allowed(weather, superadmin_client):
@@ -172,6 +170,6 @@ def test_the_approval_checks_the_rules_again_against_the_ledger_as_it_is_then(
         format="json",
     )
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_upgrade_unavailable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_upgrade_unavailable")
     package.refresh_from_db()
     assert package.review_state == ReviewState.PENDING

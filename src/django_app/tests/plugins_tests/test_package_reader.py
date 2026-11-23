@@ -29,13 +29,15 @@ from tests.plugins_tests.package_builder import (
 def _locs(data: bytes) -> list[str]:
     with pytest.raises(InvalidPluginError) as raised:
         read_uploaded_package(io.BytesIO(data))
-    return [error["loc"] for error in raised.value.errors]
+    return [loc for loc, messages in raised.value.detail.items() for _ in messages]
 
 
 def _messages(data: bytes) -> list[str]:
     with pytest.raises(InvalidPluginError) as raised:
         read_uploaded_package(io.BytesIO(data))
-    return [f"{error['loc']}: {error['message']}" for error in raised.value.errors]
+    return [
+        f"{loc}: {message}" for loc, messages in raised.value.detail.items() for message in messages
+    ]
 
 
 def _with_file(path: str, data: bytes, manifest=None) -> bytes:

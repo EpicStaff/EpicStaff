@@ -20,24 +20,29 @@ def test_http404_renders_as_404(any_debug):
     )
 
     assert response.status_code == 404
-    assert response.data["status_code"] == 404
-    assert response.data["code"] == "not_found"
-    assert response.data["message"] == "No Graph matches the given query."
+    assert response.data["errors"] == [
+        {
+            "code": "not_found",
+            "detail": "No Graph matches the given query.",
+            "attr": None,
+            "context": None,
+        }
+    ]
 
 
 def test_bare_http404_falls_back_to_default_detail(any_debug):
     response = custom_exception_handler(Http404(), {})
 
     assert response.status_code == 404
-    assert response.data["message"] == "Not found."
+    assert response.data["errors"][0]["detail"] == "Not found."
 
 
 def test_django_permission_denied_renders_as_403(any_debug):
     response = custom_exception_handler(DjangoPermissionDenied("Nope."), {})
 
     assert response.status_code == 403
-    assert response.data["status_code"] == 403
-    assert response.data["message"] == "Nope."
+    assert response.data["errors"][0]["code"] == "permission_denied"
+    assert response.data["errors"][0]["detail"] == "Nope."
 
 
 def test_unknown_exception_still_renders_as_500(monkeypatch):
@@ -46,8 +51,8 @@ def test_unknown_exception_still_renders_as_500(monkeypatch):
     response = custom_exception_handler(RuntimeError("boom"), {})
 
     assert response.status_code == 500
-    assert b'"code": "RuntimeError"' in response.content
-    assert b'"message": "Unpredictable error"' in response.content
+    assert b'"code": "unknown"' in response.content
+    assert b"RuntimeError" not in response.content
 
 
 def test_unknown_exception_text_is_logged_not_returned(monkeypatch, caplog):

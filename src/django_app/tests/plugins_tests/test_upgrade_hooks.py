@@ -116,7 +116,7 @@ def test_a_claim_needs_a_running_plugin_an_upgrading_grant_and_a_due_job(job, gr
 
     response = _claim(node_client, job)
 
-    assert (response.status_code, response.json()["code"]) == (409, "hook_job_not_claimable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "hook_job_not_claimable")
 
 
 def test_success_brings_the_organization_to_the_version(job, grant, node_client):
@@ -171,7 +171,7 @@ def test_a_retry_puts_the_failed_job_back_with_a_fresh_series(job, grant, node_c
 def test_a_retry_of_a_grant_whose_upgrade_did_not_fail_is_refused(grant, superadmin_client):
     response = superadmin_client.post(f"/api/admin/plugins/weather/grants/{grant.pk}/retry-hook/")
 
-    assert (response.status_code, response.json()["code"]) == (409, "hook_not_retryable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "hook_not_retryable")
 
 
 def test_a_success_during_maintenance_leaves_the_organization_upgrading(job, grant, weather, node_client):

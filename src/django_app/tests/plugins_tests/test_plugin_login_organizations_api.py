@@ -101,7 +101,7 @@ def test_an_unknown_plugin_is_not_found(client_as, member_only, weather_in_acme_
     response = client_as(member_only).get("/api/plugins/missing/login-organizations/")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_not_found"
 
 
 def test_a_plugin_that_is_not_running_is_not_found(client_as, member_only, weather_in_acme_and_beta):
@@ -115,7 +115,7 @@ def test_a_plugin_without_a_backend_is_not_found(client_as, member_only, running
 
     response = client_as(member_only).get(URL)
 
-    assert (response.status_code, response.json()["code"]) == (404, "plugin_not_found")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (404, "plugin_not_found")
 
 
 def test_a_user_api_key_gets_only_its_own_organization(issue_api_key, member_only, role_member, acme, beta, weather_in_acme_and_beta):

@@ -286,7 +286,7 @@ async def test_validation_failure_publishes_the_generic_fact_to_crew():
     assert len(publish_calls) == 1
     assert publish_calls[0]["fields"]["type"] == "agent.error"
     published = json.loads(publish_calls[0]["fields"]["payload"])
-    assert published["error"] == {"code": "agent_failed", "detail": "The agent failed.", "attr": None}
+    assert published["error"] == {"code": "agent_failed", "detail": "The agent failed.", "attr": None, "context": None}
     assert rejected_marker not in publish_calls[0]["fields"]["payload"]
 
 

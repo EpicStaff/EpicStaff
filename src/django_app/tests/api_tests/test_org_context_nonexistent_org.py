@@ -74,8 +74,8 @@ def test_superadmin_list_nonexistent_org_returns_404_not_500(
 
     assert response.status_code == 404
     body = response.json()
-    assert body["status_code"] == 404
-    assert body["code"] == "organization_not_found"
+    assert body["type"] == "client_error"
+    assert body["errors"][0]["code"] == "organization_not_found"
 
 
 @pytest.mark.django_db
@@ -90,8 +90,8 @@ def test_superadmin_create_agent_definition_nonexistent_org_returns_404_not_500(
 
     assert response.status_code == 404
     body = response.json()
-    assert body["status_code"] == 404
-    assert body["code"] == "organization_not_found"
+    assert body["type"] == "client_error"
+    assert body["errors"][0]["code"] == "organization_not_found"
 
 
 @pytest.mark.django_db
@@ -106,8 +106,8 @@ def test_superadmin_create_surface_nonexistent_org_returns_404_not_500(
 
     assert response.status_code == 404
     body = response.json()
-    assert body["status_code"] == 404
-    assert body["code"] == "organization_not_found"
+    assert body["type"] == "client_error"
+    assert body["errors"][0]["code"] == "organization_not_found"
 
 
 @pytest.mark.django_db
@@ -119,5 +119,5 @@ def test_non_superadmin_list_nonexistent_org_still_returns_403_not_404(
 
     assert response.status_code == 403
     body = response.json()
-    assert body["status_code"] == 403
-    assert body["code"] == "org_membership_required"
+    assert body["type"] == "client_error"
+    assert body["errors"][0]["code"] == "org_membership_required"

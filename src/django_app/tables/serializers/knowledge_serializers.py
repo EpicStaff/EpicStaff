@@ -12,7 +12,7 @@ from tables.models.knowledge_models import (
     SourceCollection,
 )
 from tables.models.knowledge_models.collection_models import clean_collection_description
-from tables.serializers.utils.bulk_ids import BulkIdListField, BulkIdListSerializer
+from tables.serializers.utils.bulk_ids import BulkIdListField
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
@@ -186,7 +186,7 @@ class DocumentUploadSerializer(serializers.Serializer):
         return value
 
 
-class SourceCollectionBulkDeleteSerializer(BulkIdListSerializer):
+class SourceCollectionBulkDeleteSerializer(serializers.Serializer):
     collection_ids = BulkIdListField(help_text="IDs of the collections to delete")
 
 

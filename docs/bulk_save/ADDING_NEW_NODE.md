@@ -266,7 +266,7 @@ from tables.serializers.graph_bulk_save_serializers import CommentNodeBulkSerial
 "comment_node_ids": _id_list,
 ```
 
-After these four changes the new node type is fully integrated: it can be created, updated, and deleted through the bulk save endpoint, and errors are reported in the standard `{ "index": N, "errors": ... }` format alongside all other node types.
+After these four changes the new node type is fully integrated: it can be created, updated, and deleted through the bulk save endpoint, and its errors come back in the standard error envelope alongside all other node types. Each error item's `attr` is the list key from `NODE_TYPE_REGISTRY`, the item's position in the submitted list and the field path, such as `comment_node_list.2.name`; nothing node-specific is needed for that.
 
 ---
 

@@ -3,8 +3,11 @@ import json
 import httpx
 import pytest
 from foundation.transport.http import errors
+from loguru import logger
 
 from utils.exception_handler import custom_exception_handler
+
+UPSTREAM_TEXT = "Traceback: /srv/sandbox/venvs/42 is owned by root"
 
 
 def _status_error(error_type, status_code, body):
@@ -12,43 +15,84 @@ def _status_error(error_type, status_code, body):
     return error_type(body, response=httpx.Response(status_code, text=body))
 
 
-def test_upstream_not_found_renders_as_404_with_the_upstream_body():
-    exc = _status_error(errors.ClientNotFoundError, 404, "Venv 42 does not exist.")
+def _envelope(*items):
+    return json.dumps({"type": "client_error", "errors": list(items)})
 
-    response = custom_exception_handler(exc, {})
 
-    assert response.status_code == 404
+@pytest.fixture
+def logged():
+    lines: list[str] = []
+    sink_id = logger.add(lines.append, level="WARNING", format="{message}")
+    yield lines
+    logger.remove(sink_id)
+
+
+def _only_item(response) -> dict:
+    [item] = response.data["errors"]
+    return item
+
+
+def test_an_upstream_conflict_in_the_envelope_is_passed_through_as_it_is():
+    body = _envelope(
+        {
+            "code": "conflict",
+            "detail": "CustomLibrary(id=3) is still used by a venv.",
+            "attr": None,
+        }
+    )
+
+    response = custom_exception_handler(_status_error(errors.ClientConflictError, 409, body), {})
+
+    assert response.status_code == 409
     assert response.data == {
-        "status_code": 404,
-        "code": "not_found",
-        "message": "Venv 42 does not exist.",
+        "type": "client_error",
+        "errors": [
+            {
+                "code": "conflict",
+                "detail": "CustomLibrary(id=3) is still used by a venv.",
+                "attr": None,
+                "context": None,
+            }
+        ],
     }
 
 
-def test_upstream_validation_error_renders_as_400_with_the_upstream_body():
-    exc = _status_error(errors.ClientValidationError, 422, "libraries: must not be empty")
+def test_every_upstream_item_keeps_its_code_and_attr_and_the_status_is_kept():
+    body = _envelope(
+        {"code": "string_too_short", "detail": "must not be empty", "attr": "name"},
+        {"code": "list_type", "detail": "must be a list", "attr": "libs", "context": {"max": 3}},
+    )
 
-    response = custom_exception_handler(exc, {})
+    response = custom_exception_handler(_status_error(errors.ClientValidationError, 422, body), {})
 
-    assert response.status_code == 400
-    assert response.data == {
-        "status_code": 400,
-        "code": "invalid",
-        "message": "libraries: must not be empty",
+    assert response.status_code == 422
+    assert [(item["code"], item["attr"], item["context"]) for item in response.data["errors"]] == [
+        ("string_too_short", "name", None),
+        ("list_type", "libs", {"max": 3}),
+    ]
+
+
+@pytest.mark.parametrize(
+    "error_type,status_code,expected_status,expected_code,expected_detail",
+    [
+        (errors.ClientNotFoundError, 404, 404, "not_found", "Not found."),
+        (errors.ClientValidationError, 422, 400, "invalid", "Invalid input."),
+        (errors.ClientRateLimitError, 429, 429, "throttled", "Request was throttled."),
+    ],
+)
+def test_an_upstream_refusal_not_in_the_envelope_keeps_its_class_with_a_fixed_text(
+    error_type, status_code, expected_status, expected_code, expected_detail, logged
+):
+    response = custom_exception_handler(_status_error(error_type, status_code, UPSTREAM_TEXT), {})
+
+    assert response.status_code == expected_status
+    assert _only_item(response) == {
+        "code": expected_code,
+        "detail": expected_detail,
+        "attr": None,
+        "context": None,
     }
-
-
-def test_upstream_rate_limit_renders_as_429_with_the_upstream_body():
-    exc = _status_error(errors.ClientRateLimitError, 429, "Too many venv builds.")
-
-    response = custom_exception_handler(exc, {})
-
-    assert response.status_code == 429
-    assert response.data == {
-        "status_code": 429,
-        "code": "throttled",
-        "message": "Too many venv builds.",
-    }
+    assert UPSTREAM_TEXT in "".join(logged)
 
 
 @pytest.mark.parametrize(
@@ -59,28 +103,32 @@ def test_upstream_rate_limit_renders_as_429_with_the_upstream_body():
         (errors.ClientMethodNotAllowedError, 405, "method_not_allowed"),
         (errors.ClientConflictError, 409, "conflict"),
         (errors.ClientHTTPStatusError, 423, "locked"),
+        (errors.ClientHTTPStatusError, 499, "client_error"),
     ],
 )
-def test_upstream_client_errors_keep_their_status(error_type, status_code, code):
-    exc = _status_error(error_type, status_code, "Sandbox said no.")
-
-    response = custom_exception_handler(exc, {})
+def test_other_upstream_client_errors_keep_their_status(error_type, status_code, code):
+    response = custom_exception_handler(_status_error(error_type, status_code, UPSTREAM_TEXT), {})
 
     assert response.status_code == status_code
-    assert response.data == {
-        "status_code": status_code,
-        "code": code,
-        "message": "Sandbox said no.",
-    }
+    assert _only_item(response)["code"] == code
+    assert UPSTREAM_TEXT not in json.dumps(response.data)
 
 
-def test_an_upstream_status_outside_the_standard_table_is_still_the_callers():
-    exc = _status_error(errors.ClientHTTPStatusError, 499, "Sandbox said no.")
+@pytest.mark.parametrize(
+    "body",
+    [
+        "<html><body>Bad request</body></html>",
+        json.dumps({"code": "not_found", "detail": "Venv 42 does not exist."}),
+        _envelope(),
+        json.dumps({"type": "client_error", "errors": [{"code": "x"}]}),
+    ],
+    ids=["html", "other-json-shape", "envelope-without-errors", "item-without-detail"],
+)
+def test_an_upstream_body_that_is_not_a_valid_envelope_is_not_passed_through(body):
+    response = custom_exception_handler(_status_error(errors.ClientNotFoundError, 404, body), {})
 
-    response = custom_exception_handler(exc, {})
-
-    assert response.status_code == 499
-    assert response.data["code"] == "client_error"
+    assert response.status_code == 404
+    assert _only_item(response)["detail"] == "Not found."
 
 
 @pytest.mark.parametrize(
@@ -93,117 +141,48 @@ def test_an_upstream_status_outside_the_standard_table_is_still_the_callers():
         (errors.ClientGatewayTimeoutError, 504),
     ],
 )
-def test_upstream_server_failures_render_as_502_with_the_upstream_body(error_type, status_code):
-    exc = _status_error(error_type, status_code, "Sandbox said no.")
+def test_an_upstream_server_failure_is_a_502_without_the_upstream_body(
+    error_type, status_code, logged
+):
+    server_envelope = json.dumps(
+        {"type": "server_error", "errors": [{"code": "unknown", "detail": UPSTREAM_TEXT}]}
+    )
 
-    response = custom_exception_handler(exc, {})
+    response = custom_exception_handler(
+        _status_error(error_type, status_code, server_envelope), {}
+    )
 
     assert response.status_code == 502
     assert response.data == {
-        "status_code": 502,
-        "code": "upstream_service_error",
-        "message": "Sandbox said no.",
+        "type": "server_error",
+        "errors": [
+            {
+                "code": "upstream_service_error",
+                "detail": "A service this request depends on failed.",
+                "attr": None,
+                "context": None,
+            }
+        ],
     }
+    assert UPSTREAM_TEXT in "".join(logged)
 
 
-def test_upstream_error_envelope_is_unwrapped_into_its_message():
-    body = json.dumps(
-        {
-            "type": "client_error",
-            "errors": [
-                {
-                    "code": "conflict",
-                    "detail": "CustomLibrary(id=3) is still used by a venv.",
-                    "attr": None,
-                }
-            ],
-        }
+def test_an_unreachable_dependency_is_a_503():
+    response = custom_exception_handler(
+        errors.ClientConnectionError("Connection refused to sandbox:8000"), {}
     )
-    exc = _status_error(errors.ClientConflictError, 409, body)
-
-    response = custom_exception_handler(exc, {})
-
-    assert response.data["message"] == "CustomLibrary(id=3) is still used by a venv."
-
-
-def test_several_upstream_errors_are_joined():
-    body = json.dumps(
-        {
-            "type": "client_error",
-            "errors": [
-                {"code": "validation_error", "detail": "name: must not be empty", "attr": "name"},
-                {"code": "validation_error", "detail": "libs: must be a list", "attr": "libs"},
-            ],
-        }
-    )
-    exc = _status_error(errors.ClientValidationError, 400, body)
-
-    response = custom_exception_handler(exc, {})
-
-    assert response.data["message"] == "name: must not be empty; libs: must be a list"
-
-
-def test_upstream_body_that_is_not_the_envelope_is_passed_through():
-    exc = _status_error(errors.ClientNotFoundError, 404, "Venv 42 does not exist.")
-
-    response = custom_exception_handler(exc, {})
-
-    assert response.data["message"] == "Venv 42 does not exist."
-
-
-def test_unreachable_dependency_renders_as_503():
-    exc = errors.ClientConnectionError("The service could not be reached.")
-
-    response = custom_exception_handler(exc, {})
 
     assert response.status_code == 503
-    assert response.data == {
-        "status_code": 503,
+    assert _only_item(response) == {
         "code": "upstream_service_unreachable",
-        "message": "The service could not be reached.",
+        "detail": "A service this request depends on could not be reached. Try again later.",
+        "attr": None,
+        "context": None,
     }
 
 
-def test_unreachable_dependency_without_a_message_falls_back_to_the_default():
-    response = custom_exception_handler(errors.ClientConnectionError(), {})
-
-    assert response.status_code == 503
-    assert response.data["message"] == "A server error occurred."
-
-
-def test_timeout_without_a_response_renders_as_502():
-    response = custom_exception_handler(errors.ClientTimeoutError(), {})
-
-    assert response.status_code == 502
-    assert response.data == {
-        "status_code": 502,
-        "code": "upstream_service_error",
-        "message": "A server error occurred.",
-    }
-
-
-def test_timeout_message_reaches_the_envelope():
+def test_a_timeout_without_a_response_is_a_502_with_the_fixed_text():
     response = custom_exception_handler(errors.ClientTimeoutError("Read timed out."), {})
 
     assert response.status_code == 502
-    assert response.data["message"] == "Read timed out."
-
-
-@pytest.mark.parametrize(
-    "error_type,status_code,expected_status,expected_message",
-    [
-        (errors.ClientNotFoundError, 404, 404, "Not found."),
-        (errors.ClientValidationError, 400, 400, "Invalid input."),
-        (errors.ClientRateLimitError, 429, 429, "Request was throttled."),
-        (errors.ClientServerError, 500, 502, "A server error occurred."),
-    ],
-)
-def test_empty_upstream_body_falls_back_to_the_default_message(
-    error_type, status_code, expected_status, expected_message
-):
-    exc = _status_error(error_type, status_code, "")
-
-    response = custom_exception_handler(exc, {})
-
-    assert response.status_code == expected_status
-    assert response.data["message"] == expected_message
+    assert _only_item(response)["detail"] == "A service this request depends on failed."

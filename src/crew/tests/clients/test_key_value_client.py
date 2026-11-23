@@ -72,8 +72,21 @@ def waits(monkeypatch):
     yield recorded
 
 
+def _django_error(*items):
+    return {
+        "type": "client_error",
+        "errors": [{"code": "x", "detail": detail, "attr": attr, "context": None} for attr, detail in items],
+    }
+
+
 def _respond_404(request):
-    return httpx.Response(404, json={"status_code": 404, "code": "x", "message": "Key-value table 3 not found."})
+    return httpx.Response(404, json=_django_error((None, "Key-value table 3 not found.")))
+
+
+def _respond_400_field_errors(request):
+    return httpx.Response(
+        400, json=_django_error(("keys", "This list may not be empty."), (None, "Table is read-only."))
+    )
 
 
 def _respond_500(request):
@@ -84,7 +97,7 @@ def _respond_400_html(request):
     return httpx.Response(400, text="<html>Bad Request</html>")
 
 
-def _respond_400_without_message(request):
+def _respond_400_without_envelope(request):
     return httpx.Response(400, text='{"detail": "Bad Request"}')
 
 
@@ -97,14 +110,15 @@ def _time_out(request):
     ("respond", "error", "message"),
     [
         (_respond_404, ClientValidationError, "Key-value table 3 not found."),
+        (_respond_400_field_errors, ClientValidationError, "keys: This list may not be empty.; Table is read-only."),
         (_respond_500, ClientBadGatewayError, "boom"),
-        # Only Django's own `message` is a reason; any other 4xx body is not one.
+        # Only Django's error envelope is a reason; any other 4xx body is not one.
         (_respond_400_html, ClientError, "<html>Bad Request</html>"),
-        (_respond_400_without_message, ClientError, '{"detail": "Bad Request"}'),
+        (_respond_400_without_envelope, ClientError, '{"detail": "Bad Request"}'),
         # After a read timeout Django may still be running the request, so it is not repeated.
         (_time_out, ClientTimeoutError, "Django did not respond in time."),
     ],
-    ids=["4xx", "5xx", "4xx-html", "4xx-without-message", "timeout"],
+    ids=["4xx", "4xx-several-errors", "5xx", "4xx-html", "4xx-without-envelope", "timeout"],
 )
 async def test_failure_is_reported_without_retrying(waits, respond, error, message):
     calls = []

@@ -2,9 +2,9 @@ from typing import Any
 
 from django.db import transaction
 from loguru import logger
+from rest_framework.exceptions import ValidationError
 from tables.exceptions import (
     CollectionNotFoundException,
-    DocumentsNotFoundException,
     GraphRagNotFoundException,
     NaiveRagNotFoundException,
     RagException,
@@ -69,7 +69,10 @@ class IndexingService:
                 "base_rag_type", "base_rag_type__source_collection", "embedder"
             ).get(naive_rag_id=naive_rag_id)
         except NaiveRag.DoesNotExist as e:
-            raise NaiveRagNotFoundException(naive_rag_id) from e
+            raise ValidationError(
+                {"rag_id": [f"NaiveRag with id {naive_rag_id} not found"]},
+                code=NaiveRagNotFoundException.default_code,
+            ) from e
 
         # Get related objects
         base_rag_type = naive_rag.base_rag_type
@@ -85,7 +88,7 @@ class IndexingService:
         document_count = DocumentMetadata.objects.filter(source_collection=collection).count()
 
         if document_count == 0:
-            raise DocumentsNotFoundException(
+            raise RagNotReadyForIndexingException(
                 f"Collection {collection.collection_id} has no documents to index"
             )
 
@@ -136,7 +139,10 @@ class IndexingService:
                 "index_config",
             ).get(graph_rag_id=graph_rag_id)
         except GraphRag.DoesNotExist as e:
-            raise GraphRagNotFoundException(graph_rag_id) from e
+            raise ValidationError(
+                {"rag_id": [f"GraphRag with id {graph_rag_id} not found"]},
+                code=GraphRagNotFoundException.default_code,
+            ) from e
 
         # Get related objects
         base_rag_type = graph_rag.base_rag_type

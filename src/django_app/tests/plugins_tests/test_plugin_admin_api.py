@@ -32,6 +32,7 @@ from tests.plugins_tests.package_builder import (
     sample_files,
     sample_manifest,
 )
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -145,7 +146,7 @@ def test_an_untrusted_package_needs_the_acknowledgement(superadmin_client):
     approved = _approve(superadmin_client, review["id"], untrusted_acknowledged=True)
 
     assert refused.status_code == refused_false.status_code == 400
-    assert refused.json()["code"] == "untrusted_not_acknowledged"
+    assert refused.json()["errors"][0]["code"] == "untrusted_not_acknowledged"
     assert approved.status_code == 200
     assert approved.json()["state"] == "running"
 
@@ -158,7 +159,7 @@ def test_a_package_can_be_decided_only_once(superadmin_client):
     rejected = superadmin_client.post(f"{PACKAGES_URL}{review['id']}/reject/")
 
     assert again.status_code == rejected.status_code == 409
-    assert again.json()["code"] == rejected.json()["code"] == "package_not_pending"
+    assert again.json()["errors"][0]["code"] == rejected.json()["errors"][0]["code"] == "package_not_pending"
 
 
 def test_rejecting_deletes_the_package_its_file_and_a_never_approved_plugin(
@@ -286,8 +287,8 @@ def test_a_menu_problem_refuses_the_upload_and_stores_nothing(superadmin_client,
     response = _upload(superadmin_client, build_package(files, manifest=manifest))
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_plugin"
-    assert response.json()["errors"] == [{"loc": "package.icons/places.png", "message": "is not a PNG image"}]
+    assert response.json()["errors"][0]["code"] == "invalid_plugin"
+    assert attr_details(response.json()) == [{"attr": "package.icons/places.png", "detail": "is not a PNG image"}]
     assert package_store.objects == {}
     assert not PluginPackageNavigationIcon.objects.exists()
 
@@ -337,9 +338,9 @@ def test_an_upload_holding_a_key_or_a_runtime_file_is_refused_and_nothing_is_sto
 
     assert response.status_code == 400
     body = response.json()
-    assert body["code"] == "invalid_plugin"
-    assert body["errors"] == [
-        {"loc": f"package.{path}", "message": "holds an EpicStaff key or runtime file; never package it"}
+    assert body["errors"][0]["code"] == "invalid_plugin"
+    assert attr_details(body) == [
+        {"attr": f"package.{path}", "detail": "holds an EpicStaff key or runtime file; never package it"}
     ]
     assert SECRET_SHAPED_KEY not in response.content.decode()
     assert package_store.objects == {}
@@ -356,9 +357,9 @@ def test_a_package_with_nothing_to_install_is_invalid(superadmin_client):
 
     assert response.status_code == 400
     body = response.json()
-    assert body["code"] == "invalid_plugin"
-    assert body["errors"] == [
-        {"loc": "manifest", "message": "declares neither an spa nor a backend section, so there is nothing to install"}
+    assert body["errors"][0]["code"] == "invalid_plugin"
+    assert attr_details(body) == [
+        {"attr": "manifest", "detail": "declares neither an spa nor a backend section, so there is nothing to install"}
     ]
 
 
@@ -367,8 +368,8 @@ def test_a_database_without_a_backend_is_refused(superadmin_client):
 
     assert response.status_code == 400
     body = response.json()
-    assert body["code"] == "invalid_plugin"
-    assert "manifest.database" in [error["loc"] for error in body["errors"]]
+    assert body["errors"][0]["code"] == "invalid_plugin"
+    assert "manifest.database" in [error["attr"] for error in attr_details(body)]
     assert not Plugin.objects.exists()
 
 
@@ -376,14 +377,14 @@ def test_an_upload_must_be_multipart(superadmin_client):
     response = superadmin_client.post(PACKAGES_URL, {"file": "x"}, format="json")
 
     assert response.status_code == 415
-    assert response.json()["code"] == "unsupported_media_type"
+    assert response.json()["errors"][0]["code"] == "unsupported_media_type"
 
 
 def test_an_upload_needs_a_file(superadmin_client):
     response = superadmin_client.post(PACKAGES_URL, {}, format="multipart")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid"
+    assert response.json()["errors"][0]["code"] == "invalid"
 
 
 def test_a_package_above_the_cap_is_too_large(superadmin_client, settings):
@@ -392,7 +393,7 @@ def test_a_package_above_the_cap_is_too_large(superadmin_client, settings):
     response = _upload(superadmin_client)
 
     assert response.status_code == 413
-    assert response.json()["code"] == "package_too_large"
+    assert response.json()["errors"][0]["code"] == "package_too_large"
 
 
 def test_a_request_body_above_the_cap_is_refused_before_parsing(superadmin_client, settings, monkeypatch):
@@ -420,7 +421,7 @@ def test_an_unknown_package_is_not_found(superadmin_client, method, url):
     response = getattr(superadmin_client, method)(url, format="json")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_package_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_package_not_found"
 
 
 def test_the_list_is_sorted_by_name_and_summarises_each_plugin(superadmin_client):
@@ -473,7 +474,7 @@ def test_an_unknown_plugin_is_not_found(superadmin_client):
     response = superadmin_client.get(f"{PLUGINS_URL}missing/")
 
     assert response.status_code == 404
-    assert response.json()["code"] == "plugin_not_found"
+    assert response.json()["errors"][0]["code"] == "plugin_not_found"
 
 
 UPLOAD_PERMISSION_URL = f"{PACKAGES_URL}upload-permission/"
@@ -519,7 +520,7 @@ def test_an_org_admin_is_refused(client_as, admin_acme, acme, method, url):
     response = getattr(client, method)(url, format="json")
 
     assert response.status_code == 403
-    assert response.json()["code"] == "permission_denied"
+    assert response.json()["errors"][0]["code"] == "permission_denied"
 
 
 @pytest.mark.parametrize(("method", "url"), ADMIN_ENDPOINTS)
@@ -532,7 +533,7 @@ def test_api_keys_are_refused_even_a_superadmin_s(issue_api_key, superadmin_user
     response = getattr(client, method)(url, format="json")
 
     assert response.status_code == 403
-    assert response.json()["code"] == "permission_denied"
+    assert response.json()["errors"][0]["code"] == "permission_denied"
 
 
 @pytest.mark.parametrize(("method", "url"), ADMIN_ENDPOINTS)
@@ -540,7 +541,7 @@ def test_anonymous_callers_must_log_in(anonymous_client, method, url):
     response = getattr(anonymous_client, method)(url, format="json")
 
     assert response.status_code == 401
-    assert response.json()["code"] == "not_authenticated"
+    assert response.json()["errors"][0]["code"] == "not_authenticated"
 
 
 @pytest.mark.parametrize(

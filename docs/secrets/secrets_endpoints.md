@@ -273,16 +273,16 @@ delta:
 That distinction is what makes `POST /api/graphs/{id}/save/` workable — it resubmits the
 whole graph on every save, so a caller editing an unrelated node resends every secret field
 unchanged and needs nothing. Refusals come back as a `400` in the usual error envelope, with
-the field named in `message` (the frontend matches on that text):
+the field as the item's `attr`:
 
 ```json
-{ "status_code": 400, "code": "invalid", "message": "auth_secret_id: Changing the secrets referenced here requires the \"Use\" permission on Secrets. The existing selection was left unchanged. Ask an organization admin to grant it." }
+{"type": "client_error", "errors": [{"code": "invalid", "detail": "Changing the secrets referenced here requires the \"Use\" permission on Secrets. The existing selection was left unchanged. Ask an organization admin to grant it.", "attr": "auth_secret_id", "context": null}]}
 ```
 
-Nested fields are named along their path (`ngrok_config: auth_token_secret_id: …`,
-`python_code: secret_ids: …`). `POST /api/graphs/{id}/save/` reports the same denial per node
-instead, under that node's list key (`{"errors": {"python_node_list": [{"index": 0, "errors":
-{"python_code": {"secret_ids": ["…"]}}}]}}`).
+Nested fields are named along their dotted path (`ngrok_config.auth_token_secret_id`,
+`python_code.secret_ids`). `POST /api/graphs/{id}/save/` reports the same denial per node,
+the path starting with the node's list key and position
+(`python_node_list.0.python_code.secret_ids`).
 
 An `extra_headers` marker is a secret reference too: **adding** an
 `epicstaff_secret(<name>)` name to an LLM or embedding config's `extra_headers` needs

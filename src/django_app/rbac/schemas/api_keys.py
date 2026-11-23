@@ -54,9 +54,15 @@ _NOT_FOUND_404_RESPONSE = OpenApiResponse(
         OpenApiExample(
             "Unknown key",
             value={
-                "status_code": 404,
-                "code": "api_key_not_found",
-                "message": "API key not found.",
+                "type": "client_error",
+                "errors": [
+                    {
+                        "code": "api_key_not_found",
+                        "detail": "API key not found.",
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
             },
             response_only=True,
             status_codes=["404"],
@@ -97,13 +103,17 @@ PROFILE_API_KEYS_POST = {
                 OpenApiExample(
                     "Key limit reached",
                     value={
-                        "status_code": 400,
-                        "code": "api_key_limit_exceeded",
-                        "message": (
-                            "ApiKeyLimitExceededError: Maximum number of active API keys "
-                            "in this organization reached (5). Revoke or delete an existing "
-                            "key first."
-                        ),
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "api_key_limit_exceeded",
+                                "detail": "ApiKeyLimitExceededError: Maximum number of active API keys "
+                                "in this organization reached (5). Revoke or delete an existing "
+                                "key first.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["400"],
@@ -111,14 +121,13 @@ PROFILE_API_KEYS_POST = {
                 OpenApiExample(
                     "Validation error",
                     value={
-                        "status_code": 400,
-                        "code": "invalid",
-                        "message": "Validation failed",
+                        "type": "client_error",
                         "errors": [
                             {
-                                "field": "org_id",
-                                "value": None,
-                                "reason": "Organization is required.",
+                                "code": "invalid",
+                                "detail": "Organization is required.",
+                                "attr": "org_id",
+                                "context": None,
                             }
                         ],
                     },
@@ -139,9 +148,15 @@ PROFILE_API_KEYS_POST = {
                 OpenApiExample(
                     "Not a member of the organization",
                     value={
-                        "status_code": 403,
-                        "code": "org_membership_required",
-                        "message": "You are not a member of this organization.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "org_membership_required",
+                                "detail": "You are not a member of this organization.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["403"],
@@ -155,9 +170,15 @@ PROFILE_API_KEYS_POST = {
                 OpenApiExample(
                     "Unknown organization",
                     value={
-                        "status_code": 404,
-                        "code": "organization_not_found",
-                        "message": "Organization not found.",
+                        "type": "client_error",
+                        "errors": [
+                            {
+                                "code": "organization_not_found",
+                                "detail": "Organization not found.",
+                                "attr": None,
+                                "context": None,
+                            }
+                        ],
                     },
                     response_only=True,
                     status_codes=["404"],

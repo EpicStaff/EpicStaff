@@ -490,8 +490,8 @@ class NaiveRagDocumentConfigViewSet(
 
         except DocumentConfigNotFoundException as e:
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except InvalidChunkParametersException as e:
-            return Response({"errors": e.errors}, status=status.HTTP_400_BAD_REQUEST)
+        except InvalidChunkParametersException:
+            raise
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 

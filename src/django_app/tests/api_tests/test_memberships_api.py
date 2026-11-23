@@ -84,7 +84,7 @@ def test_list_forbidden_org_ids_403(client_as, admin_acme, beta):
 def test_list_rejects_malformed_filters(client_as, admin_acme, query):
     resp = client_as(admin_acme).get(f"{LIST_URL}?{query}")
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.json()["code"] == "invalid"
+    assert resp.json()["errors"][0]["code"] == "invalid"
 
 
 @pytest.mark.django_db
@@ -161,7 +161,7 @@ def test_add_member_is_refused(
 
     assert resp.status_code == status_code
     if code:
-        assert resp.json()["code"] == code
+        assert resp.json()["errors"][0]["code"] == code
     assert OrganizationUser.objects.count() == memberships_before
 
 
@@ -190,7 +190,7 @@ def test_change_own_role_403(client_as, admin_acme, acme, role_member):
         detail_url(own.id), {"role_id": role_member.id}, format="json"
     )
     assert resp.status_code == status.HTTP_403_FORBIDDEN
-    assert resp.json()["code"] == "cannot_modify_self_membership"
+    assert resp.json()["errors"][0]["code"] == "cannot_modify_self_membership"
 
 
 @pytest.mark.django_db
@@ -264,7 +264,7 @@ def test_change_role_of_superadmin_400(
         detail_url(membership.id), {"role_id": role_viewer.id}, format="json"
     )
     assert resp.status_code == status.HTTP_400_BAD_REQUEST
-    assert resp.json()["code"] == "superadmin_not_assignable"
+    assert resp.json()["errors"][0]["code"] == "superadmin_not_assignable"
     membership.refresh_from_db()
     assert membership.role_id == role_member.id
 
@@ -328,7 +328,7 @@ def test_patch_membership_without_bits_in_its_org_is_404(
     )
 
     assert resp.status_code == status.HTTP_404_NOT_FOUND
-    assert resp.json()["code"] == "membership_not_found"
+    assert resp.json()["errors"][0]["code"] == "membership_not_found"
     row.refresh_from_db()
     assert row.role_id != role_viewer.id
 
@@ -342,7 +342,7 @@ def test_delete_membership_without_bits_in_its_org_is_404(
     resp = client_as(admin_beta_member_acme).delete(detail_url(row.id))
 
     assert resp.status_code == status.HTTP_404_NOT_FOUND
-    assert resp.json()["code"] == "membership_not_found"
+    assert resp.json()["errors"][0]["code"] == "membership_not_found"
     assert OrganizationUser.objects.filter(pk=row.id).exists()
 
 
@@ -427,7 +427,7 @@ def test_role_assignment_is_capped_at_the_callers_own_authority(
         assert acme_membership.role_id == role.id
     else:
         assert resp.status_code == status.HTTP_403_FORBIDDEN
-        assert resp.json()["code"] == "permission_escalation_denied"
+        assert resp.json()["errors"][0]["code"] == "permission_escalation_denied"
         assert acme_membership.role_id == role_member.id
 
 
@@ -442,7 +442,7 @@ def test_add_member_with_role_above_ceiling_is_403(
     )
 
     assert resp.status_code == status.HTTP_403_FORBIDDEN
-    assert resp.json()["code"] == "permission_escalation_denied"
+    assert resp.json()["errors"][0]["code"] == "permission_escalation_denied"
     assert not OrganizationUser.objects.filter(user=newcomer, org=acme).exists()
 
 
@@ -467,4 +467,4 @@ def test_missing_update_bit_is_permission_denied_not_escalation(
     )
 
     assert resp.status_code == status.HTTP_403_FORBIDDEN
-    assert resp.json()["code"] == "permission_denied"
+    assert resp.json()["errors"][0]["code"] == "permission_denied"

@@ -222,7 +222,7 @@ def test_a_plugin_without_a_database_lists_no_backups(running_plugin, superadmin
 
 
 def test_an_unknown_plugin_has_no_backup_list(superadmin_client):
-    assert superadmin_client.get("/api/admin/plugins/missing/backups/").json()["code"] == "plugin_not_found"
+    assert superadmin_client.get("/api/admin/plugins/missing/backups/").json()["errors"][0]["code"] == "plugin_not_found"
 
 
 def test_a_backup_keeps_the_version_it_was_taken_for_after_a_newer_one_replaced_the_failed_target(

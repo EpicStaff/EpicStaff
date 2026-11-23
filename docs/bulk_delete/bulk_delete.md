@@ -286,8 +286,8 @@ nothing is deleted.
 
 ## Error envelopes
 
-Every error follows the project's standard envelope, `{status_code, code,
-message}`.
+Every error follows the project's standard envelope, `{type, errors: [{code, detail,
+attr, context}]}`.
 
 ### `400` — validation
 
@@ -298,9 +298,15 @@ a boolean. Standard DRF field validation errors.
 
 ```json
 {
-  "status_code": 403,
-  "code": "permission_denied",
-  "message": "You do not have permission to bulk_delete llm_configs."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "permission_denied",
+      "detail": "You do not have permission to bulk_delete llm_configs.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -311,9 +317,15 @@ endpoint's resource type in the active organization.
 
 ```json
 {
-  "status_code": 403,
-  "code": "in_use_restricted",
-  "message": "This item is used somewhere you don't have access to, so it can't be deleted."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "in_use_restricted",
+      "detail": "This item is used somewhere you don't have access to, so it can't be deleted.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -329,9 +341,15 @@ what `permission_denied` above is for).
 
 ```json
 {
-  "status_code": 409,
-  "code": "cross_org_cascade",
-  "message": "This item is linked to data it can't be deleted with. Nothing was deleted. Contact an administrator."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "cross_org_cascade",
+      "detail": "This item is linked to data it can't be deleted with. Nothing was deleted. Contact an administrator.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 

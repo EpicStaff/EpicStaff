@@ -80,7 +80,7 @@ def test_only_the_system_api_key_may_call(request, api_client, running_session, 
     response = client.post(_url(running_session.id, table.id, "read"), {"keys": ["a"]}, format="json")
 
     assert response.status_code == 403
-    assert response.data["code"] == "permission_denied"
+    assert response.data["errors"][0]["code"] == "permission_denied"
 
 
 @pytest.mark.django_db
@@ -91,7 +91,7 @@ def test_finished_session_is_409(system_client, running_session, table, status):
     running_session.save()
     response = system_client.post(_url(running_session.id, table.id, "read"), {"keys": ["a"]}, format="json")
     assert response.status_code == 409
-    assert response.data["code"] == "key_value_session_not_active"
+    assert response.data["errors"][0]["code"] == "key_value_session_not_active"
 
 
 @pytest.mark.django_db
@@ -106,7 +106,7 @@ def test_waiting_for_user_session_is_active(system_client, running_session, tabl
 def test_unknown_session_is_404(system_client, table):
     response = system_client.post(_url(999999, table.id, "read"), {"keys": []}, format="json")
     assert response.status_code == 404
-    assert response.data["code"] == "not_found"
+    assert response.data["errors"][0]["code"] == "not_found"
 
 
 def _foreign_table_used_by_the_flow(session, default_org, table):
@@ -142,7 +142,7 @@ def test_a_session_reaches_only_tables_its_flow_uses_in_its_org(
     response = system_client.post(_url(running_session.id, reached.id, operation), body, format="json")
 
     assert response.status_code == 404
-    assert response.data["code"] == "key_value_table_not_found"
+    assert response.data["errors"][0]["code"] == "key_value_table_not_found"
     assert "table_name" not in response.data
     assert "secret" not in response.content.decode()
     assert sorted(KeyValueTableEntry.objects.values_list("table_id", "key", "value")) == entries_before
@@ -196,7 +196,7 @@ def test_oversized_write_is_400(system_client, running_session, table):
     response = system_client.post(_url(running_session.id, table.id, "write"),
                                   {"entries": {"k": "x" * 262144}}, format="json")
     assert response.status_code == 400
-    assert response.data["code"] == "key_value_entry_value_too_large"
+    assert response.data["errors"][0]["code"] == "key_value_entry_value_too_large"
 
 
 @pytest.mark.django_db
@@ -214,7 +214,7 @@ def test_invalid_resolved_key_is_400(system_client, running_session, table, oper
     response = system_client.post(_url(running_session.id, table.id, operation), body, format="json")
 
     assert response.status_code == 400
-    assert response.data["code"] == "key_value_entry_key_invalid"
+    assert response.data["errors"][0]["code"] == "key_value_entry_key_invalid"
     assert list(KeyValueTableEntry.objects.filter(table=table).values_list("key", "value")) == [
         ("user_4 2", "dev data")
     ]
@@ -228,7 +228,7 @@ def test_delete_with_one_invalid_key_deletes_no_valid_key(system_client, running
                                   {"keys": ["valid", "user_4 2"]}, format="json")
 
     assert response.status_code == 400
-    assert response.data["code"] == "key_value_entry_key_invalid"
+    assert response.data["errors"][0]["code"] == "key_value_entry_key_invalid"
     assert "values" not in response.data
     assert KeyValueTableEntry.objects.filter(table=table, key="valid").exists()
 

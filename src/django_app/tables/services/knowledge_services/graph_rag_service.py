@@ -3,6 +3,7 @@ from typing import Any
 from django.db import transaction
 from django.db.models import Q
 from loguru import logger
+from rest_framework.exceptions import ValidationError
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models import UserAction
 from tables.clients import KnowledgeClient
@@ -273,9 +274,7 @@ class GraphRagService:
         chunk_overlap = overrides.get("chunk_overlap") or index_config.chunk_overlap
         if chunk_overlap >= chunk_size:
             reason = "'chunk_overlap' must be less than 'chunk_size'"
-            raise InvalidChunkParametersException(
-                errors=[{"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}],
-            )
+            raise InvalidChunkParametersException({"chunk_overlap": [reason]})
 
     @classmethod
     @transaction.atomic
@@ -361,9 +360,13 @@ class GraphRagService:
         found_ids = {d.document_id for d in documents}
         missing_ids = set(document_ids) - found_ids
         if missing_ids:
-            raise GraphRagDocumentNotFoundException(
-                f"Documents not found or don't belong to"
-                f" GraphRag {rag.graph_rag_id}: {sorted(missing_ids)}"
+            message = (
+                f"Documents not found or don't belong to GraphRag {rag.graph_rag_id}:"
+                f" {sorted(missing_ids)}"
+            )
+            raise ValidationError(
+                {"document_ids": [message]},
+                code=GraphRagDocumentNotFoundException.default_code,
             )
 
         completed_document_deleted = documents.filter(

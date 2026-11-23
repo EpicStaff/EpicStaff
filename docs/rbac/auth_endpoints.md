@@ -117,9 +117,15 @@ ApiKeyAuthentication]`:
 
 ```json
 {
-  "status_code": 401,
-  "code": "not_authenticated",
-  "message": "Authentication credentials were not provided."
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "not_authenticated",
+      "detail": "Authentication credentials were not provided.",
+      "attr": null,
+      "context": null
+    }
+  ]
 }
 ```
 
@@ -242,24 +248,37 @@ create_superadmin` workflow).
   The refresh token is not in the body: it is set as the refresh cookie
   (30-minute session, first setup has no remember-me option).
 - **Errors:**
-  - `400` — validation failure. Every failing field is aggregated into a
-    structured `errors` list; passwords are redacted as `"***"`:
+  - `400` — validation failure. Every failing field gets its own error item,
+    its `attr` the field; no submitted value is echoed back:
     ```json
     {
-      "status_code": 400,
-      "code": "invalid",
-      "message": "FormValidationError: Validation failed",
+      "type": "client_error",
       "errors": [
-        { "field": "email",    "value": "not-an-email", "reason": "Enter a valid email address." },
-        { "field": "password", "value": "***",          "reason": "This password is too common." },
-        { "field": "password", "value": "***",          "reason": "This password is entirely numeric." }
+        {
+          "code": "invalid",
+          "detail": "Enter a valid email address.",
+          "attr": "email",
+          "context": null
+        },
+        {
+          "code": "invalid",
+          "detail": "This password is too common.",
+          "attr": "password",
+          "context": null
+        },
+        {
+          "code": "invalid",
+          "detail": "This password is entirely numeric.",
+          "attr": "password",
+          "context": null
+        }
       ]
     }
     ```
   - `403` — `code: first_setup_disabled` when `FIRST_SETUP_MODE` is not
     `open` (the default, `cli_only`). Use `manage.py create_superadmin`
     instead — see [first_setup_operations.md](first_setup_operations.md).
-  - `409` — `{"detail": "Setup has already been completed"}` when any user
+  - `409` — code `setup_already_completed` ("Setup has already been completed") when any user
     already exists.
 
 Setup runs inside `transaction.atomic()` — user + org + membership are created
@@ -318,10 +337,11 @@ Response:
   multipart and `text/plain` bodies get `415 unsupported_media_type` and no
   cookie, so a page on another site cannot sign a visitor in to an account of
   its choosing.
-- `400` with a structured `errors` list when `email` or `password` is missing
-  or the wrong type. Missing/blank/bad-type failures for both fields are
-  aggregated in one response; password values are redacted as `"***"`.
-- `401` on invalid credentials — flat envelope with no `errors` array, so the
+- `400` with one error item per failing field (`attr` `email` or `password`)
+  when `email` or `password` is missing or the wrong type. Missing/blank/bad-type
+  failures for both fields are aggregated in one response; no submitted value
+  is echoed back.
+- `401` on invalid credentials — one error item with `attr` null, so the
   caller cannot distinguish which of email/password was wrong (user-enumeration
   protection).
 - `429` with `Retry-After` header once any bucket is exhausted: the
@@ -332,10 +352,22 @@ Response:
 
 ### POST `/api/auth/refresh/`
 
-No body: the refresh token is read from the refresh cookie (no cookie →
-`401 {"detail": "No refresh token."}`). Returns `{ "access": "<jwt>" }` and sets
-the rotated refresh token as the new cookie, keeping the original remember-me
-choice.
+No body: the refresh token is read from the refresh cookie. Returns
+`{ "access": "<jwt>" }` and sets the rotated refresh token as the new cookie,
+keeping the original remember-me choice. With no cookie it returns `401`:
+```json
+{
+  "type": "client_error",
+  "errors": [
+    {
+      "code": "refresh_token_missing",
+      "detail": "No refresh token.",
+      "attr": null,
+      "context": null
+    }
+  ]
+}
+```
 
 - **Refresh-token rotation is on** (`ROTATE_REFRESH_TOKENS=True`,
   `BLACKLIST_AFTER_ROTATION=True`). Every successful refresh issues a **new**
@@ -344,9 +376,22 @@ choice.
   network duplicated the request, re-login.
 - A refresh token minted under a previous password — or before password
   binding was enabled, so it has no `hash_password` claim — returns `401`
-  `{"detail": "Token is invalid or expired."}` and clears the refresh
-  cookie, the same as an expired token. The same happens when the token's
-  user no longer exists. The client must send the user to login.
+  and clears the refresh cookie, the same as an expired token. The same
+  happens when the token's user no longer exists. The client must send the
+  user to login. The body:
+  ```json
+  {
+    "type": "client_error",
+    "errors": [
+      {
+        "code": "refresh_token_rejected",
+        "detail": "Token is invalid or expired.",
+        "attr": null,
+        "context": null
+      }
+    ]
+  }
+  ```
 
 ### POST `/api/auth/logout/`
 
@@ -357,8 +402,17 @@ choice.
   be rotated. A request without the cookie also gets `205`.
 - **Error:** `400` with
   ```json
-  { "status_code": 400, "code": "invalid_or_expired_refresh",
-    "message": "Refresh token is invalid, expired, or already revoked." }
+  {
+    "type": "client_error",
+    "errors": [
+      {
+        "code": "invalid_or_expired_refresh",
+        "detail": "Refresh token is invalid, expired, or already revoked.",
+        "attr": null,
+        "context": null
+      }
+    ]
+  }
   ```
   on malformed, expired, already-blacklisted, **or third-party** tokens.
   Ownership is enforced — if the refresh token belongs to a different user
@@ -410,8 +464,17 @@ See the dedicated [`sse_auth.md`](./sse_auth.md) for the complete FE flow.
   ticket cannot both succeed. Reconnects must fetch a fresh ticket.
 - SSE endpoints reject missing/invalid/expired tickets with
   ```json
-  { "status_code": 401, "code": "invalid_sse_ticket",
-    "message": "Invalid or expired SSE ticket." }
+  {
+    "type": "client_error",
+    "errors": [
+      {
+        "code": "invalid_sse_ticket",
+        "detail": "Invalid or expired SSE ticket.",
+        "attr": null,
+        "context": null
+      }
+    ]
+  }
   ```
 
 ---
@@ -478,9 +541,9 @@ for quick health-checks of the login chain.
 - **Response 200 — expired/invalid/tampered token:** `{ "active": false }`
   (deliberately not an HTTP error — introspection is informational).
 - **Errors:**
-  - `400` — `{"active": false, "error": "token is required"}` when the
+  - `400` — one error with `attr: "token"` (code `required` or `blank`) when the
     `token` field is missing or blank.
-  - `403` — `{"detail": "System API key required"}` when the caller did
+  - `403` — code `permission_denied` ("System API key required") when the caller did
     not authenticate with a SYSTEM-type key (covers both a plain JWT and a
     USER-type API key).
 
@@ -543,11 +606,11 @@ request.
   live RBAC role (or superadmin, for the system key), not a per-key scope
   list.
 - **Errors:**
-  - `401` (`authentication_failed`, message `"Invalid API key"`) — key hash
+  - `401` (`authentication_failed`, detail `"Invalid API key"`) — key hash
     not found, or the key is revoked.
-  - `401` (`authentication_failed`, message `"API key has expired"`) — key
+  - `401` (`authentication_failed`, detail `"API key has expired"`) — key
     found but `expires_at` is in the past.
-  - `401` (`authentication_failed`, message `"API key is no longer valid for
+  - `401` (`authentication_failed`, detail `"API key is no longer valid for
     its organization"`) — a USER key whose organization is inactive, or whose
     non-superadmin owner is no longer a member of it.
   - `403` (`detail: "API key required"`) — caller authenticated with JWT
@@ -701,10 +764,10 @@ curl -s http://localhost:8000/api/graphs/ -H "Authorization: Bearer $ACCESS" | j
 | Login throttling | 6th credential attempt within the bucket window returns `429` with a `Retry-After` header. Surface a "too many attempts, retry in N seconds" message instead of generic error. |
 | SSE streams | EventSource can no longer connect directly. Fetch a ticket via `POST /api/auth/sse-ticket/`, then connect with `?ticket=<value>`. On `onerror` / reconnect, fetch a **fresh** ticket first. Full migration guide: [`sse_auth.md`](./sse_auth.md). |
 | First-setup screen | Call `GET /api/auth/first-setup/` on boot; if `needs_setup: true`, show the setup form. POST payload is `{ email, password }` — the organization name is sourced from the `DEFAULT_ORGANIZATION_NAME` setting on the server, not the request body. Response returns `access` (keep it in memory) and sets the refresh cookie — skip the login screen on success. |
-| Idempotency | A repeated `POST /api/auth/first-setup/` returns **409** with `{"detail": "Setup has already been completed"}`. Handle this explicitly (e.g. redirect to login). |
+| Idempotency | A repeated `POST /api/auth/first-setup/` returns **409** with code `setup_already_completed` in the shared error envelope. Handle this explicitly (e.g. redirect to login). |
 | Current-user endpoint | `/api/auth/me/` is **removed**. Use `GET /api/profile/` instead. Response is a strict superset of the old `/me/` payload. See [user_profile.md](user_profile.md) § "Migrating from `/api/auth/me/`". |
 | JWT claims | Access token now carries `email` and `is_superadmin` in addition to `user_id`. FE may decode the access token locally to short-circuit UI gating without hitting `/api/profile/`. |
-| 401 handling | Unchanged in shape — `{status_code: 401, code: "not_authenticated", message: ...}`. On 401 during a session, prompt re-login. |
+| 401 handling | The shared envelope — `{type: "client_error", errors: [{code: "not_authenticated", detail: ..., attr: null, context: null}]}`. On 401 during a session, prompt re-login. |
 | 409 on setup | New status code to handle on the setup flow. |
 | `reset_user` web call | Payload is `{ email, password }` (was `{ username, password, email }`). Response returns only `access` (the refresh token is set as the cookie) — **no** `api_key`. Personal API keys are created separately via `POST /api/profile/api-keys/`, see [api_keys.md](api_keys.md). |
 | Token introspection / API key validation | Only used by internal services; the FE typically does not call these. `POST /api/auth/introspect/` requires the SYSTEM API key specifically (JWT and USER keys get 403); `GET /api/auth/api-key/validate/` accepts any API key but not JWT. |

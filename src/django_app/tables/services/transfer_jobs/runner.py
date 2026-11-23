@@ -16,13 +16,13 @@ from tables.import_export.archive import temporary_archive
 from tables.import_export.enums import EntityType
 from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.schemas import ImportSettings
+from tables.import_export.utils import flatten_error_detail
 from tables.models import TransferJob
 from tables.services.import_export_service import ViewSetImportExportService
 from tables.services.transfer_jobs.archive_store import TransferArchiveStore
 from tables.services.transfer_jobs.export_definitions import TransferJobError, export_definition
 from tables.utils.helpers import generate_file_name
 from user_audit.actor import Actor
-from utils.exception_handler import flatten_error_detail
 from utils.logger import logger
 
 # At most this many archives without a job row are deleted per sweep; the rest wait

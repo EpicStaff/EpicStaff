@@ -2,6 +2,7 @@
 
 import pytest
 from plugins.models import Plugin
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("plugins_enabled", "package_store", "spa_root")]
 
@@ -161,8 +162,8 @@ def test_an_override_can_only_lower_a_limit(weather, superadmin_client, override
     response = superadmin_client.patch(LIMITS_URL, {"overrides": overrides}, format="json")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_plugin_limits"
-    assert [error["loc"] for error in response.json()["errors"]] == [loc]
+    assert response.json()["errors"][0]["code"] == "invalid_plugin_limits"
+    assert [error["attr"] for error in attr_details(response.json())] == [loc]
     assert Plugin.objects.get(identifier="weather").limit_overrides == {}
 
 
@@ -185,7 +186,7 @@ def test_writes_are_logged(weather, superadmin_client, mocker):
 def test_a_plugin_without_a_backend_has_no_limits(running_plugin, superadmin_client):
     running_plugin()
 
-    assert superadmin_client.get(LIMITS_URL).json()["code"] == "plugin_has_no_backend"
+    assert superadmin_client.get(LIMITS_URL).json()["errors"][0]["code"] == "plugin_has_no_backend"
 
 
 def test_an_org_admin_is_refused(weather, client_as, admin_acme):

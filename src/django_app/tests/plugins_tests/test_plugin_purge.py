@@ -131,7 +131,7 @@ def test_a_wrong_phrase_changes_nothing(grants, superadmin_client, phrase):
         "/api/admin/plugins/weather/", {} if phrase is None else {"verification_phrase": phrase}, format="json"
     )
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid_purge_phrase")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid_purge_phrase")
     assert Plugin.objects.get(identifier="weather").state == PluginState.RUNNING
     assert not PluginGrant.objects.filter(state=GrantState.PURGING).exists()
 
@@ -142,12 +142,12 @@ def test_a_plugin_that_cannot_be_deleted_now_says_so_before_the_phrase_is_read(w
 
     response = _delete(superadmin_client, phrase="wrong")
 
-    assert (response.status_code, response.json()["code"]) == (409, "plugin_not_purgeable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "plugin_not_purgeable")
 
 
 def test_an_unknown_plugin_is_not_found(superadmin_client):
-    assert _delete(superadmin_client, identifier="missing").json()["code"] == "plugin_not_found"
-    assert superadmin_client.get("/api/admin/plugins/missing/purge-preview/").json()["code"] == "plugin_not_found"
+    assert _delete(superadmin_client, identifier="missing").json()["errors"][0]["code"] == "plugin_not_found"
+    assert superadmin_client.get("/api/admin/plugins/missing/purge-preview/").json()["errors"][0]["code"] == "plugin_not_found"
 
 
 def test_an_org_admin_cannot_delete_a_plugin(weather, client_as, admin_acme, acme):
@@ -265,7 +265,7 @@ def test_the_node_is_asked_to_remove_the_plugin_with_its_database(grants, supera
         "plugin_weather",
     )
     credentials = node_client.post(f"/api/plugin-nodes/self/placements/{placement.pk}/runtime-credentials/")
-    assert (credentials.status_code, credentials.json()["code"]) == (404, "placement_not_found")
+    assert (credentials.status_code, credentials.json()["errors"][0]["code"]) == (404, "placement_not_found")
     package = node_client.get(f"/api/plugin-nodes/self/packages/{weather.current_package_id}/")
     assert package.status_code == 404
 
@@ -304,7 +304,7 @@ def test_removed_deletes_the_plugin_s_rows_and_after_commit_its_files(
     activity = superadmin_client.get("/api/admin/plugins/weather/activity/")
     assert activity.status_code == 200
     assert "plugin_purged" in {row["action"] for row in activity.json()["results"]}
-    assert superadmin_client.get("/api/admin/plugins/weather/").json()["code"] == "plugin_not_found"
+    assert superadmin_client.get("/api/admin/plugins/weather/").json()["errors"][0]["code"] == "plugin_not_found"
 
 
 def test_a_package_file_that_cannot_be_deleted_is_logged_not_raised(
@@ -364,7 +364,7 @@ def test_retry_removal_starts_a_new_generation_and_ignores_the_old_one(removal_r
 def test_retry_removal_is_refused_unless_the_node_reported_a_failure(removal_requested, superadmin_client):
     response = superadmin_client.post("/api/admin/plugins/weather/retry-removal/")
 
-    assert (response.status_code, response.json()["code"]) == (409, "removal_not_retryable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "removal_not_retryable")
 
 
 def test_a_report_from_another_node_is_ignored(removal_requested, other_node_client):

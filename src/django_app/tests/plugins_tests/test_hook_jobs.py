@@ -26,6 +26,7 @@ from rbac.models import Organization
 from src.shared.models.plugin_nodes import MAX_PENDING_HOOK_JOBS, HookInvocation, HookResult
 
 from tests.plugins_tests.conftest import mark_running
+from tests.error_envelope import attr_details
 
 pytestmark = [pytest.mark.django_db]
 
@@ -186,7 +187,7 @@ def test_a_second_claim_is_refused(job, node_client):
     response = node_client.post(_claim_url(job.pk))
 
     assert response.status_code == 409
-    assert response.json()["code"] == "hook_job_not_claimable"
+    assert response.json()["errors"][0]["code"] == "hook_job_not_claimable"
 
 
 def test_a_job_of_a_plugin_that_is_not_running_cannot_be_claimed(job, node_client, hooked_weather):
@@ -198,7 +199,7 @@ def test_a_job_of_a_plugin_that_is_not_running_cannot_be_claimed(job, node_clien
 def test_another_node_s_job_is_not_found(job, other_node_client):
     for response in (other_node_client.post(_claim_url(job.pk)), _result(other_node_client, job.pk, 1)):
         assert response.status_code == 404
-        assert response.json()["code"] == "hook_job_not_found"
+        assert response.json()["errors"][0]["code"] == "hook_job_not_found"
 
 
 def test_an_unknown_job_is_not_found(plugin_node, node_client, service_account_platform):
@@ -245,7 +246,7 @@ def test_a_result_for_another_attempt_is_refused(job, node_client):
     response = _result(node_client, job.pk, 2)
 
     assert response.status_code == 409
-    assert response.json()["code"] == "hook_job_not_running"
+    assert response.json()["errors"][0]["code"] == "hook_job_not_running"
     assert PluginGrant.objects.get().state == GrantState.GRANTING
 
 
@@ -264,8 +265,8 @@ def test_a_malformed_result_is_invalid(job, node_client, body):
     response = node_client.post(_result_url(job.pk), body, format="json")
 
     assert response.status_code == 400
-    assert response.json()["code"] == "invalid_hook_result"
-    assert all(error["loc"].startswith("result") for error in response.json()["errors"])
+    assert response.json()["errors"][0]["code"] == "invalid_hook_result"
+    assert all(error["attr"].startswith("result") for error in attr_details(response.json()))
 
 
 # ---- retry ----
@@ -301,7 +302,7 @@ def test_retrying_a_grant_whose_hook_has_not_failed_conflicts(job, superadmin_cl
     response = _retry(superadmin_client, job.grant_id)
 
     assert response.status_code == 409
-    assert response.json()["code"] == "hook_not_retryable"
+    assert response.json()["errors"][0]["code"] == "hook_not_retryable"
 
 
 def test_retrying_an_unknown_grant_or_one_of_another_plugin_is_not_found(job, superadmin_client, running_plugin, grant_to, beta):
@@ -311,7 +312,7 @@ def test_retrying_an_unknown_grant_or_one_of_another_plugin_is_not_found(job, su
     for grant_id, identifier in ((999999, "weather"), (other_grant.pk, "weather"), (job.grant_id, "forecast")):
         response = _retry(superadmin_client, grant_id, identifier)
         assert response.status_code == 404
-        assert response.json()["code"] == "grant_not_found"
+        assert response.json()["errors"][0]["code"] == "grant_not_found"
 
 
 def test_only_a_superadmin_may_retry(job, client_as, admin_acme):
@@ -381,7 +382,7 @@ def test_a_result_for_a_job_the_suspension_failed_conflicts_and_the_grant_stays_
 
     response = _result(node_client, job.pk, 1)
 
-    assert (response.status_code, response.json()["code"]) == (409, "hook_job_not_running")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "hook_job_not_running")
     assert PluginGrant.objects.get().state == GrantState.SUSPENDED
 
 
@@ -392,7 +393,7 @@ def test_a_job_of_a_suspended_grant_cannot_be_claimed(job, node_client, superadm
 
     response = node_client.post(_claim_url(job.pk))
 
-    assert (response.status_code, response.json()["code"]) == (409, "hook_job_not_claimable")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "hook_job_not_claimable")
 
 
 # ---- lock order: the grant first, then its jobs, then its service account, everywhere ----

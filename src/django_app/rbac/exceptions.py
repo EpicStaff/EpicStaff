@@ -5,24 +5,17 @@ from utils.exceptions import CustomAPIExeption
 class FormValidationError(CustomAPIExeption):
     """Raised when one or more submitted fields fail validation.
 
-    Carries a structured `errors` list (populated by the
-    service) which `custom_exception_handler` surfaces under the `errors`
-    key of the response body.
-
-    Each entry in `errors` has shape:
-        {"field": str, "value": Any, "reason": str}
-
-    Sensitive submitted values (password, refresh, token) are redacted by
-    the service before they reach this exception.
+    `field_errors` maps each rejected field to its reasons; the error answer has one
+    item per reason, its `attr` the field. A submitted value is never sent back.
     """
 
     status_code = 400
     default_detail = "Validation failed"
     default_code = "invalid"
 
-    def __init__(self, errors: list[dict], detail=None):
-        self.errors = errors
-        super().__init__(detail=detail or self.default_detail)
+    def __init__(self, field_errors: dict[str, list[str]]):
+        self.field_errors = field_errors
+        super().__init__(detail=field_errors)
 
 
 class SetupAlreadyCompletedError(CustomAPIExeption):
@@ -40,6 +33,38 @@ class InvalidRefreshTokenError(CustomAPIExeption):
     status_code = 400
     default_detail = "Refresh token is invalid, expired, or already revoked."
     default_code = "invalid_or_expired_refresh"
+
+
+class InvalidCredentialsError(CustomAPIExeption):
+    """Raised when a sign-in attempt fails: a blank username or password, or a pair
+    that matches no active account.
+
+    Both cases share one code and message, so the response never tells which field
+    was wrong or whether the account exists. Not an AuthenticationFailed: on a view
+    without authentication classes DRF answers that with 403, and a failed sign-in
+    is a 401.
+    """
+
+    status_code = 401
+    default_detail = "Invalid credentials"
+    default_code = "invalid_credentials"
+
+
+class RefreshTokenMissingError(CustomAPIExeption):
+    """Raised when a token refresh arrives without the refresh cookie."""
+
+    status_code = 401
+    default_detail = "No refresh token."
+    default_code = "refresh_token_missing"
+
+
+class RefreshTokenRejectedError(CustomAPIExeption):
+    """Raised when the refresh cookie holds a token that is invalid, expired or revoked,
+    or whose user has been deactivated."""
+
+    status_code = 401
+    default_detail = "Token is invalid or expired."
+    default_code = "refresh_token_rejected"
 
 
 class InvalidSseTicketError(CustomAPIExeption):

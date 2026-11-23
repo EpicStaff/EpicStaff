@@ -10,8 +10,10 @@ class CustomAPIExeption(APIException):
 
     Inherit from this to create custom API exceptions"""
 
-    # Extra top-level keys for the error response; the handler's envelope keys win.
-    extra_response_data: dict | None = None
+    # Structured facts about the error, safe to show any API client (ids, names, versions,
+    # limits); the handler puts them in each item's `context`. Never secrets, request
+    # bodies or raw upstream text.
+    context: dict | None = None
 
     def __init__(self, detail=None, code=None, status_code=None):
         if status_code is not None:

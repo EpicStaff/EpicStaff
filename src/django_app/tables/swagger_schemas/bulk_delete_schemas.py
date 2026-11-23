@@ -20,12 +20,16 @@ CROSS_ORG_CASCADE_409_RESPONSE = OpenApiResponse(
         OpenApiExample(
             "Cross-org cascade",
             value={
-                "status_code": 409,
-                "code": "cross_org_cascade",
-                "message": (
-                    "This item is linked to data it can't be deleted with. "
-                    "Nothing was deleted. Contact an administrator."
-                ),
+                "type": "client_error",
+                "errors": [
+                    {
+                        "code": "cross_org_cascade",
+                        "detail": "This item is linked to data it can't be deleted with. "
+                        "Nothing was deleted. Contact an administrator.",
+                        "attr": None,
+                        "context": None,
+                    }
+                ],
             },
             response_only=True,
             status_codes=["409"],

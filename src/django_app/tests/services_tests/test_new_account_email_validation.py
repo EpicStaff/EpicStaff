@@ -66,16 +66,14 @@ def test_creation_rejects_unusual_email(validate_creation, email, reason):
     with pytest.raises(FormValidationError) as caught:
         validate_creation({"email": email, "password": PASSWORD})
 
-    assert {"field": "email", "value": email, "reason": reason} in caught.value.errors
+    assert reason in caught.value.field_errors["email"]
 
 
 def test_creation_still_rejects_what_the_rfc_check_rejects(validate_creation):
     with pytest.raises(FormValidationError) as caught:
         validate_creation({"email": "john..smith@gmail.com", "password": PASSWORD})
 
-    assert caught.value.errors == [
-        {"field": "email", "value": "john..smith@gmail.com", "reason": FORMAT_REASON}
-    ]
+    assert caught.value.field_errors == {"email": [FORMAT_REASON]}
 
 
 @pytest.mark.parametrize("email", ["---@gmail.com", "__proto__@hys-enterprise.com"])

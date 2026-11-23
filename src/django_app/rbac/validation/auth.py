@@ -10,19 +10,14 @@ class AuthValidationService(BaseRBACValidator):
     checked — raises a single `FormValidationError` carrying the full
     list. It never short-circuits on the first failure.
 
-    On success the cleaned payload is returned to the caller. Sensitive
-    submitted values (password/refresh/token) are redacted before being
-    echoed back in the error body; non-sensitive values (email) are
-    echoed as-is so the FE can highlight the offending input.
+    On success the cleaned payload is returned to the caller. Each failure
+    names its field, so the FE can highlight the offending input; the
+    submitted value is never echoed back.
 
     Authentication failures (wrong email/password combination) are NOT
     reported per-field and are not the responsibility of this service —
     they remain a flat 401 to avoid user-enumeration leaks.
     """
-
-    _redacted_fields = frozenset(
-        {"password", "new_password", "current_password", "refresh", "token", "access"}
-    )
 
     def validate_first_setup(self, data: dict) -> dict:
         email = data.get("email")

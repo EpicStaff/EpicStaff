@@ -21,6 +21,7 @@ from tables.swagger_schemas.common_schemas import (
     CODE_WITH_SECRETS_403_RESPONSE,
     FLOW_WITH_TRIGGER_NODES_403_RESPONSE,
     UNAUTHORIZED_401_RESPONSE,
+    error_example,
 )
 
 TOOL_ORDERING_PARAMETER = OpenApiParameter(
@@ -69,13 +70,17 @@ PYTHON_CODE_TOOL_BULK_DELETE_POST = {
             examples=[
                 OpenApiExample(
                     "Invalid ids",
-                    value={"detail": "ids must be a list of positive integers."},
+                    value=error_example(
+                        "invalid_item", "Must be a list of positive integers.", "ids"
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 ),
                 OpenApiExample(
                     "Too many ids",
-                    value={"detail": f"ids must have at most {BULK_DELETE_MAX_IDS} items."},
+                    value=error_example(
+                        "max_length", f"Must have at most {BULK_DELETE_MAX_IDS} items.", "ids"
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 ),
@@ -241,13 +246,17 @@ MCP_TOOL_BULK_DELETE_POST = {
             examples=[
                 OpenApiExample(
                     "Invalid ids",
-                    value={"detail": "ids must be a list of positive integers."},
+                    value=error_example(
+                        "invalid_item", "Must be a list of positive integers.", "ids"
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 ),
                 OpenApiExample(
                     "Too many ids",
-                    value={"detail": f"ids must have at most {BULK_DELETE_MAX_IDS} items."},
+                    value=error_example(
+                        "max_length", f"Must have at most {BULK_DELETE_MAX_IDS} items.", "ids"
+                    ),
                     response_only=True,
                     status_codes=["400"],
                 ),

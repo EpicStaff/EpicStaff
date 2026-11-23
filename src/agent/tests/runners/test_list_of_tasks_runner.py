@@ -346,7 +346,7 @@ async def test_failed_task_publishes_the_llm_fact_as_the_agent_error():
 
     (fields,) = published
     assert fields["type"] == "agent.error"
-    assert json.loads(fields["payload"])["error"] == {"code": "llm_auth", "detail": fact, "attr": None}
+    assert json.loads(fields["payload"])["error"] == {"code": "llm_auth", "detail": fact, "attr": None, "context": None}
 
 
 async def test_aggregation_sums_usage_and_uses_last_final_text():

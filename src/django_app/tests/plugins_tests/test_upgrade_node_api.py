@@ -105,20 +105,20 @@ def test_a_failed_or_cancelled_upgrade_cannot_advance(upgrade, node_client, supe
     PluginUpgradeService().cancel("weather", superadmin)
     cancelled = _advance(node_client, upgrade, "maintenance")
 
-    assert [failed.json()["code"], cancelled.json()["code"]] == ["upgrade_not_current"] * 2
+    assert [failed.json()["errors"][0]["code"], cancelled.json()["errors"][0]["code"]] == ["upgrade_not_current"] * 2
     assert failed.status_code == cancelled.status_code == 409
 
 
 def test_migrations_cannot_come_before_maintenance(upgrade, node_client):
     response = _advance(node_client, upgrade, "migrations")
 
-    assert (response.status_code, response.json()["code"]) == (409, "upgrade_not_current")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (409, "upgrade_not_current")
 
 
 def test_another_node_s_upgrade_is_not_found(upgrade, other_node, other_node_client):
     response = other_node_client.post(advance_url(upgrade.pk), {"to": "maintenance"}, format="json")
 
-    assert (response.status_code, response.json()["code"]) == (404, "upgrade_not_found")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (404, "upgrade_not_found")
 
 
 def test_a_plugin_that_failed_or_restarted_while_preparing_can_still_be_stopped(upgrade, weather, node_client):
@@ -144,8 +144,8 @@ def test_the_migrations_need_this_upgrade_s_backup(upgrade, node_client, django_
 
     response = _advance(node_client, upgrade, "migrations", backup)
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid_upgrade_advance")
-    assert response.json()["errors"][0]["loc"] == loc
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid_upgrade_advance")
+    assert response.json()["errors"][0]["attr"] == loc
     upgrade.refresh_from_db()
     assert (upgrade.stage, upgrade.backup_id) == (UpgradeStage.MAINTENANCE, None)
 
@@ -159,7 +159,7 @@ def test_a_backup_of_another_upgrade_or_reason_is_refused(upgrade, node_client, 
 
     response = _advance(node_client, upgrade, "migrations", backup_body(upgrade, **change))
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid_upgrade_advance")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid_upgrade_advance")
 
 
 def test_the_backup_is_recorded_with_its_activity_and_the_migrations_may_run(upgrade, node_client, django_capture_on_commit_callbacks):
@@ -198,7 +198,7 @@ def test_asking_for_the_migrations_again_with_the_same_backup_changes_nothing(up
     other = _advance(node_client, upgrade, "migrations", {**body, "sha256": "f" * 64})
 
     assert again.status_code == 204
-    assert (other.status_code, other.json()["code"]) == (400, "invalid_upgrade_advance")
+    assert (other.status_code, other.json()["errors"][0]["code"]) == (400, "invalid_upgrade_advance")
     assert PluginActivityEvent.objects.filter(action=ActivityAction.DATABASE_BACKED_UP).count() == 1
 
 
@@ -216,8 +216,8 @@ def test_a_plugin_without_a_database_ready_needs_no_backup(weather, newer, upgra
 def test_a_body_that_is_not_a_request_is_refused_where_it_is_wrong(upgrade, node_client):
     response = node_client.post(advance_url(upgrade.pk), {"to": "done"}, format="json")
 
-    assert (response.status_code, response.json()["code"]) == (400, "invalid_upgrade_advance")
-    assert response.json()["errors"][0]["loc"].startswith("advance.to")
+    assert (response.status_code, response.json()["errors"][0]["code"]) == (400, "invalid_upgrade_advance")
+    assert response.json()["errors"][0]["attr"].startswith("advance.to")
 
 
 # ---- the desired state, stage by stage ----

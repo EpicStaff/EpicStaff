@@ -36,6 +36,7 @@ from tables.import_export.archive import detect_file_kind
 from tables.import_export.enums import EntityType
 from tables.import_export.permissions import ENTITY_RESOURCE_MAP
 from tables.import_export.schemas import ImportSettings
+from tables.import_export.utils import flatten_error_detail
 from tables.models.user import User
 from tables.serializers.transfer_job_serializers import (
     AgentDefinitionImportJobQuerySerializer,
@@ -62,7 +63,6 @@ from tables.views.raw_asgi import (
     send_json,
     serve_like_asgi_handler,
 )
-from utils.exception_handler import flatten_error_detail
 from utils.logger import logger
 
 IMPORT_JOBS_ACTION = "import_jobs"
