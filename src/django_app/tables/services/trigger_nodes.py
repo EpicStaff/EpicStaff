@@ -54,6 +54,7 @@ class TriggerNodeAccess:
 
         Raises:
             OrgMembershipRequiredError (403): `user` is not a member of `org_id`.
+            OrgInactiveError (403): `user` is a member of `org_id` and it is inactive.
             TriggerNodesRequireUsePermissionError (403): the role lacks USE on flows.
         """
         effective_permissions = self._resolver.resolve(user=user, org_id=org_id)

@@ -131,8 +131,9 @@ PROFILE_API_KEYS_POST = {
         403: OpenApiResponse(
             response=OpenApiTypes.OBJECT,
             description=(
-                "API-key caller (key management requires a JWT session), or the caller "
-                "is not a member of `org_id` or it is inactive (org_membership_required)."
+                "API-key caller (key management requires a JWT session), the caller "
+                "is not a member of `org_id` (org_membership_required), or the caller is "
+                "a member or superadmin and `org_id` is deactivated (organization_inactive)."
             ),
             examples=[
                 _API_KEY_ON_JWT_ONLY_ENDPOINT_EXAMPLE,
@@ -142,6 +143,16 @@ PROFILE_API_KEYS_POST = {
                         "status_code": 403,
                         "code": "org_membership_required",
                         "message": "You are not a member of this organization.",
+                    },
+                    response_only=True,
+                    status_codes=["403"],
+                ),
+                OpenApiExample(
+                    "Organization deactivated",
+                    value={
+                        "status_code": 403,
+                        "code": "organization_inactive",
+                        "message": "This organization has been deactivated.",
                     },
                     response_only=True,
                     status_codes=["403"],

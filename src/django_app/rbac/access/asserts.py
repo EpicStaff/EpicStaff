@@ -18,6 +18,7 @@ def assert_org_permission(user, org_id: int, resource_type, action: Permission) 
 
     Raises:
         OrgMembershipRequiredError (403): caller is not a member of the org.
+        OrgInactiveError (403): caller is a member of the org and it is inactive.
         PermissionDenied (403): the caller's role lacks `action` on
             `resource_type`.
     """

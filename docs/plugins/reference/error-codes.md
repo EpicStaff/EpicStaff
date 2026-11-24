@@ -41,7 +41,7 @@ back.
 | `plugin_not_found` | 404 | No plugin with this identifier, a deleted plugin included (its activity is still served); on the public endpoints and the login endpoints, a plugin that is neither running nor stopped for an upgrade; on the menu-icon endpoint (`GET /api/plugin-public/<id>/icons/<file name>/`), also a file the plugin's current package does not hold (an unknown file, or one only another package has); on the login endpoints (`plugin-authorize`, `login-organizations`), also a plugin without a backend, which nobody can log in to |
 | `plugin_not_running` | 409 | A grant for a plugin that is not running (a plugin with a backend runs once its node reports it healthy); in plugin development mode, also setting development ports or downloading the development runtime file of a plugin that is not running |
 | `plugin_already_granted` | 409 | The organization already has a grant for the plugin |
-| `organization_inactive` | 409 | A grant to a deactivated organization |
+| `organization_inactive` | 409 | A grant to a deactivated organization (not the 403 of the same name below, which refuses the caller's access to the organization) |
 | `package_file_mismatch` | 409 | The stored package file is missing or is not the file that was reviewed; reject it and upload again |
 | `invalid_plugin_role_permissions` | 400 | A Roles-matrix write names a plugin that is not running and granted in the role's organization (or names it twice), or lists actions the plugin does not declare, repeats one, or gives any without `read`. `loc` is `plugins[<i>].plugin_identifier` or `plugins[<i>].actions` |
 | `plugin_has_no_backend` | 409 | Settings, limits, runtime or restart of a plugin whose node package has no backend: the current package, or an upgrade's target once the plugin is stopped for it; also downloading the development runtime file of such a plugin, since there is no backend to develop |
@@ -115,6 +115,7 @@ The plugin endpoints also return EpicStaff's general codes:
 | `not_found` | 404 | A plugin activity event of another organization, or one that does not exist |
 | `org_context_required` | 400 | The available-plugins list without `X-Organization-Id` |
 | `org_membership_required` | 403 | The available-plugins list for an organization the caller is not a member of |
+| `organization_inactive` | 403 | The available-plugins list for a deactivated organization the caller is a member of, or any deactivated organization for a SuperAdmin |
 | `organization_not_found` | 404 | An organization that does not exist, or whose roles the caller may not read; for a service account, any organization but its own in `X-Organization-Id` |
 | `role_not_found` | 404 | A role that does not exist, or a custom role of an organization whose roles the caller may not read |
 | `built_in_role_immutable` | 403 | A Roles-matrix write on a built-in role: built-in roles always have the manifest defaults |

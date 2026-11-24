@@ -40,7 +40,10 @@ PERMISSIONS_ME_GET = {
         ),
         401: UNAUTHORIZED_401_RESPONSE,
         403: OpenApiResponse(
-            description="Caller is not a member of the org (org_membership_required)."
+            description=(
+                "Caller is not a member of the org (org_membership_required), or is "
+                "a member or superadmin and the org is deactivated (organization_inactive)."
+            )
         ),
         404: OpenApiResponse(description="Organization not found."),
     },

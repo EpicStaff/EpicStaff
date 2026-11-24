@@ -48,7 +48,9 @@ Required on `/api/permissions/me/` and other active-context resource
 endpoints outside this doc's scope. Missing or non-integer value →
 `400 org_context_required`. Header points to an org the caller is not
 a member of (and is not superadmin) → `403 org_membership_required`.
-Superadmin sets any `org_id` and bypasses the membership check.
+Header points to a deactivated org the caller is a member of, or the
+caller is superadmin → `403 organization_inactive`.
+Superadmin sets any active `org_id` and bypasses the membership check.
 
 The role management endpoints below do **not** consult this header at
 all. `GET /api/admin/roles/` is cross-org by design (see its own
@@ -255,7 +257,7 @@ resource in any org. Treat as "every cell checked" for matrix renders
 and skip per-action gating.
 
 **Errors:** `400 org_context_required`, `403 org_membership_required`,
-`404 organization_not_found`.
+`403 organization_inactive`, `404 organization_not_found`.
 
 ---
 
@@ -737,6 +739,21 @@ Caller is authenticated but is not a member of the org pointed to by
 the header (and is not superadmin). FE should clear the cached header
 and redirect to the org picker.
 
+### `403 organization_inactive`
+
+```json
+{
+  "status_code": 403,
+  "code": "organization_inactive",
+  "message": "This organization has been deactivated."
+}
+```
+
+Caller is a member of the organization the request names (in the
+header, or as `org_id` in the body) or is superadmin, but the org is
+deactivated. A non-member gets `org_membership_required` instead. FE reloads the profile and switches
+to another available org.
+
 ### `403 permission_denied`
 
 ```json
@@ -891,9 +908,10 @@ the next step of the chain.
    in FE state.
 5. On org switch: update the header, refetch `/api/profile/`, replace
    cached state.
-6. On mid-session `403 org_membership_required` (org deactivated,
-   membership removed): clear the header, clear cached permissions,
-   redirect to the org picker.
+6. On mid-session `403 org_membership_required` (membership removed):
+   clear the header, clear cached permissions, redirect to the org
+   picker. On `403 organization_inactive` (org deactivated): reload the
+   profile and switch to another available org.
 
 ---
 
@@ -904,7 +922,7 @@ the next step of the chain.
 | Header missing on active-context endpoint | `400 org_context_required` | Treat as bug — interceptor must always set the header after login. |
 | Header value is `"abc"` or empty | `400 org_context_required` | Treat as bug — sanitize before send. |
 | Header points to org caller isn't a member of | `403 org_membership_required` | Clear header, redirect to org picker. |
-| Header points to deactivated org | `403 org_membership_required` | Same as above. The org is filtered from `memberships[]` on `/api/profile/` so the picker won't re-suggest it. |
+| Header points to deactivated org (caller is a member, or superadmin) | `403 organization_inactive` | Reload the profile and switch to another available org. The org is filtered from `memberships[]` on `/api/profile/` so it won't be re-suggested. A non-member gets `org_membership_required` instead. |
 | Header missing on `/api/profile/` | `200` with both active fields `null` | Show org picker; do not gate UI yet. |
 | Header malformed on `/api/profile/` | `200` with both active fields `null` (soft-fail) | Same as above. |
 | Zero-membership user calls `/api/profile/` | `200` with `memberships: []` and both active fields `null` | Show "ask an admin to invite you" empty state. |

@@ -217,7 +217,7 @@ With a personal API key the header is ignored: the active organization is always
 3. Set `X-Organization-Id: <id>` as a default header on every subsequent request via your HTTP interceptor.
 4. Refetch `GET /api/profile/` with the header to get `active_permissions`. Cache in FE state.
 5. On org switch: update the header, refetch `/profile/`, replace cached state.
-6. If a gated endpoint returns 403 `org_membership_required` mid-session (org deactivated, membership removed): clear the header, redirect to org-picker.
+6. If a gated endpoint returns 403 `org_membership_required` mid-session (membership removed): clear the header, redirect to org-picker. On 403 `organization_inactive` (the active org was deactivated): reload the profile and switch to another available org.
 
 See [roles_and_permissions.md](roles_and_permissions.md) for the catalog endpoint, /permissions/me/ details, and the role-list endpoints used by FE pickers.
 
