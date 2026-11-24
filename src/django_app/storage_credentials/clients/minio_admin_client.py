@@ -10,6 +10,7 @@ single-call "inline" policy attach for a regular IAM user in `miniopy_async`
 import asyncio
 import hashlib
 import json
+import re
 import secrets
 import ssl
 import string
@@ -20,6 +21,7 @@ from typing import Any
 import certifi
 from aiohttp import (
     ClientConnectorError,
+    ClientError,
     ClientResponse,
     ClientSession,
     ClientTimeout,
@@ -46,6 +48,7 @@ from miniopy_async.error import MinioAdminException
 from miniopy_async.minioadmin import _COMMAND
 
 from storage_credentials.exceptions import (
+    OrgStorageCredentialCheckError,
     StorageCredentialConfigError,
     TemporaryCredentialIssueError,
     TemporaryCredentialListError,
@@ -153,16 +156,45 @@ def _generate_credential(length: int, alphabet: str) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
+# RustFS answers admin errors as S3-style XML; MinIO answers them as JSON.
+_ERROR_CODE_PATTERN = re.compile(r'<Code>([^<]+)</Code>|"Code"\s*:\s*"([^"]+)"')
+
+# Codes the storage server returns when it does not accept the signing credentials
+# themselves: a secret it no longer holds, or an access key it does not know.
+_REJECTED_CREDENTIAL_CODES = frozenset({"SignatureDoesNotMatch", "InvalidAccessKeyId"})
+
+_SINGLE_ATTEMPT_TIMEOUT_SECONDS = 5
+
+
+def _storage_error_code(error: MinioAdminException) -> str | None:
+    match = _ERROR_CODE_PATTERN.search(error._body)
+    if match is None:
+        return None
+    return match.group(1) or match.group(2)
+
+
 class StorageAdminGateway:
-    def __init__(self, host: str, access_key: str, secret_key: str):
+    def __init__(
+        self, host: str, access_key: str, secret_key: str, *, single_attempt: bool = False
+    ):
+        """Build a gateway signing with `access_key`/`secret_key`.
+
+        Args:
+            single_attempt: Send every request once, with a short total timeout, instead
+                of the retrying session. For checks run on container start, where an
+                unreachable server must cost seconds, not the full retry budget.
+        """
         secure, endpoint = self._split_host(host)
-        session = self._create_session()
+        session = (
+            self._create_single_attempt_session() if single_attempt else self._create_session()
+        )
         self._client = _MinioAdminClient(
             endpoint=endpoint,
             credentials=StaticProvider(access_key, secret_key),
             secure=secure,
             session=session,
         )
+        self._access_key = access_key
 
     @staticmethod
     def _create_session() -> RetryClient:
@@ -200,6 +232,14 @@ class StorageAdminGateway:
         return RetryClient(client_session=session, retry_options=retry_options)
 
     @staticmethod
+    def _create_single_attempt_session() -> ClientSession:
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        return ClientSession(
+            connector=TCPConnector(limit=1, ssl=ssl_context),
+            timeout=ClientTimeout(total=_SINGLE_ATTEMPT_TIMEOUT_SECONDS),
+        )
+
+    @staticmethod
     def _split_host(value: str) -> tuple[bool, str]:
         parts = value.split("://")
         if len(parts) != 2:
@@ -226,6 +266,49 @@ class StorageAdminGateway:
 
     # --- org-level (long-lived) IAM user ---------------------------------
 
+    async def credential_rejection_code(self) -> str | None:
+        """Return the server's error code if it rejects this gateway's own credentials, else None.
+
+        Sends one signed admin request: listing the caller's own service accounts, which
+        any valid user may do. The server checks the signature first, so a secret it no
+        longer holds or an unknown access key fails with `SignatureDoesNotMatch` /
+        `InvalidAccessKeyId`; `AccessDenied` means the signature was accepted.
+
+        Raises:
+            OrgStorageCredentialCheckError: The server could not be reached or answered
+                with any other error. That says nothing about the credentials, so callers
+                must not rotate them on it.
+        """
+        try:
+            response = await self._client._url_open(
+                "GET",
+                _COMMAND.SERVICE_ACCOUNT_LIST,
+                query_params={"user": self._access_key},
+            )
+        except MinioAdminException as error:
+            code = _storage_error_code(error)
+            if code in _REJECTED_CREDENTIAL_CODES:
+                return code
+            if code == "AccessDenied":
+                return None
+            logger.warning(
+                "Could not verify the storage credentials of '{}': HTTP {} code={}",
+                self._access_key,
+                error._code,
+                code,
+            )
+            raise OrgStorageCredentialCheckError() from error
+        except (ClientError, TimeoutError) as error:
+            logger.warning(
+                "Could not verify the storage credentials of '{}' (network error): {!r}",
+                self._access_key,
+                error,
+            )
+            raise OrgStorageCredentialCheckError() from error
+        # Only the status matters: release without reading the encrypted account list.
+        response.release()
+        return None
+
     async def add_user(self, access_key: str, secret_key: str) -> None:
         await self._client.user_add(access_key, secret_key)
 
@@ -246,9 +329,11 @@ class StorageAdminGateway:
             raise
 
     async def create_named_policy(self, policy_name: str, policy: dict[str, Any]) -> None:
-        with tempfile.NamedTemporaryFile("w", suffix=".json") as policy_file:
+        # `policy_add` reopens the file by name, which Windows refuses while it is still
+        # open; it is closed first and deleted when the block exits.
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete_on_close=False) as policy_file:
             json.dump(policy, policy_file)
-            policy_file.flush()
+            policy_file.close()
             await self._client.policy_add(policy_name, policy_file.name)
 
     async def attach_named_policy(self, policy_name: str, user: str) -> None:
@@ -306,7 +391,20 @@ class StorageAdminGateway:
             await response.read()
             return access_key, secret_key
         except MinioAdminException as error:
-            logger.exception("Failed to mint temporary service account: {}", error)
+            code = _storage_error_code(error)
+            logger.exception(
+                "Storage refused to mint a temporary service account for '{}': HTTP {} code={}",
+                self._access_key,
+                error._code,
+                code,
+            )
+            if code in _REJECTED_CREDENTIAL_CODES:
+                logger.error(
+                    "The stored credentials of '{}' no longer match the storage server. "
+                    "Restart django_app or run `manage.py backfill_org_storage_credentials` "
+                    "to re-provision them.",
+                    self._access_key,
+                )
             raise TemporaryCredentialIssueError() from error
         except (TimeoutError, ClientConnectorError, ServerDisconnectedError) as error:
             logger.exception("Failed to mint temporary service account (network error): {}", error)

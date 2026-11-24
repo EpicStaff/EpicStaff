@@ -26,13 +26,14 @@ export const environment = {
     // whichever backend PROXY_TARGET points at, defaulting to http://localhost.
     apiUrl: '/api/',
     realtimeApiUrl: '/realtime/',
+    auditorUrl: '/auditor/',
+    chatApiUrl: '/chat/',
 
     // To target a different backend, set PROXY_TARGET before starting the dev server:
     //   PROXY_TARGET=https://some-stand.example.com npm run start:local
     // Leave PROXY_TARGET unset to use the local docker backend at http://localhost.
 
     isChatEnabled: true,
-    chatApiUrl: '/chat/',
     isSessionAuditEnabled: true,
     isUserAuditEnabled: true,
     isPluginsEnabled: false,

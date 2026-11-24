@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { Component, input, Type } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { HasPermissionDirective } from '@shared/directives';
 import { NodeType } from '@shared/models';
 
 import { PermissionsService } from '../../../services/auth/permissions.service';
@@ -258,7 +259,11 @@ function openOnChangesTab({ component, type, references, inputs, reveal }: Panel
             provideChangesTabDiff({ missingReferences: references }),
         ],
     });
-    renderOnlyMissingReferenceNotes(component, [NodeSecretsFieldComponent, InputMapStandInComponent]);
+    renderOnlyMissingReferenceNotes(component, [
+        NodeSecretsFieldComponent,
+        InputMapStandInComponent,
+        HasPermissionDirective,
+    ]);
     const flow = buildFlowModelFromGraphDto(liveGraph);
     TestBed.inject(FlowService).setFlow(flow);
     const node: NodeModel = flow.nodes.find((candidate) => candidate.type === type)!;

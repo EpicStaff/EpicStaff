@@ -80,7 +80,10 @@
                             <app-missing-reference-note [fields]="['agent_definition']" />
                         </div>
 
-                        <div class="field">
+                        <div
+                            *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"
+                            class="field"
+                        >
                             <div class="field__label-row">
                                 <label class="field__label">Surface (Group of Permissions)</label>
                                 <app-help-tooltip
@@ -378,7 +381,10 @@
                         <app-missing-reference-note [fields]="['agent_definition']" />
                     </div>
 
-                    <div class="field">
+                    <div
+                        *appHasPermission="[ResourceCode.Surfaces, ActionCode.Read]"
+                        class="field"
+                    >
                         <div class="field__label-row">
                             <label class="field__label">Surface (Group of Permissions)</label>
                             <app-help-tooltip
