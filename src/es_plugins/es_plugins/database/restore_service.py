@@ -14,11 +14,14 @@ stopped the plugin's process; `on_step` is told when each begins, for the node's
    cannot log in any more, and every session of the app role and the owner is ended, through
    `plugins_admin`'s `pg_signal_backend`. A session that survives is a failure. Then the owner
    logs in once, as step 5 will (its stored settings removed first, `open_owner_login`): one
-   that cannot fails the restore here, before anything is dropped.
+   that cannot fails the restore here, before anything is dropped. A database closed to logins
+   (a run before this one stopped between creating and opening it in step 4) is opened first, to
+   the five roles only (`provisioner.grant_connect`).
 4. **recreate**, from `postgres`: the database's template mark and connection limit are put back
    (`database_attributes`), it is dropped as its owner (a plain `DROP`, which a session still
    connected makes PostgreSQL refuse: tried again later), created again owned by the owner, from
-   `template0`, and only the five roles may connect to it (`provisioner.grant_connect`).
+   `template0`, closed to every login (`provisioner.create_closed_database`), and opened to the
+   five roles only (`provisioner.grant_connect`).
 5. **restore**: the owner may log in for this run only (a one-time password, one connection, ten
    minutes), and `pg_restore` runs **with the owner as the session user**, in one transaction,
    with row security on, and with session options that override every setting the plugin stored
@@ -71,7 +74,12 @@ from es_plugins.database.migration_runner import (
     open_owner_login,
 )
 from es_plugins.database.postgres_client import PostgresClient, PostgresToolError, ToolLogin
-from es_plugins.database.provisioner import DatabaseProvisioner, ProvisionedDatabase, grant_connect
+from es_plugins.database.provisioner import (
+    DatabaseProvisioner,
+    ProvisionedDatabase,
+    create_closed_database,
+    grant_connect,
+)
 
 RESTORE_APPLICATION_NAME = "epicstaff-node-restore"
 SESSIONS_END_SECONDS = 10.0
@@ -275,6 +283,9 @@ class RestoreService:
         Raises:
             RestoreError: At `close`: the owner cannot log in; nothing was changed.
         """
+        # A run that stopped in `_recreate` leaves the database closed to logins, and the skipped
+        # pre-restore backup does not open it on the retry. Opened with its ACL, never without.
+        await grant_connect(admin, desired)
         password = secrets.token_urlsafe(32)
         await open_owner_login(
             admin, desired.owner_role, password, self._clock() + OWNER_LOGIN_WINDOW
@@ -353,11 +364,7 @@ async def _recreate(admin: psycopg.AsyncConnection, desired: DesiredDatabase) ->
     finally:
         if not admin.broken:
             await admin.execute("RESET ROLE")
-    await admin.execute(
-        sql.SQL("CREATE DATABASE {} OWNER {} TEMPLATE template0 ENCODING 'UTF8'").format(
-            database, sql.Identifier(desired.owner_role)
-        )
-    )
+    await create_closed_database(admin, desired)
     await grant_connect(admin, desired)
 
 

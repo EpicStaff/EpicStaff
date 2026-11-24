@@ -10,9 +10,11 @@
    password and limit (a SUPERUSER, REPLICATION or BYPASSRLS attribute is only checked: only a
    superuser may even switch it off). Then `plugins_admin` gets SET, without INHERIT, on the
    owner, and the app role SET, without INHERIT, on the job role.
-3. **Database**, when it is missing: `plugin_<id_>`, owned by the owner, from `template0`.
+3. **Database**, when it is missing: `plugin_<id_>`, owned by the owner, from `template0`,
+   created closed to every login (`create_closed_database`).
 4. **CONNECT**, in one transaction as the owner (a REVOKE by `plugins_admin` itself would be a
-   silent no-op): PUBLIC loses it, the five roles of `connect_holders` get it.
+   silent no-op): PUBLIC loses it, the five roles of `connect_holders` get it, and the database
+   is opened to logins.
 5. **Limits** (`apply_app_limits`).
 6. **Assertions** (`ProvisioningAssertions.check`).
 7. **Migrations** (`MigrationRunner`), with the owner as the session user.
@@ -154,14 +156,7 @@ class DatabaseProvisioner:
             await _ensure_roles(admin, desired, app_password, found, create=create)
             created_database = found.database_owner is None
             if created_database:
-                await admin.execute(
-                    sql.SQL(
-                        "CREATE DATABASE {} OWNER {} TEMPLATE template0 ENCODING 'UTF8'"
-                    ).format(
-                        sql.Identifier(desired.database_name),
-                        sql.Identifier(desired.owner_role),
-                    )
-                )
+                await create_closed_database(admin, desired)
             await grant_connect(admin, desired)
             await apply_app_limits(admin, desired)
             await self._assertions.check(admin, desired)
@@ -245,8 +240,32 @@ async def _ensure_roles(
         await admin.execute(sql.SQL("GRANT {} TO {} WITH INHERIT FALSE, SET TRUE").format(job, app))
 
 
+async def create_closed_database(admin: psycopg.AsyncConnection, desired: DesiredDatabase) -> None:
+    """Create the plugin's database, owned by its owner, with no login allowed into it.
+
+    PostgreSQL gives a new database the default ACL, in which PUBLIC may connect, and CREATE
+    DATABASE cannot share a transaction with the REVOKE that `grant_connect` runs. Created open,
+    the database would let every role on the server log in until then, and a session opened in
+    that window outlives the REVOKE. `ALLOW_CONNECTIONS false` refuses every login, a superuser's
+    too, until `grant_connect` opens it in the transaction that sets its ACL.
+    """
+    await admin.execute(
+        sql.SQL(
+            "CREATE DATABASE {} OWNER {} TEMPLATE template0 ENCODING 'UTF8' ALLOW_CONNECTIONS false"
+        ).format(sql.Identifier(desired.database_name), sql.Identifier(desired.owner_role))
+    )
+
+
 async def grant_connect(admin: psycopg.AsyncConnection, desired: DesiredDatabase) -> None:
-    """Only the five roles of `connect_holders` may connect to the database; PUBLIC may not."""
+    """Only the five roles of `connect_holders` may connect to the database; PUBLIC may not.
+
+    Also opens the database to logins, in the same transaction. This is the only place the node
+    opens a plugin database: `create_closed_database` creates it closed, and
+    `database_attributes.reset_database_attributes` leaves a closed one closed. So the node never
+    lets a login be checked against the default ACL. A database a run left closed, having
+    stopped before this step, is opened by the next provisioning, backup or restore, and dropped
+    closed by a drop.
+    """
     database = sql.Identifier(desired.database_name)
     holders = sql.SQL(", ").join(sql.Identifier(name) for name in sorted(connect_holders(desired)))
     # As the owner: privileges on its database are the owner's to revoke. SET LOCAL ends with
@@ -255,3 +274,6 @@ async def grant_connect(admin: psycopg.AsyncConnection, desired: DesiredDatabase
         await admin.execute(sql.SQL("SET LOCAL ROLE {}").format(sql.Identifier(desired.owner_role)))
         await admin.execute(sql.SQL("REVOKE CONNECT ON DATABASE {} FROM PUBLIC").format(database))
         await admin.execute(sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(database, holders))
+        # In the same commit as the ACL: every catalog state in which the database accepts
+        # logins already has the new ACL, so no login is ever checked against the default one.
+        await admin.execute(sql.SQL("ALTER DATABASE {} ALLOW_CONNECTIONS true").format(database))
