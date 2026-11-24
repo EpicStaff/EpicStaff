@@ -329,9 +329,11 @@ class StorageAdminGateway:
             raise
 
     async def create_named_policy(self, policy_name: str, policy: dict[str, Any]) -> None:
-        with tempfile.NamedTemporaryFile("w", suffix=".json") as policy_file:
+        # `policy_add` reopens the file by name, which Windows refuses while it is still
+        # open; it is closed first and deleted when the block exits.
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete_on_close=False) as policy_file:
             json.dump(policy, policy_file)
-            policy_file.flush()
+            policy_file.close()
             await self._client.policy_add(policy_name, policy_file.name)
 
     async def attach_named_policy(self, policy_name: str, user: str) -> None:
