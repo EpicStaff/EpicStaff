@@ -1,4 +1,7 @@
+import uuid
+
 import pytest
+from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
 from rbac.models import ApiKey, OrganizationUser
@@ -15,6 +18,7 @@ from rbac.exceptions import (
 
 from tables.graph_versioning.services import GraphVersioningService
 from tables.models import Graph, GraphNote, GraphVersion, Label
+from tables.models.flow_assistant_models import FlowAssistant, FlowAssistantConversation
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -291,6 +295,35 @@ def test_remove_member_deletes_their_api_keys_in_that_org_only(
     assert not ApiKey.objects.filter(pk=acme_key.pk).exists()
     assert ApiKey.objects.filter(pk=beta_key.pk).exists()
     assert ApiKey.objects.filter(pk=colleague_key.pk).exists()
+
+
+def _conversation(user, org, **fields):
+    graph = Graph.objects.create(name=f"assistant-flow-{uuid.uuid4()}", org=org)
+    return FlowAssistantConversation.objects.create(
+        flow_assistant=FlowAssistant.objects.create(graph=graph), user=user, **fields
+    )
+
+
+@pytest.mark.django_db
+def test_remove_member_deletes_their_assistant_conversations_in_that_org_only(
+    admin_acme, acme, beta, role_member, django_user_model
+):
+    bob = django_user_model.objects.create_user(
+        email="rm-conversations@x.com", password="StrongPass123!"
+    )
+    membership = OrganizationUser.objects.create(user=bob, org=acme, role=role_member)
+    OrganizationUser.objects.create(user=bob, org=beta, role=role_member)
+    acme_conversation = _conversation(bob, acme)
+    binned_acme_conversation = _conversation(bob, acme, active=False, soft_deleted_at=timezone.now())
+    beta_conversation = _conversation(bob, beta)
+    colleague_conversation = _conversation(admin_acme, acme)
+
+    svc.remove_member(actor=admin_acme, membership_id=membership.id)
+
+    remaining = set(FlowAssistantConversation.all_objects.values_list("pk", flat=True))
+    assert acme_conversation.pk not in remaining
+    assert binned_acme_conversation.pk not in remaining
+    assert {beta_conversation.pk, colleague_conversation.pk} <= remaining
 
 
 @pytest.mark.django_db

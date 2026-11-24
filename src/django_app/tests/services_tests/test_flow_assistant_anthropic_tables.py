@@ -261,12 +261,12 @@ async def _run_reply(graph, org, llm_config, reply, *, fail_after_reply=False, c
     user = await sync_to_async(get_user_model().objects.create_user)(
         email="anthropic-tables@test.com", password="Pass1234!"
     )
-    org_user = await sync_to_async(OrganizationUser.objects.create)(user=user, org=org, role=role)
+    await sync_to_async(OrganizationUser.objects.create)(user=user, org=org, role=role)
     assistant = await sync_to_async(FlowAssistant.objects.create)(
         graph=graph, llm_config=llm_config
     )
     conversation = await sync_to_async(FlowAssistantConversation.objects.create)(
-        flow_assistant=assistant, organization_user=org_user
+        flow_assistant=assistant, user=user
     )
     await sync_to_async(FlowAssistantMessage.objects.create)(
         conversation=conversation, message_index=0, role="system", content="sys"
