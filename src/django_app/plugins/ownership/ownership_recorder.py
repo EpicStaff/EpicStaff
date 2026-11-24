@@ -44,6 +44,9 @@ EXTRA_OWNABLE_MODELS = (
     "tables.RealtimeModel",
     "tables.RealtimeTranscriptionModel",
     "tables.StorageFile",
+    # A venv or custom library lives in the sandbox; its binding is the root owned here.
+    "proxies.SandboxVenvBinding",
+    "proxies.SandboxCustomLibraryBinding",
 )
 # Rows per INSERT, so a bulk upload of many files never builds one huge statement.
 OWNERSHIP_INSERT_BATCH_SIZE = 1000

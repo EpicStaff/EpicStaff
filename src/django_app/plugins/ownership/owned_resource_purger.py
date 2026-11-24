@@ -1,8 +1,9 @@
 """Deleting for good what a plugin owns in an organization.
 
 Each owned root goes the way a person's delete would take it, then the recycle bin's purge:
-a recycle-bin root is binned and purged, a file is binned through storage and purged, and a
-root without a bin (a configuration) is hard-deleted. Nothing is left in the recycle bin.
+a recycle-bin root is binned and purged, a file is binned through storage and purged, a venv or
+custom library is deleted in the sandbox (its wheels with it) and then its binding, and any
+other root without a bin (a configuration) is hard-deleted. Nothing is left in the recycle bin.
 What the organization's own rows lose is what they lose when a person deletes the item: a
 link with SET_NULL is cleared (an agent loses its LLM config, a default-model setting is
 emptied), and children that cascade go with the root. A delete that would reach another
@@ -14,14 +15,16 @@ One row per transaction, so a row that fails rolls back alone. A failed row is l
 
 Adding an ownable model: classify it in `ownership_recorder`; a recycle-bin root takes its
 place from the bin's `EMPTY_ORDER` by itself, any other model is named in
-`EXTRA_PURGE_ORDER`. `test_owned_resource_purger.py` fails until it is.
+`EXTRA_PURGE_ORDER`, and a binding of a resource another service holds is named in
+`PROXIED_ROOT_SERVICES`. `test_owned_resource_purger.py` fails until it is.
 """
 
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
 from functools import cache
+from types import MappingProxyType
 
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
@@ -29,6 +32,8 @@ from django.core.cache import cache as shared_cache
 from django.db import router, transaction
 from django.db.models import Model, Q, QuerySet
 from django.db.models.deletion import Collector
+from foundation.transport.http.errors import ClientNotFoundError
+from proxies.sandbox.services import CustomLibraryService, VenvService
 from rbac.models import Organization
 from tables.models import Graph, Session, StorageFile
 from tables.services.cascade_org_guard import CascadeOrgGuard
@@ -51,7 +56,9 @@ FAILED_ROW_RETRY_SECONDS = 3600
 FAILED_ROW_CACHE_KEY = "plugins:purge:failed:{pk}"
 # Ownable models with no recycle bin, other than files: purged after the files and
 # collections and before key-value tables and secrets, configurations before the models they
-# use (an LLM or embedding model that a config still uses cannot be deleted).
+# use (an LLM or embedding model that a config still uses cannot be deleted), and venvs after
+# the tools and flows whose code runs in them and before the custom libraries they name (the
+# sandbox refuses to delete a library a venv still names).
 EXTRA_PURGE_ORDER: tuple[str, ...] = (
     "ai_models.LLMConfig",
     "ai_models.EmbeddingConfig",
@@ -64,6 +71,16 @@ EXTRA_PURGE_ORDER: tuple[str, ...] = (
     "ai_models.EmbeddingModel",
     "tables.RealtimeModel",
     "tables.RealtimeTranscriptionModel",
+    "proxies.SandboxVenvBinding",
+    "proxies.SandboxCustomLibraryBinding",
+)
+# Ownable roots that bind a resource the sandbox holds: the service that pairs the two
+# deletes both, as a person's delete through the gateway does.
+PROXIED_ROOT_SERVICES: Mapping[str, type[VenvService | CustomLibraryService]] = MappingProxyType(
+    {
+        "proxies.SandboxVenvBinding": VenvService,
+        "proxies.SandboxCustomLibraryBinding": CustomLibraryService,
+    }
 )
 # Model rows and the configurations that use them; the configurations RESTRICT the rows.
 _CONFIGS_OF_MODEL = {
@@ -293,6 +310,10 @@ def _delete_root(root: Model, organization_id: int, actor: str) -> bool:
     if model is StorageFile:
         _purge_file(root, organization_id, actor)
         return True
+    proxied_service = PROXIED_ROOT_SERVICES.get(model._meta.label)
+    if proxied_service is not None:
+        _delete_proxied(root, proxied_service(), actor)
+        return True
     if model in {resource.model for resource in bin_resources().values()}:
         if model is Graph and _has_open_session(root):
             return False
@@ -335,6 +356,31 @@ def _purge_file(file: StorageFile, organization_id: int, actor: str) -> None:
         pk=file.pk,
         org_id=organization_id,
         batch=file.soft_delete_batch,
+        actor=actor,
+    )
+
+
+def _delete_proxied(
+    binding: Model, service: VenvService | CustomLibraryService, actor: str
+) -> None:
+    """Delete the sandbox's venv or custom library (its wheels with it), then its binding.
+
+    Refused as a person's delete is: a venv some Python code still runs in
+    (`VenvInUseError`), a library some venv still names (the sandbox's 409). The row then
+    fails and is tried again in a later pass.
+    """
+    pk = binding.pk
+    organization_id = binding.org_id
+    try:
+        service.delete(binding)
+    except ClientNotFoundError:
+        # The sandbox no longer has it: an earlier pass removed it and then rolled back.
+        binding.delete()
+    logger.info(
+        "Purged {model} {pk} of org {org_id} by {actor}",
+        model=type(binding).__name__,
+        pk=pk,
+        org_id=organization_id,
         actor=actor,
     )
 

@@ -137,9 +137,10 @@ the node puts back when it was changed, rather than a hard limit.
 
 ## What a suspension does not stop
 
-A suspension stops runs, keys and people's access at once, but not everything: AI features
-outside runs, resources a running step reaches by name, voice conversations already open, and
-the plugin's own database and outbound access, which belong to the plugin, not to one
+A suspension stops runs, keys and people's access at once, but not everything: the "test"
+actions of models and tools, resources a running step reaches by name, the plugin's custom
+libraries that the organization's venvs install, voice conversations already open, and the
+plugin's own database and outbound access, which belong to the plugin, not to one
 organization. A run that starts in the moment a suspension is being saved may keep running for
 up to about a minute before it is stopped. The full list is in
 [the plugin lifecycle](lifecycle.md#what-a-suspension-does-not-stop).
@@ -157,6 +158,22 @@ What a plugin created stays the plugin's, even after people in the organization 
 a file a person overwrote under the plugin's name stays the plugin's file. Deleting the plugin's
 data in the organization deletes them all, people's edits included: EpicStaff does not hand a
 resource over to the organization when someone changes it. Copy what should outlive the plugin.
+
+## Custom library versions and links a plugin does not own
+
+A version of a custom library has no owner of its own: it belongs to whoever owns the library.
+A plugin with `custom_libraries` `update` can upload a new version to one of the organization's
+own libraries. That version is not the plugin's: deleting the plugin's data does not delete it,
+and the organization's venvs that install the library keep installing it. After deleting a
+plugin's data, check the versions of the organization's custom libraries it could update, and
+remove the ones it uploaded.
+
+A venv names the custom libraries it installs by name, inside the sandbox, not by a link
+EpicStaff can follow. So when one of the organization's venvs installs a library the plugin
+created, a run of code in that venv is not seen to use the plugin's library: a suspension does
+not refuse it. Deleting the plugin's data then tries to delete the library, and the sandbox
+refuses while a venv still names it: the grant shows the error until the venv stops naming the
+library.
 
 ## Backups hold every organization's data
 

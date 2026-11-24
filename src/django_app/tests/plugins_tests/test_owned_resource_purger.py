@@ -5,20 +5,25 @@ import itertools
 import time
 from unittest import mock
 
+import httpx
 import pytest
 from agents.models import AgentDefinition, Surface
 from django.core.cache import cache
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from foundation.transport.http.errors import ClientConflictError, ClientNotFoundError
 from plugins.models import GrantState, PluginOwnedResource
 from plugins.ownership import owned_resource_purger
 from plugins.ownership.owned_resource_purger import (
     EXTRA_PURGE_ORDER,
     FAILED_ROW_CACHE_KEY,
+    PROXIED_ROOT_SERVICES,
     OwnedResourcePurger,
     owned_purge_order,
 )
 from plugins.ownership.ownership_recorder import ownable_models
+from proxies.models import AbstractBinding
+from proxies.sandbox.models import SandboxCustomLibraryBinding, SandboxVenvBinding
 from tables.models import (
     Graph,
     KeyValueTable,
@@ -81,6 +86,14 @@ def _transcription_config(organization):
     )
 
 
+def _venv(organization):
+    return SandboxVenvBinding.objects.create(org=organization, resource_id=str(next(_numbers)))
+
+
+def _custom_library(organization):
+    return SandboxCustomLibraryBinding.objects.create(org=organization, resource_id=str(next(_numbers)))
+
+
 # One builder per ownable model: a root of it in the organization.
 ROOTS = {
     "tables.Graph": lambda organization: flow(organization, _unique("Weather forecast")),
@@ -126,6 +139,8 @@ ROOTS = {
     "tables.WebhookTrigger": lambda organization: WebhookTrigger.objects.create(
         org=organization, path=f"weather-hook-{next(_numbers)}"
     ),
+    "proxies.SandboxVenvBinding": _venv,
+    "proxies.SandboxCustomLibraryBinding": _custom_library,
 }
 BIN_ROOT_LABELS = sorted(resource.model._meta.label for resource in bin_resources().values())
 
@@ -135,6 +150,54 @@ def no_failed_rows_left():
     cache.delete_pattern("plugins:purge:failed:*")
     yield
     cache.delete_pattern("plugins:purge:failed:*")
+
+
+class FakeSandboxResources:
+    """The sandbox's venvs or custom libraries, as far as a delete reaches them.
+
+    Every removal lands in the shared `removed` log as `(kind, sandbox id)`, so a test sees
+    what was deleted upstream and in which order.
+    """
+
+    def __init__(self, kind: str, removed: list[tuple[str, str]]):
+        self.kind = kind
+        self.removed = removed
+        # Sandbox id -> the error the sandbox answers its delete with.
+        self.refusals: dict[str, Exception] = {}
+
+    def __call__(self, *args, **kwargs):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def retrieve(self, resource_id: str) -> dict:
+        return {"id": int(resource_id), "name": f"{self.kind}-{resource_id}"}
+
+    def remove(self, resource_id: str) -> None:
+        if resource_id in self.refusals:
+            raise self.refusals[resource_id]
+        self.removed.append((self.kind, resource_id))
+
+
+def _sandbox_error(error_class, status_code):
+    return error_class("refused", response=httpx.Response(status_code))
+
+
+@pytest.fixture(autouse=True)
+def sandbox():
+    """The sandbox service, the one external boundary a venv or custom library purge reaches."""
+    removed: list[tuple[str, str]] = []
+    venvs = FakeSandboxResources("venv", removed)
+    libraries = FakeSandboxResources("library", removed)
+    with (
+        mock.patch("proxies.sandbox.services.VenvService.client_class", venvs),
+        mock.patch("proxies.sandbox.services.CustomLibraryService.client_class", libraries),
+    ):
+        yield mock.Mock(venvs=venvs, libraries=libraries, removed=removed)
 
 
 @pytest.fixture
@@ -188,8 +251,19 @@ def test_the_extra_order_lists_exactly_the_ownable_models_outside_the_bin():
     assert len(EXTRA_PURGE_ORDER) == len(set(EXTRA_PURGE_ORDER))
 
 
+def test_every_ownable_binding_is_deleted_in_the_service_that_holds_its_resource():
+    # A binding hard-deleted on its own would leave its venv or library in the sandbox.
+    bindings = {model._meta.label for model in ownable_models() if issubclass(model, AbstractBinding)}
+
+    assert bindings == set(PROXIED_ROOT_SERVICES)
+
+
 def test_users_go_before_what_they_use():
     order = [model._meta.label for model in owned_purge_order()]
+
+    assert order.index("tables.PythonCodeTool") < order.index("proxies.SandboxVenvBinding")
+    assert order.index("tables.Graph") < order.index("proxies.SandboxVenvBinding")
+    assert order.index("proxies.SandboxVenvBinding") < order.index("proxies.SandboxCustomLibraryBinding")
 
     assert order.index("tables.Graph") < order.index("agents.AgentDefinition") < order.index("ai_models.LLMConfig")
     assert order.index("tables.StorageFile") < order.index("ai_models.LLMConfig") < order.index("tables.Secret")
@@ -311,6 +385,98 @@ def test_rows_whose_grant_is_gone_go_with_the_grant_s_purge(grant, acme, storage
 
     assert not _exists(owned)
     assert not _exists(left_behind)
+
+
+# ---- venvs and custom libraries, held by the sandbox ----
+
+
+def test_a_venv_and_a_custom_library_are_deleted_in_the_sandbox_venv_first(grant, acme, sandbox):
+    library = _custom_library(acme)
+    venv = _venv(acme)
+    own(library, grant)
+    own(venv, grant)
+
+    result = _purge(grant)
+
+    assert (result.purged, result.failed, result.remaining) == (2, 0, 0)
+    assert sandbox.removed == [("venv", venv.resource_id), ("library", library.resource_id)]
+    assert not _exists(venv)
+    assert not _exists(library)
+    assert not PluginOwnedResource.objects.exists()
+
+
+def test_a_venv_the_organization_s_code_still_runs_in_is_kept_and_reported(grant, acme, sandbox):
+    venv = _venv(acme)
+    own(venv, grant)
+    tool = _python_tool(acme)
+    PythonCode.objects.filter(pk=tool.python_code_id).update(venv=venv)
+
+    result = _purge(grant)
+
+    assert (result.purged, result.failed, result.remaining) == (0, 1, 1)
+    assert result.first_error.startswith(f"Sandbox venv binding {venv.pk}: This environment is still used by ")
+    assert tool.name in result.first_error
+    assert _exists(venv)
+    assert sandbox.removed == []
+
+
+# Real commits: each row's transaction commits on its own, as in production, so the
+# on_commit reclaim of the purged tool's code runs before the venv's row is tried.
+@pytest.mark.django_db(transaction=True)
+def test_a_venv_the_plugin_s_own_tool_runs_in_goes_in_the_same_pass(grant, acme, sandbox):
+    venv = _venv(acme)
+    tool = _python_tool(acme)
+    PythonCode.objects.filter(pk=tool.python_code_id).update(venv=venv)
+    own(venv, grant)
+    own(tool, grant)
+
+    result = _purge(grant)
+
+    assert (result.purged, result.failed, result.remaining) == (2, 0, 0)
+    assert result.first_error is None
+    assert not _exists(tool)
+    assert not PythonCode.objects.filter(pk=tool.python_code_id).exists()
+    assert not _exists(venv)
+    assert sandbox.removed == [("venv", venv.resource_id)]
+
+
+def test_a_custom_library_the_sandbox_refuses_to_delete_is_kept(grant, acme, sandbox):
+    library = _custom_library(acme)
+    own(library, grant)
+    sandbox.libraries.refusals[library.resource_id] = _sandbox_error(ClientConflictError, 409)
+
+    result = _purge(grant)
+
+    assert (result.purged, result.failed, result.remaining) == (0, 1, 1)
+    assert result.first_error == f"Sandbox custom library binding {library.pk}: ClientConflictError"
+    assert _exists(library)
+
+
+def test_a_venv_already_gone_from_the_sandbox_still_loses_its_binding(grant, acme, sandbox):
+    venv = _venv(acme)
+    own(venv, grant)
+    sandbox.venvs.refusals[venv.resource_id] = _sandbox_error(ClientNotFoundError, 404)
+
+    result = _purge(grant)
+
+    assert (result.purged, result.failed, result.remaining) == (1, 0, 0)
+    assert not _exists(venv)
+
+
+def test_another_organization_s_venv_is_never_deleted_in_the_sandbox(grant, acme, beta, sandbox):
+    theirs = _venv(beta)
+    PluginOwnedResource.objects.create(
+        org=acme,
+        grant=grant,
+        plugin_identifier=grant.plugin.identifier,
+        content_type=ContentType.objects.get_for_model(SandboxVenvBinding),
+        object_id=theirs.pk,
+    )
+
+    _purge(grant)
+
+    assert _exists(theirs)
+    assert sandbox.removed == []
 
 
 # ---- what the organization's own rows lose ----

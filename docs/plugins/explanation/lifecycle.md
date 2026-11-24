@@ -61,9 +61,9 @@ Suspending takes effect at once:
 A run *uses* a resource the plugin owns when the flow reaches it in any way a run can: a node,
 an agent with its LLM configs, default surfaces and voice configs, a surface's tools, knowledge
 and files, a knowledge collection with every one of its RAGs' embedders and LLMs, a Secret that
-code or a configuration declares, a file under a folder the flow attaches, a subflow, and so on.
-The rule is deliberately broad, so it refuses some runs that would not have touched the
-resource in the end; the preview shows exactly which ones.
+code or a configuration declares, the venv code runs in, a file under a folder the flow
+attaches, a subflow, and so on. The rule is deliberately broad, so it refuses some runs that
+would not have touched the resource in the end; the preview shows exactly which ones.
 
 Runs that use only the organization's own resources are never refused.
 
@@ -82,8 +82,10 @@ at the plugin's configurations, which that page does not show.
 
 ## What a suspension does not stop
 
-- **AI features outside runs**, such as the flow assistant, decision-table explanations,
-  knowledge indexing, and the "test" actions of models and tools.
+- **The "test" actions of models and tools.**
+- **A custom library of the plugin that one of the organization's venvs installs.** A venv
+  names its libraries by name, inside the sandbox, so a run of code in that venv is not seen to
+  use the library and is not refused. The plugin's venvs themselves are seen.
 - **Registering a webhook or a Telegram bot** with a Secret the plugin owns.
 - **Resources a step reaches by name** through EpicStaff's API while it runs, for example a
   key-value table that Python code reads by its id.
@@ -126,17 +128,22 @@ organization, and the grant shows "Deleting data". Two things then happen side b
   else ([Delete your data when an organization leaves](../how-to/org-removed-hook.md)).
 - **EpicStaff deletes everything the plugin created in the organization**, including what it
   made on behalf of people: its flows, agents, surfaces, tools, files, knowledge collections,
-  configurations, models, key-value tables, secrets, voice channels and webhook triggers. They do
-  not go to the recycle bin: they are deleted for good, as if a person had deleted each one and
-  emptied the bin.
+  configurations, models, venvs, the custom libraries it created (with every version uploaded to
+  them, by anyone), key-value tables, secrets, voice channels and webhook triggers. They do not go
+  to the recycle bin: they are deleted for good, as if a person had deleted each one and emptied
+  the bin. A version the plugin uploaded to one of the organization's own custom libraries is not
+  the plugin's and stays, and the organization's venvs that install that library keep installing
+  it ([accepted risks](accepted-risks.md#custom-library-versions-and-links-a-plugin-does-not-own)).
 
 The organization's own rows lose what they used, exactly as when a person deletes the item: an
 agent loses the plugin's LLM config, a node loses its tool or file, and a default-model setting
 that pointed at one of the plugin's configurations is emptied. The organization's flows
 themselves stay. A resource that a row of another organization links to is not deleted, because
 that delete would change the other organization's data: the grant shows the error, and EpicStaff
-tries again every hour until the link is removed by hand. A flow with a running session waits
-until the session ends.
+tries again every hour until the link is removed by hand. The same goes for a venv the
+organization's own code still runs in, and a custom library one of its venvs still names: as when
+a person deletes them, they are refused until that code or venv stops using them. A flow with a
+running session waits until the session ends.
 
 The grant row goes once both are done: nothing the plugin created is left, and its organization
 removed hook succeeded or was skipped. Its service account, keys and custom roles' actions go

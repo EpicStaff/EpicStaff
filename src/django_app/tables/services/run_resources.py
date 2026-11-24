@@ -206,6 +206,9 @@ RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
     # Tools and code.
     FollowField("tables.PythonCodeTool", "python_code"),
     FollowField("tables.PythonCode", "secrets"),
+    # The venv the code runs in. Its custom libraries are not reached: a venv names them
+    # inside the sandbox, by name, with no link in this database for the walk to follow.
+    FollowField("tables.PythonCode", "venv"),
     FollowField("tables.McpTool", "auth_secret"),
     # Knowledge: every RAG of a collection, not only the one a node picks.
     FollowChildren("tables.BaseRagType", "source_collection"),
