@@ -921,7 +921,22 @@ export class GraphSceneService {
     zoomToType(type: string | null, durationMs = 400): void {
         if (!this.resources || type === null) return;
         const visibleNodes = this.nodes.filter((n) => n.type === type && this.isNodeVisible(n));
-        if (visibleNodes.length === 0) return;
+        this.fitCameraToNodes(visibleNodes, durationMs);
+    }
+
+    /**
+     * Smoothly animate the camera to frame every visible node in the scene. Does nothing if nothing is visible
+     * or the scene is not yet initialised. Handles both "zoomed out too far" and "some nodes off-screen".
+     */
+    fitToView(durationMs = 400): void {
+        if (!this.resources) return;
+        const visibleNodes = this.nodes.filter((n) => this.isNodeVisible(n));
+        this.fitCameraToNodes(visibleNodes, durationMs);
+    }
+
+    /** Shared camera animation used by zoomToType and fitToView — see zoomToType for the per-camera behaviour. */
+    private fitCameraToNodes(visibleNodes: readonly GraphNode[], durationMs: number): void {
+        if (!this.resources || visibleNodes.length === 0) return;
 
         let minX = Infinity;
         let minY = Infinity;

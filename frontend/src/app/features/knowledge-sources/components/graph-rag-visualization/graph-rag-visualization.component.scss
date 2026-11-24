@@ -75,6 +75,9 @@
     }
 
     // --- Left sidebar (overlay) ---
+    // overflow: visible so the Fit-to-view button, translated past the right edge, sits on the canvas
+    // instead of being clipped. The sidebar body has its own overflow-y, and filter labels ellipsis-truncate,
+    // so nothing inside the sidebar relies on this container to clip.
     &__sidebar {
         position: absolute;
         top: 0;
@@ -84,8 +87,41 @@
         flex-direction: column;
         background-color: var(--color-sidenav-background);
         border-right: 1px solid var(--color-divider-subtle);
-        overflow: hidden;
+        overflow: visible;
         z-index: 10;
+    }
+
+    // Lives in the sidebar's DOM tree but is pushed past its right edge to float over the canvas.
+    &__fit-button {
+        appearance: none;
+        position: absolute;
+        top: 5px;
+        right: 2px;
+        transform: translateX(calc(100% + 8px));
+        display: inline-flex;
+        align-items: center;
+        padding: 0 1rem;
+        height: 28px;
+        border: 1px solid var(--color-divider-subtle);
+        border-radius: 4px;
+        background-color: var(--color-nodes-background);
+        color: var(--color-ks-transparent-text-80);
+        font-family: inherit;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        cursor: pointer;
+        white-space: nowrap;
+        z-index: 10;
+
+        &:hover:not(:disabled) {
+            background-color: var(--color-ks-hover-row);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     }
 
     &__sidebar-body {

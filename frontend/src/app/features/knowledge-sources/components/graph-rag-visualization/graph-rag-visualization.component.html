@@ -151,6 +151,16 @@
                     [sidebarMinWidth]="sidebarWidthOptions.minWidth"
                     [sidebarMaxWidth]="sidebarWidthOptions.maxWidth"
                 ></div>
+                <!-- Sits on the canvas via transform; kept inside the sidebar so it inherits its visibility -->
+                <button
+                    type="button"
+                    class="visualization__fit-button"
+                    [disabled]="typeFiltersDisabled()"
+                    matTooltip="Fit all nodes to view"
+                    (click)="onFitToView()"
+                >
+                    <span>Fit</span>
+                </button>
             </div>
 
             <!-- Canvas container — stays mounted across reloads so the scene is updated in place -->

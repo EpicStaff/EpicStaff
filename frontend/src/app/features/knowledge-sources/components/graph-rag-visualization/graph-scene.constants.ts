@@ -15,7 +15,7 @@ export const LABEL_TEXT_COLOR = '#e8e8ec';
 /** Light outline around the pill, so it reads clearly on the dark scene background. */
 export const LABEL_BORDER_COLOR = 'rgba(200, 200, 210, 0.9)';
 export const LABEL_BORDER_WIDTH = 2;
-export const LABEL_FONT_WEIGHT = 600;
+export const LABEL_FONT_WEIGHT = 400;
 
 /** Stable color palette for entity types — high-saturation, high-contrast hues. */
 export const TYPE_COLORS: readonly string[] = [
@@ -161,6 +161,14 @@ export const SIMULATION_LINK_DISTANCE = 40;
 export const SIMULATION_CHARGE_STRENGTH = -150;
 /** Gap the layout keeps between the surfaces of two nodes, in world units, so no node is drawn over another. */
 export const SIMULATION_COLLISION_PADDING = 2;
+
+/**
+ * Weak per-axis spring that pulls every node toward the origin. Inside a cluster local repulsion and links
+ * dominate, so cluster shape and density do not change; at long distance the spring accumulates and keeps a
+ * small cluster from drifting far from a big one — `forceCenter` alone only shifts the whole system's
+ * centroid to the origin, it does not pull individual clusters back.
+ */
+export const SIMULATION_GRAVITY_STRENGTH = 0.03;
 
 /**
  * Community grouping: each tick a node's velocity moves by `(centroid − position) × strength × alpha`, toward

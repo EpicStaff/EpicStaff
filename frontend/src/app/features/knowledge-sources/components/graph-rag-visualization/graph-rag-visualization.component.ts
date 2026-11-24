@@ -474,6 +474,10 @@ export class GraphRagVisualizationComponent implements OnInit {
         this.sceneService.zoomToType(filter.type);
     }
 
+    onFitToView(): void {
+        this.sceneService.fitToView();
+    }
+
     onTypeFilterChange(filterIndex: number, checked: boolean): void {
         this.entityTypeFilters.update((filters) => {
             const updated = [...filters];
