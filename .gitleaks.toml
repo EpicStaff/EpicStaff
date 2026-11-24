@@ -21,3 +21,11 @@ description = "The made-up example key in docs/rbac/api_keys.md, not a key of an
 targetRules = ["generic-api-key", "curl-auth-header"]
 regexTarget = "secret"
 regexes = ['''^es-kR3f9s1n1qz8''']
+
+[[allowlists]]
+description = """\
+The cryptographer tests pass made-up values that must be rejected as not a token. \
+gAAAAAB... only looks like the start of a Fernet token; the variable name NOT_A_TOKEN \
+makes generic-api-key take it for a key."""
+targetRules = ["generic-api-key"]
+paths = ['''^src/foundation/tests/cryptographer/test_services\.py$''']
