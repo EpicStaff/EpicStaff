@@ -32,8 +32,9 @@ import {
 import { ActionCode, GetOrganizationResponse, ResourceCode } from '@shared/models';
 import { escapeHtml } from '@shared/utils';
 import { combineLatest, debounceTime, EMPTY, finalize } from 'rxjs';
-import { catchError, distinctUntilChanged, switchMap, tap } from 'rxjs/operators';
+import { catchError, distinctUntilChanged, filter, switchMap, tap } from 'rxjs/operators';
 
+import { CurrentUserRefreshService } from '../../../../../services/auth/current-user-refresh.service';
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../services/notifications';
 import { AdminsCellComponent } from '../../../components/admins-cell/admins-cell.component';
@@ -87,6 +88,7 @@ export class OrganizationsTabComponent {
     private toast = inject(ToastService);
     private permissionsService = inject(PermissionsService);
     private hardDeleteFlow = inject(HardDeleteFlowService);
+    private currentUserRefresh = inject(CurrentUserRefreshService);
 
     searchTerm = linkedSignal(() => this.search() ?? '');
     statusFilter = signal<boolean[]>([]);
@@ -187,7 +189,7 @@ export class OrganizationsTabComponent {
     private refreshOnClose(ref: DialogRef<unknown, CreateOrganizationDialogComponent>): void {
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (result) {
-                this.reloadTrigger.update((v) => v + 1);
+                this.reloadTrigger.update((count) => count + 1);
             }
         });
     }
@@ -204,21 +206,19 @@ export class OrganizationsTabComponent {
                 confirmText: 'Deactivate',
                 cancelText: 'Cancel',
             })
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe((confirmed) => {
-                if (confirmed !== true) return;
-                this.organizationStorage
-                    .deactivateOrganization(id)
-                    .pipe(takeUntilDestroyed(this.destroyRef))
-                    .subscribe({
-                        next: () => {
-                            this.toast.success('Organization deactivated successfully');
-                            this.focusMainAction();
-                        },
-                        error: (err: HttpErrorResponse) =>
-                            this.toast.error(rbacErrorMessage(err, 'Failed to deactivate organization.')),
-                    });
-            });
+            .pipe(
+                filter((confirmed) => confirmed === true),
+                switchMap(() =>
+                    this.organizationStorage.deactivateOrganization(id).pipe(
+                        catchError((err: HttpErrorResponse) => {
+                            this.toast.error(rbacErrorMessage(err, 'Failed to deactivate organization.'));
+                            return EMPTY;
+                        })
+                    )
+                ),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe(() => this.onMembershipChanged('Organization deactivated successfully'));
     }
 
     onReactivateOrganization(row: TableRow): void {
@@ -228,7 +228,7 @@ export class OrganizationsTabComponent {
             .reactivateOrganization(id)
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe({
-                next: () => this.focusMainAction(),
+                next: () => this.onMembershipChanged('Organization reactivated successfully'),
                 error: (err: HttpErrorResponse) =>
                     this.toast.error(rbacErrorMessage(err, 'Failed to reactivate organization.')),
             });
@@ -253,12 +253,35 @@ export class OrganizationsTabComponent {
             )
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((deleted) => {
-                if (deleted) this.focusMainAction();
+                if (!deleted) return;
+                this.focusMainAction();
+                this.refreshAfterMembershipChange();
             });
     }
 
     canEditRow(row: TableRow): boolean {
         return this.permissionsService.canInOrg(row['id'] as number, ResourceCode.Organizations, ActionCode.Update);
+    }
+
+    /**
+     * After an organization was deactivated or reactivated: the signed-in user's organizations follow, so the
+     * account menu shows the change and an active org that was just deactivated is replaced (the refresh says so).
+     */
+    private onMembershipChanged(successMessage: string): void {
+        this.toast.success(successMessage);
+        this.focusMainAction();
+        this.refreshAfterMembershipChange();
+    }
+
+    /**
+     * Brings the signed-in user up to date, then reloads the list with the search and status filter it shows, so the
+     * table shows what the server now holds after the action (an org switch on the way also clears this list).
+     */
+    private refreshAfterMembershipChange(): void {
+        this.currentUserRefresh
+            .refreshAfterMembershipChange()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.reloadTrigger.update((count) => count + 1));
     }
 
     private focusMainAction(): void {

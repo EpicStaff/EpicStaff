@@ -14,13 +14,12 @@ from tables.import_export.constants import DEPENDENCY_ORDER, NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.permissions import ENTITY_RESOURCE_MAP
-from tables.import_export.preparation import prepare_import_data
+from tables.import_export.preparation import convert_to_current_version, prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.strategies.graph import GraphStrategy
 from tables.models import Graph
 from tables.serializers.model_serializers.graph_serializers import GraphSerializer
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
-from tables.utils.legacy_node_number import move_legacy_badge_into_node_number
 
 # Node entity types that belong to a graph — handled via recreate_graph_children.
 # Start/end nodes are intentionally excluded: they are structural and every
@@ -97,7 +96,17 @@ class PartialImportService:
                 nodes) are skipped.
             serializer_context: Context for the read serializers rendering
                 `content`, normally the view's serializer context.
+
+        Raises:
+            ValidationError: The file's version is not a whole number, is newer than
+                this release reads, or has no conversion path; or the file is
+                malformed.
         """
+        # Brought to the current version first, like a full import. A file without a
+        # version is converted from version 1: node files carried none until now, so
+        # one can come from any earlier release, and every conversion leaves entries
+        # already in a newer shape as they are.
+        export_data = convert_to_current_version(export_data)
         # Nodes are collected from the prepared bundle: preparation may repoint
         # their surface lists.
         export_data = prepare_import_data(export_data)
@@ -257,15 +266,11 @@ class PartialImportService:
         """
         Gather node dicts from all node entity types and tag each with
         node_type so GraphStrategy._create_nodes can dispatch correctly.
-
-        Partial files carry no version, so VersionConverter never sees them; a
-        file written before node_number existed gets its "#N" badges moved here.
         """
         nodes = []
         for entity_type in _NODE_ENTITY_TYPES:
             for node_data in export_data.get(entity_type, []):
                 node_copy = deepcopy(node_data)
                 node_copy["node_type"] = entity_type
-                move_legacy_badge_into_node_number(node_copy)
                 nodes.append(node_copy)
         return nodes

@@ -136,6 +136,7 @@ class SandboxClient:
                     func_kwargs=task.func_kwargs or {},
                     secrets=task.secrets,
                     venv_id=task.venv_id,
+                    system_venv=task.system_venv,
                     use_storage=task.use_storage,
                     storage_allowed_paths=task.storage_allowed_paths or [],
                     storage_org_prefix=task.storage_org_prefix,

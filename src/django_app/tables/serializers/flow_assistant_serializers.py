@@ -1,7 +1,7 @@
+from ai_models.models import LLMConfig
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
 from tables.models.flow_assistant_models import FlowAssistant, FlowAssistantConversation
-from tables.models.llm_models import LLMConfig
 
 
 class FlowAssistantSerializer(serializers.ModelSerializer):
@@ -38,7 +38,7 @@ class FlowAssistantConversationSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "flow_assistant",
-            "organization_user",
+            "user",
             "title",
             "messages",
             "started_at",
@@ -47,7 +47,7 @@ class FlowAssistantConversationSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "flow_assistant",
-            "organization_user",
+            "user",
             "title",
             "started_at",
             "last_message_at",
@@ -100,33 +100,29 @@ class SessionSummarySerializer(serializers.ModelSerializer):
         ]
 
 
-class _OrganizationUserNestedSerializer(serializers.Serializer):
-    """Inline org-user representation for the audit serializer."""
+class _ConversationOwnerSerializer(serializers.Serializer):
+    """The conversation's owner and the org they used the assistant in (the flow's org).
 
-    id = serializers.IntegerField(source="pk")
+    `organization_id` and `organization_name` are annotations the audit view adds.
+    """
+
     user_id = serializers.IntegerField()
-    user_email = serializers.SerializerMethodField()
-    organization_id = serializers.IntegerField(source="org_id")
-    organization_name = serializers.SerializerMethodField()
-
-    def get_user_email(self, instance) -> str:
-        return instance.user.email
-
-    def get_organization_name(self, instance) -> str:
-        return instance.org.name
+    user_email = serializers.EmailField(source="user.email")
+    organization_id = serializers.IntegerField()
+    organization_name = serializers.CharField()
 
 
 class AuditConversationSerializer(serializers.ModelSerializer):
     """Full conversation row for the superadmin audit endpoint."""
 
     message_count = serializers.IntegerField(read_only=True)
-    organization_user = _OrganizationUserNestedSerializer(read_only=True)
+    user = _ConversationOwnerSerializer(source="*", read_only=True)
 
     class Meta:
         model = FlowAssistantConversation
         fields = [
             "id",
-            "organization_user",
+            "user",
             "flow_assistant",
             "title",
             "started_at",

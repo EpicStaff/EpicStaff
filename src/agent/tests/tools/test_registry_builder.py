@@ -410,13 +410,15 @@ _EMBEDDER_HEADER = header_marker(seal("embedder-header"))
 _LLM_HEADER = header_marker(seal("llm-header"))
 
 
-async def test_knowledge_tools_naive_target_forwards_the_embedder_secrets_sealed():
+async def test_knowledge_tools_naive_target_forwards_the_embedder_secrets_sealed_and_connection():
     embedder = EmbedderData(
         provider="openai",
         config=EmbedderConfigData(
             model="text-embedding-3-small",
             api_key=_SEALED_EMBEDDER_KEY,
             extra_headers={"X-Emb": _EMBEDDER_HEADER},
+            connection={"api_base": "http://emb-gateway/v1"},
+            parameters={"dimensions": 256},
         ),
     )
     entry = SearchConfigEntry(
@@ -434,21 +436,31 @@ async def test_knowledge_tools_naive_target_forwards_the_embedder_secrets_sealed
     assert targets[0].embedder_extra_headers == {"X-Emb": _EMBEDDER_HEADER}
     assert targets[0].llm_api_key is None
     assert targets[0].llm_extra_headers is None
+    assert targets[0].embedder_connection == {"api_base": "http://emb-gateway/v1"}
+    assert targets[0].llm_connection is None
+    assert targets[0].embedder_parameters == {"dimensions": 256}
+    assert targets[0].llm_parameters is None
 
 
-async def test_knowledge_tools_graph_target_forwards_the_embedder_and_llm_secrets_sealed():
+async def test_knowledge_tools_graph_target_forwards_the_secrets_sealed_and_connections():
     embedder = EmbedderData(
         provider="openai",
         config=EmbedderConfigData(
             model="text-embedding-3-small",
             api_key=_SEALED_EMBEDDER_KEY,
             extra_headers={"X-Emb": _EMBEDDER_HEADER},
+            connection={"api_base": "http://emb-gateway/v1"},
+            parameters={"dimensions": 256},
         ),
     )
     llm = LLMData(
-        provider="openai",
+        provider="bedrock",
         config=LLMConfigData(
-            model="gpt-4o", api_key=_SEALED_LLM_KEY, extra_headers={"X-Llm": _LLM_HEADER}
+            model="anthropic.claude-v2",
+            api_key=_SEALED_LLM_KEY,
+            extra_headers={"X-Llm": _LLM_HEADER},
+            connection={"aws_region_name": "eu-west-1"},
+            parameters={"temperature": 0.1},
         ),
     )
     entry = SearchConfigEntry(
@@ -470,3 +482,7 @@ async def test_knowledge_tools_graph_target_forwards_the_embedder_and_llm_secret
     assert targets[0].embedder_extra_headers == {"X-Emb": _EMBEDDER_HEADER}
     assert targets[0].llm_api_key == _SEALED_LLM_KEY
     assert targets[0].llm_extra_headers == {"X-Llm": _LLM_HEADER}
+    assert targets[0].embedder_connection == {"api_base": "http://emb-gateway/v1"}
+    assert targets[0].llm_connection == {"aws_region_name": "eu-west-1"}
+    assert targets[0].embedder_parameters == {"dimensions": 256}
+    assert targets[0].llm_parameters == {"temperature": 0.1}

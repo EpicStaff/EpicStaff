@@ -55,7 +55,7 @@ class AgentDefinition(
 
     # LLM linkage
     llm_config = models.ForeignKey(
-        "tables.LLMConfig",
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         related_name="agent_definitions",
@@ -63,7 +63,7 @@ class AgentDefinition(
         help_text="Primary LLM used for reasoning and tool selection.",
     )
     fallback_llm_config = models.ForeignKey(
-        "tables.LLMConfig",
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         related_name="fallback_agent_definitions",
@@ -71,7 +71,7 @@ class AgentDefinition(
         help_text="Optional LLM used instead of llm_config when the primary fails with a transient error. Must differ from llm_config; requires llm_config.",
     )
     fcm_llm_config = models.ForeignKey(
-        "tables.LLMConfig",
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         related_name="fcm_agent_definitions",

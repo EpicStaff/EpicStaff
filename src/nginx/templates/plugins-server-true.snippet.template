@@ -1,5 +1,7 @@
-# PLUGINS_ENABLED=true: the server for every plugin host, <identifier>.<PLUGINS_BASE_DOMAIN>.
-# Included at http level, after EpicStaff's own server (see default.conf.template).
+# PLUGINS_ENABLED=true: the server for every plugin host, PLUGINS_HOST_TEMPLATE with the
+# plugin's identifier for {id}, and the server that closes the connection of every other name under
+# the template's parent. Included at http level, after EpicStaff's own server (see
+# default.conf.template).
 #
 # It serves each plugin's published SPA from the plugin_spa volume, which django_app writes and
 # this container mounts read-only, and the platform config the SPA loads at start-up. /api/ is
@@ -65,8 +67,10 @@ server {
 
     # Quoted: unquoted, nginx reads the "{" of the regex as the start of a block. The identifier
     # pattern is the manifest's id rule, so $plugin_identifier is always a safe path segment.
-    # A host name that does not match falls through to EpicStaff's server, the default one.
-    server_name "~^(?<plugin_identifier>[a-z][a-z0-9-]{0,30}[a-z0-9])\.${PLUGINS_BASE_DOMAIN_REGEX}$";
+    # The template's prefix and suffix (16-normalize-plugins-enabled.envsh) stand around it. A
+    # host name that does not match is closed by the next server when it is under the parent,
+    # and otherwise falls through to EpicStaff's server, the default one.
+    server_name "~^${PLUGINS_HOST_PREFIX}(?<plugin_identifier>[a-z][a-z0-9-]{0,30}[a-z0-9])${PLUGINS_HOST_SUFFIX}\.${PLUGINS_PARENT_DOMAIN_REGEX}$";
 
     # The largest body a plugin's API takes; a public path's own cap is applied by the check.
     client_max_body_size ${PLUGINS_MAX_REQUEST_BODY_MB}m;
@@ -97,6 +101,39 @@ server {
         # No Set-Cookie or Clear-Site-Data from a plugin host, even Django's, and no
         # X-Frame-Options: Django's DENY would stop EpicStaff from framing the response. The
         # snippet's Cookie line changes nothing here: no request header is passed on.
+        include /etc/nginx/conf.d/cookie-free-upstream.snippet;
+    }
+
+    # The proof that this host is served by this EpicStaff (plugins.gateway.host_proof): Django
+    # answers an HMAC of this host's name and the `challenge` that only this deployment can
+    # compute, and EpicStaff asks for it before it sends a login code to a plugin host, frames
+    # one or approves a plugin. Through the gateway path, which nginx answers 404 from outside,
+    # with the gateway secret, the identifier this server's name matched and the challenge as
+    # headers of their own; none of the client's headers is passed on.
+    location = /.well-known/epicstaff/instance {
+        include /etc/nginx/conf.d/plugins-security-headers.snippet;
+        limit_except GET {
+            deny all;
+        }
+        # The challenge goes in a header of its own; the request's arguments are dropped, so no
+        # parameter of the client's reaches Django.
+        set $plugin_host_challenge $arg_challenge;
+        set $args "";
+        proxy_pass http://backend_server/api/plugin-gateway/instance/;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        proxy_pass_request_body off;
+        proxy_pass_request_headers off;
+        proxy_set_header Content-Length "";
+        # A name DJANGO_ALLOWED_HOSTS accepts, as for the gateway check.
+        proxy_set_header Host localhost;
+        proxy_set_header X-Plugin-Gateway-Secret "${PLUGINS_GATEWAY_SECRET}";
+        proxy_set_header X-Plugin-Identifier $plugin_identifier;
+        proxy_set_header X-Plugin-Host-Challenge $plugin_host_challenge;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 5s;
         include /etc/nginx/conf.d/cookie-free-upstream.snippet;
     }
 
@@ -352,4 +389,24 @@ server {
         root /usr/share/nginx/plugin-platform;
         try_files /maintenance.html =503;
     }
+}
+
+# Every other name under the template's parent: a wildcard DNS record sends any made-up name here,
+# such as a nested label (a.weather-app.example.com), an identifier the manifest does not allow or
+# a typo, and it would otherwise reach EpicStaff's server, the default one, as if it were
+# EpicStaff. nginx closes the connection without an answer (444). nginx tries regex server names
+# in the order they appear, so the plugin hosts' server above wins for a plugin host. Some names
+# under the parent still reach EpicStaff's server: EpicStaff's own host and the plain host names
+# of NGINX_SERVER_NAME, which the lookahead leaves out in any case (EpicStaff may live under the
+# parent of a flat template, staff.example.com beside {id}-app.example.com; see
+# 16-normalize-plugins-enabled.envsh for the names it leaves out), and the parent itself, which
+# the regex does not match. IP addresses and every name outside the parent are untouched.
+server {
+    # Before the snippet's http-to-https redirect: an unknown name gets no answer at all.
+    return 444;
+
+    # The plugin hosts' listeners and wildcard certificate, which covers these names too.
+    include /etc/nginx/conf.d/plugins-ssl-${NGINX_SSL_MODE}.snippet;
+
+    server_name "~^(?!(?i:${PLUGINS_EPICSTAFF_HOSTS_REGEX})$).+\.${PLUGINS_PARENT_DOMAIN_REGEX}$";
 }

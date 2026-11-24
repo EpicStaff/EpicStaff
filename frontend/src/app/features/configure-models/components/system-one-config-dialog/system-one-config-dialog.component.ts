@@ -17,8 +17,8 @@ import { SystemOneConfigStorageService } from '@shared/services';
 
 import { SystemOneConfigFormComponent } from '../system-one-config-form/system-one-config-form.component';
 
-/** Edits `config`, or the config with `configId` (opened from the secret usage list). New ones are created from "Add Configuration". */
-export type SystemOneConfigDialogData = { config: SystemOneConfig } | { configId: number };
+/** Edits `config`, or the config with `configId` (opened from the secret usage list); a null `config` creates one. */
+export type SystemOneConfigDialogData = { config: SystemOneConfig | null } | { configId: number };
 
 @Component({
     selector: 'app-system-one-config-dialog',
@@ -36,11 +36,18 @@ export type SystemOneConfigDialogData = { config: SystemOneConfig } | { configId
 export class SystemOneConfigDialogComponent implements OnInit {
     private readonly form = viewChild(SystemOneConfigFormComponent);
     protected readonly config = signal<SystemOneConfig | null>(null);
+    /** The config to edit is known, or there is none: a new one is being created. */
+    protected readonly isReady = signal(false);
     protected readonly isSaving = computed(() => this.form()?.isSubmitting() ?? false);
-    protected readonly saveLabel = computed(() => (this.isSaving() ? 'Saving…' : 'Save Changes'));
     protected readonly saveError = computed(() => this.form()?.errorMessage() ?? null);
 
     private readonly data = inject<SystemOneConfigDialogData>(DIALOG_DATA);
+    protected readonly isCreate = 'config' in this.data && this.data.config === null;
+    protected readonly title = `${this.isCreate ? 'Add' : 'Edit'} System One Configuration`;
+    protected readonly saveLabel = computed(() => {
+        if (this.isSaving()) return 'Saving…';
+        return this.isCreate ? 'Add System One' : 'Save Changes';
+    });
     private readonly storage = inject(SystemOneConfigStorageService);
     private readonly dialogRef = inject(DialogRef);
     private readonly destroyRef = inject(DestroyRef);
@@ -48,6 +55,7 @@ export class SystemOneConfigDialogComponent implements OnInit {
     ngOnInit(): void {
         if ('config' in this.data) {
             this.config.set(this.data.config);
+            this.isReady.set(true);
         } else {
             const configId = this.data.configId;
             this.storage
@@ -56,8 +64,12 @@ export class SystemOneConfigDialogComponent implements OnInit {
                 .subscribe({
                     next: (configs) => {
                         const match = configs.find((config) => config.id === configId);
-                        if (match) this.config.set(match);
-                        else this.dialogRef.close(null);
+                        if (!match) {
+                            this.dialogRef.close(null);
+                            return;
+                        }
+                        this.config.set(match);
+                        this.isReady.set(true);
                     },
                     error: () => this.dialogRef.close(null),
                 });

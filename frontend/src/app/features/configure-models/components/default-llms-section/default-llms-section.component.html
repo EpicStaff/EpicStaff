@@ -1,12 +1,4 @@
-<section class="default-llms">
-    <header class="default-llms__header">
-        <h3 class="default-llms__title">Default LLMs</h3>
-        <p class="default-llms__subtitle">
-            Configure pre-assigned AI models used by specific agents. You will be able to configure each agent
-            individually on the Agents page if needed.
-        </p>
-    </header>
-
+<div class="default-llms">
     @for (section of sections; track section.id) {
         <div class="default-llms__section">
             <div class="default-llms__section-title">{{ section.title }}</div>
@@ -21,4 +13,4 @@
             </div>
         </div>
     }
-</section>
+</div>

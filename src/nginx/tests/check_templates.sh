@@ -41,7 +41,12 @@
 #     404 for everything else, and the plugins subnet refused with plugins on; live, that it serves
 #     those two to their upstreams, 404s every other route of EpicStaff's server without reaching
 #     an upstream, refuses a plugins-subnet caller, and with TLS on answers http without a redirect;
-#   - the values 16-normalize-plugins-enabled.envsh derives, and the ones it must refuse;
+#   - the values 16-normalize-plugins-enabled.envsh derives, and the ones it must refuse, among
+#     them the PLUGINS_HOST_TEMPLATE cases django_app and envtool share
+#     (src/shared/plugin_host_template_cases.txt); the plugin hosts' and the closing server's
+#     server_name for a nested, a flat and a prefixed template; and, live, which server answers
+#     a plugin host, an unknown name under the template's parent (closed, 444), EpicStaff's own
+#     host and an NGINX_SERVER_NAME alias under that parent, the parent itself and an IP address;
 #   - the maintenance answers: the flag test in both SPA locations and the page's named location
 #     with its headers, the gateway's maintenance refusal (its map entries and JSON), no
 #     open_file_cache (the flag must count from the next request on), and that the committed
@@ -53,7 +58,7 @@
 #     on to Django blanks all three in every spelling, and that the internal checks nginx makes
 #     before an upload, a plugin request or a plugin page apply no body limit;
 #   - the development mode values the start script must refuse: a non-boolean, an unset one, a
-#     base domain or EpicStaff host that is not a .localhost name, and no PLUGINS_DEV_LOOPBACK_ONLY
+#     template or EpicStaff host that is not a .localhost name, and no PLUGINS_DEV_LOOPBACK_ONLY
 #     (the stack was started without src/docker-compose.plugins-dev.yaml, which alone sets it);
 #   - live, inside the container: which upstreams receive the browser's cookies and may set
 #     one, the package upload route (with a 1 MiB and a 300 MiB package limit), the login callback
@@ -147,7 +152,7 @@ stack_environment=(
   DJANGO_HOST=django DJANGO_PORT=8000 DJANGO_SGI_WORKERS=1 FRONTEND_HOST=frontend FRONTEND_PORT=80
   REALTIME_HOST=realtime REALTIME_PORT=8050 WEBHOOK_HOST=webhook WEBHOOK_PORT=8009
   AUDITOR_HOST=auditor AUDITOR_PORT=8010 CHAT_ENABLED=false CHAT_UPSTREAM_URL=http://chat:8200
-  PLUGINS_ENABLED=false PLUGINS_DEV_MODE=false PLUGINS_BASE_DOMAIN=plugins.epicstaff.test
+  PLUGINS_ENABLED=false PLUGINS_DEV_MODE=false "PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.test"
   PLUGINS_MAX_PACKAGE_MB=300 PLUGINS_MAX_REQUEST_BODY_MB=20 PLUGINS_GATEWAY_SECRET="$gateway_secret"
   DJANGO_FRONTEND_BASE_URL=https://epicstaff.test PLUGINS_NETWORK_SUBNET=10.235.0.0/24
   STORAGE_HOST=storage STORAGE_PORT=9000 STORAGE_BUCKET=epicstaff DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=150mb
@@ -486,7 +491,7 @@ expect_tunnel_listener() {
 read -r -d '' plugin_hosts_check_program << 'AWK' || :
 BEGIN { FS = "\t" }
 NR == FNR {
-  if ($3 ~ /^server_name "~\^\(\?<plugin_identifier>/) plugin_server = $1
+  if ($3 ~ /^server_name "~\^[a-z0-9-]*\(\?<plugin_identifier>/) plugin_server = $1
   next
 }
 $1 != plugin_server { next }
@@ -566,7 +571,7 @@ expect_plugin_hosts_cookie_free() {
 read -r -d '' gateway_deny_check_program << 'AWK' || :
 BEGIN { FS = "\t" }
 NR == FNR {
-  if ($3 ~ /^server_name "~\^\(\?<plugin_identifier>/) plugin_server = $1
+  if ($3 ~ /^server_name "~\^[a-z0-9-]*\(\?<plugin_identifier>/) plugin_server = $1
   next
 }
 $1 != plugin_server { next }
@@ -845,7 +850,7 @@ BEGIN {
   wanted = "add_header Strict-Transport-Security \"max-age=31536000; includeSubDomains\" always"
 }
 NR == FNR {
-  if ($3 ~ /^server_name "~\^\(\?<plugin_identifier>/) plugin_server = $1
+  if ($3 ~ /^server_name "~\^[a-z0-9-]*\(\?<plugin_identifier>/) plugin_server = $1
   next
 }
 {
@@ -1212,7 +1217,7 @@ sed -i '/proxy_pass_request_headers off;/d' "$broken_location_templates/plugins-
   "$broken_location_templates/plugins-api-listener.snippet.template"
 if expect_valid "nginx -t: templates broken for the X-Forwarded-Proto location rule's self-test" \
   "templates:$broken_location_templates" PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true CHAT_ENABLED=true \
-  PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost \
+  "PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.localhost" DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost \
   "$loopback_marker"; then
   found=$(forwarded_proto_location_problems "$work_dir/out" | sed 's/^server [0-9]* //' | LC_ALL=C sort)
   expected=$(printf '%s\n' \
@@ -1409,7 +1414,7 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       "$hsts_enabled" true
     expect_only_django_cookies "PLUGINS_ENABLED=true $flags: only Django gets and sets cookies"
     expect_tunnel_listener "PLUGINS_ENABLED=true $flags: the tunnel listener on $tunnel_port is plain http, serves only /webhooks/ and /voice/ and refuses the plugins subnet" true
-    expect_plugin_hosts_cookie_free "PLUGINS_ENABLED=true $flags: the plugin hosts' proxied locations (the platform config and /api/) pass no cookie either way, no Clear-Site-Data and no X-Frame-Options" 2
+    expect_plugin_hosts_cookie_free "PLUGINS_ENABLED=true $flags: the plugin hosts' proxied locations (the platform config, the host proof and /api/) pass no cookie either way, no Clear-Site-Data and no X-Frame-Options" 3
     expect_gateway_denies_marked "PLUGINS_ENABLED=true $flags: the gateway marks its own refusals"
     expected_tls="include /etc/nginx/conf.d/plugins-ssl-off.snippet;"
     if [ "$ssl_mode" = on ]; then
@@ -1417,6 +1422,8 @@ for chat_enabled in false true; do for ssl_mode in off on; do
     fi
     expect_directives "PLUGINS_ENABLED=true $flags renders the plugin routes" \
       'server_name "~^(?<plugin_identifier>[a-z][a-z0-9-]{0,30}[a-z0-9])\.plugins\.epicstaff\.test$";' \
+      'server_name "~^(?!(?i:epicstaff\.test)$).+\.plugins\.epicstaff\.test$";' \
+      'return 444;' \
       "frame-src 'self' https://*.plugins.epicstaff.test;" \
       "add_header Content-Security-Policy \"frame-ancestors 'self' https://epicstaff.test\" always;" \
       "location = /api/admin/plugins/packages/ {" \
@@ -1426,6 +1433,9 @@ for chat_enabled in false true; do for ssl_mode in off on; do
       "location = /api/admin/plugins/packages/upload-permission/ {" \
       "client_max_body_size 301m;" \
       "location ^~ /api/plugin-gateway/ {" \
+      "location = /.well-known/epicstaff/instance {" \
+      "proxy_pass http://backend_server/api/plugin-gateway/instance/;" \
+      'proxy_set_header X-Plugin-Host-Challenge $plugin_host_challenge;' \
       "location ^~ /api/plugin-nodes/ {" \
       "$expected_tls"
     expect_directives "PLUGINS_ENABLED=true $flags serves the login callback pages" \
@@ -1591,13 +1601,13 @@ for chat_enabled in false true; do for ssl_mode in off on; do
   fi
   if expect_valid "nginx -t: PLUGINS_ENABLED=true $flags" PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true \
     NGINX_SSL_MODE=$ssl_mode CHAT_ENABLED=$chat_enabled NGINX_HSTS_ENABLED="$hsts_enabled" \
-    PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost "DJANGO_FRONTEND_BASE_URL=$scheme://epicstaff.localhost" \
+    "PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.localhost" "DJANGO_FRONTEND_BASE_URL=$scheme://epicstaff.localhost" \
     "$loopback_marker"; then
     expect_hsts_rule "PLUGINS_ENABLED=true $flags: Strict-Transport-Security follows NGINX_HSTS_ENABLED on EpicStaff's server and the plugin hosts" \
       "$hsts_enabled" true
     expect_only_django_cookies "PLUGINS_ENABLED=true $flags: only Django gets and sets cookies"
     expect_tunnel_listener "PLUGINS_ENABLED=true $flags: the tunnel listener on $tunnel_port is plain http, serves only /webhooks/ and /voice/ and refuses the plugins subnet" true
-    expect_plugin_hosts_cookie_free "PLUGINS_ENABLED=true $flags: the plugin hosts' proxied locations (the platform config, /api/ and the development server's page) pass no cookie either way, no Clear-Site-Data and no X-Frame-Options" 3
+    expect_plugin_hosts_cookie_free "PLUGINS_ENABLED=true $flags: the plugin hosts' proxied locations (the platform config, the host proof, /api/ and the development server's page) pass no cookie either way, no Clear-Site-Data and no X-Frame-Options" 4
     expect_gateway_denies_marked "PLUGINS_ENABLED=true $flags: the gateway marks its own refusals, and never the development server's page"
     expect_internal_headers "PLUGINS_ENABLED=true $flags: both listeners' /api/ set the network secret (from the environment) and the on-behalf-of header, and only the development listener says it is" true
     expect_django_headers_blanked "PLUGINS_ENABLED=true $flags: no caller of a public server can send Django the listeners' headers" 8
@@ -1697,7 +1707,7 @@ fi
 # The same check on a configuration with development mode on: the development listener's value
 # and the header must never come from the caller, and nothing else may fill the variable.
 if expect_valid "nginx -t: PLUGINS_DEV_MODE=true, for the internal header check's self-test" \
-  PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
+  PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true "PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.localhost" \
   DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost "$loopback_marker"; then
   expect_internal_header_break "the development listener's value taken from the caller" \
     "\$plugin_development_listener is \$http_x_plugin_development_listener on 8082" \
@@ -1812,19 +1822,21 @@ if expect_valid "nginx -t: CHAT_ENABLED=true PLUGINS_ENABLED=true, for the cooki
   fi
 fi
 
-# The plugin hosts' check itself, with development mode on (all three proxied locations):
-#   - every Cookie, Set-Cookie and Clear-Site-Data rule deleted: it names exactly those three
-#     locations, and not the platform config's Cookie (it passes no request header on);
-#   - only the Clear-Site-Data line of cookie-free-upstream.snippet deleted: all three pass a
-#     plugin's or a development server's Clear-Site-Data through, so each takes it from the snippet.
+# The plugin hosts' check itself, with development mode on (all four proxied locations):
+#   - every Cookie, Set-Cookie and Clear-Site-Data rule deleted: it names exactly those four
+#     locations, and not the Cookie of the platform config or the host proof (they pass no
+#     request header on);
+#   - only the Clear-Site-Data line of cookie-free-upstream.snippet deleted: all four pass an
+#     upstream's Clear-Site-Data through, so each takes it from the snippet.
 # Update the list when a location of the plugin hosts that proxies is added or removed.
 plugin_hosts_locations=(
   '= /.well-known/epicstaff/config.json -> http://backend_server/api/plugin-public/$plugin_identifier/config/'
+  '= /.well-known/epicstaff/instance -> http://backend_server/api/plugin-gateway/instance/'
   '^~ /api/ -> http://$plugin_upstream'
   '@plugin_development_page -> http://$plugin_spa_upstream'
 )
 if expect_valid "nginx -t: PLUGINS_DEV_MODE=true, for the plugin hosts' check's self-test" \
-  PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
+  PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true "PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.localhost" \
   DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost "$loopback_marker"; then
   grep -vF -e 'proxy_set_header Cookie "";' -e 'proxy_hide_header Set-Cookie;' \
     -e 'proxy_hide_header Clear-Site-Data;' "$work_dir/out" > "$work_dir/out-without-cookie-rules"
@@ -1879,7 +1891,7 @@ fi
 #     the server's: it names exactly that location (nginx's inheritance, modelled right).
 if expect_valid "nginx -t: PLUGINS_DEV_MODE=true NGINX_HSTS_ENABLED=true, for the HSTS check's self-test" \
   PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true NGINX_HSTS_ENABLED=true \
-  PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost \
+  "PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.localhost" DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost \
   "$loopback_marker"; then
   hsts_problems "$work_dir/out" true > /dev/null
   plugin_locations=$(awk -v enabled=true "$hsts_check_program" "$work_dir/flat" "$work_dir/flat" \
@@ -1939,8 +1951,8 @@ expect_refused "PLUGINS_ENABLED=maybe is refused" "PLUGINS_ENABLED='maybe' is no
   PLUGINS_ENABLED=maybe
 
 # PLUGINS_DEV_MODE: read like every other boolean, only with plugins on, and refused on any
-# deployment whose plugin domain or EpicStaff host is not a .localhost name.
-local_names=(PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost)
+# deployment whose plugin hosts or EpicStaff host are not .localhost names.
+local_names=("PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.localhost" DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost)
 if expect_valid "PLUGINS_DEV_MODE=Yes is accepted with .localhost names" PLUGINS_ENABLED=true \
   PLUGINS_DEV_MODE=Yes "${local_names[@]}" "$loopback_marker"; then
   expect_directives "PLUGINS_DEV_MODE=Yes is read as true" "listen 8082;"
@@ -1960,19 +1972,22 @@ expect_valid "PLUGINS_ENABLED=false ignores an unset PLUGINS_DEV_MODE" PLUGINS_E
 expect_valid "PLUGINS_ENABLED=false ignores PLUGINS_DEV_MODE=true on names that are not .localhost" \
   PLUGINS_ENABLED=false PLUGINS_DEV_MODE=true || :
 development_refusal="plugin development mode is only for a deployment on your own machine"
-for names in "plugins.epicstaff.test http://epicstaff.localhost" \
-  "plugins.epicstaff.localhost https://epicstaff.example.com" \
-  "plugins.epicstaff.localhost https://epicstaff.localhost.example.com" \
-  "plugins.epicstaff.localhost http://xlocalhost" "plugins.localhost.example.com https://epicstaff.test" \
-  "plugins.epicstaff.test https://epicstaff.test"; do
-  read -r base_domain frontend_url <<< "$names"
-  expect_refused "PLUGINS_DEV_MODE=true with PLUGINS_BASE_DOMAIN=$base_domain and DJANGO_FRONTEND_BASE_URL=$frontend_url is refused" \
+for names in "{id}.plugins.epicstaff.test http://epicstaff.localhost" \
+  "{id}.plugins.epicstaff.localhost https://epicstaff.example.com" \
+  "{id}.plugins.epicstaff.localhost https://epicstaff.localhost.example.com" \
+  "{id}.plugins.epicstaff.localhost http://xlocalhost" "{id}.plugins.localhost.example.com https://epicstaff.test" \
+  "{id}.plugins.epicstaff.test https://epicstaff.test" "{id}-localhost.epicstaff.test http://epicstaff.localhost"; do
+  read -r host_template frontend_url <<< "$names"
+  expect_refused "PLUGINS_DEV_MODE=true with PLUGINS_HOST_TEMPLATE=$host_template and DJANGO_FRONTEND_BASE_URL=$frontend_url is refused" \
     "$development_refusal" PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true \
-    "PLUGINS_BASE_DOMAIN=$base_domain" "DJANGO_FRONTEND_BASE_URL=$frontend_url" "$loopback_marker"
+    "PLUGINS_HOST_TEMPLATE=$host_template" "DJANGO_FRONTEND_BASE_URL=$frontend_url" "$loopback_marker"
 done
+expect_valid "PLUGINS_DEV_MODE=true with a flat template under EpicStaff's .localhost host is accepted" \
+  PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true "PLUGINS_HOST_TEMPLATE={id}-app.epicstaff.localhost" \
+  DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost "$loopback_marker" || :
 for frontend_url in http://localhost:4200 http://EpicStaff.LocalHost https://epicstaff.localhost:8443/; do
   expect_valid "PLUGINS_DEV_MODE=true with DJANGO_FRONTEND_BASE_URL=$frontend_url is accepted" \
-    PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
+    PLUGINS_ENABLED=true PLUGINS_DEV_MODE=true "PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.localhost" \
     "DJANGO_FRONTEND_BASE_URL=$frontend_url" "$loopback_marker" || :
 done
 
@@ -2008,15 +2023,38 @@ fi
 
 # With the flag off the plugin values are never read, so they cannot stop nginx.
 expect_valid "PLUGINS_ENABLED=false ignores malformed plugin values" PLUGINS_ENABLED=false \
-  "PLUGINS_BASE_DOMAIN=bad;value" DJANGO_FRONTEND_BASE_URL=none PLUGINS_MAX_PACKAGE_MB=many \
+  "PLUGINS_HOST_TEMPLATE=bad;value" DJANGO_FRONTEND_BASE_URL=none PLUGINS_MAX_PACKAGE_MB=many \
   PLUGINS_MAX_REQUEST_BODY_MB=lots PLUGINS_GATEWAY_SECRET=none "PLUGINS_NETWORK_SUBNET=any; allow all" || :
 
-# Values that would break or inject into the rendered configuration.
-for base_domain in "plugins.epicstaff.test;" "plugins.epicstaff.test\"" "Plugins.Epicstaff.test" \
-  localhost ".plugins.epicstaff.test" "plugins..epicstaff.test" "plugins.epicstaff.test-" \
-  "plugins.epicstaff.test"$'\n'"x.y" ""; do
-  expect_refused "PLUGINS_BASE_DOMAIN=$(printf '%q' "$base_domain") is refused" "ERROR: PLUGINS_BASE_DOMAIN=" \
-    PLUGINS_ENABLED=true "PLUGINS_BASE_DOMAIN=$base_domain"
+# The template rules: the cases django_app's plugins.E002 and envtool's wizard share
+# (src/shared/plugin_host_template_cases.txt, `accept <template>` or `refuse <rule> <template>`).
+host_template_cases=()
+while read -r verdict case_rest; do
+  case "$verdict" in accept | refuse) ;; *) continue ;; esac
+  host_template_cases+=("$verdict ${case_rest##* }")
+done < "$nginx_dir/../shared/plugin_host_template_cases.txt"
+if [ "${#host_template_cases[@]}" -lt 10 ]; then
+  fail "the shared PLUGINS_HOST_TEMPLATE cases were not read (${#host_template_cases[@]} found)"
+fi
+for host_template_case in "${host_template_cases[@]}"; do
+  verdict=${host_template_case%% *}
+  host_template=${host_template_case#* }
+  [ "$host_template" = "<empty>" ] && host_template=
+  if [ "$verdict" = accept ]; then
+    expect_valid "PLUGINS_HOST_TEMPLATE=$(printf '%q' "$host_template") is accepted" \
+      PLUGINS_ENABLED=true "PLUGINS_HOST_TEMPLATE=$host_template" || :
+  else
+    expect_refused "PLUGINS_HOST_TEMPLATE=$(printf '%q' "$host_template") is refused" \
+      "ERROR: PLUGINS_HOST_TEMPLATE=" PLUGINS_ENABLED=true "PLUGINS_HOST_TEMPLATE=$host_template"
+  fi
+done
+# Values that would break or inject into the rendered configuration, and the case and trailing
+# dot the wizard normalises but nginx takes as written.
+for host_template in "{id}.plugins.epicstaff.test;" "{id}.plugins.epicstaff.test\"" \
+  "{id}.plugins.epicstaff.test"$'\n'"x.y" "{id}.plugins.epicstaff.test add_header X 1" \
+  "{id}.Plugins.Epicstaff.test" "{ID}.epicstaff.test" "{id}.epicstaff.test."; do
+  expect_refused "PLUGINS_HOST_TEMPLATE=$(printf '%q' "$host_template") is refused" "ERROR: PLUGINS_HOST_TEMPLATE=" \
+    PLUGINS_ENABLED=true "PLUGINS_HOST_TEMPLATE=$host_template"
 done
 for frontend_url in "https://epicstaff.test\" always; add_header X-Injected 1; #" \
   epicstaff.test "ftp://epicstaff.test" "https://user@epicstaff.test" "https://" \
@@ -2080,11 +2118,30 @@ if expect_valid "a base URL with the default https port is accepted" PLUGINS_ENA
     "frame-src 'self' https://*.plugins.epicstaff.test;"
 fi
 if expect_valid "the local development values are accepted" PLUGINS_ENABLED=true \
-  PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost "DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost:80"; then
+  "PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.localhost" "DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost:80"; then
   expect_directives "plain http keeps its scheme and drops the default port" \
     "frame-ancestors 'self' http://epicstaff.localhost\" always;" \
     "frame-src 'self' http://*.plugins.epicstaff.localhost;" \
     '\.plugins\.epicstaff\.localhost$";'
+fi
+# A flat template: the plugin hosts beside EpicStaff under its own host, told apart by a suffix,
+# and a prefixed one. frame-src names the whole parent (CSP has no affixes); EpicStaff's host and
+# the plain host names of NGINX_SERVER_NAME, in any case and each once, are the names under the
+# parent the closing server leaves alone (not `_`, wildcard or regex names).
+if expect_valid "a flat template under EpicStaff's own host is accepted" PLUGINS_ENABLED=true \
+  "PLUGINS_HOST_TEMPLATE={id}-app.epicstaff.localhost" DJANGO_FRONTEND_BASE_URL=http://EpicStaff.localhost; then
+  expect_directives "a flat template renders its suffix, its parent and EpicStaff's host" \
+    'server_name "~^(?<plugin_identifier>[a-z][a-z0-9-]{0,30}[a-z0-9])-app\.epicstaff\.localhost$";' \
+    'server_name "~^(?!(?i:EpicStaff\.localhost|epicstaff\.test)$).+\.epicstaff\.localhost$";' \
+    "frame-src 'self' http://*.epicstaff.localhost;"
+fi
+if expect_valid "a prefixed template beside EpicStaff is accepted" PLUGINS_ENABLED=true NGINX_SSL_MODE=on \
+  "PLUGINS_HOST_TEMPLATE=app-{id}.epicstaff.test" DJANGO_FRONTEND_BASE_URL=https://staff.epicstaff.test:8443 \
+  "NGINX_SERVER_NAME=STAFF.epicstaff.test alias.epicstaff.test _ *.wild.epicstaff.test ~^re\.epicstaff\.test$"; then
+  expect_directives "a prefixed template renders its prefix, its parent and EpicStaff's host" \
+    'server_name "~^app-(?<plugin_identifier>[a-z][a-z0-9-]{0,30}[a-z0-9])\.epicstaff\.test$";' \
+    'server_name "~^(?!(?i:staff\.epicstaff\.test|alias\.epicstaff\.test)$).+\.epicstaff\.test$";' \
+    "frame-src 'self' https://*.epicstaff.test:8443;"
 fi
 
 # The package upload route, live: nginx running, curl inside its container, and a stub of Django
@@ -2103,6 +2160,7 @@ fi
 cat > "$work_dir/stub-django.conf" <<'STUB'
 log_format stub_django '$request_method $uri $request_length';
 log_format stub_headers 'secret=[$http_x_plugin_network_secret] on_behalf_of=[$http_x_epicstaff_on_behalf_of] development=[$http_x_plugin_development_listener] authorization=[$http_authorization] organization=[$http_x_organization_id]';
+log_format stub_instance 'host=[$http_host] gateway_secret=[$http_x_plugin_gateway_secret] identifier=[$http_x_plugin_identifier] challenge=[$http_x_plugin_host_challenge] cookie=[$http_cookie] authorization=[$http_authorization] args=[$args]';
 server {
     listen 127.0.0.1:8000;
     access_log /tmp/stub-django.log stub_django;
@@ -2126,6 +2184,12 @@ server {
     }
     location = /api/admin/plugins/packages/ {
         return 201 '{"stub":"the upload reached Django"}';
+    }
+    location = /api/plugin-gateway/instance/ {
+        access_log /tmp/stub-django.log stub_django;
+        access_log /tmp/stub-instance.log stub_instance;
+        default_type application/json;
+        return 200 '{"proof":"stub"}';
     }
 }
 STUB
@@ -2317,6 +2381,37 @@ else
     pass "every other name under /.well-known/epicstaff/ stays 404, and none reached Django"
   fi
 fi
+
+# The host proof (plugins.gateway.host_proof), live: a plugin host hands the challenge to
+# Django's gateway path with the gateway secret and the identifier its name matched, and none of
+# the client's headers or other parameters; only GET; EpicStaff's own server neither serves the
+# location nor lets the gateway path through.
+live sh -c ': > /tmp/stub-django.log; : > /tmp/stub-instance.log'
+status=$(live sh -c 'curl -s -o /tmp/body -w "%{http_code}" -H "Host: alpha.plugins.epicstaff.test" \
+  -H "Cookie: sessionid=s3cret" -H "Authorization: Bearer person" -H "X-Plugin-Gateway-Secret: forged" \
+  -H "X-Plugin-Identifier: other" -H "X-Plugin-Host-Challenge: forged" \
+  "http://127.0.0.1/.well-known/epicstaff/instance?challenge=abc_DEF-123&extra=1"' || true)
+instance_log=$(live cat /tmp/stub-instance.log)
+expected_instance_log="host=[localhost] gateway_secret=[$gateway_secret] identifier=[alpha] challenge=[abc_DEF-123] cookie=[-] authorization=[-] args=[-]"
+if [ "$status" = 200 ] && [ "$instance_log" = "$expected_instance_log" ]; then
+  pass "a plugin host hands the instance challenge to Django's gateway path with the secret and its identifier, and nothing of the client's"
+else
+  fail "the instance location: status $status, Django got [$instance_log], not [$expected_instance_log]"
+fi
+status=$(live curl -s -o /dev/null -w '%{http_code}' -X POST -H "Host: alpha.plugins.epicstaff.test" \
+  "http://127.0.0.1/.well-known/epicstaff/instance?challenge=abc" || true)
+[ "$status" = 403 ] && pass "the instance location takes only GET (POST: 403)" \
+  || fail "a POST to the instance location answered $status, not 403"
+live sh -c ': > /tmp/stub-django.log'
+for path in "/.well-known/epicstaff/instance?challenge=abc" "/api/plugin-gateway/instance/"; do
+  status=$(live curl -s -o /dev/null -w '%{http_code}' -H "Host: epicstaff.test" \
+    -H "X-Plugin-Gateway-Secret: $gateway_secret" "http://127.0.0.1$path" || true)
+  if live grep -q "plugin-gateway/instance" /tmp/stub-django.log; then
+    fail "EpicStaff's own server let $path through to Django's instance proof (status $status)"
+  else
+    pass "EpicStaff's own server does not answer $path with the instance proof (status $status)"
+  fi
+done
 
 docker rm -f "$live_container" > /dev/null
 live_container=""
@@ -2697,6 +2792,70 @@ if [ -z "$wrong" ] && [ "$main_status" = 301 ]; then
 else
   fail "live, NGINX_SSL_MODE=on: the tunnel listener:$wrong; EpicStaff's server on http answered $main_status, not 301"
 fi
+stop_forwarded_proto_container
+
+# Which server answers a host name, live: EpicStaff's (the frontend stub's "proto=" answer), the
+# plugin hosts' (the static login callback page), or the one that closes every other name under
+# the template's parent without an answer (curl gets no status). $1 = scheme, $2 = host name.
+served_by() {
+  local scheme=$1 host=$2 port=80 answer
+  [ "$scheme" = https ] && port=443
+  answer=$(live curl -sk --resolve "$host:$port:127.0.0.1" -w ' status=%{http_code}' \
+    "$scheme://$host/.well-known/epicstaff/callback.html" 2> /dev/null || true)
+  case "$answer" in
+    proto=*" status=200") echo epicstaff ;;
+    *" status=200") echo plugin ;;
+    *"status=000") echo closed ;;
+    *) echo "other(${answer##* })" ;;
+  esac
+}
+# $1 = description; the rest = "<scheme> <host> <expected server>" entries.
+expect_served_by() {
+  local description=$1 entry scheme host expected actual wrong=""
+  shift
+  for entry in "$@"; do
+    read -r scheme host expected <<< "$entry"
+    actual=$(served_by "$scheme" "$host")
+    [ "$actual" = "$expected" ] || wrong="$wrong [$scheme://$host: $actual, not $expected]"
+  done
+  if [ -z "$wrong" ]; then
+    pass "$description"
+  else
+    fail "$description:$wrong"
+  fi
+}
+
+# Unknown names under the parent, live, with a nested, a flat and a prefixed template: a plugin
+# host reaches the plugin hosts' server, every other name under the parent is closed (a wildcard
+# DNS record sends any made-up name here), and EpicStaff's own host, the parent itself, an IP
+# address and every name outside the parent still reach EpicStaff's server.
+start_forwarded_proto_container NGINX_TRUSTED_PROXIES=none "PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.test"
+expect_served_by "live, a nested template: plugin hosts, unknown names under the parent and everything else reach the right server" \
+  "http alpha.plugins.epicstaff.test plugin" "http a.alpha.plugins.epicstaff.test closed" \
+  "http $(printf 'a%.0s' $(seq 33)).plugins.epicstaff.test closed" "http x_y.plugins.epicstaff.test closed" \
+  "http epicstaff.test epicstaff" "http plugins.epicstaff.test epicstaff" "http 127.0.0.1 epicstaff" \
+  "http other.test epicstaff"
+stop_forwarded_proto_container
+
+for ssl_mode in off on; do
+  scheme=http
+  [ "$ssl_mode" = on ] && scheme=https
+  start_forwarded_proto_container NGINX_TRUSTED_PROXIES=none NGINX_SSL_MODE=$ssl_mode \
+    "NGINX_SERVER_NAME=staff.epicstaff.test alias.epicstaff.test" "PLUGINS_HOST_TEMPLATE={id}-app.epicstaff.test" \
+    DJANGO_FRONTEND_BASE_URL=$scheme://staff.epicstaff.test
+  expect_served_by "live, NGINX_SSL_MODE=$ssl_mode, a flat template beside EpicStaff: plugin hosts, unknown names under the parent, EpicStaff's own host and its NGINX_SERVER_NAME alias reach the right server" \
+    "$scheme alpha-app.epicstaff.test plugin" "$scheme alpha.epicstaff.test closed" \
+    "$scheme a.alpha-app.epicstaff.test closed" "$scheme -app.epicstaff.test closed" \
+    "http alpha.epicstaff.test closed" "$scheme staff.epicstaff.test epicstaff" \
+    "$scheme STAFF.EpicStaff.test epicstaff" "$scheme alias.epicstaff.test epicstaff" \
+    "$scheme epicstaff.test epicstaff" "$scheme 127.0.0.1 epicstaff"
+  stop_forwarded_proto_container
+done
+
+start_forwarded_proto_container NGINX_TRUSTED_PROXIES=none "PLUGINS_HOST_TEMPLATE=app-{id}.epicstaff.test"
+expect_served_by "live, a prefixed template: the prefix decides the plugin hosts, and EpicStaff's own host is kept" \
+  "http app-alpha.epicstaff.test plugin" "http alpha-app.epicstaff.test closed" \
+  "http app-.epicstaff.test closed" "http epicstaff.test epicstaff"
 stop_forwarded_proto_container
 
 if [ "$failures" -ne 0 ]; then

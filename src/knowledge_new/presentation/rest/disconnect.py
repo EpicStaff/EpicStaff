@@ -1,59 +1,45 @@
 import asyncio
-from types import TracebackType
+from collections.abc import Coroutine
+from typing import Any
 
 from litestar import Request
+from loguru import logger
 
-__all__ = ["ClientDisconnectedError", "cancel_on_disconnect"]
+__all__ = ["HTTP_499_CLIENT_CLOSED_REQUEST", "run_until_disconnect"]
 
-
-class ClientDisconnectedError(Exception):
-    """The client closed the connection before the response was ready."""
-
-
-class _CancelOnDisconnect:
-    def __init__(self, request: Request) -> None:
-        self._request = request
-        self._disconnected = False
-        self._task: asyncio.Task | None = None
-        self._watcher: asyncio.Task | None = None
-        self._cancelling_on_entry = 0
-
-    async def __aenter__(self) -> None:
-        self._task = asyncio.current_task()
-        self._cancelling_on_entry = self._task.cancelling()
-        self._watcher = asyncio.create_task(self._watch())
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        # Cancelled before any await, so the watcher cannot cancel the task once the block is over.
-        self._watcher.cancel()
-        # A count above the one on entry means someone else (a server shutdown) also
-        # cancelled the task inside the block.
-        if self._disconnected and self._task.uncancel() <= self._cancelling_on_entry:
-            raise ClientDisconnectedError from exc
-
-    async def _watch(self) -> None:
-        while (await self._request.receive())["type"] != "http.disconnect":
-            pass
-        self._disconnected = True
-        self._task.cancel()
+# Not an IANA code: nginx's "client closed request", for a response nobody will read.
+HTTP_499_CLIENT_CLOSED_REQUEST = 499
 
 
-def cancel_on_disconnect(request: Request) -> _CancelOnDisconnect:
-    """Cancel the enclosed block when the client disconnects.
+async def run_until_disconnect[T](request: Request, work: Coroutine[Any, Any, T]) -> T | None:
+    """Run `work` until it finishes or the client disconnects, whichever comes first.
 
-    Works like `asyncio.timeout()`: the block runs in the request's own task, and a
-    disconnect cancels that task. On leaving the block the cancellation is turned into
-    `ClientDisconnectedError`; a cancellation from anywhere else propagates unchanged.
-
-    Enter the block only after the request body has been read: the watcher consumes
+    Call only after the request body has been read: the disconnect watcher consumes
     `receive()` messages, so it would swallow body chunks the handler still needs.
 
-    Raises:
-        ClientDisconnectedError: The client disconnected while the block was running.
+    Returns:
+        The result of `work`, or None when the client disconnected first. `work` is
+        then cancelled and has finished its cleanup by the time this returns.
     """
-    return _CancelOnDisconnect(request)
+    work_task = asyncio.create_task(work)
+    watcher = asyncio.create_task(_wait_for_disconnect(request))
+    try:
+        await asyncio.wait({work_task, watcher}, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        watcher.cancel()
+        if not work_task.done():
+            work_task.cancel()
+            # The request's dependencies (unit of work) are closed once the handler
+            # returns, so the cancelled work must finish its cleanup first. `wait`, not
+            # `await`: it does not raise the work's cancellation, yet still lets a
+            # cancellation of this task (server shutdown) through.
+            await asyncio.wait({work_task})
+    if work_task.cancelled():
+        logger.info("Client disconnected from {}; the request was cancelled.", request.url.path)
+        return None
+    return work_task.result()
+
+
+async def _wait_for_disconnect(request: Request) -> None:
+    while (await request.receive())["type"] != "http.disconnect":
+        pass

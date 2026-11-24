@@ -34,8 +34,6 @@ class EmbeddingModel(BaseModel):
     id = Column(Integer, primary_key=True, autoincrement=True)
     name = Column(Text, nullable=False)
     predefined = Column(Boolean, default=False)
-    deployment = Column(Text, nullable=True)
-    base_url = Column(Text, nullable=True)
     is_visible = Column(Boolean, default=True)
     is_custom = Column(Boolean, default=False)
 
@@ -51,16 +49,16 @@ class EmbeddingModel(BaseModel):
 
 
 class EmbeddingConfig(BaseModel):
-    """Task type for invoking an `EmbeddingModel`.
+    """Settings for invoking an `EmbeddingModel`.
 
     Maps only the columns the knowledge role may read: KNOWLEDGE_EMBEDDING_CONFIG_COLUMNS in
-    src/django_app/tables/service_db_grants.py. Credentials such as extra_headers are
-    deliberately absent; they arrive resolved in each request.
+    src/django_app/tables/service_db_grants.py. `connection` and `extra_headers` are
+    deliberately absent: they can name secrets, and arrive resolved in each request, as do
+    the `parameters` the model catalog allows.
     """
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     custom_name = Column(Text, unique=True, nullable=False)
-    task_type = Column(String(255), nullable=False, default="retrieval_doc")
     is_visible = Column(Boolean, default=True)
 
     model_id = Column(Integer, ForeignKey("tables_embeddingmodel.id"), nullable=True)

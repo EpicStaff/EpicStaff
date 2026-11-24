@@ -1,5 +1,6 @@
 from typing import Any
 
+from ai_models.models import EmbeddingConfig, LLMConfig
 from django.db import transaction
 from django.db.models import Q
 from loguru import logger
@@ -24,7 +25,6 @@ from tables.exceptions import (
     InvalidGraphRagParametersException,
     LLMConfigNotFoundException,
 )
-from tables.models.embedding_models import EmbeddingConfig
 from tables.models.knowledge_models import (
     BaseRagType,
     DocumentMetadata,
@@ -33,7 +33,6 @@ from tables.models.knowledge_models import (
     GraphRagIndexConfig,
     SourceCollection,
 )
-from tables.models.llm_models import LLMConfig
 from tables.services.knowledge_services.collection_last_edit import (
     record_collection_edits,
     record_rag_change,

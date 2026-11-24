@@ -185,6 +185,7 @@ def _record_sign_in_for_account(login: str, action: str) -> None:
 class LogoutView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(**LOGOUT_POST)
     def post(self, request):
@@ -214,6 +215,7 @@ class LogoutView(APIView):
 class SseTicketView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(**SSE_TICKET_POST)
     def post(self, request):
@@ -239,6 +241,7 @@ class WsTicketView(APIView):
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(**WS_TICKET_POST)
     def post(self, request):
@@ -315,6 +318,7 @@ class FirstSetupView(APIView):
 class TokenIntrospectView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(**TOKEN_INTROSPECT_POST)
     def post(self, request):
@@ -362,6 +366,7 @@ class TokenIntrospectView(APIView):
 class ApiKeyValidateView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(**API_KEY_VALIDATE_GET)
     def get(self, request):
@@ -503,6 +508,7 @@ class AdminPasswordResetView(APIView):
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, IsSuperadmin]
+    uses_organization_context = False
 
     _validator = AuthValidationService()
     _service = PasswordRecoveryService()
@@ -583,6 +589,7 @@ class ResetUserView(APIView):
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, IsSuperadmin]
+    uses_organization_context = False
 
     _service = ResetUserService()
     _validator = AuthValidationService()

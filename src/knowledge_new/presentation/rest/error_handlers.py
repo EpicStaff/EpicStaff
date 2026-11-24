@@ -17,12 +17,8 @@ from domain.errors import (
 )
 from litestar import Request, Response, status_codes
 from loguru import logger
-from presentation.rest.disconnect import ClientDisconnectedError
 
 __all__ = ["get_error_handlers"]
-
-# Not an IANA code: nginx's "client closed request", for a response nobody will read.
-HTTP_499_CLIENT_CLOSED_REQUEST = 499
 
 INTERNAL_ERROR_DETAIL = "The knowledge service failed to process the request."
 
@@ -102,12 +98,6 @@ def handle_graph_artifacts_not_ready(request, error: Exception) -> Response:
 @registry(RagInProcessingError)
 def handle_rag_in_processing(request, error: Exception) -> Response:
     return create_response(request, status_codes.HTTP_409_CONFLICT, "rag_in_processing", error)
-
-
-@registry(ClientDisconnectedError)
-def handle_client_disconnected(request: Request, error: Exception) -> Response:
-    logger.info("Client disconnected from {}; the request was cancelled.", request.url.path)
-    return Response(content=b"", status_code=HTTP_499_CLIENT_CLOSED_REQUEST)
 
 
 # Registered by status code, Litestar's fallback for any exception that no handler

@@ -34,9 +34,14 @@ class KnowledgeNodeData(BaseModel):
     llm_api_key: str | None = None
     llm_api_key_secret_id: int | None = Field(default=None, exclude=True)
     # Raw `epicstaff_secret(<name>)` markers until SecretResolver fills the
-    # published copy; the persisted graph_schema keeps the markers.
+    # published copy; the persisted graph_schema keeps the markers. Connections are
+    # keyed by LiteLLM argument (`api_base`...).
     embedder_extra_headers: dict[str, str] | None = None
     llm_extra_headers: dict[str, str] | None = None
+    embedder_connection: dict[str, str] | None = None
+    embedder_parameters: dict[str, Any] | None = None
+    llm_connection: dict[str, str] | None = None
+    llm_parameters: dict[str, Any] | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

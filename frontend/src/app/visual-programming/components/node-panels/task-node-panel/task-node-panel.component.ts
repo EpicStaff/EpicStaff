@@ -31,6 +31,8 @@ import {
     TooltipComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, ResourceCode } from '@shared/models';
 import { MarkdownComponent } from 'ngx-markdown';
 import { catchError, of } from 'rxjs';
 
@@ -112,6 +114,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         CodeDiffViewComponent,
         MatTooltipModule,
         NodeSaveErrorsComponent,
+        HasPermissionDirective,
     ],
     templateUrl: './task-node-panel.component.html',
     styleUrls: ['./task-node-panel.component.scss'],
@@ -281,6 +284,9 @@ export class TaskNodePanelComponent extends BaseSidePanel<TaskNodeModel> {
         'Agent Surfaces': 'ti ti-robot',
         'Shared Surfaces': 'surfaces-tab',
     };
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 
     /** The loaded agents name a changed agent in the mark's tooltip; one not loaded (or gone): `agent #id`. */
     protected readonly agentNameFormat = linkedEntityFormat(

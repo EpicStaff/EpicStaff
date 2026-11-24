@@ -7,7 +7,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from rbac.models.enums import Permission, ResourceType
-from tables.models import EmbeddingConfig, LLMConfig
+from ai_models.models import EmbeddingConfig, LLMConfig
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 MARKER_HEADERS = {"Authorization": "Bearer epicstaff_secret(GATEWAY_TOKEN)"}

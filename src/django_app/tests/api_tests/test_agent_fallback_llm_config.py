@@ -3,7 +3,7 @@ from django.db import IntegrityError, transaction
 from django.urls import reverse
 
 from agents.models import AgentDefinition
-from tables.models.llm_models import LLMConfig
+from ai_models.models import LLMConfig
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 

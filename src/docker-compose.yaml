@@ -238,7 +238,7 @@ services:
       AUDIT_JWT_SECRET: ${AUDIT_JWT_SECRET:?}
 
       PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
-      PLUGINS_BASE_DOMAIN: ${PLUGINS_BASE_DOMAIN:?}
+      PLUGINS_HOST_TEMPLATE: ${PLUGINS_HOST_TEMPLATE:?}
       PLUGINS_TRUSTED_SIGNING_KEYS: ${PLUGINS_TRUSTED_SIGNING_KEYS:?}
       PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
       PLUGINS_GRACE_PERIOD_DAYS: ${PLUGINS_GRACE_PERIOD_DAYS:?}
@@ -737,7 +737,7 @@ services:
       STORAGE_BUCKET: ${STORAGE_BUCKET:?}
       AVATAR_URL_SIGNING_SECRET: ${AVATAR_URL_SIGNING_SECRET:?}
       PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
-      PLUGINS_BASE_DOMAIN: ${PLUGINS_BASE_DOMAIN:?}
+      PLUGINS_HOST_TEMPLATE: ${PLUGINS_HOST_TEMPLATE:?}
       PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
       PLUGINS_MAX_REQUEST_BODY_MB: ${PLUGINS_MAX_REQUEST_BODY_MB:?}
       # The plugins network's subnet: nginx denies it on 80/443 and on the webhook tunnel listener
@@ -749,7 +749,7 @@ services:
       # EpicStaff's public origin: the only page allowed to frame a plugin.
       DJANGO_FRONTEND_BASE_URL: ${DJANGO_FRONTEND_BASE_URL:?}
       # Plugin development mode: the plugin pages' development servers and the development API
-      # listener (8082). nginx refuses to start with it unless EpicStaff and the plugin domain use
+      # listener (8082). nginx refuses to start with it unless EpicStaff and the plugin hosts use
       # .localhost names and docker-compose.plugins-dev.yaml is in the command: that file publishes
       # 80 and 443 on 127.0.0.1 only, publishes 8082, and alone sets PLUGINS_DEV_LOOPBACK_ONLY.
       PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
@@ -911,6 +911,8 @@ services:
     container_name: ${INSTANCE_PREFIX?}opensearch
     profiles: ["auditor"]
     entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
+    # Reaps the internal-users sync that opensearch-entrypoint.sh runs in the background.
+    init: true
     environment:
       SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
       USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
@@ -930,14 +932,22 @@ services:
     volumes:
       - opensearch_data:/usr/share/opensearch/data
       - ./auditor/opensearch-entrypoint.sh:/opensearch-entrypoint.sh:ro
+    tmpfs:
+      # The TLS keys and certificates opensearch-entrypoint.sh generates on every start. In memory and
+      # owned by opensearch (uid 1000), so no step has to hand the directory over, and the admin key,
+      # a superuser login without a password, never reaches a disk or a volume.
+      - /usr/share/opensearch/config/tls:uid=1000,gid=1000,mode=0700
     healthcheck:
       # The password comes from the environment (--variable %NAME), not the command line, which every
-      # user on the host can read in the process list.
-      test: ["CMD-SHELL", "curl -sk --variable %OPENSEARCH_INITIAL_ADMIN_PASSWORD --expand-user 'admin:{{OPENSEARCH_INITIAL_ADMIN_PASSWORD}}' https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      # user on the host can read in the process list. The marker file is written by
+      # opensearch-entrypoint.sh once only EpicStaff's own users are left in the security index.
+      test: ["CMD-SHELL", "test -f /tmp/internal-users-synced && curl -s --cacert /usr/share/opensearch/config/tls/root-ca.pem --variable %OPENSEARCH_INITIAL_ADMIN_PASSWORD --expand-user 'admin:{{OPENSEARCH_INITIAL_ADMIN_PASSWORD}}' https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 30s
+      # The first start on a new or upgraded data volume boots OpenSearch twice (see
+      # opensearch-entrypoint.sh) and took up to 6 minutes on a busy host.
+      start_period: 300s
 
   auditor:
     logging: *bounded-logs
@@ -1328,13 +1338,16 @@ services:
       redis:
         condition: service_healthy
     # The port opens only after `piccolo migrations forwards all` in the
-    # entrypoint, so healthy means the schema is current and the API answers.
+    # entrypoint and after the startup build of the venvs the sandbox owns, so
+    # healthy means the schema is current, those venvs are built and the API
+    # answers. The first start downloads about 470 MB of their libraries (55s on
+    # a fast link), hence the long start period.
     healthcheck:
       test: ["CMD", "python3", "-I", "-c", "import socket; socket.create_connection(('127.0.0.1', ${SANDBOX_PORT:?}), 5).close()"]
       interval: 15s
       timeout: 5s
       retries: 20
-      start_period: 30s
+      start_period: 600s
     environment:
       <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *secrets-transport-env]
       SANDBOX_CUSTOM_LIBRARY_BUCKET: ${SANDBOX_CUSTOM_LIBRARY_BUCKET:?}

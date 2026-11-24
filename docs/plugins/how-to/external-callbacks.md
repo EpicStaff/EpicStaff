@@ -25,16 +25,17 @@ You do not choose: give the SDK a relay and it uses whichever path works first.
 
 A provider sends people, and sometimes its own servers, back to an address you registered with
 it in advance. Make that an address of your plugin, on its own origin:
-`https://<id>.<plugins base domain>/oauth/callback`.
+`https://<plugin host>/oauth/callback`, such as `https://weather-app.example.com/oauth/callback`.
 
 - **Never hard-code it.** The same package is installed on many deployments, each with its own
-  plugins base domain. In the page, build it from `location.origin`. In the backend, build it
+  `PLUGINS_HOST_TEMPLATE`, so your plugin's address differs on each. In the page, build it from `location.origin`. In the backend, build it
   from the runtime file's `public_url` (`runtime_config().public_url` in the
   [Python SDK](../reference/python-sdk.md#epicstaff_pluginruntime)), for example when your
-  backend builds the provider's authorize URL itself.
+  backend builds the provider's authorize URL itself. Read it when you need it; never store the
+  address in your database or settings.
 - **Register the exact address** with the provider, once per deployment. Operators keep
-  `public_url` stable; if a deployment changes its plugins base domain, the registration has to
-  change with it.
+  `public_url` stable; if a deployment changes its domain or its plugin host template, the
+  registration has to change with it.
 - **A server-to-server callback** (a provider's webhook, a payment notification) carries no
   EpicStaff login. Declare its path as a [public path](public-paths.md), tell the provider
   `public_url` plus that path, and check the provider's signature on every call: a public path

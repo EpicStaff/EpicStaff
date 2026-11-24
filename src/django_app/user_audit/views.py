@@ -48,6 +48,7 @@ class ServiceUserActionView(APIView):
     """
 
     permission_classes = [IsSystemApiKeyAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(
         summary="Record a user action another service carried out",

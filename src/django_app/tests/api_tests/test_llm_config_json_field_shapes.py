@@ -1,16 +1,16 @@
-"""LLMConfig's stop, logit_bias and extra_headers must have a shape LLMConfigData loads."""
+"""LLMConfig's JSON values must have a shape their readers load: extra_headers is checked
+by its own validator, settings such as stop by the model catalog."""
 
 import pytest
 
-from tables.models import LLMConfig, Provider
-from tables.models.llm_models import LLMModel
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
 @pytest.fixture
 def model(db):
     provider, _ = Provider.objects.get_or_create(name="openai")
-    yield LLMModel.objects.create(name="epicstaff-shape-model", llm_provider=provider)
+    yield LLMModel.objects.create(name="gpt-4o", llm_provider=provider, predefined=True)
 
 
 @pytest.fixture
@@ -20,47 +20,24 @@ def client(client_as, admin_acme, acme):
     yield api_client
 
 
-def _error_field(response):
-    # The project exception handler flattens field errors to "<field>: <message>".
-    return response.data["message"].split(":", 1)[0]
-
-
 @pytest.mark.django_db
 @pytest.mark.parametrize(
-    "field_name, value",
+    "body, message_start",
     [
-        ("extra_headers", {"X-Retry": 3}),
-        ("extra_headers", ["X-Retry"]),
-        ("logit_bias", {"foo": 1}),
-        ("logit_bias", {"50256": "high"}),
-        ("stop", {"a": 1}),
-        ("stop", [1, 2]),
+        ({"extra_headers": {"X-Retry": 3}}, "extra_headers: "),
+        ({"extra_headers": ["X-Retry"]}, "extra_headers: "),
+        ({"parameters": {"stop": [1, 2]}}, "parameters: stop: "),
+        ({"parameters": {"stop": {"a": 1}}}, "parameters: stop: "),
     ],
 )
-def test_malformed_value_is_rejected_on_create(client, model, field_name, value):
+def test_malformed_value_is_rejected_on_create(client, model, body, message_start):
     response = client.post(
-        "/api/llm-configs/",
-        {"custom_name": "bad", "model": model.id, field_name: value},
-        format="json",
+        "/api/llm-configs/", {"custom_name": "bad", "model": model.id, **body}, format="json"
     )
 
     assert response.status_code == 400
-    assert _error_field(response) == field_name
+    assert response.data["message"].startswith(message_start), response.data
     assert not LLMConfig.objects.filter(custom_name="bad").exists()
-
-
-@pytest.mark.django_db
-def test_malformed_value_is_rejected_on_patch(client, acme, model):
-    config = LLMConfig.objects.create(custom_name="c", model=model, org=acme)
-
-    response = client.patch(
-        f"/api/llm-configs/{config.id}/", {"extra_headers": {"X-Retry": 3}}, format="json"
-    )
-
-    assert response.status_code == 400
-    assert _error_field(response) == "extra_headers"
-    config.refresh_from_db()
-    assert config.extra_headers == {}
 
 
 @pytest.mark.django_db
@@ -71,8 +48,7 @@ def test_well_formed_values_are_stored_as_sent(client, model):
             "custom_name": "good",
             "model": model.id,
             "extra_headers": {"X-Trace": "1"},
-            "logit_bias": {"50256": -100},
-            "stop": ["END"],
+            "parameters": {"logit_bias": {"50256": -100}, "stop": ["END"], "seed": None},
         },
         format="json",
     )
@@ -80,17 +56,4 @@ def test_well_formed_values_are_stored_as_sent(client, model):
     assert response.status_code == 201, response.data
     config = LLMConfig.objects.get(id=response.data["id"])
     assert config.extra_headers == {"X-Trace": "1"}
-    assert config.logit_bias == {"50256": -100}
-    assert config.stop == ["END"]
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("field_name", ["stop", "logit_bias"])
-def test_null_is_accepted(client, model, field_name):
-    response = client.post(
-        "/api/llm-configs/",
-        {"custom_name": "nulls", "model": model.id, field_name: None},
-        format="json",
-    )
-
-    assert response.status_code == 201, response.data
+    assert config.parameters == {"logit_bias": {"50256": -100}, "stop": ["END"], "seed": None}

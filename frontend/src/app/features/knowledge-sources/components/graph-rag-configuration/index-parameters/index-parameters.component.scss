@@ -66,6 +66,10 @@
 
     .readonly-chip {
         font-size: 0.875rem;
+
+        &:not(:last-child)::after {
+            content: ',';
+        }
     }
 }
 

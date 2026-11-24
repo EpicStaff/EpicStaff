@@ -379,3 +379,69 @@ describe('KeyValueListComponent defaults', () => {
         );
     });
 });
+
+@Component({
+    imports: [KeyValueListComponent, ReactiveFormsModule],
+    template: `<app-key-value-list
+        [formControl]="control"
+        addLabel="Add Header"
+    />`,
+})
+class AddButtonHostComponent {
+    readonly control = new FormControl<Record<string, string>>({});
+}
+
+describe('KeyValueListComponent with an add button', () => {
+    function setup() {
+        TestBed.configureTestingModule({
+            providers: [
+                {
+                    provide: SecretsStorageService,
+                    useValue: { secrets: () => [], getSecrets: () => of([]) },
+                },
+            ],
+        });
+        const fixture = TestBed.createComponent(AddButtonHostComponent);
+        fixture.detectChanges();
+        return { fixture, control: fixture.componentInstance.control };
+    }
+
+    function rows(fixture: ComponentFixture<AddButtonHostComponent>): number {
+        return fixture.nativeElement.querySelectorAll('.kv-list__row').length;
+    }
+
+    function addButton(fixture: ComponentFixture<AddButtonHostComponent>): HTMLButtonElement {
+        return fixture.nativeElement.querySelector('.kv-list__add-btn');
+    }
+
+    function type(fixture: ComponentFixture<AddButtonHostComponent>, input: HTMLInputElement, text: string): void {
+        input.value = text;
+        input.dispatchEvent(new Event('input'));
+        fixture.detectChanges();
+    }
+
+    it('starts with one row whose remove button shows, and adds a row only on "Add Header"', () => {
+        const { fixture, control } = setup();
+        expect(rows(fixture)).toBe(1);
+        expect(addButton(fixture).textContent!.trim()).toBe('Add Header');
+        expect(fixture.nativeElement.querySelector('.kv-list__remove-btn--hidden')).toBeNull();
+
+        const [name, value] = Array.from<HTMLInputElement>(fixture.nativeElement.querySelectorAll('input'));
+        type(fixture, name, 'X-Name');
+        type(fixture, value, 'abc');
+        expect(rows(fixture)).toBe(1);
+        expect(control.value).toEqual({ 'X-Name': 'abc' });
+
+        addButton(fixture).click();
+        fixture.detectChanges();
+        expect(rows(fixture)).toBe(2);
+        expect(control.value).toEqual({ 'X-Name': 'abc' });
+    });
+
+    it('shows the stored headers with no extra empty row', () => {
+        const { fixture, control } = setup();
+        control.setValue({ 'X-One': 'a', 'X-Two': 'b' });
+        fixture.detectChanges();
+        expect(rows(fixture)).toBe(2);
+    });
+});

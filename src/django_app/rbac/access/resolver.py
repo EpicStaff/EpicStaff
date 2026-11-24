@@ -1,4 +1,5 @@
 from rbac.access.effective import EffectivePermissions
+from rbac.access.org_context import membership_refusal
 from rbac.access.principals import is_pinned_org_principal
 from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models import OrganizationUser
@@ -17,6 +18,11 @@ class PermissionResolver:
     and is treated as a non-member of every other org, so
     `assert_row_org_permission` turns another org's row into the view's
     own not-found.
+
+    A non-superadmin without an active membership gets `membership_refusal`:
+    `OrgDeactivatedError` when they are a member of the now inactive org,
+    `OrgMembershipRequiredError` otherwise. A superadmin resolves in any org;
+    the org's state is checked by `OrgContextService`.
 
     Cache seam: when a Redis cache lands later, it wraps the
     DB-fetch portion of resolve().
@@ -40,7 +46,7 @@ class PermissionResolver:
             .first()
         )
         if membership is None:
-            raise OrgMembershipRequiredError()
+            raise membership_refusal(user=user, org_id=org_id)
 
         return EffectivePermissions.from_role(membership.role)
 

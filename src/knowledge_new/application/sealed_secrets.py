@@ -16,7 +16,7 @@ def open_sealed_secrets[TCommand: (RunIndex, RunSearch)](
 ) -> TCommand:
     """Return a copy of `command` with its sealed secrets decrypted.
 
-    The API keys arrive as ciphertext, and header values carry
+    The API keys arrive as ciphertext, and header and connection values carry
     `epicstaff_secret(<ciphertext>)` markers. A None API key stays None.
 
     Raises:
@@ -35,6 +35,10 @@ def open_sealed_secrets[TCommand: (RunIndex, RunSearch)](
         llm_extra_headers=_open_headers(
             command.llm_extra_headers, "llm_extra_headers", cryptographer
         ),
+        embedding_connection=_open_headers(
+            command.embedding_connection, "embedding_connection", cryptographer
+        ),
+        llm_connection=_open_headers(command.llm_connection, "llm_connection", cryptographer),
     )
 
 

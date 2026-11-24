@@ -67,6 +67,7 @@ class PythonCodeExecutorService(IPythonCodeExecutorService, metaclass=SingletonM
         try:
             code_task_data = CodeTaskData(
                 venv_id=python_code_data.venv_id,
+                system_venv=python_code_data.system_venv,
                 code=code,
                 execution_id=unique_task_id,
                 entrypoint=entrypoint,
@@ -144,6 +145,7 @@ def _execution_request(code_task_data: CodeTaskData) -> ExecutionRequest:
         func_kwargs=code_task_data.func_kwargs or {},
         secrets=code_task_data.secrets,
         venv_id=code_task_data.venv_id,
+        system_venv=code_task_data.system_venv,
         use_storage=code_task_data.use_storage,
         storage_allowed_paths=code_task_data.storage_allowed_paths or [],
         storage_org_prefix=code_task_data.storage_org_prefix,

@@ -15,6 +15,7 @@ class TablesConfig(AppConfig):
         from rbac.governance.organization_deletion import register_participant
 
         import tables.import_export.version_conversions.convertions
+        import tables.signals.flow_assistant_signals
         import tables.signals.graph_signals
         import tables.signals.naive_rag_signals
         import tables.signals.profile_signals
@@ -74,21 +75,6 @@ class TablesConfig(AppConfig):
 
         if "runserver" in sys.argv:
             logger.info(f"{settings.DEBUG=}")
-
-        # Elect a single owner across web-server workers to run the daily
-        # litellm model-cost refresh when LITELLM_MODEL_COST_REFRESH_ENABLED is on;
-        # skip during migrate/makemigrations/tests.
-        argv0 = sys.argv[0] if sys.argv else ""
-        is_web_server = (
-            "runserver" in sys.argv
-            or "gunicorn" in argv0
-            or "uvicorn" in argv0
-            or "daphne" in argv0
-        )
-        if is_web_server:
-            from tables.utils.litellm_model_info import start_litellm_refresh_if_owner
-
-            start_litellm_refresh_if_owner()
 
         redis_service = RedisService()
         converter_service = ConverterService()

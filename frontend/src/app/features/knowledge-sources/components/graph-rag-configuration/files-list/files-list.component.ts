@@ -70,16 +70,19 @@ export class GraphRagFilesListComponent {
             .map((d) => d.graph_rag_document_id)
     );
 
+    checkedSelectableCount = computed(() => {
+        const checked = this.checkedDocIds();
+        return this.selectableDocIds().filter((id) => checked.has(id)).length;
+    });
+
     allChecked = computed(() => {
         const selectable = this.selectableDocIds();
-        return selectable.length > 0 && selectable.every((id) => this.checkedDocIds().has(id));
+        return selectable.length > 0 && this.checkedSelectableCount() === selectable.length;
     });
 
     someChecked = computed(() => {
-        const selectable = this.selectableDocIds();
-        const checked = this.checkedDocIds();
-        const count = selectable.filter((id) => checked.has(id)).length;
-        return count > 0 && count < selectable.length;
+        const count = this.checkedSelectableCount();
+        return count > 0 && count < this.selectableDocIds().length;
     });
 
     processingIds = this.collectionsStorage.processingConfigIds;

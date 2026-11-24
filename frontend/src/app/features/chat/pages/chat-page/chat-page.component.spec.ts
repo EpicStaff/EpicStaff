@@ -36,6 +36,7 @@ import { ChatVisitorTokensStore } from '../../services/chat-visitor-tokens.store
 import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
 import { DeskDrawerService } from '../../services/desk-drawer.service';
 import { OpenConversationService } from '../../services/open-conversation.service';
+import { InboxSection } from '../../utils/conversation-list-tab.util';
 import { ChatPageComponent } from './chat-page.component';
 
 class ResizeObserverStub {
@@ -215,8 +216,8 @@ describe('ChatPageComponent', () => {
         );
     }
 
-    const rememberedSection = (): ChatInboxSection | null =>
-        TestBed.inject(ConversationListPreferencesService).expanded();
+    const rememberedSections = (): readonly InboxSection[] =>
+        TestBed.inject(ConversationListPreferencesService).openSections();
     // Open: its rows shown, under an expanded header on Inbox, or Bot Testing's one section, which has none.
     const openSections = (): ChatInboxSection[] =>
         Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.conversation-list__section'))
@@ -376,6 +377,10 @@ describe('ChatPageComponent', () => {
         TestBed.inject(ActiveOrgService).set(1);
         // Desk pages are not routed here; the open conversation's URL (navigateByUrl) is, against the root route.
         navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+        // The user keeps only Waiting open, and only Tests on Bot Testing: these specs are about the page, not the
+        // sections, and each list open is one more request to answer.
+        TestBed.inject(ConversationListPreferencesService).setOpenSections(['waiting']);
+        TestBed.inject(ConversationListPreferencesService).setOpenTestingSections(['test_open']);
         fixture = TestBed.createComponent(ChatPageComponent);
         fixture.detectChanges();
     });
@@ -449,7 +454,7 @@ describe('ChatPageComponent', () => {
         fixture.detectChanges();
         expect(pressedTab()).toBe('Bot Testing');
         expect(openSections()).toEqual(['test_open']);
-        expect(rememberedSection()).toBe('waiting');
+        expect(rememberedSections()).toEqual(['waiting']);
         expect(TestBed.inject(ConversationListPreferencesService).tab()).toBe('inbox');
     });
 

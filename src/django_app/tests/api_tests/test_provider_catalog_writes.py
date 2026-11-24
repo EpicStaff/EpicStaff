@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from rbac.access.gates import DenyApiKeyAuth
-from tables.models import Provider
+from ai_models.models import Provider
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 PROVIDERS_URL = "/api/providers/"

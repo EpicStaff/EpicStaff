@@ -20,12 +20,8 @@ from plugins.ownership.owned_resource_purger import (
 )
 from plugins.ownership.ownership_recorder import ownable_models
 from tables.models import (
-    DefaultModels,
-    EmbeddingConfig,
-    EmbeddingModel,
     Graph,
     KeyValueTable,
-    LLMModel,
     McpTool,
     PythonCode,
     PythonCodeTool,
@@ -34,6 +30,12 @@ from tables.models import (
     SourceCollection,
     StorageFile,
     WebhookTrigger,
+)
+from ai_models.models import (
+    DefaultModels,
+    EmbeddingConfig,
+    EmbeddingModel,
+    LLMModel,
 )
 from tables.models.llm_models import (
     RealtimeConfig,
@@ -91,8 +93,8 @@ ROOTS = {
     "tables.SourceCollection": lambda organization: SourceCollection.objects.create(
         org=organization, collection_name=_unique("Forecasts")
     ),
-    "tables.LLMConfig": lambda organization: llm_config(organization, _unique("Weather summaries")),
-    "tables.EmbeddingConfig": lambda organization: EmbeddingConfig.objects.create(
+    "ai_models.LLMConfig": lambda organization: llm_config(organization, _unique("Weather summaries")),
+    "ai_models.EmbeddingConfig": lambda organization: EmbeddingConfig.objects.create(
         org=organization, custom_name=_unique("Weather embeddings")
     ),
     "tables.RealtimeConfig": _realtime_config,
@@ -106,8 +108,8 @@ ROOTS = {
     "tables.GeminiRealtimeConfig": lambda organization: GeminiRealtimeConfig.objects.create(
         org=organization, custom_name=_unique("Gemini voice")
     ),
-    "tables.LLMModel": lambda organization: LLMModel.objects.create(org=organization, name=_unique("weather-llm")),
-    "tables.EmbeddingModel": lambda organization: EmbeddingModel.objects.create(
+    "ai_models.LLMModel": lambda organization: LLMModel.objects.create(org=organization, name=_unique("weather-llm")),
+    "ai_models.EmbeddingModel": lambda organization: EmbeddingModel.objects.create(
         org=organization, name=_unique("weather-embedder")
     ),
     "tables.RealtimeModel": lambda organization: RealtimeModel.objects.create(org=organization, name=_unique("voice")),
@@ -117,7 +119,7 @@ ROOTS = {
     "tables.KeyValueTable": lambda organization: KeyValueTable.objects.create(
         org=organization, name=_unique("weather_cache")
     ),
-    "tables.Secret": lambda organization: secret_row(organization, _unique("Weather · LLM key")),
+    "tables.Secret": lambda organization: secret_row(organization, _unique("Weather - LLM key")),
     "tables.RealtimeChannel": lambda organization: RealtimeChannel.objects.create(
         org=organization, name=_unique("Weather hotline")
     ),
@@ -189,9 +191,9 @@ def test_the_extra_order_lists_exactly_the_ownable_models_outside_the_bin():
 def test_users_go_before_what_they_use():
     order = [model._meta.label for model in owned_purge_order()]
 
-    assert order.index("tables.Graph") < order.index("agents.AgentDefinition") < order.index("tables.LLMConfig")
-    assert order.index("tables.StorageFile") < order.index("tables.LLMConfig") < order.index("tables.Secret")
-    assert order.index("tables.LLMConfig") < order.index("tables.LLMModel") < order.index("tables.KeyValueTable")
+    assert order.index("tables.Graph") < order.index("agents.AgentDefinition") < order.index("ai_models.LLMConfig")
+    assert order.index("tables.StorageFile") < order.index("ai_models.LLMConfig") < order.index("tables.Secret")
+    assert order.index("ai_models.LLMConfig") < order.index("ai_models.LLMModel") < order.index("tables.KeyValueTable")
 
 
 def test_every_ownable_model_has_a_builder_here():
@@ -278,7 +280,7 @@ def test_a_live_file_leaves_nothing_in_the_bin_or_the_trash(grant, acme, storage
 
 
 def test_rows_made_on_behalf_of_a_person_are_purged(grant, acme, admin_acme, storage):
-    secret = secret_row(acme, "Weather · LLM key")
+    secret = secret_row(acme, "Weather - LLM key")
     row = own(secret, grant)
     row.on_behalf_of = admin_acme
     row.save(update_fields=["on_behalf_of"])
@@ -289,7 +291,7 @@ def test_rows_made_on_behalf_of_a_person_are_purged(grant, acme, admin_acme, sto
 
 
 def test_a_root_already_gone_drops_its_ownership_row(grant, acme, storage):
-    secret = secret_row(acme, "Weather · LLM key")
+    secret = secret_row(acme, "Weather - LLM key")
     own(secret, grant)
     type(secret)._base_manager.filter(pk=secret.pk).delete()
 
@@ -300,8 +302,8 @@ def test_a_root_already_gone_drops_its_ownership_row(grant, acme, storage):
 
 
 def test_rows_whose_grant_is_gone_go_with_the_grant_s_purge(grant, acme, storage):
-    owned = secret_row(acme, "Weather · LLM key")
-    left_behind = secret_row(acme, "Weather · old key")
+    owned = secret_row(acme, "Weather - LLM key")
+    left_behind = secret_row(acme, "Weather - old key")
     own(owned, grant)
     orphan(left_behind, acme)
 
@@ -330,6 +332,35 @@ def test_the_organization_s_rows_lose_what_they_used_and_its_flow_stays(grant, a
     assert AgentDefinition.objects.filter(pk=writer.pk).exists()
 
 
+def test_a_custom_model_a_person_s_config_reuses_is_kept_and_only_its_ownership_goes(grant, acme, storage):
+    # The plugin named a model the catalog does not know: its config created the custom row,
+    # and a person's config of the same model reuses that row.
+    model = LLMModel.objects.create(org=acme, name="weather-fine-tune", is_custom=True)
+    own(model, grant)
+    own(llm_config(acme, "Weather summaries", model=model), grant)
+    persons_config = llm_config(acme, "Team summaries", model=model)
+
+    first = _purge(grant)
+    second = _purge(grant)
+
+    assert (first.purged, first.failed, first.remaining) == (2, 0, 0)
+    assert _exists(model) and _exists(persons_config)
+    assert not PluginOwnedResource.objects.exists()
+    assert (second.purged, second.failed, second.remaining) == (0, 0, 0)
+
+
+def test_a_model_only_the_plugin_s_configs_use_goes_with_them(grant, acme, storage):
+    model = EmbeddingModel.objects.create(org=acme, name="weather-embed", is_custom=True)
+    own(model, grant)
+    config = EmbeddingConfig.objects.create(org=acme, custom_name="Weather embeddings", model=model)
+    own(config, grant)
+
+    result = _purge(grant)
+
+    assert (result.purged, result.failed, result.remaining) == (2, 0, 0)
+    assert not _exists(model) and not _exists(config)
+
+
 # ---- what is held back ----
 
 
@@ -339,7 +370,7 @@ def test_a_root_linked_to_another_organization_is_kept_and_not_retried_for_an_ho
     forecaster = agent(acme, "Forecaster")
     own(forecaster, grant)
     Surface.objects.create(org=beta, name="Beta research", owner_agent=forecaster)
-    secret = secret_row(acme, "Weather · LLM key")
+    secret = secret_row(acme, "Weather - LLM key")
     own(secret, grant)
 
     first = _purge(grant)
@@ -359,7 +390,7 @@ def test_a_root_linked_to_another_organization_is_kept_and_not_retried_for_an_ho
 def test_a_storage_failure_rolls_back_that_row_only(grant, acme, storage):
     readme = _file(storage, acme, "README.md")
     own(readme, grant)
-    secret = secret_row(acme, "Weather · LLM key")
+    secret = secret_row(acme, "Weather - LLM key")
     own(secret, grant)
 
     with mock.patch.object(storage, "delete_trash_batch", side_effect=OSError("storage down")):
@@ -482,7 +513,7 @@ def test_a_purge_error_stands_while_its_row_is_held_back_and_clears_once_it_is_p
 
 
 def test_an_ownership_row_naming_another_organization_s_resource_never_deletes_it(grant, acme, beta, log_messages):
-    theirs = secret_row(beta, "Beta's key")
+    theirs = secret_row(beta, "Beta key")
     PluginOwnedResource.objects.create(
         org=acme,
         grant=grant,
@@ -502,7 +533,7 @@ def test_an_ownership_row_naming_another_organization_s_resource_never_deletes_i
 
 
 def test_the_purge_takes_the_organization_s_lock_without_its_key(grant, acme):
-    own(secret_row(acme, "Weather · LLM key"), grant)
+    own(secret_row(acme, "Weather - LLM key"), grant)
 
     with CaptureQueriesContext(connection) as captured:
         _purge(grant)

@@ -319,6 +319,34 @@ async def test_a_venv_of_ordinary_packages_is_given_no_wheelhouse(
     await VenvBuildOrchestrator(uow, uv_provider, file_storage).build(stored)
 
     assert uv_provider.wheelhouses == [None]
+    assert uv_provider.offline_flags == [False]
+    assert file_storage.objects == {}
+
+
+async def test_a_system_venv_is_built_offline_from_the_images_wheelhouse(
+    uow, uv_provider, venvs_dir, file_storage, tmp_path, monkeypatch
+):
+    """The manager builds the system venvs at startup, which must succeed with no
+    internet: their wheels ship in the image, and the index is never asked."""
+    from manager import settings
+
+    system_wheelhouse = tmp_path / "system_wheelhouse"
+    system_wheelhouse.mkdir()
+    (system_wheelhouse / "pdfplumber-0.11.10-py3-none-any.whl").write_bytes(b"PK")
+    monkeypatch.setattr(settings, "SYSTEM_WHEELHOUSE_DIR", system_wheelhouse)
+    stored = uow.venv_repo.seed(
+        make_venv(
+            name="file_extractor",
+            system_key="file_extractor",
+            libs=[make_library(name="pdfplumber", specification="==0.11.10")],
+        )
+    )[0]
+
+    await VenvBuildOrchestrator(uow, uv_provider, file_storage).build(stored)
+
+    assert uow.venv_repo.rows[stored.id].status is VenvStatus.COMPLETED
+    assert uv_provider.offline_flags == [True]
+    assert uv_provider.wheelhouses == [system_wheelhouse]
     assert file_storage.objects == {}
 
 
@@ -451,3 +479,52 @@ async def test_a_venv_does_not_find_a_library_of_another_scope(
 
     assert uow.venv_repo.rows[stored.id].status is VenvStatus.FAILED
     assert uv_provider.apply_calls == []
+
+
+async def test_prepare_builds_a_venv_that_is_not_built(uow, uv_provider, venvs_dir, file_storage):
+    stored = uow.venv_repo.seed(make_venv())[0]
+
+    venv = await VenvBuildOrchestrator(uow, uv_provider, file_storage).prepare(stored)
+
+    assert venv.status is VenvStatus.COMPLETED
+    assert (venvs_dir / f"venv-{venv.hash}").is_dir()
+
+
+async def test_prepare_only_refreshes_the_predefined_packages_of_a_built_venv(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    from manager import settings
+
+    (venvs_dir / "venv-1abc").mkdir(parents=True)
+    stored = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    venv = await VenvBuildOrchestrator(uow, uv_provider, file_storage).prepare(stored)
+
+    assert (venv.status, venv.hash) == (VenvStatus.COMPLETED, "1abc")
+    assert uv_provider.apply_calls == []
+    assert uv_provider.install_local_calls == [
+        (venvs_dir / "venv-1abc", settings.PREDEFINED_VENV_PACKAGES)
+    ]
+
+
+async def test_prepare_rebuilds_a_built_venv_whose_directory_is_gone(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    stored = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1gone"))[0]
+
+    venv = await VenvBuildOrchestrator(uow, uv_provider, file_storage).prepare(stored)
+
+    assert venv.status is VenvStatus.COMPLETED
+    assert (venvs_dir / f"venv-{venv.hash}").is_dir()
+    assert len(uv_provider.apply_calls) == 1
+
+
+async def test_prepare_returns_a_venv_that_failed_to_build_as_failed(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    uv_provider.fail_apply = RuntimeError("index unreachable")
+    stored = uow.venv_repo.seed(make_venv())[0]
+
+    venv = await VenvBuildOrchestrator(uow, uv_provider, file_storage).prepare(stored)
+
+    assert venv.status is VenvStatus.FAILED

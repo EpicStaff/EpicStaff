@@ -4,9 +4,6 @@ export interface LLMModel {
     id: number;
     name: string;
     description: string | null;
-    base_url: string | null;
-    deployment_id: string | null;
-    api_version: string | null;
     is_visible: boolean;
     is_custom: boolean;
     predefined: boolean; // seeded catalog row; drives the "Deprecated" badge and list sort order
@@ -22,9 +19,6 @@ export interface GetLlmModelRequest {
     id: number;
     name: string;
     description: string | null;
-    base_url: string | null;
-    deployment_id: string | null;
-    api_version: string | null;
     is_visible: boolean;
     is_custom: boolean;
     predefined: boolean;
@@ -37,9 +31,6 @@ export interface GetLlmModelRequest {
 export interface CreateLlmModelRequest {
     name: string;
     description?: string | null;
-    base_url?: string | null;
-    deployment_id?: string | null;
-    api_version?: string | null;
     is_visible: boolean;
     llm_provider: number;
 }

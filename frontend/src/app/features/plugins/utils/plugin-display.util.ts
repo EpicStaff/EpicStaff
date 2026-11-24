@@ -268,7 +268,7 @@ export const PLUGIN_PURGE_NODE_LABELS: Readonly<Record<PluginPurgeNodeState, str
     not_needed: null,
 };
 
-/** As the Default LLMs settings page names them; the page shows only the agent ones. */
+/** As the AI Models page's Default Models section names them; it shows only the agent ones. */
 export const PLUGIN_DEFAULT_MODEL_SETTING_LABELS: Readonly<Record<PluginDefaultModelSetting, string>> = {
     agent_llm_config: 'Agent LLM',
     agent_fcm_llm_config: 'Agent Function Calling LLM',
@@ -279,7 +279,7 @@ export const PLUGIN_DEFAULT_MODEL_SETTING_LABELS: Readonly<Record<PluginDefaultM
     memory_llm_config: 'Memory LLM',
 };
 
-/** The settings the Default LLMs settings page shows and can change; the others have no page. */
+/** The settings the AI Models page's Default Models section shows and can change; the others have no page. */
 export const PLUGIN_DEFAULT_MODEL_SETTINGS_ON_SETTINGS_PAGE: ReadonlySet<PluginDefaultModelSetting> =
     new Set<PluginDefaultModelSetting>(['agent_llm_config', 'agent_fcm_llm_config']);
 

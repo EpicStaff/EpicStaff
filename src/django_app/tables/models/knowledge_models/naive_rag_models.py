@@ -7,7 +7,6 @@ from pgvector.django import VectorField
 
 from ..base_models import SoftDeleteFields, soft_delete_consistency_constraint
 from ..crew_models import Agent
-from ..embedding_models import EmbeddingConfig
 from .collection_models import BaseRagType, DocumentMetadata
 
 
@@ -40,7 +39,7 @@ class NaiveRag(SoftDeleteFields, models.Model):
         limit_choices_to={"rag_type": BaseRagType.RagType.NAIVE},
     )
     embedder = models.ForeignKey(
-        EmbeddingConfig,
+        "ai_models.EmbeddingConfig",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

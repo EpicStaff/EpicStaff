@@ -4,12 +4,13 @@ from collections import defaultdict
 from typing import ClassVar
 
 from agents.models import AgentDefinition
+from ai_models.serializers.default_config_serializers import DefaultModelsSerializer
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef, Q
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema_view
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
 from rbac.access.gates import (
@@ -26,11 +27,13 @@ from rbac.scoping.mixins import (
     OrgScopedChildViewSetMixin,
     OrgScopedServiceViewSetMixin,
 )
-from rest_framework import filters, mixins, viewsets
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.settings import api_settings
+from rest_framework.views import APIView
 from src.shared.bench_log import BENCH_LEVEL
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models import UserAction
@@ -153,8 +156,6 @@ from user_audit.read_only import not_a_user_change, reads_only
 from user_audit.recorder import record_user_action
 from utils.graph_utils import runtime_node_name
 from utils.logger import logger
-
-from .default_config import *
 
 MAX_TOTAL_FILE_SIZE = 15 * 1024 * 1024  # 15MB
 
@@ -333,6 +334,8 @@ class SessionViewSet(
 
 
 class RunSession(APIView):
+    uses_organization_context = False
+
     @extend_schema(**RUN_SESSION_POST)
     @not_a_user_change
     def post(self, request):
@@ -501,6 +504,8 @@ class SessionTestRunView(OrgScopedServiceViewSetMixin, APIView):
 
 
 class GetUpdates(APIView):
+    uses_organization_context = False
+
     @extend_schema(**GET_UPDATES_GET)
     def get(self, request, *args, **kwargs):
         session = get_accessible_session(
@@ -514,6 +519,8 @@ class GetUpdates(APIView):
 
 
 class StopSession(APIView):
+    uses_organization_context = False
+
     @extend_schema(**STOP_SESSION_POST)
     @not_a_user_change
     def post(self, request, *args, **kwargs):
@@ -542,6 +549,7 @@ class NotifyEmailView(APIView):
     plugin's declared access could not cap it."""
 
     permission_classes = [IsAuthenticated, DenyPluginCredential]
+    uses_organization_context = False
     # Extends the defaults rather than replacing them, so a default throttle
     # (such as the per-plugin request rate) still applies here.
     throttle_classes = [*api_settings.DEFAULT_THROTTLE_CLASSES, NotifyEmailThrottle]
@@ -942,12 +950,20 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
 
         indexing_data = IndexingService.validate_and_prepare_indexing(rag_id, rag_type)
         principal = pinned_principal_of_user(request.user)
+        marker_fields = (
+            "embedder_extra_headers",
+            "llm_extra_headers",
+            "embedder_connection",
+            "llm_connection",
+        )
         if principal is not None:
-            # The headers' markers resolve below by name, as a run's do when it starts.
+            # The header and connection markers resolve below by name, as a run's do when
+            # it starts.
             assert_may_resolve_markers(
                 principal=principal,
-                names=extract_secret_marker_names(indexing_data["embedder_extra_headers"])
-                | extract_secret_marker_names(indexing_data["llm_extra_headers"]),
+                names=set().union(
+                    *(extract_secret_marker_names(indexing_data[field]) for field in marker_fields)
+                ),
             )
         secret_resolver = SecretResolver()
 
@@ -976,6 +992,16 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
             org_id=org_id,
             context="LLMConfig.extra_headers",
         )
+        embedding_connection = secret_resolver.resolve_header_markers(
+            headers=indexing_data["embedder_connection"],
+            org_id=org_id,
+            context="EmbeddingConfig.connection",
+        )
+        llm_connection = secret_resolver.resolve_header_markers(
+            headers=indexing_data["llm_connection"],
+            org_id=org_id,
+            context="LLMConfig.connection",
+        )
 
         with KnowledgeClient() as client:
             client.index(
@@ -986,6 +1012,10 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
                 llm_api_key=llm_api_key,
                 embedding_extra_headers=embedding_extra_headers,
                 llm_extra_headers=llm_extra_headers,
+                embedding_connection=embedding_connection,
+                llm_connection=llm_connection,
+                embedding_parameters=indexing_data["embedder_parameters"],
+                llm_parameters=indexing_data["llm_parameters"],
             )
         record_rag_change(rag.base_rag_type.source_collection, changed=True)
 
@@ -1111,6 +1141,8 @@ class TelegramTriggerNodeAvailableFieldsView(APIView):
     GET endpoint that returns all possible fields that can be created
     for TelegramTriggerNode.
     """
+
+    uses_organization_context = False
 
     @extend_schema(**TELEGRAM_TRIGGER_AVAILABLE_FIELDS_GET)
     def get(self, request, format=None):
