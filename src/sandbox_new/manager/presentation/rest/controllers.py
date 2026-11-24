@@ -192,7 +192,8 @@ class VenvController(Controller):
         ),
         response_description="The venv as stored after the change.",
         responses=error_responses(
-            not_found="No venv with this id.", conflict="The venv is the shared default."
+            not_found="No venv with this id.",
+            conflict="The venv is built by the sandbox itself.",
         ),
     )
     async def update(
@@ -202,7 +203,8 @@ class VenvController(Controller):
 
         Raises:
             VenvNotFoundError: No venv with this id, rendered as 404.
-            DefaultVenvProtectedError: The venv is the shared default, rendered as 409.
+            SystemVenvProtectedError: The venv is built by the sandbox itself, rendered
+                as 409.
         """
         orchestrator = VenvCRUDOrchestrator(uow)
         libs = None if data.libs is None else [lib.to_domain() for lib in data.libs]
@@ -219,7 +221,8 @@ class VenvController(Controller):
         ),
         response_description="The venv was deleted.",
         responses=error_responses(
-            not_found="No venv with this id.", conflict="The venv is the shared default."
+            not_found="No venv with this id.",
+            conflict="The venv is built by the sandbox itself.",
         ),
     )
     async def remove(self, id: int, uow: AbstractUnitOfWork) -> None:
@@ -227,7 +230,8 @@ class VenvController(Controller):
 
         Raises:
             VenvNotFoundError: No venv with this id, rendered as 404.
-            DefaultVenvProtectedError: The venv is the shared default, rendered as 409.
+            SystemVenvProtectedError: The venv is built by the sandbox itself, rendered
+                as 409.
         """
         orchestrator = VenvCRUDOrchestrator(uow)
         await orchestrator.remove(id)
@@ -244,10 +248,11 @@ class ExecutionController(Controller):
             "Accepts a submission and answers immediately with its `execution_id` and "
             "`status`. The result is not in this response: it is published out of band, "
             "and the caller correlates it by that id.\n\n"
-            "What happens next depends on the venv, chosen by `venv_id` or the default "
-            "one when it is omitted. A built venv has the job queued at once; a venv "
-            "still building holds the job until its build finishes (a job still held "
-            "when the hold timeout passes gets a failed result instead of a run); a venv "
+            "What happens next depends on the venv, chosen by `venv_id`, by `system_venv` "
+            "for a built-in node, or the default one when both are omitted. A built venv "
+            "has the job queued at once; a venv still building holds the job until its "
+            "build finishes (a job still held when the hold timeout passes gets a failed "
+            "result instead of a run); a venv "
             "whose build failed produces a failed result rather than a run. All three "
             "answer 202 -- "
             "acceptance says the submission was understood, not that the code will run.\n\n"
@@ -268,8 +273,9 @@ class ExecutionController(Controller):
         """Accept a code submission and hand it to the job orchestrator.
 
         Raises:
-            VenvNotFoundError: `venv_id` names no venv, or none is given and there is no
-                default venv. Rendered as 404.
+            VenvNotFoundError: `venv_id` names no venv. Rendered as 404.
+            SystemVenvNotFoundError: `system_venv`, or the default key when neither is
+                given, names no venv the sandbox owns. Rendered as 404.
             SandboxOverloadedError: The sandbox cannot take the job now. Rendered as 503.
             SecretNotDecryptableError: A secret is not a transport ciphertext this
                 sandbox can open. Rendered as 400.
@@ -290,6 +296,7 @@ class ExecutionController(Controller):
             func_kwargs=data.func_kwargs,
             secrets=data.secrets,
             venv_id=data.venv_id,
+            system_venv=data.system_venv,
             use_storage=data.use_storage,
             storage_allowed_paths=data.storage_allowed_paths,
             storage_org_prefix=data.storage_org_prefix,
