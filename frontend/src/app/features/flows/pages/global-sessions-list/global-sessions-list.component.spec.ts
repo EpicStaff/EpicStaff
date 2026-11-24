@@ -55,11 +55,10 @@ describe('GlobalSessionsListComponent bulk actions', () => {
                     useValue: { can: () => true, canAny: () => true } as unknown as PermissionsService,
                 },
                 {
-                    // the permission refresh after a 403 fails, so the interceptor does not navigate
+                    // the reload of the user after a 403 fails, so the interceptor does not navigate
                     provide: ProfileService,
                     useValue: {
-                        clearCurrentUser: () => undefined,
-                        bootstrapUser: () => throwError(() => new Error('offline')),
+                        reloadCurrentUser: () => throwError(() => new Error('offline')),
                     } as unknown as ProfileService,
                 },
             ],
