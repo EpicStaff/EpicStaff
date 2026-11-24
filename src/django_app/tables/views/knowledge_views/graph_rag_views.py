@@ -1,3 +1,4 @@
+from ai_models.models import EmbeddingConfig, LLMConfig
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
@@ -20,9 +21,7 @@ from tables.exceptions import (
     RagException,
 )
 from tables.models import SourceCollection
-from tables.models.embedding_models import EmbeddingConfig
 from tables.models.knowledge_models import GraphRag
-from tables.models.llm_models import LLMConfig
 from tables.serializers.graph_rag_serializers import (
     GraphRagCreateSerializer,
     GraphRagDetailSerializer,

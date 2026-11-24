@@ -1,13 +1,12 @@
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import LLMConfig, Provider
-from tables.models.default_models import DefaultModels
-from tables.models.embedding_models import EmbeddingConfig
+from ai_models.models import DefaultModels, EmbeddingConfig, LLMConfig, Provider
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
 from rbac.models import Organization, OrganizationUser, Role, RolePermission
 from rbac.models.enums import BuiltInRole, Permission, ResourceType
 from tables.services.quickstart_service import QuickstartService
+from tests.ai_models_tests.builtin_models import seed_builtin_models
 
 
 def _org_admin(django_user_model, org, email):
@@ -76,7 +75,7 @@ def test_quickstart_gemini_realtime_config_lands_in_active_org(db, django_user_m
         email="qa-gemini@example.com", password="StrongPass123!"
     )
     OrganizationUser.objects.create(user=user, org=org, role=role)
-    Provider.objects.create(name="gemini")
+    seed_builtin_models()
 
     client = APIClient()
     client.force_authenticate(user=user)

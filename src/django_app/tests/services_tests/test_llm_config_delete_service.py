@@ -7,10 +7,8 @@ columns, and the same parent reachable several ways.
 import pytest
 
 from agents.models import AgentDefinition
-from tables.models import (
-    Graph,
-    LLMConfig,
-)
+from tables.models import Graph
+from ai_models.models import LLMConfig
 from tables.models.flow_assistant_models import FlowAssistant
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
@@ -23,7 +21,7 @@ from tables.models.knowledge_models.collection_models import (
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from rbac.models import Organization
 from rbac.models.enums import Permission, ResourceType
-from tables.services.delete_services import LLMConfigDeleteService
+from ai_models.services.delete_services.llm_config_delete_service import LLMConfigDeleteService
 from tables.services.delete_services.usage import SkipEntry, SkipReason
 from rbac.access.effective import EffectivePermissions
 

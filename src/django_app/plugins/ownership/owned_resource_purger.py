@@ -6,7 +6,8 @@ root without a bin (a configuration) is hard-deleted. Nothing is left in the rec
 What the organization's own rows lose is what they lose when a person deletes the item: a
 link with SET_NULL is cleared (an agent loses its LLM config, a default-model setting is
 emptied), and children that cascade go with the root. A delete that would reach another
-organization's row is refused (`CascadeOrgGuard`), and that row is kept.
+organization's row is refused (`CascadeOrgGuard`), and that row is kept. A model row that a
+configuration the plugin does not own still uses is kept too, and only its ownership row goes.
 
 One row per transaction, so a row that fails rolls back alone. A failed row is left alone for
 `FAILED_ROW_RETRY_SECONDS`. Users of a resource go before what they use (`owned_purge_order`).
@@ -50,20 +51,25 @@ FAILED_ROW_RETRY_SECONDS = 3600
 FAILED_ROW_CACHE_KEY = "plugins:purge:failed:{pk}"
 # Ownable models with no recycle bin, other than files: purged after the files and
 # collections and before key-value tables and secrets, configurations before the models they
-# use (deleting an LLM model deletes the LLM configs that use it).
+# use (an LLM or embedding model that a config still uses cannot be deleted).
 EXTRA_PURGE_ORDER: tuple[str, ...] = (
-    "tables.LLMConfig",
-    "tables.EmbeddingConfig",
+    "ai_models.LLMConfig",
+    "ai_models.EmbeddingConfig",
     "tables.RealtimeConfig",
     "tables.RealtimeTranscriptionConfig",
     "tables.OpenAIRealtimeConfig",
     "tables.ElevenLabsRealtimeConfig",
     "tables.GeminiRealtimeConfig",
-    "tables.LLMModel",
-    "tables.EmbeddingModel",
+    "ai_models.LLMModel",
+    "ai_models.EmbeddingModel",
     "tables.RealtimeModel",
     "tables.RealtimeTranscriptionModel",
 )
+# Model rows and the configurations that use them; the configurations RESTRICT the rows.
+_CONFIGS_OF_MODEL = {
+    "ai_models.LLMModel": "ai_models.LLMConfig",
+    "ai_models.EmbeddingModel": "ai_models.EmbeddingConfig",
+}
 _OPEN_SESSION_STATES = (
     Session.SessionStatus.PENDING,
     Session.SessionStatus.RUN,
@@ -209,6 +215,20 @@ class OwnedResourcePurger:
                         model=model._meta.label,
                         pk=object_id,
                     )
+                if root is not None and _used_by_configs_the_plugin_does_not_own(root, identifier):
+                    # Kept: the organization's later configs reuse a custom model row the
+                    # plugin added (`CatalogModelResolver`), and RESTRICT keeps it while they
+                    # use it. Only the plugin's ownership of it ends.
+                    logger.info(
+                        "plugins.purge.ownership_released plugin={plugin} org={org} model={model} "
+                        "pk={pk}",
+                        plugin=identifier,
+                        org=organization_id,
+                        model=model._meta.label,
+                        pk=object_id,
+                    )
+                    row.delete()
+                    return _Outcome.PURGED, None
                 if root is not None and not _delete_root(root, organization_id, actor):
                     return _Outcome.WAITING, None
                 row.delete()
@@ -252,6 +272,19 @@ def _in_purge_order(targets: QuerySet[PluginOwnedResource]) -> Iterable[int]:
 def _manager(model: type[Model]):
     """Every row of the model, binned ones included."""
     return getattr(model, "all_objects", None) or model._default_manager
+
+
+def _used_by_configs_the_plugin_does_not_own(root: Model, identifier: str) -> bool:
+    """Whether `root` is a model row a configuration the plugin does not own still uses."""
+    config_label = _CONFIGS_OF_MODEL.get(type(root)._meta.label)
+    if config_label is None:
+        return False
+    config_model = apps.get_model(config_label)
+    plugin_configs = PluginOwnedResource.objects.filter(
+        plugin_identifier=identifier,
+        content_type=ContentType.objects.get_for_model(config_model),
+    ).values("object_id")
+    return _manager(config_model).filter(model_id=root.pk).exclude(pk__in=plugin_configs).exists()
 
 
 def _delete_root(root: Model, organization_id: int, actor: str) -> bool:

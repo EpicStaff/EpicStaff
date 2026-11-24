@@ -25,10 +25,8 @@ class FileContentExtractorNode(PythonNode):
             raise ValueError("FileContentExtractor input cannot be empty.")
 
         arg_names = input_map.keys()
-        # TODO: this code imports pdfplumber and python-docx. Libraries now come
-        # only from the venv, and this node declares none, so it runs in the
-        # sandbox's default venv and fails there until it is given its own.
         code_data = PythonCodeData(
+            system_venv="file_extractor",
             code=self._get_extractor_code(arg_names),
             entrypoint="main",
             use_storage=True,

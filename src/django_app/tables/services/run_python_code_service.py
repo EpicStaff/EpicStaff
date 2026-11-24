@@ -105,6 +105,11 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         ).exists()
         storage_org_prefix = org_storage_prefix(organization_id) if use_storage else None
         storage_allowed_paths = [f"test-runs/{execution_id}/"] if use_storage else None
+        # Built-in tool code runs in the sandbox's own venv, the way the real run sends it.
+        built_in_tool = PythonCodeTool.objects.filter(
+            python_code=python_code, built_in=True
+        ).first()
+        system_venv = built_in_tool.system_venv if built_in_tool is not None else None
 
         python_code_result = self._create_pending_result(
             execution_id=execution_id,
@@ -131,6 +136,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 # would, not on the sandbox's default venv. The sandbox's own id,
                 # not the binding's: this payload leaves django.
                 venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
+                system_venv=system_venv,
                 code=python_code.code,
                 entrypoint=python_code.entrypoint,
                 func_kwargs=varaibles,
@@ -236,6 +242,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 # The slot's real-run venv: a test run of a slot must execute where
                 # the real run would, not on the sandbox's default venv.
                 venv_id=resolved.venv_id,
+                system_venv=resolved.system_venv,
                 code=resolved.code,
                 entrypoint=resolved.entrypoint,
                 func_kwargs=variables,

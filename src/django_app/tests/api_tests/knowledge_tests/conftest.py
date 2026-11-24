@@ -16,8 +16,7 @@ from tables.models.knowledge_models import (
     NaiveRagDocumentConfig,
     NaiveRagChunk,
 )
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
-from tables.models.provider import Provider
+from ai_models.models import EmbeddingConfig, EmbeddingModel, Provider
 
 
 @pytest.fixture
@@ -145,7 +144,7 @@ def test_embedding_config(test_embedding_model, default_org):
         custom_name="Test Embedder Config",
         defaults={
             "model": test_embedding_model,
-            "task_type": "retrieval_document",
+            "parameters": {"task_type": "retrieval_document"},
             "org": default_org,
         },
     )

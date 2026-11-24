@@ -1,10 +1,8 @@
 import asyncio
 
 import pytest
-from litestar import Litestar, Request, get
-from litestar.testing import TestClient
-from presentation.rest.disconnect import ClientDisconnectedError, cancel_on_disconnect
-from presentation.rest.error_handlers import get_error_handlers
+from litestar import Request
+from presentation.rest.disconnect import run_until_disconnect
 
 
 class ClientConnection:
@@ -21,118 +19,100 @@ class ClientConnection:
         return {"type": "http.disconnect"}
 
     def request(self) -> Request:
-        return Request(scope={"type": "http"}, receive=self.receive)
+        return Request(scope={"type": "http", "path": "/search"}, receive=self.receive)
 
 
-async def test_block_result_is_kept_when_the_client_stays():
+class HangingWork:
+    """Work that never finishes on its own; records its cancellation and cleanup."""
+
+    def __init__(self, cleanup_seconds: float = 0) -> None:
+        self.started = asyncio.Event()
+        self.cancelled = False
+        self.cleaned_up = False
+        self._cleanup_seconds = cleanup_seconds
+
+    async def run(self) -> str:
+        self.started.set()
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        finally:
+            await asyncio.sleep(self._cleanup_seconds)
+            self.cleaned_up = True
+        return "never"
+
+
+async def test_result_is_returned_when_the_client_stays():
     connection = ClientConnection()
 
-    async with cancel_on_disconnect(connection.request()):
-        result = await asyncio.sleep(0.01, result="found")
+    result = await run_until_disconnect(connection.request(), asyncio.sleep(0.01, result="found"))
 
     assert result == "found"
-    assert asyncio.current_task().cancelling() == 0
 
 
-async def test_disconnect_cancels_the_block_and_raises_client_disconnected():
+async def test_disconnect_cancels_the_work_and_waits_for_its_cleanup():
     connection = ClientConnection()
-    inner_cancelled = False
-
-    with pytest.raises(ClientDisconnectedError):
-        async with cancel_on_disconnect(connection.request()):
-            connection.drop()
-            try:
-                await asyncio.sleep(10)
-            except asyncio.CancelledError:
-                inner_cancelled = True
-                raise
-
-    assert inner_cancelled
-    assert asyncio.current_task().cancelling() == 0
-
-
-async def test_swallowed_cancel_still_raises_client_disconnected():
-    connection = ClientConnection()
-
-    with pytest.raises(ClientDisconnectedError):
-        async with cancel_on_disconnect(connection.request()):
-            connection.drop()
-            try:
-                await asyncio.sleep(10)
-            except asyncio.CancelledError:
-                pass
-
-    assert asyncio.current_task().cancelling() == 0
-
-
-async def test_outside_cancel_is_not_reported_as_disconnect():
-    connection = ClientConnection()
-
-    async def handler():
-        async with cancel_on_disconnect(connection.request()):
-            await asyncio.sleep(10)
-
-    task = asyncio.create_task(handler())
-    await asyncio.sleep(0.01)
-    task.cancel()
-
-    with pytest.raises(asyncio.CancelledError):
-        await task
-
-
-async def test_disconnect_together_with_outside_cancel_keeps_the_cancel():
-    connection = ClientConnection()
-
-    async def handler():
-        async with cancel_on_disconnect(connection.request()):
-            await asyncio.sleep(10)
-
-    task = asyncio.create_task(handler())
-    await asyncio.sleep(0.01)
+    work = HangingWork(cleanup_seconds=0.01)
     connection.drop()
-    task.cancel()
 
-    with pytest.raises(asyncio.CancelledError):
-        await task
+    result = await run_until_disconnect(connection.request(), work.run())
+
+    assert result is None
+    assert work.cancelled
+    assert work.cleaned_up
 
 
-async def test_disconnect_is_reported_when_the_task_entered_with_a_swallowed_cancel():
+async def test_error_of_the_work_propagates_unchanged():
     connection = ClientConnection()
 
-    async def handler():
-        # Earlier code swallowed a cancellation without uncancel(): cancelling() stays 1.
-        asyncio.current_task().cancel()
+    async def failing() -> None:
+        raise LookupError("rag 7 is gone")
+
+    with pytest.raises(LookupError, match="rag 7 is gone"):
+        await run_until_disconnect(connection.request(), failing())
+
+
+async def test_error_raised_while_cleaning_up_after_a_disconnect_propagates_unchanged():
+    connection = ClientConnection()
+
+    async def failing_cleanup() -> None:
         try:
-            await asyncio.sleep(0)
-        except asyncio.CancelledError:
-            pass
-        async with cancel_on_disconnect(connection.request()):
-            connection.drop()
-            await asyncio.sleep(10)
+            await asyncio.Event().wait()
+        finally:
+            raise LookupError("cleanup failed")
 
-    with pytest.raises(ClientDisconnectedError):
-        await asyncio.create_task(handler())
-
-
-async def test_watcher_cannot_cancel_after_the_block_ends():
-    connection = ClientConnection()
-
-    async with cancel_on_disconnect(connection.request()):
-        pass
     connection.drop()
-    await asyncio.sleep(0.05)
 
-    assert asyncio.current_task().cancelling() == 0
+    with pytest.raises(LookupError, match="cleanup failed"):
+        await run_until_disconnect(connection.request(), failing_cleanup())
 
 
-def test_client_disconnected_error_is_answered_with_499_and_no_body():
-    @get("/disconnected")
-    async def disconnected() -> None:
-        raise ClientDisconnectedError
+async def test_outside_cancel_propagates_and_still_cancels_the_work():
+    connection = ClientConnection()
+    work = HangingWork()
 
-    app = Litestar(route_handlers=[disconnected], exception_handlers=get_error_handlers())
-    with TestClient(app=app) as client:
-        response = client.get("/disconnected")
+    caller = asyncio.create_task(run_until_disconnect(connection.request(), work.run()))
+    await work.started.wait()
+    caller.cancel()
 
-    assert response.status_code == 499
-    assert response.content == b""
+    with pytest.raises(asyncio.CancelledError):
+        await caller
+    assert work.cancelled
+    assert work.cleaned_up
+
+
+async def test_outside_cancel_during_cleanup_after_a_disconnect_is_not_swallowed():
+    connection = ClientConnection()
+    work = HangingWork(cleanup_seconds=0.05)
+
+    caller = asyncio.create_task(run_until_disconnect(connection.request(), work.run()))
+    await work.started.wait()
+    connection.drop()
+    while not work.cancelled:
+        await asyncio.sleep(0)
+    caller.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await caller

@@ -1,5 +1,5 @@
 /**
- * LLM Library cards sit at most four to a row, 16px apart, and a row's cards fill its whole width (Figma: four
+ * AI Models cards sit at most four to a row, 16px apart, and a row's cards fill its whole width (Figma: four
  * 318px cards across 1320px). A card never gets narrower than 318px: below that, a row holds one card fewer.
  */
 export const LLM_LIBRARY_CARD_MIN_WIDTH = 318;

@@ -29,7 +29,8 @@ import {
     SelectItem,
     ValidationErrorsComponent,
 } from '@shared/components';
-import { NodeType } from '@shared/models';
+import { HasPermissionDirective } from '@shared/directives';
+import { ActionCode, NodeType, ResourceCode } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 import { MarkdownComponent } from 'ngx-markdown';
 import { catchError, of } from 'rxjs';
@@ -112,6 +113,7 @@ const LOCAL_SURFACE_VALUE = '__local_surface__';
         DiffFieldMarkComponent,
         CodeDiffViewComponent,
         MatTooltipModule,
+        HasPermissionDirective,
     ],
     templateUrl: './agent-node-panel.component.html',
     styleUrls: ['./agent-node-panel.component.scss'],
@@ -262,6 +264,9 @@ export class AgentNodePanelComponent extends BaseSidePanel<AgentNodeModel> {
         'Agent Surfaces': 'ti ti-robot',
         'Shared Surfaces': 'surfaces-tab',
     };
+
+    protected readonly ResourceCode = ResourceCode;
+    protected readonly ActionCode = ActionCode;
 
     public readonly effectiveRightPane = computed<RightPaneSelection | null>(() => {
         const taskList = this.tasks();

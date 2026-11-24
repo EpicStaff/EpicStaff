@@ -11,7 +11,7 @@ dependencies = [
     "fastmcp==4.1.6",
     "foundation[cryptographer]",
     "jsonschema==4.26.0",
-    "litellm==1.108.1",
+    "litellm==1.108.12",
     "loguru==0.7.3",
     "mcp==2.3.0",
     "pydantic==2.13.4",

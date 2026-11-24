@@ -18,9 +18,11 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
-from tables.models import Graph, LLMConfig, LLMModel, Provider
+from tables.models import Graph
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.models.flow_assistant_models import (
     FlowAssistant,
     FlowAssistantConversation,
@@ -53,7 +55,7 @@ def llm_config(gpt4_model, org_a):
     return LLMConfig.objects.create(
         custom_name="test-gpt4o",
         model=gpt4_model,
-        temperature=0.5,
+        parameters={"temperature": 0.5},
         org=org_a,
     )
 
@@ -120,18 +122,12 @@ def org_user_b(user_b, org_a, default_role):
 
 
 @pytest.fixture
-def superadmin_org_user(superadmin_user, org_a, default_role):
-    return OrganizationUser.objects.create(
-        user=superadmin_user, org=org_a, role=default_role
-    )
-
-
-@pytest.fixture
 def auth_client_a(user_a, org_user_a):
-    """Client for user_a in org_a (single org → no header needed)."""
+    """Client for user_a acting in org_a."""
     client = APIClient()
     refresh = RefreshToken.for_user(user_a)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
+    client.defaults["HTTP_X_ORGANIZATION_ID"] = str(org_user_a.org_id)
     return client
 
 
@@ -150,11 +146,12 @@ def auth_client_b(user_b, org_user_b):
     client = APIClient()
     refresh = RefreshToken.for_user(user_b)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
+    client.defaults["HTTP_X_ORGANIZATION_ID"] = str(org_user_b.org_id)
     return client
 
 
 @pytest.fixture
-def auth_client_superadmin(superadmin_user, superadmin_org_user):
+def auth_client_superadmin(superadmin_user):
     client = APIClient()
     refresh = RefreshToken.for_user(superadmin_user)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
@@ -172,10 +169,10 @@ def flow_assistant(graph, llm_config):
 
 
 @pytest.fixture
-def conversation_a(flow_assistant, org_user_a):
+def conversation_a(flow_assistant, user_a, org_user_a):
     return _make_conversation_with_messages(
         flow_assistant,
-        org_user_a,
+        user_a,
         [{"role": "system", "content": "You are the test flow."}],
     )
 
@@ -190,16 +187,14 @@ def _make_async_stream(*events):
     return _gen
 
 
-def _make_conversation_with_messages(
-    flow_assistant, organization_user, messages, **extra
-):
+def _make_conversation_with_messages(flow_assistant, user, messages, **extra):
     """Create a conversation and bulk-create its message rows from a list of dicts.
 
     Drop-in replacement for FlowAssistantConversation.objects.create(..., messages=[...]).
     """
     conv = FlowAssistantConversation.objects.create(
         flow_assistant=flow_assistant,
-        organization_user=organization_user,
+        user=user,
         **extra,
     )
     rows = []
@@ -242,9 +237,29 @@ def test_start_conversation_provisions_flow_assistant(
     conversation = FlowAssistantConversation.objects.get(
         pk=response.data["conversation_id"]
     )
-    assert conversation.organization_user == org_user_a
+    assert conversation.user == user_a
     # System prompt should be seeded as the first message
     assert conversation.messages[0]["role"] == "system"
+
+
+@pytest.mark.django_db
+def test_a_user_whose_membership_is_gone_cannot_start_a_conversation(
+    flow_assistant, user_a, org_user_a
+):
+    # The request's org check ran before the membership was removed; the insert re-checks it.
+    org_user_a.delete()
+
+    with pytest.raises(OrgMembershipRequiredError):
+        FlowAssistantService().start_conversation(flow_assistant, user_a)
+
+    assert not FlowAssistantConversation.objects.filter(user=user_a).exists()
+
+
+@pytest.mark.django_db
+def test_a_superadmin_without_membership_starts_a_conversation(flow_assistant, superadmin_user):
+    conversation = FlowAssistantService().start_conversation(flow_assistant, superadmin_user)
+
+    assert conversation.user == superadmin_user
 
 
 @pytest.mark.django_db
@@ -303,7 +318,7 @@ def test_permission_unauthenticated(graph, anon_client):
 
 
 @pytest.mark.django_db
-def test_conversation_belongs_to_org_user(conversation_a, auth_client_b, graph):
+def test_conversation_belongs_to_its_user(conversation_a, auth_client_b, graph):
     """User B's client cannot access User A's conversation."""
     url = reverse(
         "flow-assistant-conversation",
@@ -495,6 +510,41 @@ def test_audit_endpoint_excludes_deleted_by_default(
     assert conversation_a.pk not in ids
 
 
+@pytest.mark.django_db
+def test_audit_row_names_the_owner_and_the_flows_org(
+    conversation_a, user_a, org_a, auth_client_superadmin
+):
+    response = auth_client_superadmin.get(reverse("flow-assistant-audit-conversations"))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    row = next(row for row in response.data["results"] if row["id"] == conversation_a.pk)
+    assert row["user"] == {
+        "user_id": user_a.id,
+        "user_email": "user_a@test.com",
+        "organization_id": org_a.id,
+        "organization_name": "Org A",
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("filter_by", ["user_id", "organization_id"])
+def test_audit_filters_by_owner_and_by_flow_org(
+    filter_by, conversation_a, user_a, org_a, user_b, org_b, auth_client_superadmin
+):
+    other_assistant = FlowAssistant.objects.create(
+        graph=Graph.objects.create(name="Org B Flow", org=org_b)
+    )
+    _make_conversation_with_messages(other_assistant, user_b, [])
+    value = {"user_id": user_a.id, "organization_id": org_a.id}[filter_by]
+
+    response = auth_client_superadmin.get(
+        reverse("flow-assistant-audit-conversations"), {filter_by: value}
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert [row["id"] for row in response.data["results"]] == [conversation_a.pk]
+
+
 # ── Title auto-derivation tests ───────────────────────────────────────────────
 
 
@@ -604,7 +654,7 @@ async def test_stream_reply_resolves_real_secret_for_real_litellm_client(
         model=gpt4_model,
         org=org_a,
         api_key_secret=secret,
-        temperature=0.5,
+        parameters={"temperature": 0.5},
     )
     assistant = await sync_to_async(FlowAssistant.objects.create)(
         graph=graph_with_org, llm_config=llm_config_with_secret
@@ -612,7 +662,7 @@ async def test_stream_reply_resolves_real_secret_for_real_litellm_client(
     user_message = "what does this flow do?"
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -670,6 +720,35 @@ async def test_stream_reply_rejects_stored_config_with_malformed_extra_headers(
 
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
+async def test_stream_reply_refuses_a_config_whose_settings_the_model_does_not_accept(
+    graph, gpt4_model, user_a, org_a, default_role, db
+):
+    from asgiref.sync import sync_to_async
+
+    from tables.exceptions import LLMConfigInvalidError
+
+    stale_config = await sync_to_async(LLMConfig.objects.create)(
+        custom_name="stale-temperature",
+        model=gpt4_model,
+        org=org_a,
+        parameters={"temperature": 5},
+    )
+    user_message = "hi"
+    conversation = await _create_conversation_for_stream(
+        graph, stale_config, user_a, org_a, default_role, user_message
+    )
+
+    with pytest.raises(LLMConfigInvalidError) as excinfo:
+        async for _event in FlowAssistantService().stream_reply(conversation, user_message):
+            pass
+
+    assert str(excinfo.value.detail).startswith(
+        "LLM config 'stale-temperature' has settings its model does not accept: temperature"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
 async def test_stream_yields_tokens_and_done(
     graph, llm_config, user_a, org_a, default_role, db
 ):
@@ -698,7 +777,7 @@ async def test_stream_yields_tokens_and_done(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -758,7 +837,7 @@ async def test_stream_holds_no_database_connection_while_the_llm_replies(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -799,7 +878,7 @@ async def test_stream_holds_no_database_connection_while_the_llm_replies(
     "case, expected_detail",
     [
         ("no_user_message", "No pending user message found."),
-        ("assistant_without_llm_config", "has no llm_config set"),
+        ("assistant_without_llm_config", "Choose one in the assistant settings"),
     ],
 )
 async def test_stream_error_frame_is_sent_without_a_database_connection(
@@ -820,7 +899,7 @@ async def test_stream_error_frame_is_sent_without_a_database_connection(
     if case != "no_user_message":
         messages.append({"role": "user", "content": "what does this flow do?"})
     conversation = await sync_to_async(_make_conversation_with_messages)(
-        assistant, org_user, messages
+        assistant, org_user.user, messages
     )
     view = FlowAssistantStreamView()
     view.user = user_a
@@ -861,7 +940,7 @@ async def test_tool_call_roundtrip(graph, llm_config, user_a, org_a, default_rol
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -961,7 +1040,7 @@ async def test_stream_reply_plain_text_emits_structured_event(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -1045,7 +1124,7 @@ async def test_structured_output_event_emitted(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -1157,7 +1236,7 @@ async def test_action_message_persisted(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -1230,7 +1309,7 @@ async def test_stream_reply_second_turn_does_not_send_action_message_to_llm(
     # system + user1 + assistant-with-action_message + user2.
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "You are the FA."},
             {"role": "user", "content": user_message_1},
@@ -1328,7 +1407,7 @@ async def test_tool_results_from_earlier_turns_reach_the_llm_as_stubs(
         {"role": "assistant", "content": '{"message": "Found 5 nodes."}'},
         {"role": "user", "content": "tell me about node 1"},
     ]
-    conversation = await sync_to_async(_make_conversation_with_messages)(assistant, org_user, history)
+    conversation = await sync_to_async(_make_conversation_with_messages)(assistant, org_user.user, history)
     sent: list[list[dict]] = []
 
     async def fake_stream(messages, tools):
@@ -2076,6 +2155,30 @@ def test_get_node_python_includes_python_code_summary(graph, db):
 
 
 @pytest.mark.django_db
+def test_get_node_agent_shows_its_llm_temperature_but_never_its_connection(graph, llm_config):
+    from agents.models import AgentDefinition
+    from tables.models.graph_models import AgentNode
+    from tables.services.flow_assistant import get_node
+
+    llm_config.connection = {"base_url": "https://gateway.example", "deployment_id": "prod"}
+    llm_config.extra_headers = {"Authorization": "Bearer epicstaff_secret(GATEWAY_TOKEN)"}
+    llm_config.save()
+    agent_definition = AgentDefinition.objects.create(org=graph.org, name="writer", llm_config=llm_config)
+    node = AgentNode.objects.create(graph=graph, node_name="writer", agent_definition=agent_definition)
+
+    result = get_node(graph.pk, str(node.pk))
+
+    assert result["agent_definition"]["llm_config_summary"] == {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "temperature": 0.5,
+    }
+    shown = json.dumps(result, default=str)
+    assert "gateway.example" not in shown
+    assert "GATEWAY_TOKEN" not in shown
+
+
+@pytest.mark.django_db
 def test_get_node_webhook_trigger_includes_python_code_summary(graph, db):
     """get_node for WebhookTriggerNode must include python_code_summary with code, entrypoint, libraries."""
     from tables.models.graph_models import WebhookTriggerNode
@@ -2817,7 +2920,7 @@ def test_cancel_endpoint_org_scoped(
         },
     )
     # auth_client_b belongs to org_a but is a different user; conversation_a
-    # is owned by org_user_a, so org_user_b's resolution will return no match.
+    # is owned by user_a, so user_b's lookup finds no match.
     response = auth_client_b.post(url)
     assert response.status_code == 404, response.content
 
@@ -2848,7 +2951,7 @@ async def test_stream_reply_bails_on_cancel_flag(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -2931,7 +3034,7 @@ async def test_stream_reply_disconnect_persists_partial(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -2997,7 +3100,7 @@ async def test_reasoning_empty_and_no_tool_injects_hint(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -3068,7 +3171,7 @@ async def test_reasoning_with_content_does_not_inject_hint(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -3128,7 +3231,7 @@ async def test_reasoning_with_tool_call_does_not_inject_hint(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -3232,7 +3335,7 @@ def test_litellm_client_prefixes_provider_only_when_missing(
     model = LLMModel.objects.create(name=model_name, llm_provider=provider)
     config = LLMConfig.objects.create(custom_name="test-config", model=model, org=org_a)
 
-    kwargs = _litellm_request(get_llm_client(config, api_key=None))
+    kwargs = _litellm_request(get_llm_client(config, principal=None))
 
     assert kwargs["model"] == expected_model
 
@@ -3241,7 +3344,7 @@ def test_litellm_client_prefixes_provider_only_when_missing(
 def test_litellm_client_drops_provider_unsupported_params(llm_config):
     from tables.services.llm_clients import get_llm_client
 
-    kwargs = _litellm_request(get_llm_client(llm_config, api_key=None))
+    kwargs = _litellm_request(get_llm_client(llm_config, principal=None))
 
     assert kwargs["drop_params"] is True
 
@@ -3269,7 +3372,7 @@ def test_litellm_client_opts_out_of_provider_storage_for_openai_and_azure(
     model = LLMModel.objects.create(name=model_name, llm_provider=provider)
     config = LLMConfig.objects.create(custom_name="test-config", model=model, org=org_a)
 
-    kwargs = _litellm_request(get_llm_client(config, api_key=None))
+    kwargs = _litellm_request(get_llm_client(config, principal=None))
 
     assert kwargs.get("store") == expected_store
     assert ("store" in kwargs) is (expected_store is not None)
@@ -3289,7 +3392,7 @@ async def _create_conversation_for_stream(graph, llm_config, user_a, org_a, defa
     )
     return await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},

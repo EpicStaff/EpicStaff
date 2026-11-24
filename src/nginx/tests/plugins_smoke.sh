@@ -19,7 +19,7 @@
 #
 # Settings, from the environment:
 #   EPICSTAFF_URL           EpicStaff's origin, as in DJANGO_FRONTEND_BASE_URL, e.g. http://epicstaff.localhost
-#   PLUGINS_BASE_DOMAIN     e.g. plugins.epicstaff.localhost
+#   PLUGINS_HOST_TEMPLATE   e.g. {id}.plugins.epicstaff.localhost
 #   PLUGIN_IDENTIFIER       an approved plugin with a backend, running, e.g. weather (the sample:
 #                           public path GET /api/ping, which answers its context's mode)
 #   PLUGINS_MAX_PACKAGE_MB  the stack's upload limit, e.g. 300
@@ -36,12 +36,12 @@
 # address without DNS entries.
 #
 # Usage:
-#   EPICSTAFF_URL=http://epicstaff.localhost PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
+#   EPICSTAFF_URL=http://epicstaff.localhost PLUGINS_HOST_TEMPLATE='{id}.plugins.epicstaff.localhost' \
 #   PLUGIN_IDENTIFIER=weather PLUGINS_MAX_PACKAGE_MB=300 bash src/nginx/tests/plugins_smoke.sh
 set -euo pipefail
 
 epicstaff_url=${EPICSTAFF_URL:?set EPICSTAFF_URL, e.g. http://epicstaff.localhost}
-base_domain=${PLUGINS_BASE_DOMAIN:?set PLUGINS_BASE_DOMAIN, e.g. plugins.epicstaff.localhost}
+host_template=${PLUGINS_HOST_TEMPLATE:?set PLUGINS_HOST_TEMPLATE, e.g. \{id\}.plugins.epicstaff.localhost}
 plugin=${PLUGIN_IDENTIFIER:?set PLUGIN_IDENTIFIER to an approved plugin, e.g. weather}
 max_package_megabytes=${PLUGINS_MAX_PACKAGE_MB:?set PLUGINS_MAX_PACKAGE_MB, e.g. 300}
 admin_token=${SMOKE_ADMIN_TOKEN-}
@@ -63,10 +63,14 @@ case "$authority" in
   *:*) port_suffix=:${authority#*:} ;;
 esac
 epicstaff_origin=$scheme://$authority
-plugin_origin=$scheme://$plugin.$base_domain$port_suffix
-unknown_plugin_origin=$scheme://smoke-no-such-plugin.$base_domain$port_suffix
+# The host of the plugin whose identifier is $1.
+plugin_host() { printf '%s' "${host_template/\{id\}/$1}"; }
+plugin_origin=$scheme://$(plugin_host "$plugin")$port_suffix
+unknown_plugin_origin=$scheme://$(plugin_host smoke-no-such-plugin)$port_suffix
 # 33 characters: one more than an identifier may have, so no plugin server matches it.
-invalid_label_origin=$scheme://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.$base_domain$port_suffix
+invalid_label_origin=$scheme://$(plugin_host aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa)$port_suffix
+# The plugins' wildcard: everything under the template's parent.
+plugins_parent=${host_template#*.}
 
 work_dir=$(mktemp -d)
 failures=0
@@ -291,6 +295,19 @@ expect_body "config.json names the frame protocol" '"frame_protocol"'
 expect_no_header "config.json sets no cookie" Set-Cookie
 expect_plugin_security_headers "config.json"
 
+# The proof that this host is served by this EpicStaff, which EpicStaff asks for before it sends a
+# login code to a plugin host: an HMAC that names the host and the challenge.
+status=$(fetch "$plugin_origin/.well-known/epicstaff/instance?challenge=smoke0challenge0smoke0challenge0smoke0chall")
+expect_status "the host proof answers through the plugin host" 200 "$status"
+if grep -Eq '^\{"proof": ?"[0-9a-f]{64}"\}$' "$work_dir/body"; then
+  pass "the host proof is a 64-digit hex HMAC"
+else
+  fail "the host proof is a 64-digit hex HMAC: [$(head -c 200 "$work_dir/body")]"
+fi
+expect_no_header "the host proof sets no cookie" Set-Cookie
+status=$(fetch "$plugin_origin/.well-known/epicstaff/instance?challenge=short")
+expect_status "a malformed challenge gets no proof" 400 "$status"
+
 echo "# a plugin that is not installed, and a host that is not a plugin host"
 
 status=$(fetch "$unknown_plugin_origin/")
@@ -298,21 +315,20 @@ expect_status "an unknown plugin's host has no SPA" 404 "$status"
 status=$(fetch "$unknown_plugin_origin/.well-known/epicstaff/config.json")
 expect_status "an unknown plugin has no config" 404 "$status"
 
-# --insecure for this request only: EpicStaff's server answers with its own certificate, and only
-# the routing is checked here.
+# --insecure for this request only: only the routing is checked here. Under the template's
+# parent, a name that is no plugin host gets no answer at all (nginx's 444: curl reports 000).
 status=$(fetch "$invalid_label_origin/" --insecure)
-if [ "$status" != 000 ] && [ "$(header X-Frame-Options)" = SAMEORIGIN ] \
-  && ! grep -qi '^Origin-Agent-Cluster:' "$work_dir/headers"; then
-  pass "a host name that is not a plugin host reaches EpicStaff's server"
+if [ "$status" = 000 ]; then
+  pass "a host name under the plugins' parent that is not a plugin host is closed without an answer"
 else
-  fail "a host name that is not a plugin host reaches EpicStaff's server: status $status, X-Frame-Options [$(header X-Frame-Options)]"
+  fail "a host name under the plugins' parent that is not a plugin host is closed without an answer: status $status"
 fi
 
 echo "# EpicStaff $epicstaff_url"
 
 status=$(fetch "$epicstaff_url/")
 case "$(header Content-Security-Policy-Report-Only)" in
-  *"frame-src 'self' $scheme://*.$base_domain$port_suffix;"*) pass "EpicStaff frames the plugin hosts (frame-src)" ;;
+  *"frame-src 'self' $scheme://*.$plugins_parent$port_suffix;"*) pass "EpicStaff frames the plugin hosts (frame-src)" ;;
   *) fail "EpicStaff frames the plugin hosts (frame-src): [$(header Content-Security-Policy-Report-Only)]" ;;
 esac
 

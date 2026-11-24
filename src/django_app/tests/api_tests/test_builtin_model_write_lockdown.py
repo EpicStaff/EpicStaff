@@ -1,13 +1,8 @@
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import Provider
-from tables.models.embedding_models import EmbeddingModel
-from tables.models.llm_models import (
-    LLMModel,
-    RealtimeModel,
-    RealtimeTranscriptionModel,
-)
+from ai_models.models import EmbeddingModel, LLMModel, Provider
+from tables.models.llm_models import RealtimeModel, RealtimeTranscriptionModel
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 
@@ -78,7 +73,7 @@ def _builtins(provider, org_a):
             LLMModel.objects.create(
                 name="mine-llm", llm_provider=provider, is_custom=True, org=org_a
             ),
-            {"base_url": "https://attacker.example"},
+            {"is_visible": False},
         ),
         (
             "embedding-models",
@@ -88,7 +83,7 @@ def _builtins(provider, org_a):
             EmbeddingModel.objects.create(
                 name="mine-emb", embedding_provider=provider, is_custom=True, org=org_a
             ),
-            {"base_url": "https://attacker.example"},
+            {"is_visible": False},
         ),
         (
             "realtime-models",
@@ -145,23 +140,6 @@ def test_builtin_write_denied_for_superadmin(client_superadmin, provider, org_a)
 
         delete = client_superadmin.delete(f"/api/{route}/{builtin.id}/")
         assert delete.status_code == 403, route
-
-
-@pytest.mark.django_db
-def test_builtin_base_url_cannot_be_repointed(client_admin_a, provider, org_a):
-    """The specific cross-tenant escalation: repointing a built-in's base_url
-    would redirect every org's inference traffic."""
-    builtin = LLMModel.objects.create(
-        name="gpt-4o", llm_provider=provider, is_custom=False, predefined=True
-    )
-    resp = client_admin_a.patch(
-        f"/api/llm-models/{builtin.id}/",
-        {"base_url": "https://attacker.example"},
-        format="json",
-    )
-    assert resp.status_code == 403
-    builtin.refresh_from_db()
-    assert builtin.base_url is None
 
 
 @pytest.mark.django_db

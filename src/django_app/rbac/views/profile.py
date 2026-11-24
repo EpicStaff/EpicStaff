@@ -117,6 +117,7 @@ class ProfileAvatarView(APIView):
     parser_classes = [MultiPartParser, FormParser]
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     _service = UserProfileService()
     _validator = UserValidationService()
@@ -213,6 +214,7 @@ class ProfileTourCompleteView(APIView):
 class PasswordChangeRequestView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
     throttle_classes = [LoginThrottle]
 
     _service = UserProfileService()
@@ -239,6 +241,7 @@ class PasswordChangeRequestView(APIView):
 class PasswordChangeConfirmView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     _service = UserProfileService()
     _validator = UserValidationService()

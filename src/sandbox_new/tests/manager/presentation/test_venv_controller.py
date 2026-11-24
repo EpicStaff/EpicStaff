@@ -144,14 +144,14 @@ def test_update_of_libraries_returns_the_venv_to_declared(client, venv_repositor
     assert response.json()["status"] == "declared"
 
 
-def test_create_cannot_mark_a_venv_as_the_default(client, venv_repository):
-    client.post("/venvs", json={"name": "default", "libs": [], "is_default": True})
+def test_create_cannot_mark_a_venv_as_a_system_venv(client, venv_repository):
+    client.post("/venvs", json={"name": "default", "libs": [], "system_key": "default"})
 
-    assert not any(row.is_default for row in venv_repository.rows.values())
+    assert all(row.system_key is None for row in venv_repository.rows.values())
 
 
-def test_update_of_the_default_venv_returns_409(client, venv_repository):
-    stored = venv_repository.seed(make_venv(name="default", is_default=True))[0]
+def test_update_of_a_system_venv_returns_409(client, venv_repository):
+    stored = venv_repository.seed(make_venv(name="default", system_key="default"))[0]
 
     response = client.patch(f"/venvs/{stored.id}", json={"name": "mine"})
 
@@ -159,8 +159,8 @@ def test_update_of_the_default_venv_returns_409(client, venv_repository):
     assert venv_repository.rows[stored.id].name == "default"
 
 
-def test_remove_of_the_default_venv_returns_409(client, venv_repository):
-    stored = venv_repository.seed(make_venv(name="default", is_default=True))[0]
+def test_remove_of_a_system_venv_returns_409(client, venv_repository):
+    stored = venv_repository.seed(make_venv(name="default", system_key="default"))[0]
 
     response = client.delete(f"/venvs/{stored.id}")
 

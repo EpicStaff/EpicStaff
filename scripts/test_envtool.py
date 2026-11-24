@@ -454,6 +454,130 @@ class ProductionValuesTest(unittest.TestCase):
         self.assertEqual(values["DB_USER"], "epicstaff")
 
 
+# The cases django_app's and nginx's validators share, judged with EpicStaff at this origin.
+SHARED_CASES_FILE = envtool.BASE_DIR / "shared" / "plugin_host_template_cases.txt"
+SHARED_CASES_EPICSTAFF = "https://epicstaff.example.com"
+
+
+def shared_host_template_cases() -> list[tuple[str, str]]:
+    """`(verdict, template)` per case; the rule a refusal names is for django_app's messages."""
+    cases = []
+    for line in SHARED_CASES_FILE.read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith("#"):
+            continue
+        verdict, template = line.split(" ")[0], line.split(" ")[-1]
+        cases.append((verdict, "" if template == "<empty>" else template))
+    return cases
+
+
+class PluginsHostTemplateTest(unittest.TestCase):
+    def test_suggestion_is_a_flat_template_beside_epicstaff(self):
+        for public_url, suggestion in (
+            ("https://es.example.com", "{id}-app.example.com"),
+            ("https://es.example.com:8443", "{id}-app.example.com"),
+            ("https://staff.acme.com", "{id}-app.acme.com"),
+            ("https://acme.com", "{id}-app.acme.com"),
+            ("https://acme.co.uk", "{id}-app.acme.co.uk"),
+            ("https://staff.acme.co.uk", "{id}-app.acme.co.uk"),
+            ("https://shop.acme.com.au", "{id}-app.acme.com.au"),
+            ("https://acme.com.au", "{id}-app.acme.com.au"),
+            ("https://a.b.acme.co.uk", "{id}-app.b.acme.co.uk"),
+            ("http://epicstaff.localhost", "{id}-app.epicstaff.localhost"),
+            ("https://shop-app.example.com", "{id}.plugins.example.com"),
+        ):
+            with self.subTest(public_url=public_url):
+                self.assertEqual(envtool.suggested_plugins_host_template(public_url), suggestion)
+                envtool.validate_plugins_host_template(suggestion, public_url)
+
+    def test_a_two_label_parent_under_a_three_label_host_comes_with_a_note(self):
+        for public_url, noted in (
+            ("https://staff.acme.com", True),
+            ("https://myorg.github.io", True),
+            ("https://acme.com", False),
+            ("https://acme.co.uk", False),
+            ("https://staff.acme.co.uk", False),
+            ("http://epicstaff.localhost", False),
+        ):
+            with self.subTest(public_url=public_url):
+                note = envtool.plugins_parent_note(public_url)
+                self.assertEqual(note is not None, noted)
+                if noted:
+                    self.assertIn("not a shared suffix such as co.uk or github.io", note)
+
+    def test_without_an_affix_the_zone_is_the_parent_and_every_name_under_it(self):
+        for host, covered in (
+            ("plugins.example.com", True),
+            ("weather.plugins.example.com", True),
+            ("a.b.plugins.example.com", True),
+            (".plugins.example.com", True),
+            ("a..plugins.example.com", True),
+            ("..plugins.example.com", True),
+            ("example.com", False),
+            ("xplugins.example.com", False),
+        ):
+            with self.subTest(host=host):
+                self.assertEqual(
+                    envtool.template_covers("", "", "plugins.example.com", host), covered
+                )
+
+    def test_valid_templates_are_normalised(self):
+        for template, expected in (
+            (" {id}-app.example.com ", "{id}-app.example.com"),
+            ("{ID}.Plugins.Example.com.", "{id}.plugins.example.com"),
+            ("app-{id}.example.com", "app-{id}.example.com"),
+            ("ab{id}.example.com", "ab{id}.example.com"),
+            ("{id}-" + "a" * 30 + ".example.com", "{id}-" + "a" * 30 + ".example.com"),
+        ):
+            with self.subTest(template=template):
+                self.assertEqual(
+                    envtool.validate_plugins_host_template(template, "https://es.example.com"),
+                    expected,
+                )
+
+    def test_the_shared_template_cases(self):
+        for verdict, template in shared_host_template_cases():
+            with self.subTest(template=template, verdict=verdict):
+                if verdict == "accept":
+                    envtool.validate_plugins_host_template(template, SHARED_CASES_EPICSTAFF)
+                else:
+                    with self.assertRaises(ValueError):
+                        envtool.validate_plugins_host_template(template, SHARED_CASES_EPICSTAFF)
+
+    def test_templates_that_name_epicstaff_or_another_site_are_refused(self):
+        for template in ("{id}.example.com", "{id}.es.example.com", "{id}-app.example.net"):
+            with self.subTest(template=template), self.assertRaises(ValueError):
+                envtool.validate_plugins_host_template(template, "https://es.example.com")
+
+    def test_update_writes_the_template_of_an_earlier_plugins_base_domain(self):
+        env_file = Path(tempfile.mkdtemp()) / ".env"
+        env_file.write_text("PLUGINS_BASE_DOMAIN=plugins.acme.com\n", encoding="utf-8")
+        envtool.update_env_file(real_schema(), "prod", env_file, TODAY)
+        values = envtool.read_env_values(env_file.read_text(encoding="utf-8"))
+        self.assertEqual(values["PLUGINS_HOST_TEMPLATE"], "{id}.plugins.acme.com")
+        self.assertEqual(values["PLUGINS_BASE_DOMAIN"], "plugins.acme.com")
+
+    def test_update_takes_the_default_template_without_an_earlier_base_domain(self):
+        for target, default in (
+            ("prod", "{id}-app.example.invalid"),
+            ("dev", "{id}.plugins.epicstaff.localhost"),
+        ):
+            with self.subTest(target=target):
+                env_file = Path(tempfile.mkdtemp()) / ".env"
+                env_file.write_text("PLUGINS_BASE_DOMAIN=\n", encoding="utf-8")
+                envtool.update_env_file(real_schema(), target, env_file, TODAY)
+                values = envtool.read_env_values(env_file.read_text(encoding="utf-8"))
+                self.assertEqual(values["PLUGINS_HOST_TEMPLATE"], default)
+
+    def test_update_leaves_a_set_template_alone(self):
+        env_file = Path(tempfile.mkdtemp()) / ".env"
+        text = "PLUGINS_BASE_DOMAIN=plugins.acme.com\nPLUGINS_HOST_TEMPLATE={id}-app.acme.com\n"
+        env_file.write_text(text, encoding="utf-8")
+        envtool.update_env_file(real_schema(), "prod", env_file, TODAY)
+        written = env_file.read_text(encoding="utf-8")
+        self.assertTrue(written.startswith(text))
+        self.assertNotIn("PLUGINS_HOST_TEMPLATE=", written[len(text) :])
+
+
 class SchemaCoverageTest(unittest.TestCase):
     def test_every_production_required_variable_is_generated_asked_or_filled(self):
         self.assertEqual(envtool.production_coverage_gaps(real_schema()), [])
@@ -508,20 +632,34 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(values["NGINX_SERVER_NAME"], "epicstaff.localhost")
         self.assertIn("http://epicstaff.localhost", output)
 
-    def test_production_with_plugins_asks_their_domain(self):
+    def test_production_with_plugins_suggests_a_flat_template_that_enter_accepts(self):
+        values, output = self.run_setup(
+            "prod", ["https://es.example.com", "1", "n", "n", "n", "y", "", "v1", "1", "n"]
+        )
+        self.assertEqual(values["PLUGINS_ENABLED"], "true")
+        self.assertEqual(values["COMPOSE_PROFILES"], "plugins")
+        self.assertEqual(values["PLUGINS_HOST_TEMPLATE"], "{id}-app.example.com")
+        for name in envtool.PLUGIN_SECRETS:
+            self.assertRegex(values[name], r"^[A-Za-z0-9]{32,}$", name)
+        self.assertIn("Enter for {id}-app.example.com", output)
+        self.assertIn("under example.com: it must be a domain you control", output)
+        self.assertIn("Point *.example.com at this server", output)
+
+    def test_production_with_plugins_takes_another_template_after_refusing_bad_ones(self):
         values, output = self.run_setup(
             "prod",
             [
                 "https://es.example.com", "1", "n", "n", "n", "y",
-                "plugins.invalid", "example.com", "Plugins.Example.com.", "v1", "1", "n",
+                "{id}.plugins.invalid", "plugins.example.com", "{id}.example.com",
+                "{id}-app.example.net", "{ID}.Plugins.Example.com.", "v1", "1", "n",
             ],
         )  # fmt: skip
-        self.assertEqual(values["PLUGINS_ENABLED"], "true")
-        self.assertEqual(values["COMPOSE_PROFILES"], "plugins")
-        self.assertEqual(values["PLUGINS_BASE_DOMAIN"], "plugins.example.com")
-        for name in envtool.PLUGIN_SECRETS:
-            self.assertRegex(values[name], r"^[A-Za-z0-9]{32,}$", name)
-        self.assertIn("*.plugins.example.com", output)
+        self.assertEqual(values["PLUGINS_HOST_TEMPLATE"], "{id}.plugins.example.com")
+        self.assertIn("is a placeholder", output)
+        self.assertIn("Put {id} once, in the first label", output)
+        self.assertIn("es.example.com would be a plugin host", output)
+        self.assertIn("are not one site", output)
+        self.assertIn("Point *.plugins.example.com at this server", output)
 
     def test_plugins_stay_off_for_an_ip_or_plain_http_host(self):
         for public_url in ("http://10.0.0.5", "http://es.example.com"):
@@ -533,15 +671,16 @@ class SetupWizardTest(unittest.TestCase):
             self.assertNotIn("plugins", values["COMPOSE_PROFILES"])
             self.assertIn("Plugins stay off", output)
 
-    def test_plugins_over_plain_http_need_a_localhost_domain(self):
+    def test_plugins_over_plain_http_need_localhost_hosts(self):
         values, output = self.run_setup(
             "prod",
             [
                 "http://es.localhost", "3", "n", "n", "n", "y",
-                "plugins.example.com", "p.localhost", "v1", "1", "n",
+                "{id}-app.example.com", "", "v1", "1", "n",
             ],
         )  # fmt: skip
-        self.assertEqual(values["PLUGINS_BASE_DOMAIN"], "p.localhost")
+        self.assertIn("must end in .localhost", output)
+        self.assertEqual(values["PLUGINS_HOST_TEMPLATE"], "{id}-app.es.localhost")
         self.assertNotIn("Point *.", output)
 
     def test_turning_plugins_on_fills_missing_secrets_and_keeps_set_ones(self):
@@ -551,11 +690,11 @@ class SetupWizardTest(unittest.TestCase):
             "\nPLUGINS_DB_ADMIN_PASSWORD=none\n", "\nPLUGINS_DB_ADMIN_PASSWORD=keepme123\n"
         )
         self.env_file.write_text(text, encoding="utf-8")
-        # The dev domain default is valid, so it is not asked again.
+        # The dev template default is valid, so it is not asked again.
         values, _ = self.run_setup("dev", ["1", "", "", "", "y"])
         self.assertEqual(values["PLUGINS_ENABLED"], "true")
         self.assertEqual(values["COMPOSE_PROFILES"], "dev,chat,auditor,plugins")
-        self.assertEqual(values["PLUGINS_BASE_DOMAIN"], "plugins.epicstaff.localhost")
+        self.assertEqual(values["PLUGINS_HOST_TEMPLATE"], "{id}.plugins.epicstaff.localhost")
         self.assertEqual(values["DJANGO_FRONTEND_BASE_URL"], "http://epicstaff.localhost")
         self.assertEqual(values["PLUGINS_DB_ADMIN_PASSWORD"], "keepme123")
         self.assertRegex(values["PLUGINS_NODE_KEY"], r"^[A-Za-z0-9]{32,}$")
@@ -743,6 +882,25 @@ class SetupWizardTest(unittest.TestCase):
         )
         self.assertIn("docker compose stop chat chatdb", output)
         self.assertNotIn("stop auditor", output)
+
+    def production_file_from_an_earlier_release(self, base_domain: str) -> None:
+        """A production file of a release that named the plugin hosts by PLUGINS_BASE_DOMAIN."""
+        self.run_setup("prod", ["https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "n"])
+        text = self.env_file.read_text(encoding="utf-8")
+        text = re.sub(r"(?m)^PLUGINS_HOST_TEMPLATE=.*$", f"PLUGINS_BASE_DOMAIN={base_domain}", text)
+        self.env_file.write_text(text, encoding="utf-8")
+
+    def test_turning_plugins_on_keeps_the_hosts_of_an_earlier_plugins_base_domain(self):
+        self.production_file_from_an_earlier_release("plugins.example.com")
+        values, _ = self.run_setup("prod", ["1", "n", "n", "n", "y"])
+        self.assertEqual(values["PLUGINS_ENABLED"], "true")
+        self.assertEqual(values["PLUGINS_HOST_TEMPLATE"], "{id}.plugins.example.com")
+
+    def test_turning_plugins_on_asks_for_a_template_when_the_old_one_is_not_valid(self):
+        self.production_file_from_an_earlier_release("plugins.invalid")
+        values, output = self.run_setup("prod", ["1", "n", "n", "n", "y", "app-{id}.example.com"])
+        self.assertIn("Enter for {id}-app.example.com", output)
+        self.assertEqual(values["PLUGINS_HOST_TEMPLATE"], "app-{id}.example.com")
 
     def test_add_missing_settings_in_production_generates_secrets(self):
         self.env_file.write_text("IMAGE_TAG=v1\n", encoding="utf-8")

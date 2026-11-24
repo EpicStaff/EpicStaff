@@ -265,6 +265,14 @@ async def test_storage_credentials_reach_the_intake(client, sandbox):
     assert sandbox.submitted["storage_org_prefix"] == "org_7"
 
 
+async def test_system_venv_reaches_the_intake(client, sandbox):
+    """A built-in tool names the sandbox's own venv instead of a venv id."""
+    await asyncio.wait_for(client.submit(_task(system_venv="builtin_tools")), timeout=2)
+
+    assert sandbox.submitted["system_venv"] == "builtin_tools"
+    assert sandbox.submitted["venv_id"] is None
+
+
 async def test_task_without_storage_submits_null_credentials(client, sandbox):
     await asyncio.wait_for(client.submit(_task()), timeout=2)
 

@@ -81,7 +81,7 @@ def suspended(weather, superadmin, acme, clock, settings):
     """Weather in Acme, suspended now with a 30-day grace period; it owns a secret there."""
     settings.PLUGINS_GRACE_PERIOD_DAYS = "30"
     grant = PluginGrantService().grant("weather", acme.pk, superadmin)
-    own(secret_row(acme, "Weather · LLM key"), grant)
+    own(secret_row(acme, "Weather - LLM key"), grant)
     PluginSuspensionService().suspend("weather", grant.pk, superadmin)
     return PluginGrant.objects.get(pk=grant.pk)
 

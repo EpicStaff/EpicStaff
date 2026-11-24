@@ -1,11 +1,11 @@
 import pytest
 
-from tables.models import (
+from tables.models import McpTool
+from ai_models.models import (
     EmbeddingConfig,
     EmbeddingModel,
     LLMConfig,
     LLMModel,
-    McpTool,
     Provider,
 )
 from rbac.models import Organization

@@ -147,8 +147,8 @@ async def test_an_expired_job_is_failed_not_run_and_the_slot_is_reused(
 
 
 async def test_nothing_is_pulled_while_every_slot_is_busy(result_sink, clock):
-    """The pull is the capacity signal: the manager counts a waiting long-poll as a free
-    slot, so pulling ahead of one would lie to its admission control."""
+    """A job pulled without a slot would wait here, against its queue deadline, where
+    the manager can no longer see it."""
     gate = build_gate(1)
     await gate.acquire()
     source = FakeJobSource(queued_job(clock, "exec-1"))

@@ -1,3 +1,5 @@
+from typing import Any
+
 import httpx
 from foundation.transport.http import AsyncClient
 from src.shared.enums.knowledge_new import RAGStrategy
@@ -38,6 +40,10 @@ class KnowledgeClient(AsyncClient):
         llm_api_key: str | None,
         embedding_extra_headers: dict[str, str] | None = None,
         llm_extra_headers: dict[str, str] | None = None,
+        embedding_connection: dict[str, str] | None = None,
+        embedding_parameters: dict[str, Any] | None = None,
+        llm_connection: dict[str, str] | None = None,
+        llm_parameters: dict[str, Any] | None = None,
     ) -> SearchOutcome:
         """Search a RAG, returning its result with the embedding usage knowledge_new reports.
 
@@ -55,6 +61,10 @@ class KnowledgeClient(AsyncClient):
                 "llm_api_key": llm_api_key,
                 "embedding_extra_headers": embedding_extra_headers or {},
                 "llm_extra_headers": llm_extra_headers or {},
+                "embedding_connection": embedding_connection or {},
+                "embedding_parameters": embedding_parameters or {},
+                "llm_connection": llm_connection or {},
+                "llm_parameters": llm_parameters or {},
             },
             timeout=timeout,
         )

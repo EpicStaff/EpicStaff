@@ -16,17 +16,18 @@ against ([Get the tools](../README.md#get-the-tools)), and use the Weather sampl
 | EpicStaff | `http://epicstaff.localhost` |
 | A plugin | `http://<id>.plugins.epicstaff.localhost` |
 
-with `DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost`, `PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost` and
+with `DJANGO_FRONTEND_BASE_URL=http://epicstaff.localhost`, `PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.localhost` and
 `DJANGO_REFRESH_COOKIE_SECURE=false`; [Run EpicStaff for plugin development](#run-epicstaff-for-plugin-development) has
 the rest.
 
 Chromium and Firefox resolve every `*.localhost` name to your machine by themselves. Safari uses the operating system's
 resolver, which on current macOS does the same.
 
-EpicStaff and its plugin hosts must share a registrable domain (`epicstaff.localhost` here): the sign-in inside
-EpicStaff's frame relies on EpicStaff's session cookie being sent to EpicStaff from the plugin's frame, which browsers
-allow only between hosts of the same site. Plain `localhost` for EpicStaff with `plugins.localhost` for plugins does
-not work: those are two sites.
+EpicStaff and its plugin hosts must share a registrable domain (`epicstaff.localhost` here); Django refuses to start
+otherwise (`plugins.E014`). The sign-in inside EpicStaff's frame relies on EpicStaff's session cookie being sent to
+EpicStaff from the plugin's frame, which browsers allow only between hosts of the same site. EpicStaff at plain
+`localhost` never works, whatever the template: no plugin host can share that site. Nor does `epicstaff.localhost` with
+the template `{id}.plugins.localhost`: those are two sites.
 
 ## Secure context
 
@@ -41,7 +42,7 @@ Test Safari against `*.test` names over HTTPS, or on a real domain:
 1. Add `epicstaff.test` and `<id>.plugins.epicstaff.test` to `/etc/hosts` (pointing at `127.0.0.1`).
 2. Make a local certificate authority and a wildcard certificate for `epicstaff.test` and `*.plugins.epicstaff.test`,
    trust the authority in your keychain, and run nginx with `NGINX_SSL_MODE=on`.
-3. Set `DJANGO_FRONTEND_BASE_URL=https://epicstaff.test`, `PLUGINS_BASE_DOMAIN=plugins.epicstaff.test` and
+3. Set `DJANGO_FRONTEND_BASE_URL=https://epicstaff.test`, `PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.test` and
    `DJANGO_REFRESH_COOKIE_SECURE=true`.
 
 `http://*.test` is not a secure context, so the SDK refuses it. Plugin development mode, below, needs `.localhost`
@@ -67,7 +68,7 @@ Then set these in `src/.env`:
 | `COMPOSE_PROFILES` | add `plugins`: `dev,chat,auditor,plugins` |
 | `NGINX_SERVER_NAME` | `epicstaff.localhost` |
 | `DJANGO_FRONTEND_BASE_URL` | `http://epicstaff.localhost` |
-| `PLUGINS_BASE_DOMAIN`, `DJANGO_REFRESH_COOKIE_SECURE`, `NGINX_SSL_MODE`, `DJANGO_DEBUG` | Keep the development defaults: `plugins.epicstaff.localhost`, `false`, `off`, `true` |
+| `PLUGINS_HOST_TEMPLATE`, `DJANGO_REFRESH_COOKIE_SECURE`, `NGINX_SSL_MODE`, `DJANGO_DEBUG` | Keep the development defaults: `{id}.plugins.epicstaff.localhost`, `false`, `off`, `true` |
 | `PLUGINS_GATEWAY_SECRET`, `PLUGINS_NODE_KEY`, `PLUGINS_DB_SUPERUSER_PASSWORD`, `PLUGINS_DB_ADMIN_PASSWORD`, `PLUGINS_DB_BACKUP_PASSWORD` | Each the output of `openssl rand -hex 32` |
 | `PLUGINS_TRUSTED_SIGNING_KEYS` | Optional: your key's entry, so your packages install as Trusted ([Create a signing key](sign-and-package.md#2-create-a-signing-key)) |
 | `PLUGINS_DEV_MODE` | `true`: plugin development mode, below |
@@ -98,7 +99,7 @@ later.
 **Plugin development mode** lets a SuperAdmin serve an installed plugin's backend and page from ports on your machine.
 It runs only on a deployment on your own machine: with `PLUGINS_DEV_MODE=true`, django_app refuses to start unless
 `DJANGO_DEBUG=true`, the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or a `.localhost` name,
-`PLUGINS_BASE_DOMAIN` is a `.localhost` name, and, under docker compose, the stack runs with
+the parent of `PLUGINS_HOST_TEMPLATE` is a `.localhost` name, and, under docker compose, the stack runs with
 `docker-compose.plugins-dev.yaml` (which alone sets `PLUGINS_DEV_LOOPBACK_ONLY`; never put that in `.env`). A
 `manage.py` run on the host is not checked for that file. epicstaff-nginx refuses the same way. What keeps the mode
 local is that file's binding of EpicStaff's ports to `127.0.0.1`. The `.localhost` names only stop browsers on other

@@ -28,6 +28,11 @@ const SUGGEST_ERROR_STATES: ReadonlyMap<string, SuggestErrorState> = new Map([
         'graph_rag_llm_not_configured',
         { message: 'This RAG has no LLM config. Select one in Update RAG.', canRetry: false },
     ],
+    ['graph_rag_embedder_not_configured', { message: 'No embedder configured for this GraphRag.', canRetry: false }],
+    [
+        'graph_rag_llm_and_embedder_not_configured',
+        { message: 'No LLM config and embedder configured for this GraphRag.', canRetry: false },
+    ],
 ]);
 
 /** What a failed suggest-search-params request says, and whether Retry can help. Keyed on the backend's error code. */

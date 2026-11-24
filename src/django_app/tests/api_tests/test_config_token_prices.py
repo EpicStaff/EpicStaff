@@ -4,7 +4,7 @@ non-negative, set together, and invisible across organizations."""
 import pytest
 from django.db import IntegrityError, transaction
 
-from tables.models.llm_models import LLMConfig
+from ai_models.models import LLMConfig
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 LLM_CONFIGS = "/api/llm-configs/"
@@ -159,7 +159,7 @@ def test_patch_clearing_both_prices_is_accepted(client, acme):
 def test_patch_of_an_unrelated_field_on_an_unpriced_config_is_accepted(client, acme):
     config = LLMConfig.objects.create(custom_name="patch-other", org=acme)
 
-    response = client.patch(f"{LLM_CONFIGS}{config.pk}/", {"temperature": 1.0}, format="json")
+    response = client.patch(f"{LLM_CONFIGS}{config.pk}/", {"timeout": 30.0}, format="json")
 
     assert response.status_code == 200, response.data
 

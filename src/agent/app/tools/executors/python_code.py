@@ -48,6 +48,7 @@ class PythonCodeToolExecutor:
         try:
             task = CodeTaskData(
                 venv_id=python_code.venv_id,
+                system_venv=python_code.system_venv,
                 code=python_code.code,
                 execution_id=execution_id,
                 entrypoint=python_code.entrypoint,

@@ -7,16 +7,17 @@ from rest_framework.exceptions import ValidationError
 from tables.exceptions import UseImportJobError
 from tables.import_export.archive import (
     ImportArchive,
+    archive_too_big,
     detect_file_kind,
-    invalid_archive,
     temporary_archive,
 )
 from tables.import_export.constants import ARCHIVE_IMPORT_VERSION, MAIN_ENTITY_KEY
 from tables.import_export.enums import EntityType
+from tables.import_export.preparation import convert_to_current_version
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportService, ImportSettings
 from tables.import_export.services.inspect_service import InspectService
-from tables.import_export.version_conversions.base import VersionConverter, file_version
+from tables.import_export.version_conversions.base import file_version
 from tables.import_export.version_conversions.exceptions import UnsupportedImportVersionError
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
 from tables.validators.run_refusal_validator import assert_no_run_refusals_in_export
@@ -61,10 +62,7 @@ class ViewSetImportExportService:
     def _validate_envelope(data, main_entity) -> dict:
         """Check the file's main entity and bring it to the current version."""
         _check_main_entity(data, main_entity)
-        try:
-            return VersionConverter.convert(data)
-        except UnsupportedImportVersionError as e:
-            raise ValidationError(str(e)) from e
+        return convert_to_current_version(data)
 
     def import_entity(
         self,
@@ -223,7 +221,7 @@ def _read_archive_envelope(file):
     max_size = django_settings.MAX_KNOWLEDGE_ARCHIVE_SIZE
     size = getattr(file, "size", None)
     if size is not None and size > max_size:
-        raise invalid_archive(f"the archive is larger than {max_size} bytes")
+        raise archive_too_big(max_size)
     # ImportArchive checks a file on disk; an upload may only be in memory.
     with (
         temporary_archive(lambda copy: _copy_at_most(file, copy, max_size)) as path,
@@ -270,5 +268,5 @@ def _copy_at_most(source: BinaryIO, target: BinaryIO, max_size: int) -> None:
     while chunk := source.read(_COPY_CHUNK_SIZE):
         copied += len(chunk)
         if copied > max_size:
-            raise invalid_archive(f"the archive is larger than {max_size} bytes")
+            raise archive_too_big(max_size)
         target.write(chunk)

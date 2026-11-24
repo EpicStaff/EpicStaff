@@ -26,7 +26,7 @@ from typing import Literal
 from loguru import logger
 from src.shared.bench_log import BENCH_LEVEL
 
-from manager.application.ports import FreeSlotProbe
+from manager.application.ports import WorkerSlots
 from manager.application.registry import ExecutionRegistry
 from manager.domain.errors import SandboxOverloadedError
 
@@ -59,14 +59,14 @@ class IntakeGate:
     def __init__(
         self,
         registry: ExecutionRegistry,
-        has_free_slot: FreeSlotProbe,
+        worker_slots: WorkerSlots,
         *,
         max_accepted: int,
         max_held: int,
         queue_timeout: float,
     ) -> None:
         self._registry = registry
-        self._has_free_slot = has_free_slot
+        self._worker_slots = worker_slots
         self._max_accepted = max_accepted
         self._max_held = max_held
         self._queue_timeout = queue_timeout
@@ -115,7 +115,7 @@ class IntakeGate:
             return
         if self._registry.active_count_excluding(execution_id) >= self._max_accepted:
             raise self._refuse("cap", DEFAULT_RETRY_AFTER_SECONDS)
-        if self._has_free_slot():
+        if self._worker_has_free_slot(execution_id):
             return
         drain_rate = self._registry.drain_rate()
         if drain_rate is None:
@@ -127,6 +127,15 @@ class IntakeGate:
         raise self._refuse(
             "prediction", min(max(retry_after, MIN_RETRY_AFTER_SECONDS), MAX_RETRY_AFTER_SECONDS)
         )
+
+    def _worker_has_free_slot(self, execution_id: str) -> bool:
+        # Counted from the registry, which is current, rather than from a free count the
+        # worker reports: that would be up to a heartbeat old and double-count a burst.
+        # Reservations of other submissions admitted at the same moment count too.
+        guaranteed_slots = self._worker_slots()
+        if guaranteed_slots is None:
+            return False
+        return self._registry.active_count_excluding(execution_id) < guaranteed_slots
 
     def _refuse(self, reason: RefusalReason, retry_after: int) -> SandboxOverloadedError:
         logger.log(

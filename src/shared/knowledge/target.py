@@ -9,9 +9,9 @@ knowledge_new REST search endpoint expects.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..models.knowledge import RagSearchConfig
 
@@ -33,3 +33,9 @@ class KnowledgeSearchTarget(BaseModel):
     llm_api_key: str | None = None
     embedder_extra_headers: dict[str, str] | None = None
     llm_extra_headers: dict[str, str] | None = None
+    # Resolved connection arguments under their LiteLLM names; can hold secrets.
+    embedder_connection: dict[str, str] | None = Field(default=None, repr=False)
+    llm_connection: dict[str, str] | None = Field(default=None, repr=False)
+    # The configs' settings the model catalog allows, as django_app sends them.
+    embedder_parameters: dict[str, Any] | None = None
+    llm_parameters: dict[str, Any] | None = None

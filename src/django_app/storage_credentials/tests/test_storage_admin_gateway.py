@@ -21,6 +21,7 @@ from storage_credentials.clients.minio_admin_client import (
     _AdminResponseDecryptor,
 )
 from storage_credentials.exceptions import (
+    OrgStorageCredentialCheckError,
     StorageCredentialConfigError,
     TemporaryCredentialIssueError,
     TemporaryCredentialListError,
@@ -315,3 +316,81 @@ async def test_removing_a_user_that_is_already_gone_succeeds(gateway, server):
     server.replies = [(500, b'{"Code":"InternalError","Message":"user does not exist"}')] * 5
 
     await gateway.remove_user("org_7")
+
+
+@pytest.fixture
+def error_messages():
+    messages: list[str] = []
+    sink_id = logger.add(lambda message: messages.append(message.record["message"]), level="ERROR")
+    yield messages
+    logger.remove(sink_id)
+
+
+async def test_a_mint_refused_for_a_drifted_secret_logs_the_storage_error_code(gateway, server, error_messages):
+    server.replies = [
+        (403, b'<?xml version="1.0" encoding="UTF-8"?><Error><Code>SignatureDoesNotMatch</Code></Error>')
+    ]
+
+    with pytest.raises(TemporaryCredentialIssueError):
+        await gateway.create_service_account(POLICY, timedelta(hours=1))
+
+    logged = "\n".join(error_messages)
+    assert "admin_access_key" in logged
+    assert "code=SignatureDoesNotMatch" in logged
+    assert ADMIN_SECRET not in logged
+
+
+async def test_credentials_are_checked_by_listing_the_callers_own_service_accounts(gateway, server):
+    assert await gateway.credential_rejection_code() is None
+
+    request = server.requests[0]
+    assert (request["method"], request["path"]) == ("GET", "/minio/admin/v3/list-service-accounts")
+    assert request["query"]["user"] == "admin_access_key"
+
+
+@pytest.mark.parametrize(
+    ("reply", "expected_code"),
+    [
+        ((403, b"<Error><Code>SignatureDoesNotMatch</Code></Error>"), "SignatureDoesNotMatch"),
+        ((403, b'{"Code":"InvalidAccessKeyId","Message":"unknown"}'), "InvalidAccessKeyId"),
+        ((403, b"<Error><Code>AccessDenied</Code></Error>"), None),
+    ],
+    ids=["rustfs-xml-rejected", "minio-json-rejected", "access-denied-is-accepted"],
+)
+async def test_credential_check_reads_the_error_code_in_either_server_dialect(gateway, server, reply, expected_code):
+    server.replies = [reply]
+
+    assert await gateway.credential_rejection_code() == expected_code
+
+
+async def test_a_credential_check_the_storage_cannot_answer_is_an_error_not_a_verdict(gateway, server):
+    server.replies = [(500, b"")] * 5
+
+    with pytest.raises(OrgStorageCredentialCheckError):
+        await gateway.credential_rejection_code()
+
+
+async def test_a_mint_refused_for_another_reason_does_not_suggest_reprovisioning(gateway, server, error_messages):
+    server.replies = [(400, b'<?xml version="1.0" encoding="UTF-8"?><Error><Code>InvalidRequest</Code></Error>')]
+
+    with pytest.raises(TemporaryCredentialIssueError):
+        await gateway.create_service_account(POLICY, timedelta(hours=1))
+
+    logged = "\n".join(error_messages)
+    assert "code=InvalidRequest" in logged
+    assert "backfill_org_storage_credentials" not in logged
+
+
+async def test_a_single_attempt_gateway_does_not_retry_a_failed_credential_check(server):
+    server.replies = [(503, b""), (200, b"")]
+    gateway = StorageAdminGateway(
+        host=server.url, access_key="admin_access_key", secret_key=ADMIN_SECRET, single_attempt=True
+    )
+
+    try:
+        with pytest.raises(OrgStorageCredentialCheckError):
+            await gateway.credential_rejection_code()
+    finally:
+        await gateway.close()
+
+    assert len(server.requests) == 1

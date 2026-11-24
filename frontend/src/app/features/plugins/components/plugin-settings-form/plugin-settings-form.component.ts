@@ -7,15 +7,18 @@ import {
     CustomInputComponent,
     FetchErrorStateComponent,
     LoadingSpinnerComponent,
-    SelectComponent,
-    SelectItem,
-    TextareaComponent,
-    ToggleSwitchComponent,
+    SchemaFieldComponent,
 } from '@shared/components';
+import { JsonSchemaProperty, SchemaWidget } from '@shared/models';
 import { catchError, finalize, merge, of, switchMap, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
-import { PluginSettingScalar, PluginSettingsResponse, PluginSettingState } from '../../models/plugin-backend.model';
+import {
+    PluginSettingScalar,
+    PluginSettingsResponse,
+    PluginSettingState,
+    PluginSettingType,
+} from '../../models/plugin-backend.model';
 import { PluginErrorItem, PluginErrorView } from '../../models/plugin-error.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import { toPluginErrorView } from '../../utils/plugin-error-message.util';
@@ -30,12 +33,23 @@ type SettingControlValue = PluginSettingControlValue;
 /** Shown in front of a stored secret's last characters. */
 export const SECRET_MASK = '••••';
 
+/** The shared schema-form control of each setting type; a secret has its own write-only controls. */
+const SETTING_WIDGETS: Record<Exclude<PluginSettingType, 'secret'>, SchemaWidget> = {
+    string: 'text',
+    url: 'text',
+    // Typed as text, so a negative number can be typed; checked on save.
+    integer: 'text',
+    text: 'textarea',
+    boolean: 'toggle',
+    enum: 'select',
+};
+
 /** `values.<key>` in an `errors[]` item's `loc`. */
 const SETTING_LOC_PREFIX = 'values.';
 
 /**
- * A backend plugin's settings, one control per type: enum → select, boolean → toggle, text → textarea, the rest a text
- * input. A secret is write-only: never shown or prefilled, only its last characters; it can be set, replaced or
+ * A backend plugin's settings, one control per type through the shared schema-form field (`SETTING_WIDGETS`): enum →
+ * select, boolean → toggle, text → textarea, the rest a text input. A secret is write-only: never shown or prefilled, only its last characters; it can be set, replaced or
  * cleared. Any other stored setting can go back to its default ("Use default"). A save sends only the changed keys,
  * and restarts the plugin.
  *
@@ -52,9 +66,7 @@ const SETTING_LOC_PREFIX = 'values.';
         FetchErrorStateComponent,
         LoadingSpinnerComponent,
         ReactiveFormsModule,
-        SelectComponent,
-        TextareaComponent,
-        ToggleSwitchComponent,
+        SchemaFieldComponent,
     ],
     templateUrl: './plugin-settings-form.component.html',
     styleUrl: './plugin-settings-form.component.scss',
@@ -106,6 +118,20 @@ export class PluginSettingsFormComponent {
     protected readonly otherErrorItems = computed<PluginErrorItem[]>(
         () => this.saveError()?.items.filter((item) => !item.loc.startsWith(SETTING_LOC_PREFIX)) ?? []
     );
+    /** Each setting as the shared field control reads it; secrets have none. */
+    protected readonly settingProperties = computed<Readonly<Record<string, JsonSchemaProperty>>>(() => {
+        const properties: Record<string, JsonSchemaProperty> = {};
+        for (const setting of this.response()?.settings ?? []) {
+            if (setting.type === 'secret') continue;
+            properties[setting.key] = {
+                type: 'string',
+                title: setting.label,
+                enum: setting.values ?? undefined,
+                'x-widget': SETTING_WIDGETS[setting.type],
+            };
+        }
+        return properties;
+    });
     private readonly reloads = signal(0);
     private readonly request = computed(() => ({ identifier: this.identifier(), reload: this.reloads() }));
 
@@ -157,10 +183,6 @@ export class PluginSettingsFormComponent {
 
     protected secretEdit(key: string): SecretEdit {
         return this.secretEdits()[key] ?? 'keep';
-    }
-
-    protected enumItems(setting: PluginSettingState): SelectItem<string>[] {
-        return (setting.values ?? []).map((value) => ({ name: value, value }));
     }
 
     protected fieldId(setting: PluginSettingState): string {

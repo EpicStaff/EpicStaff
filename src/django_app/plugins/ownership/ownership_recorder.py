@@ -32,15 +32,15 @@ from plugins.ownership.request_scope import CreatedRoot, current_scope
 
 # Organization-owned roots outside the recycle bin that a service account can create.
 EXTRA_OWNABLE_MODELS = (
-    "tables.LLMConfig",
-    "tables.EmbeddingConfig",
+    "ai_models.LLMConfig",
+    "ai_models.EmbeddingConfig",
     "tables.RealtimeConfig",
     "tables.RealtimeTranscriptionConfig",
     "tables.OpenAIRealtimeConfig",
     "tables.ElevenLabsRealtimeConfig",
     "tables.GeminiRealtimeConfig",
-    "tables.LLMModel",
-    "tables.EmbeddingModel",
+    "ai_models.LLMModel",
+    "ai_models.EmbeddingModel",
     "tables.RealtimeModel",
     "tables.RealtimeTranscriptionModel",
     "tables.StorageFile",

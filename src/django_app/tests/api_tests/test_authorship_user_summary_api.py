@@ -10,10 +10,9 @@ from rest_framework import status
 from rbac.authorship import record_last_edit
 from rbac.governance.authorship import AuthorshipReleaseService
 from rbac.models import OrganizationUser
-from tables.models import Graph, LLMConfig
+from tables.models import Graph
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.models.graph_models import GraphNote, SubGraphNode
-from tables.models.llm_models import LLMModel
-from tables.models.provider import Provider
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 AUTHOR_DISPLAY_NAME = "Acme Author Visible Only In Acme"

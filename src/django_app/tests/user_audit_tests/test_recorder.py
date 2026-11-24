@@ -13,31 +13,8 @@ from rbac.identity.authentication import JwtOrApiKeyAuthentication
 from rbac.models import ApiKey, OrganizationConfig, OrganizationUser
 from src.shared.models import UserAction
 from agents.models import AgentDefinition, Surface
-from tables.models import (
-    AudioTranscriptionNode,
-    DefaultModels,
-    DocumentMetadata,
-    ElevenLabsRealtimeConfig,
-    GeminiRealtimeConfig,
-    Graph,
-    GraphNote,
-    KeyValueNode,
-    KeyValueTable,
-    KnowledgeNode,
-    McpTool,
-    OpenAIRealtimeConfig,
-    PythonCode,
-    PythonCodeTool,
-    PythonNode,
-    RealtimeChannel,
-    RealtimeConfig,
-    RealtimeTranscriptionConfig,
-    RealtimeTranscriptionModel,
-    SourceCollection,
-    SubGraphNode,
-    SystemOneConfig,
-    WebhookTrigger,
-)
+from ai_models.models import DefaultModels
+from tables.models import AudioTranscriptionNode, DocumentMetadata, ElevenLabsRealtimeConfig, GeminiRealtimeConfig, Graph, GraphNote, KeyValueNode, KeyValueTable, KnowledgeNode, McpTool, OpenAIRealtimeConfig, PythonCode, PythonCodeTool, PythonNode, RealtimeChannel, RealtimeConfig, RealtimeTranscriptionConfig, RealtimeTranscriptionModel, SourceCollection, SubGraphNode, SystemOneConfig, WebhookTrigger
 from tables.models.knowledge_models import NaiveRagDocumentConfig
 from tables.models.realtime_models import RealtimeAgentDefinition
 from user_audit import recorder

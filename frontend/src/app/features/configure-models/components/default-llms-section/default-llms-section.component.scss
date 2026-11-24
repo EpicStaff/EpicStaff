@@ -4,24 +4,6 @@
     gap: 1rem;
     color: var(--color-text-primary);
 
-    &__header {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    &__title {
-        margin: 0;
-        font-size: 1.25rem;
-        color: var(--fog-200);
-    }
-
-    &__subtitle {
-        margin: 0;
-        font-size: 0.875rem;
-        color: var(--color-text-secondary);
-    }
-
     &__section {
         display: flex;
         flex-direction: column;

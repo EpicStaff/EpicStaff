@@ -76,7 +76,7 @@ class FakeDjango:
                     return httpx.Response(401, json={"detail": "Given token not valid for any token type"})
                 answer = self.permissions.get((token, self._org(request)))
                 if answer is None or (answer != "*" and "read" not in answer.get("flows", [])):
-                    return httpx.Response(403, json={"status_code": 403, "code": "forbidden", "message": "You do not have permission to retrieve flows."})
+                    return httpx.Response(403, json={"status_code": 403, "code": "permission_denied", "message": "You do not have permission to read flows."})
             graph = self.graphs.get(int(match.group(1)))
             if graph is None or graph["org_id"] != self._org(request):
                 return httpx.Response(404, json={"code": "not_found"})

@@ -32,12 +32,20 @@ class KnowledgeSearchToolExecutor(BaseToolExecutor):
         rag_llm_api_key: str | None = None,
         rag_embedder_extra_headers: dict[str, str] | None = None,
         rag_llm_extra_headers: dict[str, str] | None = None,
+        rag_embedder_connection: dict[str, str] | None = None,
+        rag_embedder_parameters: dict[str, Any] | None = None,
+        rag_llm_connection: dict[str, str] | None = None,
+        rag_llm_parameters: dict[str, Any] | None = None,
     ):
         super().__init__(tool_name="knowledge_tool")
         self.rag_embedder_api_key = rag_embedder_api_key
         self.rag_llm_api_key = rag_llm_api_key
         self.rag_embedder_extra_headers = rag_embedder_extra_headers
         self.rag_llm_extra_headers = rag_llm_extra_headers
+        self.rag_embedder_connection = rag_embedder_connection
+        self.rag_embedder_parameters = rag_embedder_parameters
+        self.rag_llm_connection = rag_llm_connection
+        self.rag_llm_parameters = rag_llm_parameters
         self.knowledge_collection_id = knowledge_collection_id
         self.knowledge_client = knowledge_client
         self._realtime_model = self._gen_knowledge_realtime_tool_model()
@@ -58,6 +66,10 @@ class KnowledgeSearchToolExecutor(BaseToolExecutor):
             llm_api_key=self.rag_llm_api_key,
             embedder_extra_headers=self.rag_embedder_extra_headers,
             llm_extra_headers=self.rag_llm_extra_headers,
+            embedder_connection=self.rag_embedder_connection,
+            embedder_parameters=self.rag_embedder_parameters,
+            llm_connection=self.rag_llm_connection,
+            llm_parameters=self.rag_llm_parameters,
         )
 
         try:

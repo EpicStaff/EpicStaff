@@ -48,7 +48,7 @@ from tables.import_export.export_tabular_projections.session import (
 )
 from tables.import_export.serializers.session import SessionPrincipalExportSerializer
 from tables.models import McpTool, StorageFile
-from tables.models.llm_models import LLMModel
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.models.graph_models import Graph, GraphOrganizationUser, GraphSessionMessage
 from tables.models.session_models import Session, SessionPrincipal
 from tables.serializers.model_serializers.session_serializers import (
@@ -310,7 +310,7 @@ def test_inactive_pinned_org_answers_403(plugin_client, principal, acme):
     response = plugin_client(principal).get("/api/graphs/")
 
     assert response.status_code == 403, response.content
-    assert response.json()["code"] == "org_membership_required"
+    assert response.json()["code"] == "organization_deactivated"
 
 
 # ---- Gates ----
@@ -427,21 +427,26 @@ def test_the_principal_decides_which_secrets_a_row_it_writes_may_reference(plugi
 
 
 @pytest.mark.parametrize("write", ["create", "update"])
-def test_a_pinned_principal_never_sets_where_a_model_sends_requests(plugin_client, acme, write):
-    model = LLMModel.objects.create(name="acme-model", org=acme, is_custom=True)
+def test_a_pinned_principal_never_sets_where_a_model_config_sends_requests(plugin_client, acme, write):
+    model = LLMModel.objects.create(name="gpt-4o", llm_provider=Provider.objects.get_or_create(name="openai")[0])
+    config = LLMConfig.objects.create(custom_name="acme-config", model=model, org=acme)
     principal = FakePinnedPrincipal(
         acme.id, by_resource={**DECLARED, ResourceType.LLM_CONFIGS: Permission.READ | Permission.CREATE | Permission.UPDATE}
     )
     client = plugin_client(principal)
+    elsewhere = {"connection": {"base_url": "https://elsewhere.example"}}
 
     if write == "create":
-        response = client.post("/api/llm-models/", {"name": "fake-model", "base_url": "https://elsewhere.example"}, format="json")
+        response = client.post("/api/llm-configs/", {"custom_name": "fake", "model": model.pk, **elsewhere}, format="json")
     else:
-        response = client.patch(f"/api/llm-models/{model.pk}/", {"deployment_id": "elsewhere"}, format="json")
-    renamed = client.patch(f"/api/llm-models/{model.pk}/", {"name": "acme-model-2"}, format="json")
+        response = client.patch(f"/api/llm-configs/{config.pk}/", elsewhere, format="json")
+    renamed = client.patch(f"/api/llm-configs/{config.pk}/", {"custom_name": "acme-config-2"}, format="json")
 
     assert response.status_code == 400, response.content
+    assert response.json()["message"].startswith("connection.base_url: This credential cannot set where")
     assert renamed.status_code == 200, renamed.content
+    config.refresh_from_db()
+    assert config.connection == {}
 
 
 class _IncompletePrincipal(FakePinnedPrincipal):

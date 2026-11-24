@@ -2,8 +2,8 @@
 
 Plugin hosts share a site with EpicStaff, so the browser sends EpicStaff's `SameSite=Lax`
 cookie with a plugin page's requests, and Django's CSRF check does not apply to the API. Every
-request whose `Origin` lies in the plugin base domain is therefore refused here, before any
-view runs, except:
+request whose `Origin` lies in the plugin zone (`PluginHostTemplate.covers`) is therefore
+refused here, before any view runs, except:
 
 - the token exchange from an exact plugin frame origin: `POST`, and its CORS preflight, which
   this middleware answers itself (no credentials are ever allowed);
@@ -101,7 +101,7 @@ def _judge(request) -> _Verdict:
     if origin.lower() == NULL_ORIGIN:
         return _refused(request, origin) if _touches_refresh_cookie(request) else _UNJUDGED
     origins = PluginOrigins()
-    if not origins.is_plugin_domain_origin(origin):
+    if not origins.is_plugin_zone_origin(origin):
         return _UNJUDGED
     path = request.path_info
     if path == TOKEN_PATH and origins.identifier_from_origin(origin) is not None:

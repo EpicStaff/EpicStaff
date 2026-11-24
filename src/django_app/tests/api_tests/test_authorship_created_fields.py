@@ -16,15 +16,10 @@ from rest_framework import status
 from agents.models import AgentDefinition
 from tables.models import (
     ElevenLabsRealtimeConfig,
-    EmbeddingConfig,
-    EmbeddingModel,
     GeminiRealtimeConfig,
     Graph,
     Label,
-    LLMConfig,
-    LLMModel,
     OpenAIRealtimeConfig,
-    Provider,
     PythonCode,
     PythonCodeTool,
     RealtimeChannel,
@@ -33,6 +28,13 @@ from tables.models import (
     TwilioChannel,
     WebhookTrigger,
     WebhookTriggerNode,
+)
+from ai_models.models import (
+    EmbeddingConfig,
+    EmbeddingModel,
+    LLMConfig,
+    LLMModel,
+    Provider,
 )
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 

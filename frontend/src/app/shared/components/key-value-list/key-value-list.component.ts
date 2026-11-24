@@ -97,6 +97,8 @@ export class KeyValueListComponent implements OnInit, ControlValueAccessor, Vali
     headerRules = input<boolean>(true);
     /** Drop the frame and padding and use the standard input surface, for a list that sits inside a card. */
     compact = input<boolean>(false);
+    /** Shows a dashed "+ <addLabel>" button that appends a row, instead of keeping a spare empty row at the end. */
+    addLabel = input<string>('');
 
     items = signal<KeyValueItem[]>([]);
     isDisabled = signal<boolean>(false);
@@ -194,8 +196,12 @@ export class KeyValueListComponent implements OnInit, ControlValueAccessor, Vali
     }
 
     /** The always-present empty row at the end, where the next header is typed. */
+    addRow(): void {
+        this.items.update((items) => [...items, { name: '', value: '' }]);
+    }
+
     isSpareRow(index: number): boolean {
-        return index === this.items().length - 1 && this.isBlank(this.items()[index]);
+        return !this.addLabel() && index === this.items().length - 1 && this.isBlank(this.items()[index]);
     }
 
     errorId(index: number): string {
@@ -298,6 +304,7 @@ export class KeyValueListComponent implements OnInit, ControlValueAccessor, Vali
     }
 
     private withSpareRow(items: KeyValueItem[]): KeyValueItem[] {
+        if (this.addLabel()) return items;
         let end = items.length;
         while (end > 0 && this.isBlank(items[end - 1])) end--;
         const spare = items[end] ?? { name: '', value: '' };
@@ -318,7 +325,8 @@ export class KeyValueListComponent implements OnInit, ControlValueAccessor, Vali
     writeValue(value: Record<string, string> | null): void {
         const record = value ?? {};
         const items: KeyValueItem[] = Object.entries(record).map(([name, val]) => ({ name, value: val }));
-        this.items.set(this.withSpareRow(items));
+        // With an add button, an empty list still starts with one row to type into.
+        this.items.set(this.addLabel() && items.length === 0 ? [{ name: '', value: '' }] : this.withSpareRow(items));
     }
 
     registerOnChange(fn: (value: Record<string, string>) => void): void {
