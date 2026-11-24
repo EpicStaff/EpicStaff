@@ -2,7 +2,9 @@
 
 A job that would be queued is judged on the in-flight cap and, with no free worker
 slot, also refused when the predicted queue wait, (queued + 1) / drain rate, exceeds the
-queue timeout; a cold start (no drain rate yet) is judged on the cap only. A job that
+queue timeout; a cold start (no drain rate yet) is judged on the cap only. A worker slot
+is free while the executions in flight are fewer than the guaranteed slots the worker
+reported, so a burst up to that many starts at once whatever the prediction says. A job that
 would be held is judged on the held cap only, and held jobs never count toward the
 in-flight cap -- otherwise one tenant's venv stuck building could lock out every org.
 """
@@ -14,6 +16,8 @@ from manager.application.registry import ExecutionRegistry
 from manager.domain.errors import SandboxOverloadedError
 
 QUEUE_TIMEOUT = 10.0
+# More guaranteed slots than any test puts in flight: a worker slot is always free.
+PLENTY_OF_SLOTS = 1000
 
 
 @pytest.fixture
@@ -22,11 +26,15 @@ def registry(clock) -> ExecutionRegistry:
 
 
 def build_gate(
-    registry, *, free_slot: bool = False, max_accepted: int = 300, max_held: int = 100
+    registry,
+    *,
+    guaranteed_slots: int | None = None,
+    max_accepted: int = 300,
+    max_held: int = 100,
 ) -> IntakeGate:
     return IntakeGate(
         registry,
-        lambda: free_slot,
+        lambda: guaranteed_slots,
         max_accepted=max_accepted,
         max_held=max_held,
         queue_timeout=QUEUE_TIMEOUT,
@@ -76,7 +84,9 @@ def test_admit_does_not_count_the_callers_own_reservation(registry):
     queue(registry, 1)
     reserve_caller(registry)
 
-    build_gate(registry, free_slot=True, max_accepted=2).admit("caller", will_be_held=False)
+    build_gate(registry, guaranteed_slots=PLENTY_OF_SLOTS, max_accepted=2).admit(
+            "caller", will_be_held=False
+        )
 
 
 def test_admit_refuses_at_the_cap_even_with_a_free_slot(registry):
@@ -84,7 +94,9 @@ def test_admit_refuses_at_the_cap_even_with_a_free_slot(registry):
     reserve_caller(registry)
 
     with pytest.raises(SandboxOverloadedError) as raised:
-        build_gate(registry, free_slot=True, max_accepted=2).admit("caller", will_be_held=False)
+        build_gate(registry, guaranteed_slots=PLENTY_OF_SLOTS, max_accepted=2).admit(
+            "caller", will_be_held=False
+        )
 
     assert raised.value.retry_after == 5
 
@@ -101,7 +113,9 @@ def test_a_held_job_is_refused_at_the_held_cap_with_a_30_second_retry_after(regi
     reserve_caller(registry)
 
     with pytest.raises(SandboxOverloadedError) as raised:
-        build_gate(registry, free_slot=True, max_held=2).admit("caller", will_be_held=True)
+        build_gate(registry, guaranteed_slots=PLENTY_OF_SLOTS, max_held=2).admit(
+            "caller", will_be_held=True
+        )
 
     assert raised.value.retry_after == 30
 
@@ -117,7 +131,9 @@ def test_a_job_to_queue_is_admitted_while_the_held_cap_is_full(registry):
     hold(registry, 2)
     reserve_caller(registry)
 
-    build_gate(registry, free_slot=True, max_accepted=2, max_held=2).admit("caller", will_be_held=False)
+    build_gate(
+        registry, guaranteed_slots=PLENTY_OF_SLOTS, max_accepted=2, max_held=2
+    ).admit("caller", will_be_held=False)
 
 
 def test_check_capacity_does_not_count_held_jobs(registry):
@@ -131,7 +147,7 @@ def test_a_free_slot_admits_whatever_the_prediction(registry, clock):
     queue(registry, 50)
     reserve_caller(registry)
 
-    build_gate(registry, free_slot=True).admit("caller", will_be_held=False)
+    build_gate(registry, guaranteed_slots=PLENTY_OF_SLOTS).admit("caller", will_be_held=False)
 
 
 def test_a_held_job_is_not_judged_on_the_prediction(registry, clock):
@@ -191,6 +207,63 @@ def test_a_drain_that_stalled_refuses_what_it_once_admitted(registry, clock):
         build_gate(registry).admit("caller", will_be_held=False)
 
     assert raised.value.retry_after == 14
+
+
+@pytest.mark.parametrize(
+    ("reserved_by_others", "guaranteed_slots", "admitted"),
+    [
+        (0, 11, True),
+        (0, 10, False),
+        (1, 11, False),
+        (1, 12, True),
+        (0, None, False),
+    ],
+    ids=[
+        "below-the-slots",
+        "at-the-slots",
+        "other-reservations-take-slots",
+        "below-the-slots-with-a-reservation",
+        "no-heartbeat-yet",
+    ],
+)
+def test_a_free_worker_slot_admits_a_job_the_prediction_would_refuse(
+    registry, clock, reserved_by_others, guaranteed_slots, admitted
+):
+    # 10 queued + the caller at 1 per second: 11 s, over the queue timeout.
+    drain_one_per_second(registry, clock)
+    queue(registry, 10)
+    for index in range(reserved_by_others):
+        registry.reserve(f"other-{index}")
+    reserve_caller(registry)
+    gate = build_gate(registry, guaranteed_slots=guaranteed_slots)
+
+    if admitted:
+        gate.admit("caller", will_be_held=False)
+    else:
+        with pytest.raises(SandboxOverloadedError):
+            gate.admit("caller", will_be_held=False)
+
+
+def test_a_burst_right_after_a_heartbeat_gets_the_guaranteed_slots_and_no_more(
+    registry, clock
+):
+    """The prediction alone admits 10 of the burst; the 16 guaranteed slots admit 16,
+    and the 17th is judged on the prediction again."""
+    drain_one_per_second(registry, clock)
+    gate = build_gate(registry, guaranteed_slots=16)
+    admitted = 0
+    for index in range(20):
+        execution_id = f"burst-{index}"
+        registry.reserve(execution_id)
+        try:
+            gate.admit(execution_id, will_be_held=False)
+        except SandboxOverloadedError:
+            registry.forget(execution_id)
+            continue
+        registry.mark_queued(execution_id)
+        admitted += 1
+
+    assert admitted == 16
 
 
 def test_a_re_post_of_an_id_still_being_admitted_is_refused(registry):
@@ -264,7 +337,7 @@ def test_each_refusal_is_logged_once_with_its_reason_and_retry_after(
 
 
 def test_an_admitted_submission_is_not_logged_as_a_refusal(registry, checkpoints):
-    gate = build_gate(registry, free_slot=True)
+    gate = build_gate(registry, guaranteed_slots=PLENTY_OF_SLOTS)
     reserve_caller(registry)
 
     gate.check_not_in_progress("other")

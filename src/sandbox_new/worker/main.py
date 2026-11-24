@@ -58,7 +58,11 @@ async def main() -> None:
     runners: dict[str, Runner] = {
         "admission gate": admission_gate,
         "job consumer": job_consumer,
-        "heartbeat": Heartbeat(client, job_consumer.held_execution_ids),
+        "heartbeat": Heartbeat(
+            client,
+            job_consumer.held_execution_ids,
+            guaranteed_slots=admission_gate.snapshot().floor,
+        ),
         "run-gate sampler": RunGateSampler(admission_gate),
     }
     tasks = []

@@ -5,7 +5,8 @@ payloads with plaintext secrets -- and carries the worker run's boot id. A pull 
 the past: jobs assigned under another boot id are failed with the fixed worker-lost text
 before new work is handed out, a superseded boot id is never handed a job, and a pushed
 result is accepted only for a job that is still assigned -- late and duplicate results
-are dropped, never published twice.
+are dropped, never published twice. A heartbeat must carry the worker's guaranteed
+slots, which intake counts free worker slots from.
 """
 
 import asyncio
@@ -21,6 +22,10 @@ from manager.presentation.rest import worker_controller
 
 AUTH = {"Authorization": "Bearer internal-test-token"}
 PULL_HEADERS = {**AUTH, "X-Worker-Boot-Id": "boot-1"}
+
+
+def beat(*execution_ids: str) -> dict:
+    return {"execution_ids": list(execution_ids), "guaranteed_slots": 16}
 
 JOB = ExecutionJobMessage(
     execution_id="exec-1",
@@ -198,7 +203,7 @@ def test_a_heartbeat_reporting_the_job_keeps_it_alive(client, registry, worker_c
     clock.advance(61.0)
 
     response = client.post(
-        "/worker/heartbeat", json={"execution_ids": ["exec-1"]}, headers=PULL_HEADERS
+        "/worker/heartbeat", json=beat("exec-1"), headers=PULL_HEADERS
     )
 
     assert response.status_code == status_codes.HTTP_204_NO_CONTENT
@@ -215,10 +220,10 @@ def test_a_heartbeat_missing_an_old_assignment_fails_it_as_lost(
     registry.mark_assigned("exec-lost", boot_id="boot-1", session_id=5, reply_to_crew_channel=True)
     clock.advance(31.0)
 
-    client.post("/worker/heartbeat", json={"execution_ids": []}, headers=PULL_HEADERS)
+    client.post("/worker/heartbeat", json=beat(), headers=PULL_HEADERS)
     assert failure_sink.failures == []  # one missed report is forgiven
     response = client.post(
-        "/worker/heartbeat", json={"execution_ids": []}, headers=PULL_HEADERS
+        "/worker/heartbeat", json=beat(), headers=PULL_HEADERS
     )
 
     assert response.status_code == status_codes.HTTP_204_NO_CONTENT
@@ -237,7 +242,7 @@ def test_a_heartbeat_missing_a_fresh_assignment_spares_it(client, registry, fail
     registry.mark_queued("exec-new")
     registry.mark_assigned("exec-new", boot_id="boot-1")
 
-    client.post("/worker/heartbeat", json={"execution_ids": []}, headers=PULL_HEADERS)
+    client.post("/worker/heartbeat", json=beat(), headers=PULL_HEADERS)
 
     assert failure_sink.failures == []
     assert registry.settle_assignment("exec-new") is True
@@ -249,9 +254,30 @@ def test_a_heartbeat_does_not_touch_other_boots_assignments(client, registry, cl
     registry.mark_assigned("exec-other", boot_id="boot-9")
     clock.advance(31.0)
 
-    client.post("/worker/heartbeat", json={"execution_ids": []}, headers=PULL_HEADERS)
+    client.post("/worker/heartbeat", json=beat(), headers=PULL_HEADERS)
 
     assert failure_sink.failures == []
+
+
+def test_a_heartbeat_records_the_guaranteed_slots(client, worker_contact):
+    assert worker_contact.guaranteed_slots is None
+
+    response = client.post("/worker/heartbeat", json=beat(), headers=PULL_HEADERS)
+
+    assert response.status_code == status_codes.HTTP_204_NO_CONTENT
+    assert worker_contact.guaranteed_slots == 16
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"execution_ids": []}, {"execution_ids": [], "guaranteed_slots": -1}],
+    ids=["missing", "negative"],
+)
+def test_a_heartbeat_without_valid_guaranteed_slots_is_refused(client, worker_contact, body):
+    response = client.post("/worker/heartbeat", json=body, headers=PULL_HEADERS)
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert worker_contact.guaranteed_slots is None
 
 
 async def wait_until(check, *, timeout: float = 1.0) -> None:
@@ -279,34 +305,32 @@ def call_pull(registry, worker_contact, job_queue, failure_sink, boot_id: str):
     )
 
 
-async def test_a_waiting_pull_counts_as_a_free_slot(
-    registry, worker_contact, job_queue, failure_sink, monkeypatch
-):
-    """The intake's free-slot probe: a long-poll parked on the queue is a worker slot
-    waiting for work, and it stops counting the moment the poll ends."""
-    monkeypatch.setattr(worker_controller, "LONG_POLL_SECONDS", 1.0)
-    pull = asyncio.create_task(
-        call_pull(registry, worker_contact, job_queue, failure_sink, "boot-1")
-    )
-    await wait_until(lambda: worker_contact.waiting_pollers == 1)
+class ObservedQueue(asyncio.Queue):
+    """A job queue that tells how many pulls are parked on it."""
 
-    job_queue.put_nowait(JOB)
-    response = await pull
+    def __init__(self) -> None:
+        super().__init__()
+        self.parked = 0
 
-    assert response.status_code == status_codes.HTTP_200_OK
-    assert worker_contact.waiting_pollers == 0
+    async def get(self):
+        self.parked += 1
+        try:
+            return await super().get()
+        finally:
+            self.parked -= 1
 
 
 async def test_a_boot_superseded_while_waiting_is_not_handed_the_job(
-    registry, worker_contact, job_queue, failure_sink, monkeypatch
+    registry, worker_contact, failure_sink, monkeypatch
 ):
     """The zombie window: boot-1's poll is already parked when boot-2 takes over, so the
     job boot-1 grabs goes back to the queue instead of being assigned to a dead run."""
     monkeypatch.setattr(worker_controller, "LONG_POLL_SECONDS", 1.0)
+    job_queue = ObservedQueue()
     pull = asyncio.create_task(
         call_pull(registry, worker_contact, job_queue, failure_sink, "boot-1")
     )
-    await wait_until(lambda: worker_contact.waiting_pollers == 1)
+    await wait_until(lambda: job_queue.parked == 1)
 
     assert worker_contact.accept_boot("boot-2") is True
     job_queue.put_nowait(JOB)
@@ -315,12 +339,3 @@ async def test_a_boot_superseded_while_waiting_is_not_handed_the_job(
     assert response.status_code == status_codes.HTTP_204_NO_CONTENT
     assert job_queue.qsize() == 1
     assert registry.release_assignments_not_from("boot-2") == []
-async def test_an_empty_poll_timeout_releases_the_waiting_slot(
-    registry, worker_contact, job_queue, failure_sink, monkeypatch
-):
-    monkeypatch.setattr(worker_controller, "LONG_POLL_SECONDS", 0.02)
-
-    response = await call_pull(registry, worker_contact, job_queue, failure_sink, "boot-1")
-
-    assert response.status_code == status_codes.HTTP_204_NO_CONTENT
-    assert worker_contact.waiting_pollers == 0
