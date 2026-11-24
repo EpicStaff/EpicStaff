@@ -80,13 +80,10 @@ class WorkerController(Controller):
         worker_contact.record_seen(boot_id)
         released = execution_registry.release_assignments_not_from(boot_id)
         await fail_lost_jobs(released, job_failure_sink)
-        worker_contact.add_waiting_poller()
         try:
             job: ExecutionJobMessage = await asyncio.wait_for(job_queue.get(), LONG_POLL_SECONDS)
         except TimeoutError:
             return Response(content=None, status_code=status_codes.HTTP_204_NO_CONTENT)
-        finally:
-            worker_contact.remove_waiting_poller()
         if not worker_contact.accept_boot(boot_id):
             # This run died and was superseded while the poll waited. Back to the queue
             # (at the tail: order is already bounded by each job's own queue deadline).
@@ -137,7 +134,7 @@ class WorkerController(Controller):
         job_failure_sink: AbstractJobFailureSink,
         boot_id: str = BOOT_ID_HEADER,
     ) -> None:
-        """Record that this worker run is alive and reconcile what it holds.
+        """Record that this worker run is alive and its guaranteed slots; reconcile what it holds.
 
         The saturated worker's only sign of life: with every slot busy it neither pulls
         nor, during a long run, posts anything. The beat also reports the execution ids
@@ -150,6 +147,7 @@ class WorkerController(Controller):
             NotAuthorizedException: No valid internal token, rendered as 401.
         """
         worker_contact.record_seen(boot_id)
+        worker_contact.record_guaranteed_slots(data.guaranteed_slots)
         lost = execution_registry.release_unreported_assignments(
             boot_id,
             set(data.execution_ids),

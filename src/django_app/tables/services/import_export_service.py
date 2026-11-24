@@ -13,10 +13,11 @@ from tables.import_export.archive import (
 )
 from tables.import_export.constants import ARCHIVE_IMPORT_VERSION, MAIN_ENTITY_KEY
 from tables.import_export.enums import EntityType
+from tables.import_export.preparation import convert_to_current_version
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.import_service import ImportService, ImportSettings
 from tables.import_export.services.inspect_service import InspectService
-from tables.import_export.version_conversions.base import VersionConverter, file_version
+from tables.import_export.version_conversions.base import file_version
 from tables.import_export.version_conversions.exceptions import UnsupportedImportVersionError
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
 from tables.validators.run_refusal_validator import assert_no_run_refusals_in_export
@@ -61,10 +62,7 @@ class ViewSetImportExportService:
     def _validate_envelope(data, main_entity) -> dict:
         """Check the file's main entity and bring it to the current version."""
         _check_main_entity(data, main_entity)
-        try:
-            return VersionConverter.convert(data)
-        except UnsupportedImportVersionError as e:
-            raise ValidationError(str(e)) from e
+        return convert_to_current_version(data)
 
     def import_entity(
         self,

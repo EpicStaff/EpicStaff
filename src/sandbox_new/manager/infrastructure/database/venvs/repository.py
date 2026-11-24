@@ -101,8 +101,8 @@ class PiccoloVenvRepository(AbstractVenvRepository):
         row = await VenvTable.objects().get(VenvTable.id == id)
         return VenvMapper.to_domain(row) if row is not None else None
 
-    async def retrieve_default(self) -> Venv | None:
-        row = await VenvTable.objects().get(VenvTable.is_default.eq(True))
+    async def retrieve_by_system_key(self, system_key: str) -> Venv | None:
+        row = await VenvTable.objects().get(VenvTable.system_key == system_key)
         return VenvMapper.to_domain(row) if row is not None else None
 
     async def create(self, obj: Venv) -> Venv:
@@ -112,7 +112,7 @@ class PiccoloVenvRepository(AbstractVenvRepository):
             hash=obj.hash,
             status=obj.status,
             error=obj.error,
-            is_default=obj.is_default,
+            system_key=obj.system_key,
             scope=obj.scope,
         )
         await row.save()

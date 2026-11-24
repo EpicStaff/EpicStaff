@@ -103,6 +103,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             func_kwargs=inputs,
             secrets=python_code_data.secrets,
             venv_id=python_code_data.venv_id,
+            system_venv=python_code_data.system_venv,
             use_storage=python_code_data.use_storage,
             storage_allowed_paths=python_code_data.storage_allowed_paths or [],
             storage_org_prefix=python_code_data.storage_org_prefix,

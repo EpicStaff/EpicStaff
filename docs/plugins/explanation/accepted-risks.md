@@ -118,6 +118,17 @@ Tools `create` or `update` has a second effect: the plugin can point an agent at
 that is not one of its outbound hosts. The agent, not the plugin's backend, connects to it, so
 the outbound hosts do not apply there either.
 
+## A plugin host name belongs to whoever controls its DNS
+
+With a template that has a prefix or a suffix, EpicStaff checks that a plugin's host is served by
+this deployment before it sends that host a login code
+([The host check](../operator/enable-plugins.md#the-host-check)). The check stops a name in the
+zone that points at another server by accident, or that someone else hosts. It does not stop
+someone who controls a name in the zone and relays the challenge to this deployment's nginx: that
+server passes the check and receives the plugin's users' login codes. Whoever controls a DNS name
+controls that origin. Keep control of the zone to people you trust, or use a template without an
+affix on a zone of the plugins' own.
+
 ## Soft limits
 
 Some limits are enforced after the fact. A process may briefly use more memory than its cap

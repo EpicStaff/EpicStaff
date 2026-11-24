@@ -26,6 +26,11 @@
    make uv-lock). Run after editing a dependency of a shared package
    that every sandbox venv gets.
 
+ make uv-lock-system-venvs
+   Regenerate src/sandbox_new/system-venv-requirements/ (also run by
+   make uv-lock). Run after changing a pin in SYSTEM_VENV_LIBS, the
+   libraries of the sandbox's own venvs.
+
  LOCAL DJANGO DEVELOPMENT
 ----------------------------------------------------------------
  make django-tests ARGS=<pytest-args>

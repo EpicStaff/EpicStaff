@@ -30,7 +30,13 @@ from manager.application.ports import (
     AbstractUVProvider,
 )
 from manager.application.registry import ExecutionRegistry
-from manager.domain.enums import ExecutionStatus, VenvOrder, VenvStatus, WheelOffer, WheelStatus
+from manager.domain.enums import (
+    ExecutionStatus,
+    VenvOrder,
+    VenvStatus,
+    WheelOffer,
+    WheelStatus,
+)
 from manager.domain.errors import (
     BaseError,
     CustomLibraryInUseError,
@@ -39,8 +45,9 @@ from manager.domain.errors import (
     CustomLibraryNotFoundError,
     CustomLibraryNotPublishedError,
     CustomLibraryStillBuildingError,
-    DefaultVenvProtectedError,
     SecretNotDecryptableError,
+    SystemVenvNotFoundError,
+    SystemVenvProtectedError,
     UnsupportedUploadError,
     UVBuildError,
     VenvNotFoundError,
@@ -52,8 +59,9 @@ from manager.domain.errors import (
     WheelVersionTakenError,
 )
 from manager.domain.models import (
-    DEFAULT_VENV_NAME,
+    DEFAULT_SYSTEM_KEY,
     SOURCE_ARCHIVE_SUFFIXES,
+    SYSTEM_VENV_LIBS,
     WHEEL_SUFFIX,
     CustomLibrary,
     Job,
@@ -91,10 +99,6 @@ class VenvCRUDOrchestrator:
     def __init__(self, uow: AbstractUnitOfWork):
         self.uow = uow
 
-    async def retrieve_default(self) -> Venv | None:
-        async with self.uow:
-            return await self.uow.venv_repo.retrieve_default()
-
     async def list(
         self,
         *,
@@ -128,13 +132,27 @@ class VenvCRUDOrchestrator:
         logger.info("Declared venv {} ({}) with {} libraries", venv.id, venv.name, len(venv.libs))
         return venv
 
-    async def create_default(self) -> Venv:
-        """Declare the shared fallback venv, with no libraries of its own."""
-        venv = Venv(name=DEFAULT_VENV_NAME, is_default=True)
+    async def declare_system(self, system_key: str) -> Venv:
+        """Store the system venv of this key with the libraries the sandbox pins for it.
+
+        A stored one is declared again, to be rebuilt, when its libraries no longer
+        match the pins or its last build failed; otherwise it is left as it is, so a
+        restart does not rebuild a working venv.
+        """
+        libs = SYSTEM_VENV_LIBS[system_key]
         async with self.uow:
-            venv = await self.uow.venv_repo.create(venv)
+            venv = await self.uow.venv_repo.retrieve_by_system_key(system_key)
+            if venv is None:
+                venv = await self.uow.venv_repo.create(
+                    Venv(name=system_key, libs=libs, system_key=system_key)
+                )
+            elif venv.status is VenvStatus.FAILED or not _same_pins(venv.libs, libs):
+                venv.set_libs(libs)
+                venv = await self.uow.venv_repo.update(venv)
+            else:
+                return venv
             await self.uow.commit()
-        logger.info("Declared the default venv {}", venv.id)
+        logger.info("Declared the {} venv {}", system_key, venv.id)
         return venv
 
     async def update(
@@ -151,14 +169,14 @@ class VenvCRUDOrchestrator:
 
         Raises:
             VenvNotFoundError: No venv with this id.
-            DefaultVenvProtectedError: The venv is the shared default.
+            SystemVenvProtectedError: The venv is built by the sandbox itself.
         """
         async with self.uow:
             venv = await self.uow.venv_repo.retrieve(id=id)
             if venv is None:
                 raise VenvNotFoundError(venv_id=id)
-            if venv.is_default:
-                raise DefaultVenvProtectedError(venv_id=id)
+            if venv.system_key is not None:
+                raise SystemVenvProtectedError(venv_id=id)
 
             if name is not None and venv.name != name:
                 venv.rename(name)
@@ -180,17 +198,24 @@ class VenvCRUDOrchestrator:
 
         Raises:
             VenvNotFoundError: No venv with this id.
-            DefaultVenvProtectedError: The venv is the shared default.
+            SystemVenvProtectedError: The venv is built by the sandbox itself.
         """
         async with self.uow:
             venv = await self.uow.venv_repo.retrieve(id=id)
             if venv is None:
                 raise VenvNotFoundError(venv_id=id)
-            if venv.is_default:
-                raise DefaultVenvProtectedError(venv_id=id)
+            if venv.system_key is not None:
+                raise SystemVenvProtectedError(venv_id=id)
             await self.uow.venv_repo.remove(venv)
             await self.uow.commit()
         logger.info("Removed venv {}", id)
+
+
+def _same_pins(stored: list[Library], pinned: list[Library]) -> bool:
+    """Compare what was asked for, ignoring the versions a build stamps on `stored`."""
+    return [(library.name, library.specification) for library in stored] == [
+        (library.name, library.specification) for library in pinned
+    ]
 
 
 class VenvBuildOrchestrator:
@@ -297,6 +322,27 @@ class VenvBuildOrchestrator:
             (directory / wheel.wheel_filename).write_bytes(content)
         return directory
 
+    async def prepare(self, venv: Venv) -> Venv:
+        """Build the venv unless it is built, and return it as it now stands.
+
+        A built one is not rebuilt, which would download its libraries again, but it
+        gets this image's predefined packages: they may have changed with the image,
+        and installing them needs no index.
+        """
+        venv_path = settings.VENVS_DIR / f"venv-{venv.hash}"
+        if venv.status is VenvStatus.COMPLETED and venv_path.exists():
+            await self._install_predefined(venv_path)
+            return venv
+        await self.build(venv)
+        return await self._retrieve(venv.id)
+
+    async def _install_predefined(self, venv_path: Path) -> None:
+        await self.uv_provider.install_local(
+            venv_path,
+            *settings.PREDEFINED_VENV_PACKAGES,
+            wheelhouse=settings.PREDEFINED_WHEELHOUSE_DIR,
+        )
+
     async def _build(self, venv: Venv, custom_wheels: list[Wheel]) -> Venv:
         staging_path = settings.VENV_STAGING_DIR / f"venv-{venv.id}"
         if staging_path.exists():
@@ -307,8 +353,15 @@ class VenvBuildOrchestrator:
         # The wheelhouse lives only for this build, and is deliberately not cached: a
         # cache would be another place a deleted wheel could still be installed from.
         with tempfile.TemporaryDirectory() as workspace:
-            wheelhouse = await self._fill_wheelhouse(custom_wheels, Path(workspace))
-            await self.uv_provider.apply(staging_path, *libs, wheelhouse=wheelhouse)
+            if venv.system_key is not None:
+                # Built at startup, which must succeed without the internet: the image
+                # carries every wheel a system venv needs.
+                await self.uv_provider.apply(
+                    staging_path, *libs, wheelhouse=settings.SYSTEM_WHEELHOUSE_DIR, offline=True
+                )
+            else:
+                wheelhouse = await self._fill_wheelhouse(custom_wheels, Path(workspace))
+                await self.uv_provider.apply(staging_path, *libs, wheelhouse=wheelhouse)
             # Held, not applied yet: stamping the libraries is what the user sees as the
             # outcome of the build, so it must not survive a step below that fails.
             resolved_versions = self.uv_provider.read_resolved_versions(staging_path)
@@ -327,11 +380,7 @@ class VenvBuildOrchestrator:
         # Mandatory shared packages (dotdict, epicstaff_secrets, ...) go into every venv
         # -- freshly built or reused -- so existing venvs also pick them up on the next
         # build. They are intentionally kept out of venv.libs.
-        await self.uv_provider.install_local(
-            venv_path,
-            *settings.PREDEFINED_VENV_PACKAGES,
-            wheelhouse=settings.PREDEFINED_WHEELHOUSE_DIR,
-        )
+        await self._install_predefined(venv_path)
 
         venv.apply_resolved_versions(resolved_versions)
         return venv
@@ -357,10 +406,10 @@ class VenvBuildOrchestrator:
 class JobOrchestrator:
     """Accepts code-execution submissions and gets them to the worker.
 
-    Resolves the job's venv (by id, or the default when none is given), then: a
-    COMPLETED venv dispatches now; a venv still building holds until it is done; a
-    FAILED venv reports a failed result to the consumer (the job cannot run, but the
-    caller still gets an outcome). Jobs are never persisted; holding is in RAM.
+    Resolves the job's venv (by id, by `system_venv`, or the default when neither is
+    given), then: a COMPLETED venv dispatches now; a venv still building holds until it
+    is done; a FAILED venv reports a failed result to the consumer (the job cannot run,
+    but the caller still gets an outcome). Jobs are never persisted; holding is in RAM.
 
     The readiness gate lives only here: the dispatcher is a dumb transport adapter,
     so this is the single place that decides dispatch vs hold vs fail by venv status.
@@ -424,6 +473,7 @@ class JobOrchestrator:
         storage_credentials: StorageCredentials | None,
         timeout: float | None,
         reply_to_crew_channel: bool,
+        system_venv: str | None = None,
     ) -> ExecutionStatus:
         """Accept a submission, or answer for the one already accepted under its id.
 
@@ -437,7 +487,9 @@ class JobOrchestrator:
             Where the execution is now.
 
         Raises:
-            VenvNotFoundError: `venv_id` names no venv, or there is no default venv.
+            VenvNotFoundError: `venv_id` names no venv.
+            SystemVenvNotFoundError: `system_venv`, or the default key when neither is
+                given, names no venv the sandbox owns.
             SandboxOverloadedError: The sandbox cannot take the job now, or the first
                 submission of this id is still being admitted.
             SecretNotDecryptableError: A secret value is not a transport ciphertext
@@ -455,7 +507,7 @@ class JobOrchestrator:
         # Reserved before the first await, so a concurrent re-POST sees the id as known.
         self.registry.reserve(execution_id)
         try:
-            venv = await self._resolve_venv(venv_id)
+            venv = await self._resolve_venv(venv_id, system_venv)
             if venv.status is not VenvStatus.FAILED:
                 self.intake_gate.admit(
                     execution_id, will_be_held=venv.status is not VenvStatus.COMPLETED
@@ -579,14 +631,19 @@ class JobOrchestrator:
             reply_to_crew_channel=job.reply_to_crew_channel,
         )
 
-    async def _resolve_venv(self, venv_id: int | None) -> Venv:
-        async with self.uow:
-            if venv_id is not None:
+    async def _resolve_venv(self, venv_id: int | None, system_venv: str | None) -> Venv:
+        if venv_id is not None:
+            async with self.uow:
                 venv = await self.uow.venv_repo.retrieve(venv_id)
-            else:
-                venv = await self.uow.venv_repo.retrieve_default()
+            if venv is None:
+                raise VenvNotFoundError(venv_id=venv_id)
+            return venv
+
+        system_key = system_venv or DEFAULT_SYSTEM_KEY
+        async with self.uow:
+            venv = await self.uow.venv_repo.retrieve_by_system_key(system_key)
         if venv is None:
-            raise VenvNotFoundError(venv_id=venv_id)
+            raise SystemVenvNotFoundError(system_key=system_key)
         return venv
 
 

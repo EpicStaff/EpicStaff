@@ -20,10 +20,27 @@ export interface PluginFrameUrlRequest {
 }
 
 /**
- * Returns the backend's `frame_origin` for a plugin when it is safe to frame, else `null`: exactly
- * `<scheme>://<identifier>.<parent domain>[:<port>]` — https, or http only on a `*.localhost` host — with no
- * credentials, path, query or fragment, and never EpicStaff's own origin (a same-origin frame with `allow-scripts
- * allow-same-origin` could lift its own sandbox).
+ * The affixes `PLUGINS_HOST_TEMPLATE` may put around the identifier in a host's first label (the backend's own rule):
+ * lower-case letters, digits and hyphens, never a hyphen at the label's outer edge.
+ */
+const HOST_LABEL_PREFIX_PATTERN = '(?:[a-z0-9][a-z0-9-]*)?';
+const HOST_LABEL_SUFFIX_PATTERN = '(?:[a-z0-9-]*[a-z0-9])?';
+
+/** `PLUGINS_HOST_TEMPLATE` puts at least two labels after the plugin's own (`example.com`). */
+const MIN_PARENT_DOMAIN_LABELS = 2;
+
+/**
+ * Returns the backend's `frame_origin` for a plugin when it is safe to frame, else `null`.
+ *
+ * What it guarantees: https, or http only on a `*.localhost` host; an optional port; no credentials, path, query or
+ * fragment (the string is exactly an origin); never EpicStaff's own origin (a same-origin frame with `allow-scripts
+ * allow-same-origin` could lift its own sandbox); at least two non-empty labels after the first; and the identifier
+ * inside the first label, with nothing around it but `[a-z0-9-]` affixes that neither start nor end with a hyphen.
+ *
+ * It is a containment check, not the host template: `PLUGINS_HOST_TEMPLATE` is not known here, so it accepts
+ * `weather.plugins.example.com`, `weather-app.example.com` and `app-weather.example.com` alike, and also
+ * `chatwoot.example.com` for `chat`. Which host a plugin really has is the backend's to decide: it builds
+ * `frame_origin` from its settings and proves the host is served by this EpicStaff before it calls the plugin ready.
  */
 export function toPluginFrameOrigin(frameOrigin: unknown, identifier: string, hostOrigin: string): string | null {
     if (typeof frameOrigin !== 'string' || !PLUGIN_IDENTIFIER_PATTERN.test(identifier)) return null;
@@ -37,9 +54,19 @@ export function toPluginFrameOrigin(frameOrigin: unknown, identifier: string, ho
     const isSecure = parsed.protocol === 'https:';
     const isLocalDevelopment = parsed.protocol === 'http:' && parsed.hostname.endsWith(LOCAL_DEVELOPMENT_HOST_SUFFIX);
     if (!isSecure && !isLocalDevelopment) return null;
-    const hostPrefix = `${identifier}.`;
-    const parentDomain = parsed.hostname.slice(hostPrefix.length);
-    return parsed.hostname.startsWith(hostPrefix) && parentDomain !== '' ? frameOrigin : null;
+    const [firstLabel, ...parentLabels] = parsed.hostname.split('.');
+    const hasParentDomain =
+        parentLabels.length >= MIN_PARENT_DOMAIN_LABELS && parentLabels.every((label) => label !== '');
+    return hasParentDomain && pluginHostLabelPattern(identifier).test(firstLabel) ? frameOrigin : null;
+}
+
+/**
+ * The whole first label of a plugin's host: the identifier, with the template's prefix and suffix around it. The
+ * identifier goes in unescaped: the caller checked it against `PLUGIN_IDENTIFIER_PATTERN`, which allows no character
+ * a regular expression treats specially.
+ */
+function pluginHostLabelPattern(identifier: string): RegExp {
+    return new RegExp(`^${HOST_LABEL_PREFIX_PATTERN}${identifier}${HOST_LABEL_SUFFIX_PATTERN}$`);
 }
 
 /**

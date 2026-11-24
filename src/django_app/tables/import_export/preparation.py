@@ -1,10 +1,11 @@
-"""The boundary step both import services run before they write anything."""
+"""The boundary steps both import services run before they write anything."""
 
 from copy import deepcopy
 
 from agents.models import SurfacePlace, ToolMode
 from loguru import logger
 from rest_framework.exceptions import ValidationError
+from src.shared.models import InvalidInputTypeError
 
 from tables.import_export.enums import EntityType
 from tables.import_export.serializers.agent_definition import AgentDefinitionImportSerializer
@@ -22,7 +23,33 @@ from tables.import_export.strategies.mcp_tools import COMPARED_FIELDS as MCP_COM
 from tables.import_export.strategies.python_tools import (
     COMPARED_FIELDS as PYTHON_TOOL_COMPARED_FIELDS,
 )
-from tables.import_export.utils import import_values, nest_owned_surface_entries
+from tables.import_export.utils import (
+    exported_nodes,
+    import_values,
+    nest_owned_surface_entries,
+)
+from tables.import_export.version_conversions.base import VersionConverter
+from tables.import_export.version_conversions.exceptions import UnsupportedImportVersionError
+
+
+def convert_to_current_version(export_data: dict) -> dict:
+    """Bring an uploaded export file, full or partial, to IMPORT_VERSION.
+
+    The version conversions trust the file's shape, so it is checked first (see
+    `_shape_errors`); the version before that, because a newer release may write
+    another shape. Runs before anything is written.
+
+    Raises:
+        ValidationError: The version is not a whole number, is below 1 or newer
+            than this release reads, or has no conversion path; the file is
+            malformed; or a version 1 tool names an input_type no release knows.
+    """
+    try:
+        VersionConverter.supported_version(export_data)
+        _raise_shape_errors(export_data)
+        return VersionConverter.convert(export_data)
+    except (UnsupportedImportVersionError, InvalidInputTypeError) as error:
+        raise ValidationError(str(error)) from error
 
 
 def prepare_import_data(export_data: dict) -> dict:
@@ -35,9 +62,11 @@ def prepare_import_data(export_data: dict) -> dict:
     first (see `_copy_borrowed_owned_surfaces`). The input is not modified.
 
     Raises:
-        ValidationError: A Surface, tool or AgentDefinition entry is malformed,
-            or AgentDefinition ids repeat.
+        ValidationError: The bundle is malformed (see `_shape_errors`), a
+            Surface, tool or AgentDefinition entry is invalid, or AgentDefinition
+            ids repeat.
     """
+    _raise_shape_errors(export_data)
     errors = [
         *_lookup_value_errors(export_data),
         *_surface_tool_errors(export_data),
@@ -46,6 +75,164 @@ def prepare_import_data(export_data: dict) -> dict:
     if errors:
         raise ValidationError({"detail": errors})
     return nest_owned_surface_entries(_copy_borrowed_owned_surfaces(export_data))
+
+
+# The shape the version conversions and the checks below rely on, by field name,
+# wherever the field appears in an entry (a top-level entry or a flow's node) or in
+# an object nested one level inside an entry. The conversions read no deeper, so
+# nothing deeper is checked: a file nesting these fields in themselves costs no more
+# to check than its size.
+# Objects and lists of objects nested in an entry: their own fields follow these rules too.
+_NESTED_OBJECT_FIELDS = ("python_code", "pre_python_code", "post_python_code")
+_NESTED_OBJECT_LIST_FIELDS = (
+    "python_code_tool_config_fields",
+    "prompt_configs",
+    "condition_groups",
+)
+# Objects whose keys are the user's own, so not walked into (args_schema has rules
+# of its own, see `_args_schema_errors`).
+_FREE_FORM_OBJECT_FIELDS = ("parameters", "connection", "args_schema", "headers", "extra_headers")
+_TEXT_FIELDS = ("node_name", "libraries")
+# Used as dictionary keys while converting, so an object or list there would fail.
+_REFERENCE_FIELDS = ("id", "model", "prompt_id", "prompt_key", "data_type")
+# A 400 lists this many shape errors at most; its body is stored on a TransferJob too.
+_MAX_SHAPE_ERRORS = 20
+
+
+def _raise_shape_errors(export_data: dict) -> None:
+    errors = _shape_errors(export_data)
+    if errors:
+        raise ValidationError({"detail": errors})
+
+
+def _shape_errors(export_data: dict) -> list[str]:
+    """List where the file breaks the shape an export writes.
+
+    Every entity-type key and every flow's `nodes` must hold a list of objects,
+    and the fields of each entry, and of the objects nested in it, must have the
+    shape the module-level field rules name (null allowed for all but the lists).
+    Other fields are left to the import serializers. Past `_MAX_SHAPE_ERRORS`, the
+    rest are counted in one closing line.
+    """
+    errors = []
+    entries: list[tuple[str, dict]] = []
+    for entity_type in EntityType:
+        if entity_type not in export_data:
+            continue
+        for label, entry in _object_list_items(entity_type, export_data[entity_type], errors):
+            label = _entry_label(label, entry)
+            entries.append((label, entry))
+            # Only a flow holds nodes; no export nests them anywhere else.
+            if entity_type == EntityType.GRAPH and "nodes" in entry:
+                entries.extend(
+                    (_entry_label(node_label, node), node)
+                    for node_label, node in _object_list_items(
+                        f"{label} nodes", entry["nodes"], errors
+                    )
+                )
+
+    for label, entry in entries:
+        errors.extend(_field_errors(label, entry))
+        for field_name in _NESTED_OBJECT_LIST_FIELDS:
+            if field_name in entry:
+                for item_label, item in _object_list_items(
+                    f"{label} {field_name}", entry[field_name], errors
+                ):
+                    errors.extend(_field_errors(_entry_label(item_label, item), item))
+        for field_name in _NESTED_OBJECT_FIELDS:
+            value = entry.get(field_name)
+            if isinstance(value, dict):
+                errors.extend(_field_errors(f"{label} {field_name}", value))
+
+    if len(errors) > _MAX_SHAPE_ERRORS:
+        hidden_count = len(errors) - _MAX_SHAPE_ERRORS
+        return [*errors[:_MAX_SHAPE_ERRORS], f"...and {hidden_count} more."]
+    return errors
+
+
+def _entry_label(label: str, entry: dict) -> str:
+    return f"{label} {entry['id']}" if _is_int(entry.get("id")) else label
+
+
+def _field_errors(label: str, entry: dict) -> list[str]:
+    """List the fields of one object that break the module-level field rules."""
+    errors = []
+    for field_name in (*_NESTED_OBJECT_FIELDS, *_FREE_FORM_OBJECT_FIELDS):
+        value = entry.get(field_name)
+        if value is not None and not isinstance(value, dict):
+            errors.append(f"{label}: {field_name} must be an object or null.")
+    if isinstance(entry.get("args_schema"), dict):
+        errors.extend(_args_schema_errors(label, entry["args_schema"]))
+    for field_name in _TEXT_FIELDS:
+        value = entry.get(field_name)
+        if value is not None and not isinstance(value, str):
+            errors.append(f"{label}: {field_name} must be a string or null.")
+    for field_name in _REFERENCE_FIELDS:
+        if isinstance(entry.get(field_name), (dict, list)):
+            errors.append(f"{label}: {field_name} must not be an object or a list.")
+    return errors
+
+
+def _args_schema_errors(label: str, args_schema: dict) -> list[str]:
+    """List where a version 1 tool's args_schema breaks what its conversion reads.
+
+    The v1 to v2 conversion (`args_schema_to_variables`) reads the top level's
+    `required` and `properties`, each property's `input_type`, and in every
+    property schema its `type`, the `properties` of an object type and the `items`
+    of an array type. Which input_type values exist is that conversion's own
+    check.
+    """
+    prefix = f"{label}: args_schema"
+    errors = []
+    required = args_schema.get("required", [])
+    if not isinstance(required, list) or not all(isinstance(name, str) for name in required):
+        errors.append(f"{prefix} required must be a list of strings.")
+    # Property schemas still to check; a stack, so deep nesting cannot exhaust
+    # the interpreter's recursion limit.
+    pending = _property_schemas(prefix, args_schema, errors)
+    for property_schema in pending:
+        input_type = property_schema.get("input_type")
+        if input_type is not None and not isinstance(input_type, str):
+            errors.append(f"{prefix} property input_type must be a string.")
+    while pending:
+        property_schema = pending.pop()
+        json_type = property_schema.get("type")
+        if isinstance(json_type, list):
+            if not all(isinstance(type_name, str) for type_name in json_type):
+                errors.append(f"{prefix} property type must be a string or a list of strings.")
+                continue
+            json_type = next((type_name for type_name in json_type if type_name != "null"), None)
+        elif json_type is not None and not isinstance(json_type, str):
+            errors.append(f"{prefix} property type must be a string or a list of strings.")
+            continue
+        if json_type == "object":
+            pending.extend(_property_schemas(prefix, property_schema, errors))
+        elif json_type == "array":
+            items = property_schema.get("items", {})
+            if isinstance(items, dict):
+                pending.append(items)
+            else:
+                errors.append(f"{prefix} property items must be an object.")
+    return errors
+
+
+def _property_schemas(prefix: str, schema: dict, errors: list[str]) -> list[dict]:
+    """Return the property schemas of `schema`, adding an error when they are malformed."""
+    properties = schema.get("properties", {})
+    if not isinstance(properties, dict) or not all(
+        isinstance(property_schema, dict) for property_schema in properties.values()
+    ):
+        errors.append(f"{prefix} properties must be an object of objects.")
+        return []
+    return list(properties.values())
+
+
+def _object_list_items(label: str, value, errors: list[str]) -> list[tuple[str, dict]]:
+    """Return the labelled objects of `value`, adding an error when it is not a list of objects."""
+    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+        errors.append(f"{label} must be a list of objects.")
+        return []
+    return [(label, item) for item in value]
 
 
 def _surface_tool_errors(export_data: dict) -> list[str]:
@@ -62,8 +249,6 @@ def _surface_tool_errors(export_data: dict) -> list[str]:
     }
     errors = []
     for entry in export_data.get(EntityType.SURFACE, []):
-        if not isinstance(entry, dict):
-            continue
         entry_id = entry.get("id")
         tools = entry.get("tools", {})
         if not isinstance(tools, dict):
@@ -104,7 +289,7 @@ def _agent_surface_errors(export_data: dict) -> list[str]:
     """
     errors = []
     for entry in export_data.get(EntityType.AGENT_DEFINITION, []):
-        agent_id = entry.get("id") if isinstance(entry, dict) else None
+        agent_id = entry.get("id")
         if not _is_int(agent_id):
             continue
         label = f"AgentDefinition {agent_id}"
@@ -247,27 +432,15 @@ _SURFACE_LISTING_NODE_TYPES = (EntityType.AGENT_NODE, EntityType.TASK_NODE)
 def _surface_listing_node_entries(export_data: dict) -> list[dict]:
     """Return the bundle's AgentNode and TaskNode entries that list surfaces.
 
-    Full exports nest nodes in each Flow entry, tagged by `node_type`; partial
-    bundles list them top-level by entity type. Node entries are not validated
-    before import, so malformed ones are skipped here and left to the node
-    strategies.
+    Expects the bundle's shape to be checked (see `_shape_errors`). A
+    `surface_list` is not part of that check, so a node whose list is malformed is
+    skipped here and left to the node strategies.
     """
-    node_entries = [
-        node_entry
-        for flow_entry in export_data.get(EntityType.GRAPH, [])
-        if isinstance(flow_entry, dict) and isinstance(flow_entry.get("nodes"), list)
-        for node_entry in flow_entry["nodes"]
-        if isinstance(node_entry, dict)
-        and node_entry.get("node_type") in _SURFACE_LISTING_NODE_TYPES
-    ]
-    for node_type in _SURFACE_LISTING_NODE_TYPES:
-        top_level_entries = export_data.get(node_type, [])
-        if isinstance(top_level_entries, list):
-            node_entries.extend(top_level_entries)
     return [
         node_entry
-        for node_entry in node_entries
-        if isinstance(node_entry, dict) and isinstance(node_entry.get("surface_list"), list)
+        for node_type, node_entry in exported_nodes(export_data)
+        if node_type in _SURFACE_LISTING_NODE_TYPES
+        and isinstance(node_entry.get("surface_list"), list)
     ]
 
 
@@ -294,7 +467,7 @@ _LOOKUP_FIELDS = {
 
 
 def _lookup_value_errors(export_data: dict) -> list[str]:
-    """List malformed entries: not an object, no integer id, or a rejected value.
+    """List malformed entries: no integer id, or a rejected value.
 
     A rejected value is one the entity's import serializer refuses for a field
     the reuse lookup compares.
@@ -302,9 +475,6 @@ def _lookup_value_errors(export_data: dict) -> list[str]:
     errors = []
     for entity_type, (serializer_class, field_names) in _LOOKUP_FIELDS.items():
         for entry in export_data.get(entity_type, []):
-            if not isinstance(entry, dict):
-                errors.append(f"{entity_type} entry is not an object.")
-                continue
             label = f"{entity_type} {entry.get('id')}"
             if not _is_int(entry.get("id")):
                 errors.append(f"{label}: id must be an integer.")

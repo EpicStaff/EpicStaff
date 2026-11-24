@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from django.db import transaction
 from loguru import logger
 from rbac.models import Organization
 from tables.models import Secret
@@ -28,15 +29,19 @@ class OrgCredentialStore:
     def save(self, *, org: Organization, access_key: str, secret_key: str) -> Secret:
         """(Re)provision this org's stored credential. A prior row is deleted first:
         `Secret` enforces one row per (org, name), and reactivation always mints a
-        brand new storage user rather than resurrecting the deprovisioned one."""
-        Secret.all_objects.filter(org=org, name=SECRET_NAME_ORG_STORAGE_USER, system=True).delete()
+        brand new storage user rather than resurrecting the deprovisioned one.
+        Atomic, so a concurrent run never finds the org without a credential."""
         text = f"{access_key}{_CREDENTIAL_SEPARATOR}{secret_key}"
-        return secret_service.create(
-            text=text,
-            system=True,
-            org=org,
-            name=SECRET_NAME_ORG_STORAGE_USER,
-        )
+        with transaction.atomic():
+            Secret.all_objects.filter(
+                org=org, name=SECRET_NAME_ORG_STORAGE_USER, system=True
+            ).delete()
+            return secret_service.create(
+                text=text,
+                system=True,
+                org=org,
+                name=SECRET_NAME_ORG_STORAGE_USER,
+            )
 
     def get(self, *, org_id: int) -> OrgStorageCredentials:
         secret = Secret.all_objects.filter(

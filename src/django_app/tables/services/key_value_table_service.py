@@ -193,7 +193,8 @@ class KeyValueTableService:
 
         Raises:
             KeyValueModeDeniedError (403): the user's role lacks one of MODE_PERMISSIONS[mode].
-            OrgMembershipRequiredError (403): the user is not a member of the table's org.
+            OrgMembershipRequiredError (403): the user is not a member of the table's org;
+                `OrgDeactivatedError` (403) when they are a member and that org is inactive.
         """
         # Resolved once for all the mode's permissions; the resolver applies the superadmin
         # bypass and raises OrgMembershipRequiredError, as assert_org_permission would.

@@ -393,7 +393,6 @@ class TestBorrowedOwnedSurfaces:
             {"node_type": "AgentNode", "id": 106, "agent_definition": 77, "surface_list": [2]},
             {"node_type": "TaskNode", "id": 106, "agent_definition": 9, "surface_list": "2"},
             {"node_type": "TaskNode", "id": 106, "agent_definition": 9, "surface_list": [[2]]},
-            "not an object",
         ],
     )
     def test_node_without_a_borrowing_agent_is_left_alone(self, node):
@@ -405,6 +404,13 @@ class TestBorrowedOwnedSurfaces:
 
         assert prepared[EntityType.GRAPH][0]["nodes"] == [node]
         assert _owned_entry_summary(_agent_entry(prepared, 9)) == []
+
+    def test_node_that_is_not_an_object_is_rejected(self):
+        bundle = _borrowing_bundle()
+        bundle[EntityType.GRAPH][0]["nodes"] = ["not an object"]
+
+        with pytest.raises(ValidationError, match="nodes must be a list of objects"):
+            prepare_import_data(bundle)
 
 
 class TestToolEntries:
