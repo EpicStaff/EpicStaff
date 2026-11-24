@@ -16,6 +16,7 @@ if not RUN_IN_DOCKER:
 
 from .audit import *
 from .base import *
+from .build_info import *
 from .caches import *
 from .communication import *
 from .cors import *
