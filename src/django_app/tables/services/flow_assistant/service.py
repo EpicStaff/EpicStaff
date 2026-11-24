@@ -22,6 +22,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db import close_old_connections, transaction
 from django.db.models import Max
 from django.utils import timezone
+from rbac.access.org_context import OrgContextService
 from tables.exceptions import (
     ConfigNeedsReviewError,
     LLMConfigInvalidError,
@@ -217,17 +218,22 @@ class FlowAssistantService:
         )
         return default_models.agent_llm_config if default_models else None
 
-    def start_conversation(
-        self, flow_assistant: FlowAssistant, organization_user
-    ) -> FlowAssistantConversation:
-        """Create a new conversation, seeding the system prompt as the first message."""
+    def start_conversation(self, flow_assistant: FlowAssistant, user) -> FlowAssistantConversation:
+        """Create a new conversation of `user`, seeding the system prompt as the first message.
+
+        Holds `user`'s membership in the flow's org `FOR UPDATE` while inserting, so a
+        concurrent membership removal either waits and deletes this conversation with the
+        others, or commits first and this call is refused.
+
+        Raises:
+            OrgMembershipRequiredError: `user` is no longer a member of the flow's org
+                (superadmins excepted), or the org is inactive.
+        """
         system_prompt = self.build_system_prompt(flow_assistant)
-        # Count prior conversations by a *different* user (not a different
-        # org membership of the same user) — the relevant security signal is
-        # whether data from a different human user is present.
+        # The relevant security signal is whether data from a different human user is present.
         other_user_count = (
             FlowAssistantConversation.objects.filter(flow_assistant=flow_assistant)
-            .exclude(organization_user__user_id=organization_user.user_id)
+            .exclude(user_id=user.pk)
             .count()
         )
         if other_user_count > 0:
@@ -235,19 +241,23 @@ class FlowAssistantService:
                 "FlowAssistant {} (graph {}): user {} starting new conversation; {} prior conversation(s) by other users.",
                 flow_assistant.pk,
                 flow_assistant.graph_id,
-                organization_user.user_id,
+                user.pk,
                 other_user_count,
             )
-        conversation = FlowAssistantConversation.objects.create(
-            flow_assistant=flow_assistant,
-            organization_user=organization_user,
-        )
-        FlowAssistantMessage.objects.create(
-            conversation=conversation,
-            message_index=0,
-            role="system",
-            content=system_prompt,
-        )
+        with transaction.atomic():
+            OrgContextService().assert_membership(
+                user=user, org_id=flow_assistant.graph.org_id, lock=True
+            )
+            conversation = FlowAssistantConversation.objects.create(
+                flow_assistant=flow_assistant,
+                user=user,
+            )
+            FlowAssistantMessage.objects.create(
+                conversation=conversation,
+                message_index=0,
+                role="system",
+                content=system_prompt,
+            )
         logger.info(
             "Started FlowAssistantConversation {} for graph {}",
             conversation.pk,

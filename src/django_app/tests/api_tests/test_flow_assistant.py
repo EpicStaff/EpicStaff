@@ -18,6 +18,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from rbac.exceptions import OrgMembershipRequiredError
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from tables.models import Graph
@@ -121,18 +122,12 @@ def org_user_b(user_b, org_a, default_role):
 
 
 @pytest.fixture
-def superadmin_org_user(superadmin_user, org_a, default_role):
-    return OrganizationUser.objects.create(
-        user=superadmin_user, org=org_a, role=default_role
-    )
-
-
-@pytest.fixture
 def auth_client_a(user_a, org_user_a):
-    """Client for user_a in org_a (single org → no header needed)."""
+    """Client for user_a acting in org_a."""
     client = APIClient()
     refresh = RefreshToken.for_user(user_a)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
+    client.defaults["HTTP_X_ORGANIZATION_ID"] = str(org_user_a.org_id)
     return client
 
 
@@ -151,11 +146,12 @@ def auth_client_b(user_b, org_user_b):
     client = APIClient()
     refresh = RefreshToken.for_user(user_b)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
+    client.defaults["HTTP_X_ORGANIZATION_ID"] = str(org_user_b.org_id)
     return client
 
 
 @pytest.fixture
-def auth_client_superadmin(superadmin_user, superadmin_org_user):
+def auth_client_superadmin(superadmin_user):
     client = APIClient()
     refresh = RefreshToken.for_user(superadmin_user)
     client.credentials(HTTP_AUTHORIZATION=f"Bearer {str(refresh.access_token)}")
@@ -173,10 +169,10 @@ def flow_assistant(graph, llm_config):
 
 
 @pytest.fixture
-def conversation_a(flow_assistant, org_user_a):
+def conversation_a(flow_assistant, user_a, org_user_a):
     return _make_conversation_with_messages(
         flow_assistant,
-        org_user_a,
+        user_a,
         [{"role": "system", "content": "You are the test flow."}],
     )
 
@@ -191,16 +187,14 @@ def _make_async_stream(*events):
     return _gen
 
 
-def _make_conversation_with_messages(
-    flow_assistant, organization_user, messages, **extra
-):
+def _make_conversation_with_messages(flow_assistant, user, messages, **extra):
     """Create a conversation and bulk-create its message rows from a list of dicts.
 
     Drop-in replacement for FlowAssistantConversation.objects.create(..., messages=[...]).
     """
     conv = FlowAssistantConversation.objects.create(
         flow_assistant=flow_assistant,
-        organization_user=organization_user,
+        user=user,
         **extra,
     )
     rows = []
@@ -243,9 +237,29 @@ def test_start_conversation_provisions_flow_assistant(
     conversation = FlowAssistantConversation.objects.get(
         pk=response.data["conversation_id"]
     )
-    assert conversation.organization_user == org_user_a
+    assert conversation.user == user_a
     # System prompt should be seeded as the first message
     assert conversation.messages[0]["role"] == "system"
+
+
+@pytest.mark.django_db
+def test_a_user_whose_membership_is_gone_cannot_start_a_conversation(
+    flow_assistant, user_a, org_user_a
+):
+    # The request's org check ran before the membership was removed; the insert re-checks it.
+    org_user_a.delete()
+
+    with pytest.raises(OrgMembershipRequiredError):
+        FlowAssistantService().start_conversation(flow_assistant, user_a)
+
+    assert not FlowAssistantConversation.objects.filter(user=user_a).exists()
+
+
+@pytest.mark.django_db
+def test_a_superadmin_without_membership_starts_a_conversation(flow_assistant, superadmin_user):
+    conversation = FlowAssistantService().start_conversation(flow_assistant, superadmin_user)
+
+    assert conversation.user == superadmin_user
 
 
 @pytest.mark.django_db
@@ -304,7 +318,7 @@ def test_permission_unauthenticated(graph, anon_client):
 
 
 @pytest.mark.django_db
-def test_conversation_belongs_to_org_user(conversation_a, auth_client_b, graph):
+def test_conversation_belongs_to_its_user(conversation_a, auth_client_b, graph):
     """User B's client cannot access User A's conversation."""
     url = reverse(
         "flow-assistant-conversation",
@@ -496,6 +510,41 @@ def test_audit_endpoint_excludes_deleted_by_default(
     assert conversation_a.pk not in ids
 
 
+@pytest.mark.django_db
+def test_audit_row_names_the_owner_and_the_flows_org(
+    conversation_a, user_a, org_a, auth_client_superadmin
+):
+    response = auth_client_superadmin.get(reverse("flow-assistant-audit-conversations"))
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    row = next(row for row in response.data["results"] if row["id"] == conversation_a.pk)
+    assert row["user"] == {
+        "user_id": user_a.id,
+        "user_email": "user_a@test.com",
+        "organization_id": org_a.id,
+        "organization_name": "Org A",
+    }
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("filter_by", ["user_id", "organization_id"])
+def test_audit_filters_by_owner_and_by_flow_org(
+    filter_by, conversation_a, user_a, org_a, user_b, org_b, auth_client_superadmin
+):
+    other_assistant = FlowAssistant.objects.create(
+        graph=Graph.objects.create(name="Org B Flow", org=org_b)
+    )
+    _make_conversation_with_messages(other_assistant, user_b, [])
+    value = {"user_id": user_a.id, "organization_id": org_a.id}[filter_by]
+
+    response = auth_client_superadmin.get(
+        reverse("flow-assistant-audit-conversations"), {filter_by: value}
+    )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert [row["id"] for row in response.data["results"]] == [conversation_a.pk]
+
+
 # ── Title auto-derivation tests ───────────────────────────────────────────────
 
 
@@ -613,7 +662,7 @@ async def test_stream_reply_resolves_real_secret_for_real_litellm_client(
     user_message = "what does this flow do?"
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -728,7 +777,7 @@ async def test_stream_yields_tokens_and_done(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -788,7 +837,7 @@ async def test_stream_holds_no_database_connection_while_the_llm_replies(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -850,7 +899,7 @@ async def test_stream_error_frame_is_sent_without_a_database_connection(
     if case != "no_user_message":
         messages.append({"role": "user", "content": "what does this flow do?"})
     conversation = await sync_to_async(_make_conversation_with_messages)(
-        assistant, org_user, messages
+        assistant, org_user.user, messages
     )
     view = FlowAssistantStreamView()
     view.user = user_a
@@ -891,7 +940,7 @@ async def test_tool_call_roundtrip(graph, llm_config, user_a, org_a, default_rol
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -991,7 +1040,7 @@ async def test_stream_reply_plain_text_emits_structured_event(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -1075,7 +1124,7 @@ async def test_structured_output_event_emitted(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -1187,7 +1236,7 @@ async def test_action_message_persisted(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -1260,7 +1309,7 @@ async def test_stream_reply_second_turn_does_not_send_action_message_to_llm(
     # system + user1 + assistant-with-action_message + user2.
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "You are the FA."},
             {"role": "user", "content": user_message_1},
@@ -1358,7 +1407,7 @@ async def test_tool_results_from_earlier_turns_reach_the_llm_as_stubs(
         {"role": "assistant", "content": '{"message": "Found 5 nodes."}'},
         {"role": "user", "content": "tell me about node 1"},
     ]
-    conversation = await sync_to_async(_make_conversation_with_messages)(assistant, org_user, history)
+    conversation = await sync_to_async(_make_conversation_with_messages)(assistant, org_user.user, history)
     sent: list[list[dict]] = []
 
     async def fake_stream(messages, tools):
@@ -2632,7 +2681,7 @@ def test_cancel_endpoint_org_scoped(
         },
     )
     # auth_client_b belongs to org_a but is a different user; conversation_a
-    # is owned by org_user_a, so org_user_b's resolution will return no match.
+    # is owned by user_a, so user_b's lookup finds no match.
     response = auth_client_b.post(url)
     assert response.status_code == 404, response.content
 
@@ -2663,7 +2712,7 @@ async def test_stream_reply_bails_on_cancel_flag(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -2746,7 +2795,7 @@ async def test_stream_reply_disconnect_persists_partial(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -2812,7 +2861,7 @@ async def test_reasoning_empty_and_no_tool_injects_hint(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -2883,7 +2932,7 @@ async def test_reasoning_with_content_does_not_inject_hint(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -2943,7 +2992,7 @@ async def test_reasoning_with_tool_call_does_not_inject_hint(
     )
     conversation = await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
@@ -3104,7 +3153,7 @@ async def _create_conversation_for_stream(graph, llm_config, user_a, org_a, defa
     )
     return await sync_to_async(_make_conversation_with_messages)(
         assistant,
-        org_user,
+        org_user.user,
         [
             {"role": "system", "content": "sys"},
             {"role": "user", "content": user_message},
