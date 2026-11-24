@@ -1,0 +1,62 @@
+:host {
+    display: block;
+    min-width: 0;
+    text-align: left;
+}
+
+:host(.version-label-host--compact) {
+    text-align: center;
+}
+
+// Quieter than the nav rows above it: secondary text, the rows' hover colours and transition.
+.version-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2xs);
+    max-width: 100%;
+    padding: var(--space-3xs) var(--space-2xs);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background-color: transparent;
+    color: var(--color-text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        background-color 0.2s ease-out,
+        color 0.2s ease-out;
+
+    &:is(:hover, :focus-visible) {
+        background-color: var(--color-ghost-btn-hover);
+        color: var(--color-text-primary);
+    }
+
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+
+    // The short form in the open sidebar's text style. Its 2px side padding leaves 56px of the 60px rail for the
+    // text, and a 7-char sha takes at most about 55px (`4444444`; 45-48px usually). A longer version is cut, and the
+    // tooltip has it in full.
+    &--compact {
+        display: inline-block;
+        padding-inline: var(--space-3xs);
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    &__product,
+    &__build {
+        flex-shrink: 0;
+    }
+
+    // The only part that gives way: squeezed, it is dropped whole (`--without-branch`), never shown cut.
+    &__branch {
+        min-width: 0;
+        overflow: hidden;
+    }
+
+    &--without-branch &__branch {
+        display: none;
+    }
+}

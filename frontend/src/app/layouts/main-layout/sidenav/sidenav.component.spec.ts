@@ -14,6 +14,8 @@ import type { Mock } from 'vitest';
 import { GuidedTourService, tourAnchorSelector, type TourDefinition } from '../../../core/guided-tour';
 import { TransferJobStatus } from '../../../core/models/transfer-job.model';
 import { AppNavigationDrawerService } from '../../../core/services/app-navigation-drawer.service';
+import { AboutDialogComponent } from '../../../features/about/components/about-dialog/about-dialog.component';
+import { SystemInfo } from '../../../features/about/models/system-info.model';
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../features/create-agent-tour/create-agent-tour-anchors';
 import { AvailablePlugin } from '../../../features/plugins/models/available-plugin.model';
@@ -878,7 +880,7 @@ describe('LeftSidebarComponent', () => {
             expect(tooltipTexts()).not.toContain('Help');
         });
 
-        it('opens a popover headed "Guides" that lists the tours, focused on the first one', async () => {
+        it('opens the Help popover, headed "Guides", that lists the tours, focused on the first one', async () => {
             render(EXPANDED_WIDTH);
             const row = listRow('Help')!;
             expect(row.getAttribute('aria-expanded')).toBe('false');
@@ -888,7 +890,7 @@ describe('LeftSidebarComponent', () => {
 
             expect(row.getAttribute('aria-expanded')).toBe('true');
             expect(popover()!.getAttribute('role')).toBe('dialog');
-            expect(popover()!.getAttribute('aria-label')).toBe('Guides');
+            expect(popover()!.getAttribute('aria-label')).toBe('Help');
             expect(popover()!.querySelector('.help-menu__heading')!.textContent!.trim()).toBe('Guides');
             expect(guideLabels(popover()!)).toEqual(['Quick Start Tour', 'Create Your First Agent']);
             expect(document.activeElement).toBe(guides(popover()!)[0]);
@@ -1015,7 +1017,7 @@ describe('LeftSidebarComponent', () => {
         });
 
         it.each([
-            { from: 'Apps', to: 'Help', popoverLabel: 'Guides' },
+            { from: 'Apps', to: 'Help', popoverLabel: 'Help' },
             { from: 'Help', to: 'Apps', popoverLabel: 'Apps' },
         ])('opens $to straight from the open $from popover, closing that one', async ({ from, to, popoverLabel }) => {
             render(EXPANDED_WIDTH);
@@ -1044,6 +1046,78 @@ describe('LeftSidebarComponent', () => {
             tours.set([CREATE_AGENT_TOUR]);
             fixture.detectChanges();
             expect(listRow('Help')!.getAttribute('aria-expanded')).toBe('false');
+            expect(popover()).toBeNull();
+        });
+    });
+
+    describe('Version label', () => {
+        const SYSTEM_INFO: SystemInfo = {
+            version: 'v1.6.0',
+            git_ref: 'main',
+            git_sha: '3f9c2a1e8b7d4c5a6e9f0123456789abcdef0123',
+            commit_date: '2026-11-24T08:00:00Z',
+            import_version: 6,
+            features: { chats: true, plugins: false, session_audit: true, user_audit: false },
+        };
+
+        function versionButton(): HTMLButtonElement | null {
+            return element.querySelector<HTMLButtonElement>('.sidenav-version button');
+        }
+
+        /** The backend answers the build request the sidebar made when it was created. */
+        function answerSystemInfo(body: SystemInfo | null): void {
+            const request = TestBed.inject(HttpTestingController).expectOne('/api/system-info/');
+            if (body) {
+                request.flush(body);
+            } else {
+                request.flush('boom', { status: 500, statusText: 'Server Error' });
+            }
+            fixture.detectChanges();
+        }
+
+        it('shows the product and the version under the account row when expanded', () => {
+            render(EXPANDED_WIDTH);
+            answerSystemInfo(SYSTEM_INFO);
+
+            const parts = Array.from(versionButton()!.querySelectorAll('span')).map((part) => part.textContent!.trim());
+            expect(parts).toEqual(['EpicStaff', 'v1.6.0']);
+            expect(versionButton()!.closest('li')!.previousElementSibling).toBe(accountRow().closest('li'));
+        });
+
+        it.each<[string, Partial<SystemInfo>, string]>([
+            ['the version of a release', {}, 'v1.6.0'],
+            ['the short commit of a branch build', { version: null, git_ref: 'feat/a-long-branch-name' }, '3f9c2a1'],
+            ['local for a build with no commit', { version: null, git_ref: null, git_sha: null }, 'local'],
+        ])('shows %s when collapsed', (_name, overrides, expected) => {
+            render(COLLAPSED_WIDTH);
+            answerSystemInfo({ ...SYSTEM_INFO, ...overrides });
+
+            expect(versionButton()!.textContent!.trim()).toBe(expected);
+        });
+
+        it('leaves no version row while the build is loading or when it cannot be loaded', () => {
+            render(EXPANDED_WIDTH);
+            expect(element.querySelector('li.sidenav-version')).toBeNull();
+
+            answerSystemInfo(null);
+
+            expect(element.querySelector('li.sidenav-version')).toBeNull();
+            expect(accountRow().closest('li')!.nextElementSibling).toBeNull();
+        });
+
+        it('closes the Help popover when the About dialog opens from its About row', async () => {
+            tours.set([QUICK_START_TOUR]);
+            const openDialog = vi.spyOn(TestBed.inject(Dialog), 'open').mockReturnValue(undefined as never);
+            render(COLLAPSED_WIDTH);
+            answerSystemInfo(SYSTEM_INFO);
+            await open(listRow('Help')!);
+            expect(popover()).not.toBeNull();
+
+            popover()!.querySelector<HTMLButtonElement>('button.help-menu__about')!.click();
+            fixture.detectChanges();
+            await fixture.whenStable();
+
+            expect(openDialog).toHaveBeenCalledWith(AboutDialogComponent, expect.anything());
             expect(popover()).toBeNull();
         });
     });

@@ -496,12 +496,13 @@
                         #popoverTrap
                         class="sidenav-popover"
                         role="dialog"
-                        aria-label="Guides"
+                        aria-label="Help"
                         cdkTrapFocus
                     >
                         <app-help-menu
                             variant="popover"
                             (tourChosen)="onTourChosen($event, helpRow)"
+                            (aboutOpened)="closeLists()"
                         />
                     </div>
                 </ng-template>
@@ -514,6 +515,7 @@
                     <app-help-menu
                         variant="inline"
                         (tourChosen)="onTourChosen($event, helpRow)"
+                        (aboutOpened)="closeLists()"
                     />
                 </li>
             }
@@ -586,6 +588,12 @@
                         [(isUserMenuOpen)]="isUserMenuOpen"
                     />
                 }
+            </li>
+        }
+
+        @if (systemInfo()) {
+            <li class="sidenav-version">
+                <app-version-label [compact]="!isExpanded()" />
             </li>
         }
     </ul>

@@ -24,3 +24,22 @@
         </li>
     }
 </ul>
+
+@if (shortBuild(); as shortBuild) {
+    <!-- Not a guide: under its own line, drawn like the guides but quieter. -->
+    <div class="help-menu__footer">
+        <button
+            type="button"
+            class="help-menu__about"
+            (click)="openAbout()"
+        >
+            <!-- Optical size: info-circle's stroked circle spans 20 of 24 units, so 1.2rem draws it 16px like the guides' icons. -->
+            <app-svg-icon
+                icon="info-circle"
+                size="1.2rem"
+            />
+            <span class="text-body-medium">About EpicStaff</span>
+            <span class="help-menu__about-build text-body-small">{{ shortBuild }}</span>
+        </button>
+    </div>
+}
