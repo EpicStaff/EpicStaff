@@ -662,7 +662,8 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         ]
             .filter(Boolean)
             .join(' and ');
-        const outcome = members ? `Its ${members} stay, just without a group.` : 'The group is empty.';
+        const verb = agentCount + surfaceCount === 1 ? 'stays' : 'stay';
+        const outcome = members ? `Its ${members} ${verb}, just without a group.` : 'The group is empty.';
         this.confirmationDialog
             .confirm(
                 {
