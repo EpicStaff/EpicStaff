@@ -52,7 +52,7 @@ describe('SettingsPageComponent tabs', () => {
     it('hides it from a role without Read on Audit', () => {
         render({ [ResourceCode.LlmConfigs]: [ActionCode.Read] }, true);
 
-        expect(tabLabels()).toEqual(['Default LLMs', 'LLM Library']);
+        expect(tabLabels()).toEqual(['AI Models']);
     });
 
     it('describes the page without naming what the role may not see', () => {

@@ -21,9 +21,12 @@ from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.venv import VenvImportSerializer
 from tables.import_export.strategies.base import EntityImportExportStrategy
+from tables.import_export.utils import ensure_unique_slug
 
 # Mirrors VenvStatus in the sandbox service; the gateway passes the value through.
 FAILED_STATUS = "failed"
+# Mirrors the length of the sandbox's venv name column.
+VENV_NAME_MAX_LENGTH = 255
 
 
 class VenvStrategy(EntityImportExportStrategy):
@@ -98,10 +101,19 @@ class VenvStrategy(EntityImportExportStrategy):
         serializer = self.serializer_class(data=data)
         serializer.is_valid(raise_exception=True)
         declared = serializer.validated_data
+        org_id = kwargs.get("org_id")
 
-        binding, _venv = VenvService().create(
-            {"name": declared["name"], "libs": [dict(lib) for lib in declared["libs"]]},
-            org_id=kwargs.get("org_id"),
+        service = VenvService()
+        name = declared["name"]
+        if org_id is not None:
+            # Same name, other libraries: `find_existing` passed it over, and the name
+            # must stay unique in the org, so the imported one is renamed.
+            name = ensure_unique_slug(
+                name, list(service.names_in_org(org_id)), VENV_NAME_MAX_LENGTH
+            )
+        binding, _venv = service.create(
+            {"name": name, "libs": [dict(lib) for lib in declared["libs"]]},
+            org_id=org_id,
             created_by=resolve_author(kwargs.get("user")),
             created_venv_ids=kwargs.get("created_venv_ids"),
         )

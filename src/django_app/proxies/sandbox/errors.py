@@ -7,7 +7,7 @@ status the gateway renders it as.
 
 from utils.exceptions import CustomAPIExeption
 
-__all__ = ["UnknownCustomLibraryError", "VenvInUseError"]
+__all__ = ["UnknownCustomLibraryError", "VenvInUseError", "VenvNameTakenError"]
 
 
 class UnknownCustomLibraryError(CustomAPIExeption):
@@ -33,3 +33,15 @@ class VenvInUseError(CustomAPIExeption):
     status_code = 409
     default_detail = "This virtual environment is still in use."
     default_code = "venv_in_use"
+
+
+class VenvNameTakenError(CustomAPIExeption):
+    """Raised when the organization already has a virtual environment of that name.
+
+    Checked here rather than in the sandbox: the sandbox knows no organizations, and a
+    name is unique only within one of them.
+    """
+
+    status_code = 400
+    default_detail = "This organization already has a virtual environment with that name."
+    default_code = "venv_name_taken"

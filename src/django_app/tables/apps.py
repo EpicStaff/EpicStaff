@@ -62,8 +62,10 @@ class TablesConfig(AppConfig):
         )
         from tables.services.converter_service import ConverterService
         from tables.services.organization_deletion import TablesOrganizationDeletion
+        from tables.services.organization_run_admission import ActiveOrganizationRunCheck
         from tables.services.realtime_service import RealtimeService
         from tables.services.redis_service import RedisService
+        from tables.services.run_admission import register_run_admission_check
         from tables.services.run_python_code_service import RunPythonCodeService
         from tables.services.schedule_trigger_service import ScheduleTriggerService
         from tables.services.session_manager_service import SessionManagerService
@@ -72,21 +74,6 @@ class TablesConfig(AppConfig):
 
         if "runserver" in sys.argv:
             logger.info(f"{settings.DEBUG=}")
-
-        # Elect a single owner across web-server workers to run the daily
-        # litellm model-cost refresh when LITELLM_MODEL_COST_REFRESH_ENABLED is on;
-        # skip during migrate/makemigrations/tests.
-        argv0 = sys.argv[0] if sys.argv else ""
-        is_web_server = (
-            "runserver" in sys.argv
-            or "gunicorn" in argv0
-            or "uvicorn" in argv0
-            or "daphne" in argv0
-        )
-        if is_web_server:
-            from tables.utils.litellm_model_info import start_litellm_refresh_if_owner
-
-            start_litellm_refresh_if_owner()
 
         redis_service = RedisService()
         converter_service = ConverterService()
@@ -108,6 +95,8 @@ class TablesConfig(AppConfig):
         ScheduleTriggerService(session_manager_service=session_manager_service)
 
         register_participant(TablesOrganizationDeletion())
+        # tables comes before plugins in INSTALLED_APPS, so this check runs before the plugin guard.
+        register_run_admission_check(ActiveOrganizationRunCheck())
         register_snapshot_scrubber(VersionSnapshotAuthorshipScrubber())
 
         # Register strategies for import/export entities

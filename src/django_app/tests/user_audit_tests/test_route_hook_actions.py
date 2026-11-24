@@ -26,22 +26,18 @@ from tables.models import (
     DocumentContent,
     DocumentMetadata,
     Graph,
-    GraphVersion,
     Session,
     SourceCollection,
     StorageFile,
     TransferJob,
 )
-from tables.models.default_models import DefaultModels
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
+from ai_models.models import DefaultModels, EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
 from tables.models.knowledge_models import (
     BaseRagType,
     GraphRag,
     NaiveRag,
     NaiveRagDocumentConfig,
 )
-from tables.models.llm_models import LLMConfig, LLMModel
-from tables.models.provider import Provider
 from tables.models.webhook_models import (
     NgrokWebhookConfig,
     ProviderType,
@@ -59,6 +55,7 @@ from tests.storage_backend_fake import FakeStorageBackend
 from tests.transfer_job_helpers import FinishedExport, export_via_job
 from tables.views.knowledge_views.naive_rag_views import NaiveRagViewSet
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
+from user_audit.context import user_action_context
 from user_audit.middleware import UserActionMiddleware
 
 pytestmark = pytest.mark.django_db
@@ -988,24 +985,6 @@ def test_collection_update_records_only_a_real_change(
     assert {event.target_type for event in sent_events} <= {"knowledge collection"}
 
 
-def test_fallback_types_a_view_that_defines_only_get_queryset(
-    admin_client, flow, sent_events, django_capture_on_commit_callbacks
-):
-    version = GraphVersion.objects.create(graph=flow, name="Before refactor", snapshot={})
-
-    response = _send(
-        admin_client,
-        "patch",
-        f"/api/graph-versions/{version.pk}/",
-        django_capture_on_commit_callbacks,
-        {"name": "After refactor"},
-    )
-
-    assert response.status_code == status.HTTP_200_OK, response.content
-    [event] = sent_events
-    assert (event.target_type, event.target_id) == ("flow version", str(version.pk))
-
-
 def test_fallback_names_a_document_config_after_its_document(
     admin_client, collection, sent_events, django_capture_on_commit_callbacks
 ):
@@ -1070,6 +1049,103 @@ def test_fallback_never_names_a_rag_of_another_org(
 
     with django_capture_on_commit_callbacks(execute=True):
         UserActionMiddleware(get_response)(request)
+
+    [event] = sent_events
+    assert (_target(event), _parent(event)) == (
+        ("deleted", "naive RAG", str(beta_rag.pk), None),
+        (None, None, None),
+    )
+
+
+def _graph_rag(collection) -> GraphRag:
+    return GraphRagService.create_or_update_graph_rag(
+        collection.collection_id, _embedder(collection.org).id, _llm_config(collection.org).id
+    )
+
+
+@pytest.mark.parametrize(
+    "make_rag, route, target_type",
+    [(_naive_rag, "naive-rag", "naive RAG"), (_graph_rag, "graph-rag", "graph RAG")],
+    ids=["naive", "graph"],
+)
+def test_a_deleted_rag_is_named_under_its_collection_though_its_base_type_went_with_it(
+    make_rag, route, target_type, token_client, collection, sent_events,
+    django_capture_on_commit_callbacks,
+):
+    rag = make_rag(collection)
+
+    with patch(
+        "tables.services.knowledge_services.graph_rag_service.KnowledgeClient", MagicMock()
+    ):
+        response = _send(
+            token_client, "delete", f"/api/{route}/{rag.pk}/", django_capture_on_commit_callbacks
+        )
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert not BaseRagType.objects.filter(source_collection=collection).exists()
+    [event] = sent_events
+    assert _target(event) == ("deleted", target_type, str(rag.pk), "Manuals")
+    assert _parent(event) == ("knowledge collection", str(collection.pk), "Manuals")
+
+
+def test_a_rag_delete_of_another_org_is_404_and_records_nothing(
+    token_client, beta, sent_events, django_capture_on_commit_callbacks
+):
+    beta_rag = _naive_rag(SourceCollection.objects.create(collection_name="Beta secrets", org=beta))
+
+    response = _send(
+        token_client, "delete", f"/api/naive-rag/{beta_rag.pk}/", django_capture_on_commit_callbacks
+    )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert NaiveRag.objects.filter(pk=beta_rag.pk).exists()
+    assert sent_events == []
+
+
+def test_a_rag_delete_reads_the_rag_and_its_collection_in_one_query_before_the_view(
+    admin_acme, acme, collection, sent_events
+):
+    rag = _naive_rag(collection)
+    view = NaiveRagViewSet.as_view({"delete": "destroy"})
+    match = ResolverMatch(view, (), {"pk": str(rag.pk)}, route="api/^naive-rag/(?P<pk>[^/.]+)/$")
+    request = RequestFactory().delete(f"/api/naive-rag/{rag.pk}/", HTTP_AUTHORIZATION="Bearer x")
+    request.resolver_match = match
+    middleware = UserActionMiddleware(lambda _request: HttpResponse())
+
+    with user_action_context(request) as context, CaptureQueriesContext(connection) as queries:
+        middleware.process_view(request, view, (), match.kwargs)
+
+    assert len(queries.captured_queries) == 1
+    before = context.row_before_delete
+    assert before.description.name == "Manuals"
+    assert before.parent.pk == collection.pk
+
+
+def test_a_deleted_rag_another_org_owned_is_never_named_nor_its_collection(
+    admin_acme, acme, beta, sent_events, django_capture_on_commit_callbacks
+):
+    # A view that deleted another org's RAG and still answered 2xx: the RAG and collection
+    # read before the delete are beta's, so the record must name neither.
+    beta_rag = _naive_rag(SourceCollection.objects.create(collection_name="Beta secrets", org=beta))
+    view = NaiveRagViewSet.as_view({"delete": "destroy"})
+    match = ResolverMatch(
+        view, (), {"pk": str(beta_rag.pk)}, route="api/^naive-rag/(?P<pk>[^/.]+)/$"
+    )
+    request = RequestFactory().delete(
+        f"/api/naive-rag/{beta_rag.pk}/", HTTP_AUTHORIZATION="Bearer x"
+    )
+    request.user = admin_acme
+    request._rbac_active_org_id = acme.id
+
+    def get_response(request_in_view):
+        request_in_view.resolver_match = match
+        middleware.process_view(request_in_view, view, (), match.kwargs)
+        beta_rag.base_rag_type.delete()
+        return HttpResponse(status=status.HTTP_200_OK)
+
+    middleware = UserActionMiddleware(get_response)
+    with django_capture_on_commit_callbacks(execute=True):
+        middleware(request)
 
     [event] = sent_events
     assert (_target(event), _parent(event)) == (

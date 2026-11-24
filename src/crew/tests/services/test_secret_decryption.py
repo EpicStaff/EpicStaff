@@ -72,6 +72,42 @@ def test_header_markers_are_decrypted(sealed_headers, expected_headers):
     assert decrypted.config.extra_headers == expected_headers
 
 
+def test_connection_markers_are_decrypted():
+    llm = LLMData(
+        provider="bedrock",
+        config=LLMConfigData(
+            model="anthropic.claude-v2",
+            connection={
+                "aws_secret_access_key": f"epicstaff_secret({seal('aws-secret')})",
+                "aws_region_name": "eu-west-1",
+            },
+        ),
+    )
+
+    decrypted = decrypt_llm_data(llm, TEST_SECRETS_CRYPTOGRAPHER)
+
+    assert decrypted.config.connection == {
+        "aws_secret_access_key": "aws-secret",
+        "aws_region_name": "eu-west-1",
+    }
+
+
+def test_undecryptable_connection_marker_names_the_field():
+    llm = LLMData(
+        provider="bedrock",
+        config=LLMConfigData(
+            model="anthropic.claude-v2",
+            connection={"aws_secret_access_key": f"epicstaff_secret({BROKEN_TOKEN})"},
+        ),
+    )
+
+    with pytest.raises(SecretDecryptionError) as raised:
+        decrypt_llm_data(llm, TEST_SECRETS_CRYPTOGRAPHER)
+
+    assert raised.value.field == "connection"
+    assert BROKEN_TOKEN not in str(raised.value)
+
+
 def test_the_sealed_original_is_left_unchanged():
     sealed_api_key = seal("sk-plain")
     sealed_header = f"Bearer epicstaff_secret({seal('token')})"

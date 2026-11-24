@@ -9,8 +9,10 @@ import zipfile
 from datetime import timedelta
 
 import fakeredis
+import httpx
 import pytest
 from django.utils import timezone
+from foundation.transport.http import errors as proxied_errors
 
 from rbac.models import OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
@@ -469,6 +471,64 @@ def test_a_project_error_keeps_its_own_code():
     error = ExportCycleError([(EntityType.GRAPH, 1), (EntityType.GRAPH, 2), (EntityType.GRAPH, 1)])
 
     assert public_error(error, TransferJob.Kind.EXPORT)["code"] == "export_cycle_detected"
+
+
+def _proxied_service_error(error_type, status_code: int, body: str):
+    return error_type(body, response=httpx.Response(status_code, text=body))
+
+
+@pytest.mark.parametrize(
+    ("error_type", "status_code"),
+    [
+        pytest.param(proxied_errors.ClientValidationError, 400, id="400"),
+        pytest.param(proxied_errors.ClientValidationError, 422, id="422"),
+    ],
+)
+def test_a_proxied_service_refusing_the_file_gives_the_creator_its_message(
+    error_type, status_code
+):
+    """The sandbox refusing a venv the file declares is the file's fault, said in its words."""
+    body = json.dumps(
+        {"type": "client_error", "errors": [{"code": "value_error", "detail": "Bad library.", "attr": None}]}
+    )
+    error = _proxied_service_error(error_type, status_code, body)
+
+    assert public_error(error, TransferJob.Kind.IMPORT) == {
+        "code": "invalid_file",
+        "message": "Bad library.",
+    }
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(
+            _proxied_service_error(proxied_errors.ClientServerError, 500, "boom"), id="5xx"
+        ),
+        pytest.param(proxied_errors.ClientConnectionError("down"), id="unreachable"),
+        pytest.param(proxied_errors.ClientTimeoutError(), id="timeout"),
+        # This gateway's own call going wrong, not the file: its words are not the creator's.
+        pytest.param(
+            _proxied_service_error(proxied_errors.ClientForbiddenError, 403, "Not allowed."),
+            id="403",
+        ),
+        # The sandbox answers 409 only for custom-library and wheel operations, never for
+        # a venv an import creates: one here is not the file's fault.
+        pytest.param(
+            _proxied_service_error(proxied_errors.ClientConflictError, 409, "In use."),
+            id="409",
+        ),
+        pytest.param(
+            _proxied_service_error(proxied_errors.ClientRateLimitError, 429, "Slow down."),
+            id="429",
+        ),
+    ],
+)
+def test_a_proxied_service_failing_stays_an_internal_error(error):
+    assert public_error(error, TransferJob.Kind.IMPORT) == {
+        "code": "internal_error",
+        "message": "The job failed unexpectedly.",
+    }
 
 
 # --- sweep -------------------------------------------------------------------------------

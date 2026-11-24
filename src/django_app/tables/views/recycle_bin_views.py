@@ -16,6 +16,7 @@ class RecycleBinSettingsView(APIView):
     """Recycle-bin settings. Global, not per organization, so any signed-in user reads them."""
 
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(responses=RecycleBinSettingsSerializer)
     def get(self, request):

@@ -1,5 +1,9 @@
+// UI kit Dialog: 560 wide, as tall as its content up to 800 (and never past the viewport); the form scrolls.
 .dialog {
-    height: 100%;
+    box-sizing: border-box;
+    width: 560px;
+    max-width: 100%;
+    max-height: min(800px, 90vh);
     display: flex;
     flex-direction: column;
     overflow: hidden;

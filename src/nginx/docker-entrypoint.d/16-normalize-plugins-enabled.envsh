@@ -35,20 +35,68 @@ env_bool() {
 if env_bool PLUGINS_ENABLED; then
   export PLUGINS_ENABLED=true
 
-  # Goes into the plugin server_name regex and the frame-src header. grep matches line by line,
-  # so the character check comes first and also refuses a newline. Django checks the name more
-  # strictly at start-up.
-  plugins_base_domain=${PLUGINS_BASE_DOMAIN-}
-  case "$plugins_base_domain" in
-    *[!a-z0-9.-]*) plugins_base_domain= ;;
+  # PLUGINS_HOST_TEMPLATE, <prefix>{id}<suffix>.<parent>, names every plugin host. Its parts go
+  # into the server_name regexes of the plugin hosts and of the unknown names under the parent,
+  # and the parent into the frame-src header. The rules are Django's
+  # (plugins.configuration.host_template) and envtool's: {id} once, in the first label; a
+  # prefix and suffix of letters, digits and hyphens that leave no hyphen at either end of the
+  # label; a parent of two or more lower-case DNS labels; a 32-character identifier's label at
+  # most 63 characters and its host at most 253; no affix that puts hyphens in the third and
+  # fourth characters of a label where the identifier alone has none (reserved for xn--); not
+  # the .invalid placeholder. grep matches line by line, so the character check comes first and
+  # also refuses a newline.
+  plugins_host_template=${PLUGINS_HOST_TEMPLATE-}
+  plugins_template_problem=
+  case "$plugins_host_template" in
+    *[!a-z0-9.{}-]*) plugins_template_problem="it holds a character other than lower-case letters, digits, hyphens, dots and {id}" ;;
+    *.*) ;;
+    *) plugins_template_problem="it has no parent domain after its first label" ;;
   esac
-  if ! printf '%s\n' "$plugins_base_domain" \
-    | grep -Eq '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'; then
-    echo "ERROR: PLUGINS_BASE_DOMAIN='${PLUGINS_BASE_DOMAIN-}' is not a lower-case DNS name of two or more labels, such as plugins.example.com." >&2
+  plugins_first_label=${plugins_host_template%%.*}
+  plugins_parent_domain=${plugins_host_template#*.}
+  if [ -z "$plugins_template_problem" ]; then
+    case "$plugins_host_template" in
+      *'{id}'*'{id}'*) plugins_template_problem="it must hold {id} exactly once" ;;
+    esac
+    case "$plugins_first_label" in
+      *'{id}'*) ;;
+      *) plugins_template_problem="it must hold {id} exactly once, in its first label" ;;
+    esac
+  fi
+  plugins_host_prefix=${plugins_first_label%%'{id}'*}
+  plugins_host_suffix=${plugins_first_label#*'{id}'}
+  if [ -z "$plugins_template_problem" ]; then
+    if ! printf '%s\n' "$plugins_parent_domain" \
+      | grep -Eq '^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$'; then
+      plugins_template_problem="the part after its first label is not a lower-case DNS name of two or more labels"
+    elif ! printf '%s\n' "$plugins_host_prefix" | grep -Eq '^([a-z0-9][a-z0-9-]*)?$' \
+      || ! printf '%s\n' "$plugins_host_suffix" | grep -Eq '^([a-z0-9-]*[a-z0-9])?$'; then
+      plugins_template_problem="around {id} only letters, digits and hyphens may stand, and the first label may neither start nor end with a hyphen"
+    elif [ $((${#plugins_host_prefix} + 32 + ${#plugins_host_suffix})) -gt 63 ] \
+      || [ $((${#plugins_host_prefix} + 32 + ${#plugins_host_suffix} + 1 + ${#plugins_parent_domain})) -gt 253 ]; then
+      plugins_template_problem="with a 32-character identifier a plugin host would be longer than DNS allows"
+    else
+      # <prefix length>:<prefix>:<suffix>. Why these are the affixes that do it is explained in
+      # plugins.configuration.host_template._affixes_reserve_labels.
+      case "${#plugins_host_prefix}:$plugins_host_prefix:$plugins_host_suffix" in
+        1:* | [4-9]:??--*:* | [1-9][0-9]:??--*:* | 0::--*)
+          plugins_template_problem="the text around {id} would put hyphens in the third and fourth characters of some plugin hosts' first label, which DNS reserves for xn-- names"
+          ;;
+      esac
+    fi
+  fi
+  case "$plugins_template_problem:$plugins_parent_domain" in
+    :*.invalid) plugins_template_problem="it is still the .invalid placeholder" ;;
+  esac
+  if [ -n "$plugins_template_problem" ]; then
+    echo "ERROR: PLUGINS_HOST_TEMPLATE='${PLUGINS_HOST_TEMPLATE-}' is not valid: $plugins_template_problem. Use a template such as {id}-app.example.com." >&2
     exit 64
   fi
-  PLUGINS_BASE_DOMAIN_REGEX=$(printf '%s' "$plugins_base_domain" | sed 's/\./\\./g')
-  export PLUGINS_BASE_DOMAIN_REGEX
+  # The affixes hold only letters, digits and hyphens, which a regex outside a class matches
+  # literally; the parent's dots are escaped.
+  export PLUGINS_HOST_PREFIX="$plugins_host_prefix" PLUGINS_HOST_SUFFIX="$plugins_host_suffix"
+  PLUGINS_PARENT_DOMAIN_REGEX=$(printf '%s' "$plugins_parent_domain" | sed 's/\./\\./g')
+  export PLUGINS_PARENT_DOMAIN_REGEX
 
   # EpicStaff's origin, from DJANGO_FRONTEND_BASE_URL: the only page allowed to frame a plugin
   # (frame-ancestors), and the scheme and port of the plugin hosts EpicStaff frames (frame-src).
@@ -87,7 +135,28 @@ if env_bool PLUGINS_ENABLED; then
     *) plugins_port_suffix= ;;
   esac
   export PLUGINS_EPICSTAFF_ORIGIN="$plugins_scheme://$plugins_authority"
-  export PLUGINS_FRAME_SRC="$plugins_scheme://*.$plugins_base_domain$plugins_port_suffix"
+  # A CSP source cannot say prefix or suffix, so EpicStaff may frame every name under the parent.
+  # That only widens what EpicStaff's own page frames: each plugin host still lets only EpicStaff
+  # frame it (frame-ancestors), and the names under the parent that are no plugin's get nothing.
+  export PLUGINS_FRAME_SRC="$plugins_scheme://*.$plugins_parent_domain$plugins_port_suffix"
+  # EpicStaff's own names, as one regex alternation: the server that closes the connection of
+  # every other name under the parent leaves them to EpicStaff's server, since EpicStaff may
+  # itself live under the parent of a flat template (staff.example.com beside
+  # {id}-app.example.com). They are its host and every plain host name in NGINX_SERVER_NAME,
+  # such as an alias. `_`, wildcard names (*.example.com) and regex names (~...) are left out:
+  # they are no literal host. With TLS on, EpicStaff's server lists them itself and nginx
+  # prefers them to the closing server anyway (wildcards come before regexes, and EpicStaff's
+  # regexes come first); with TLS off, a name only they would match is closed under the parent.
+  # Only letters, digits, dots and hyphens pass, each name once in any case; dots are escaped.
+  # In the case they were written in: the template compares them without regard to case.
+  plugins_epicstaff_host=${plugins_authority%%:*}
+  PLUGINS_EPICSTAFF_HOSTS_REGEX=$(printf '%s %s\n' "$plugins_epicstaff_host" "${NGINX_SERVER_NAME-}" \
+    | tr ' \t' '\n\n' \
+    | grep -E '^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$' \
+    | awk '!seen[tolower($0)]++' \
+    | sed 's/\./\\./g' \
+    | awk 'NR > 1 { printf "|" } { printf "%s", $0 }')
+  export PLUGINS_EPICSTAFF_HOSTS_REGEX
 
   # The package upload route's body cap, client_max_body_size <n + 1>m: one MiB of room for the
   # multipart framing, so a package of exactly PLUGINS_MAX_PACKAGE_MB reaches Django.
@@ -145,21 +214,20 @@ if env_bool PLUGINS_ENABLED; then
 
   # Plugin development mode serves plugin pages and API requests from ports on this machine
   # (plugins-development-*-true.snippet). Only for a deployment on the developer's own machine:
-  # EpicStaff and the plugin domain must use .localhost names, and the stack must run with
+  # EpicStaff and the plugin hosts must use .localhost names, and the stack must run with
   # docker-compose.plugins-dev.yaml. That file is what keeps other machines out: it publishes
   # ports 80 and 443 on 127.0.0.1 only, and it alone sets PLUGINS_DEV_LOOPBACK_ONLY (never .env,
   # and absent means false). The .localhost names are no control, since a client that reaches a
   # port can send any Host. django_app refuses the same deployments at start-up, and requires
   # DJANGO_DEBUG as well; either refusal alone keeps the mode off a shared server.
-  # The base domain is already lower case; the EpicStaff host is compared in any case, as Django
+  # The parent is already lower case; the EpicStaff host is compared in any case, as Django
   # compares host names. Neither holds a ":", so the pair splits unambiguously.
   if env_bool PLUGINS_DEV_MODE; then
-    plugins_epicstaff_host=${plugins_authority%%:*}
-    case "$plugins_base_domain:$plugins_epicstaff_host" in
+    case "$plugins_parent_domain:$plugins_epicstaff_host" in
       *.localhost:[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt]) ;;
       *.localhost:*.[Ll][Oo][Cc][Aa][Ll][Hh][Oo][Ss][Tt]) ;;
       *)
-        echo "ERROR: PLUGINS_DEV_MODE is true, but plugin development mode is only for a deployment on your own machine: PLUGINS_BASE_DOMAIN ('$plugins_base_domain') must end in .localhost, and the host of DJANGO_FRONTEND_BASE_URL ('$plugins_epicstaff_host') must be localhost or end in .localhost. Set PLUGINS_DEV_MODE=false." >&2
+        echo "ERROR: PLUGINS_DEV_MODE is true, but plugin development mode is only for a deployment on your own machine: PLUGINS_HOST_TEMPLATE ('$plugins_host_template') must end in .localhost, and the host of DJANGO_FRONTEND_BASE_URL ('$plugins_epicstaff_host') must be localhost or end in .localhost. Set PLUGINS_DEV_MODE=false." >&2
         exit 64
         ;;
     esac
@@ -173,15 +241,17 @@ if env_bool PLUGINS_ENABLED; then
   fi
 else
   export PLUGINS_ENABLED=false
-  # An empty frame-src source leaves EpicStaff framing only itself. The other two appear only in
+  # An empty frame-src source leaves EpicStaff framing only itself. The others appear only in
   # the plugin snippets, which are not included; empty keeps those unused files deterministic.
   # PLUGINS_DEV_MODE is not read: development mode needs plugins on. It names snippets that only
   # the unused plugin snippets include.
-  export PLUGINS_BASE_DOMAIN_REGEX= PLUGINS_EPICSTAFF_ORIGIN= PLUGINS_FRAME_SRC= PLUGINS_UPLOAD_BODY_MB=
+  export PLUGINS_HOST_PREFIX= PLUGINS_HOST_SUFFIX= PLUGINS_PARENT_DOMAIN_REGEX= \
+    PLUGINS_EPICSTAFF_HOSTS_REGEX= PLUGINS_EPICSTAFF_ORIGIN= PLUGINS_FRAME_SRC= PLUGINS_UPLOAD_BODY_MB=
   export PLUGINS_DEV_MODE=false
 fi
 
 # This file is sourced into the entrypoint's shell: leave nothing behind but the exports.
-unset plugins_base_domain plugins_frontend_url plugins_scheme plugins_authority plugins_port_suffix \
-  plugins_max_package_mb plugins_max_request_body_mb plugins_gateway_secret plugins_network_subnet \
-  plugins_octet plugins_epicstaff_host
+unset plugins_host_template plugins_template_problem plugins_first_label plugins_parent_domain \
+  plugins_host_prefix plugins_host_suffix plugins_frontend_url plugins_scheme plugins_authority \
+  plugins_port_suffix plugins_max_package_mb plugins_max_request_body_mb plugins_gateway_secret \
+  plugins_network_subnet plugins_octet plugins_epicstaff_host

@@ -6,7 +6,7 @@ from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     ClassificationDecisionTablePrompt,
 )
-from tables.models.llm_models import LLMConfig
+from ai_models.models import LLMConfig
 
 from tests.rbac_cross_org_fixtures import *
 

@@ -92,15 +92,16 @@ async def run_json_llm(
                 },
             }
 
-    model = litellm_call_model(llm.provider, llm_config.model, llm_config.deployment_id)
+    model = litellm_call_model(
+        llm.provider, llm_config.model, llm_config.connection.get("deployment_id")
+    )
     logger.debug("Calling litellm model={} (row provider {})", model, llm.provider)
+    # Holds the resolved secrets: params are never logged.
     params = {
         "model": model,
         **llm_config.to_litellm_kwargs(provider=litellm_routed_provider(model)),
+        **llm_config.connection_kwargs(),
         "response_format": response_format,
-        "base_url": llm_config.base_url,
-        "api_version": llm_config.api_version,
-        "api_key": llm_config.api_key,
         "extra_headers": llm_config.extra_headers,
         "stream": False,
     }

@@ -1,14 +1,7 @@
+from ai_models.models import DefaultModels, EmbeddingModel, LLMConfig, LLMModel, Provider
 from django.contrib import admin
 
-from .models import (
-    Agent,
-    EmbeddingModel,
-    LLMConfig,
-    LLMModel,
-    Provider,
-    Task,
-)
-from .models.default_models import DefaultModels
+from .models import Agent, Task
 from .models.realtime_models import DefaultRealtimeAgentConfig
 
 admin.site.register(Provider)

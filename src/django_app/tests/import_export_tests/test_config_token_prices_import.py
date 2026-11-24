@@ -9,7 +9,7 @@ from rest_framework.exceptions import ValidationError
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.registry import entity_registry
-from tables.models import LLMConfig
+from ai_models.models import LLMConfig
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 
 PRICE_FIELDS = ("input_cost_per_token", "output_cost_per_token")

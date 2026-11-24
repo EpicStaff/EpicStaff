@@ -1,7 +1,7 @@
 """The plugin development mode rule, in one place.
 
 A deployment may run in development mode only when it is a local development deployment:
-`DJANGO_DEBUG` is true (the project's "never in production" switch), `PLUGINS_BASE_DOMAIN`
+`DJANGO_DEBUG` is true (the project's "never in production" switch), `PLUGINS_HOST_TEMPLATE`
 ends in `.localhost`, the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or ends in
 `.localhost`, and, under compose (`RUN_IN_DOCKER`), the stack runs with
 `docker-compose.plugins-dev.yaml`, which sets `PLUGINS_DEV_LOOPBACK_ONLY`. That file is what
@@ -10,6 +10,9 @@ names are not a control, since any client that reaches a port can send any `Host
 process on the host (`manage.py` run against `src/.env`) is not checked for the marker: the
 `PLUGINS_DEV_MODE` it reads there belongs to the compose stack, and the compose stack's own
 django_app is checked. The plugins.E012 start-up check refuses the mode anywhere else.
+
+Bare `localhost` passes this rule, but no plugin host is ever on its site, so with plugins
+on the plugins.E014 start-up check refuses EpicStaff at `localhost` all the same.
 
 Every development code path calls `development_mode_on()` when it runs, never a cached
 value, so turning the flag off makes every stored development target and every development
@@ -21,6 +24,7 @@ from urllib.parse import urlsplit
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
+from plugins.configuration.host_template import InvalidHostTemplateError, PluginHostTemplate
 from plugins.models.development import MAX_DEVELOPMENT_PORT, MIN_DEVELOPMENT_PORT
 
 LOCALHOST_NAME = "localhost"
@@ -37,9 +41,10 @@ def development_mode_problems() -> list[str]:
     problems = []
     if not settings.DEBUG:
         problems.append("DJANGO_DEBUG is not true")
-    base_domain = settings.PLUGINS_BASE_DOMAIN or ""
-    if not base_domain.endswith(LOCALHOST_SUFFIX):
-        problems.append(f"PLUGINS_BASE_DOMAIN ({base_domain!r}) does not end in .localhost")
+    if not _plugin_hosts_are_local():
+        problems.append(
+            f"PLUGINS_HOST_TEMPLATE ({settings.PLUGINS_HOST_TEMPLATE!r}) does not end in .localhost"
+        )
     host = _host_of(settings.FRONTEND_BASE_URL)
     if not is_localhost_name(host):
         problems.append(
@@ -92,6 +97,16 @@ def development_api_port() -> int:
 def development_api_url() -> str:
     """EpicStaff's API as a development backend on the author's machine reaches it."""
     return f"http://{DEVELOPMENT_API_HOST}:{development_api_port()}/api/"
+
+
+def _plugin_hosts_are_local() -> bool:
+    """Whether the template's parent ends in .localhost; true for an invalid template, which
+    plugins.E002 reports on its own."""
+    try:
+        template = PluginHostTemplate.parse(settings.PLUGINS_HOST_TEMPLATE)
+    except InvalidHostTemplateError:
+        return True
+    return template.parent.endswith(LOCALHOST_SUFFIX)
 
 
 def _host_of(url: str | None) -> str | None:

@@ -21,6 +21,7 @@ class PluginLoginOrganizationsView(APIView):
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     def get(self, request, identifier: str):
         plugin = loginable_plugin(identifier)

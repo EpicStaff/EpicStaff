@@ -11,7 +11,8 @@ from rest_framework.test import APIClient
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
-from tables.models import Graph, LLMConfig, Secret, Session
+from tables.models import Graph, Secret, Session
+from ai_models.models import LLMConfig
 from tables.models.graph_models import ScheduleTriggerNode
 
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file

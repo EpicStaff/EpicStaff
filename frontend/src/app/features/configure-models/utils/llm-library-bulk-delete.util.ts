@@ -1,6 +1,6 @@
 import { BulkDeleteGroup, BulkDeleteItem, BulkDeleteLabel, BulkDeleteTarget } from '@shared/models';
 
-/** `llm` / `embedding` plus one entry per voice provider and `system_one` — matches the LLM Library tab's sections. */
+/** `llm` / `embedding` plus one entry per voice provider and `system_one` — matches the AI Models page's sections. */
 export type LlmLibrarySelectionKind = 'llm' | 'embedding' | 'openai' | 'elevenlabs' | 'gemini' | 'system_one';
 
 /** A selected card's key, built as `` `${kind}:${id}` `` since ids overlap across the underlying tables. */

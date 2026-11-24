@@ -3,8 +3,10 @@ from pathlib import Path
 from django_app.settings import env
 
 PLUGINS_ENABLED = env.bool("PLUGINS_ENABLED")
-# Each plugin is served at <identifier>.<PLUGINS_BASE_DOMAIN>.
-PLUGINS_BASE_DOMAIN = env.str("PLUGINS_BASE_DOMAIN")
+# Each plugin is served at this template's host for its identifier, such as {id}-app.example.com
+# (plugins.configuration.host_template). The plugins.E002 start-up check reports a bad one, so a
+# disabled platform never fails on it.
+PLUGINS_HOST_TEMPLATE = env.str("PLUGINS_HOST_TEMPLATE")
 # `<name>:<minisign public key>` entries; `none` lists no key. Malformed entries are reported
 # by the plugins.E004 system check rather than here, so a disabled platform never fails on them.
 PLUGINS_TRUSTED_SIGNING_KEYS = env.list("PLUGINS_TRUSTED_SIGNING_KEYS") or []

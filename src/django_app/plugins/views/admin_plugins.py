@@ -70,6 +70,7 @@ class PluginUploadPermissionView(APIView):
 
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
     def get(self, request):
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -78,6 +79,7 @@ class PluginUploadPermissionView(APIView):
 class PluginPackageUploadView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
     parser_classes = [MultiPartParser]
 
     @extend_schema(request=PackageUploadSerializer, responses={201: PackageReviewSerializer})
@@ -105,6 +107,7 @@ class PluginPackageUploadView(APIView):
 class PluginPackageReviewView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
     @extend_schema(responses=PackageReviewSerializer)
     def get(self, request, package_id: int):
@@ -120,6 +123,7 @@ class PluginPackageApproveView(APIView):
 
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
     @extend_schema(
         request=UpgradeApprovalSerializer,
@@ -147,6 +151,7 @@ class PluginPackageApproveView(APIView):
 class PluginPackageRejectView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
     def post(self, request, package_id: int):
         PluginInstallationService().reject(package_id, request.user)
@@ -156,6 +161,7 @@ class PluginPackageRejectView(APIView):
 class PluginListView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
     def get(self, request):
         plugins = Plugin.objects.with_summary().order_by(Lower("name"), "identifier")
@@ -165,6 +171,7 @@ class PluginListView(APIView):
 class PluginDetailView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
     @extend_schema(responses=PluginDetailSerializer)
     def get(self, request, identifier: str):
@@ -183,6 +190,7 @@ class PluginGrantListView(generics.ListAPIView):
 
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
     serializer_class = PluginGrantSerializer
     pagination_class = CrossOrgAdminPagination
 
@@ -214,6 +222,7 @@ class PluginGrantRetryHookView(APIView):
 
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
     @extend_schema(request=None, responses={202: PluginGrantSerializer})
     def post(self, request, identifier: str, grant_id: int):

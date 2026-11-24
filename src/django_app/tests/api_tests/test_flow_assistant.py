@@ -20,7 +20,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
-from tables.models import Graph, LLMConfig, LLMModel, Provider
+from tables.models import Graph
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.models.flow_assistant_models import (
     FlowAssistant,
     FlowAssistantConversation,
@@ -53,7 +54,7 @@ def llm_config(gpt4_model, org_a):
     return LLMConfig.objects.create(
         custom_name="test-gpt4o",
         model=gpt4_model,
-        temperature=0.5,
+        parameters={"temperature": 0.5},
         org=org_a,
     )
 
@@ -604,7 +605,7 @@ async def test_stream_reply_resolves_real_secret_for_real_litellm_client(
         model=gpt4_model,
         org=org_a,
         api_key_secret=secret,
-        temperature=0.5,
+        parameters={"temperature": 0.5},
     )
     assistant = await sync_to_async(FlowAssistant.objects.create)(
         graph=graph_with_org, llm_config=llm_config_with_secret
@@ -666,6 +667,35 @@ async def test_stream_reply_rejects_stored_config_with_malformed_extra_headers(
             pass
 
     assert "extra_headers" in str(excinfo.value.detail)
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_stream_reply_refuses_a_config_whose_settings_the_model_does_not_accept(
+    graph, gpt4_model, user_a, org_a, default_role, db
+):
+    from asgiref.sync import sync_to_async
+
+    from tables.exceptions import LLMConfigInvalidError
+
+    stale_config = await sync_to_async(LLMConfig.objects.create)(
+        custom_name="stale-temperature",
+        model=gpt4_model,
+        org=org_a,
+        parameters={"temperature": 5},
+    )
+    user_message = "hi"
+    conversation = await _create_conversation_for_stream(
+        graph, stale_config, user_a, org_a, default_role, user_message
+    )
+
+    with pytest.raises(LLMConfigInvalidError) as excinfo:
+        async for _event in FlowAssistantService().stream_reply(conversation, user_message):
+            pass
+
+    assert str(excinfo.value.detail).startswith(
+        "LLM config 'stale-temperature' has settings its model does not accept: temperature"
+    )
 
 
 @pytest.mark.asyncio
@@ -1837,6 +1867,30 @@ def test_get_node_python_includes_python_code_summary(graph, db):
 
 
 @pytest.mark.django_db
+def test_get_node_agent_shows_its_llm_temperature_but_never_its_connection(graph, llm_config):
+    from agents.models import AgentDefinition
+    from tables.models.graph_models import AgentNode
+    from tables.services.flow_assistant import get_node
+
+    llm_config.connection = {"base_url": "https://gateway.example", "deployment_id": "prod"}
+    llm_config.extra_headers = {"Authorization": "Bearer epicstaff_secret(GATEWAY_TOKEN)"}
+    llm_config.save()
+    agent_definition = AgentDefinition.objects.create(org=graph.org, name="writer", llm_config=llm_config)
+    node = AgentNode.objects.create(graph=graph, node_name="writer", agent_definition=agent_definition)
+
+    result = get_node(graph.pk, str(node.pk))
+
+    assert result["agent_definition"]["llm_config_summary"] == {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "temperature": 0.5,
+    }
+    shown = json.dumps(result, default=str)
+    assert "gateway.example" not in shown
+    assert "GATEWAY_TOKEN" not in shown
+
+
+@pytest.mark.django_db
 def test_get_node_webhook_trigger_includes_python_code_summary(graph, db):
     """get_node for WebhookTriggerNode must include python_code_summary with code, entrypoint, libraries."""
     from tables.models.graph_models import WebhookTriggerNode
@@ -2993,7 +3047,7 @@ def test_litellm_client_prefixes_provider_only_when_missing(
     model = LLMModel.objects.create(name=model_name, llm_provider=provider)
     config = LLMConfig.objects.create(custom_name="test-config", model=model, org=org_a)
 
-    kwargs = _litellm_request(get_llm_client(config, api_key=None))
+    kwargs = _litellm_request(get_llm_client(config, principal=None))
 
     assert kwargs["model"] == expected_model
 
@@ -3002,7 +3056,7 @@ def test_litellm_client_prefixes_provider_only_when_missing(
 def test_litellm_client_drops_provider_unsupported_params(llm_config):
     from tables.services.llm_clients import get_llm_client
 
-    kwargs = _litellm_request(get_llm_client(llm_config, api_key=None))
+    kwargs = _litellm_request(get_llm_client(llm_config, principal=None))
 
     assert kwargs["drop_params"] is True
 
@@ -3030,7 +3084,7 @@ def test_litellm_client_opts_out_of_provider_storage_for_openai_and_azure(
     model = LLMModel.objects.create(name=model_name, llm_provider=provider)
     config = LLMConfig.objects.create(custom_name="test-config", model=model, org=org_a)
 
-    kwargs = _litellm_request(get_llm_client(config, api_key=None))
+    kwargs = _litellm_request(get_llm_client(config, principal=None))
 
     assert kwargs.get("store") == expected_store
     assert ("store" in kwargs) is (expected_store is not None)

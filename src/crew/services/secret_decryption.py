@@ -30,7 +30,7 @@ class SecretDecryptionError(Exception):
 
 
 def decrypt_llm_data(llm: LLMData, cryptographer: AbstractCryptographer) -> LLMData:
-    """Return a copy of `llm` with its `api_key` and `extra_headers` markers decrypted.
+    """Return a copy of `llm` with its `api_key` and its `extra_headers` and `connection` markers decrypted.
 
     Raises:
         SecretDecryptionError: A sealed value does not open with `cryptographer`.
@@ -42,6 +42,7 @@ def decrypt_llm_data(llm: LLMData, cryptographer: AbstractCryptographer) -> LLMD
             "extra_headers": _decrypt_header_markers(
                 config.extra_headers, "extra_headers", cryptographer
             ),
+            "connection": _decrypt_header_markers(config.connection, "connection", cryptographer),
         }
     )
     return llm.model_copy(update={"config": decrypted_config})

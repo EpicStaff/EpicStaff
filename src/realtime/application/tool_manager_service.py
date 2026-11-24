@@ -58,6 +58,10 @@ class ToolManagerService(metaclass=SingletonMeta):
                 rag_llm_api_key=realtime_agent_chat_data.rag_llm_api_key,
                 rag_embedder_extra_headers=realtime_agent_chat_data.rag_embedder_extra_headers,
                 rag_llm_extra_headers=realtime_agent_chat_data.rag_llm_extra_headers,
+                rag_embedder_connection=realtime_agent_chat_data.rag_embedder_connection,
+                rag_embedder_parameters=realtime_agent_chat_data.rag_embedder_parameters,
+                rag_llm_connection=realtime_agent_chat_data.rag_llm_connection,
+                rag_llm_parameters=realtime_agent_chat_data.rag_llm_parameters,
             )
             self.connection_tool_executors[connection_key].append(knowledge_tool_executor)
 

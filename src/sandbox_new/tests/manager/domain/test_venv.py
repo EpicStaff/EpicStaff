@@ -8,7 +8,9 @@ from manager.domain.models import Library, Venv
 from tests.builders import make_library, make_venv
 
 
-@pytest.mark.parametrize("specification", ["", ">=2.0", ">=1.0,<2", "==1.2.3", "~=1.4"])
+@pytest.mark.parametrize(
+    "specification", ["", ">=2.0", ">=1.0,<2", "==1.2.3", "~=1.4", "!=1.5", "==1.*"]
+)
 def test_library_accepts_valid_version_specifications(specification):
     assert make_library(specification=specification).specification == specification
 
@@ -24,7 +26,11 @@ def test_library_accepts_valid_versions(version):
     assert make_library(specification="", version=version).version == version
 
 
-@pytest.mark.parametrize("version", ["01.2", "v1.2", "1.2.3.", "latest"])
+# The version is pinned into the requirement line uv reads, so a line break or an
+# option after it would reach uv too.
+@pytest.mark.parametrize(
+    "version", ["01.2", "v1.2", "1.2.3.", "latest", "1.0\n", "1.0\n-i http://x", "1.0 -r x"]
+)
 def test_library_rejects_invalid_versions(version):
     with pytest.raises(ValidationError):
         make_library(specification="", version=version)
@@ -33,6 +39,151 @@ def test_library_rejects_invalid_versions(version):
 def test_library_rejects_an_empty_name():
     with pytest.raises(ValidationError):
         Library(name="")
+
+
+@pytest.mark.parametrize(
+    ("name", "requirement"),
+    [
+        ("requests", "requests>=2.0"),
+        ("Requests_Toolbelt", "requests-toolbelt>=2.0"),
+        ("zope.interface", "zope-interface>=2.0"),
+        ("a", "a>=2.0"),
+        ("py3", "py3>=2.0"),
+        ("requests[socks]", "requests[socks]>=2.0"),
+        ("requests[socks,security]", "requests[socks,security]>=2.0"),
+        ("Requests[Socks_Proxy]", "requests[socks-proxy]>=2.0"),
+    ],
+)
+def test_library_accepts_a_distribution_name_with_optional_extras(name, requirement):
+    assert make_library(name=name, specification=">=2.0").requirement == requirement
+
+
+# Each name is one line of the requirements uv reads on stdin; these would give it a
+# second line, an option, or a local path or URL to install from.
+@pytest.mark.parametrize(
+    "name",
+    [
+        "six\n-i http://internal-host:9/simple",
+        "six\n-r /etc/passwd",
+        "requests\n--index-url https://evil.example/simple",
+        "requests\n",
+        "requests\r-e /etc",
+        "-e /etc",
+        "-r",
+        "/etc",
+        "./local/path",
+        "foo @ file:///etc",
+        "git+https://example.com/repo.git",
+        "requests; python_version<'3'",
+        "requests ",
+        "-requests",
+        "requests-",
+        "requests[socks]\n-i x",
+        "requests[socks]\n",
+        "requests[ socks]",
+        "requests[socks];python_version<'3'",
+        "requests[]",
+        "requests[socks,]",
+        "requests[socks",
+        "requests[-e]",
+        "[socks]",
+        "six\u2028-i http://x",
+        "six\x85-i http://x",
+        "requests\\",
+        "six\n-c x",
+        "six\n-f x",
+        "six\n--extra-index-url http://x",
+        "http://example.com/requests-2.31.0-py3-none-any.whl",
+    ],
+)
+def test_library_rejects_anything_but_a_distribution_name_with_optional_extras(name):
+    with pytest.raises(ValidationError):
+        make_library(name=name, specification="")
+
+
+# Earlier releases let a version bound into the name; it now belongs in the
+# specification only, and the refusal says so.
+@pytest.mark.parametrize(
+    "name",
+    [
+        "numpy>=1",
+        "pydantic>=2,<3",
+        "requests==2.31.0",
+        "requests[socks]>=2",
+        "numpy(>=1)",
+        "numpy (>=1)",
+        "numpy >=1",
+        "numpy===1.0",
+        "numpy>=1\n-r /etc/passwd",
+    ],
+)
+def test_library_refuses_a_version_bound_in_its_name(name):
+    with pytest.raises(ValidationError, match="put a version in the specification"):
+        make_library(name=name, specification="")
+
+
+def test_a_library_pinned_by_a_build_keeps_its_extras_in_the_requirement():
+    library = make_library(name="requests[socks]", specification=">=2.0", version="2.31.0")
+
+    assert library.requirement == "requests[socks]==2.31.0"
+
+
+def test_a_custom_library_cannot_take_extras():
+    """A stored library is found and guarded by its bare name, which extras would hide."""
+    with pytest.raises(ValidationError):
+        make_library(name="acme-core[extra]", is_custom=True)
+
+
+@pytest.mark.parametrize(
+    "specification",
+    [
+        ">=1.0\n",
+        ">=\n1.0",
+        ">=1.0\r<2",
+        ">=1.0,\t<2",
+        ">=1.0,\u00a0<2",
+        ">=1.0,\u2028<2",
+        ">=1.0,\x85<2",
+        ">=1.0,\x0b<2",
+    ],
+)
+def test_library_rejects_a_specification_with_whitespace_other_than_a_plain_space(
+    specification,
+):
+    with pytest.raises(ValidationError, match="whitespace other than plain spaces"):
+        make_library(specification=specification)
+
+
+# packaging takes any token after `===` as its version, so each of these parses as a
+# specifier set and would reach uv's requirement line as written.
+ARBITRARY_EQUALITY_SPECIFICATIONS = [
+    "===1.0",
+    "===/etc",
+    "===x\\",
+    "=== --index-url=http://evil.example/simple",
+    ">=1, === -r/etc/passwd",
+]
+
+
+@pytest.mark.parametrize("specification", ARBITRARY_EQUALITY_SPECIFICATIONS)
+def test_library_refuses_arbitrary_equality_in_its_specification(specification):
+    with pytest.raises(ValidationError, match=r"arbitrary equality \('==='\); use '=='"):
+        make_library(specification=specification)
+
+
+# packaging skips an empty clause, uv refuses the line over it.
+@pytest.mark.parametrize("specification", [",>=1", ">=1,,<2", ">=1,", ",", ">=1, ,<2"])
+def test_library_refuses_a_specification_with_an_empty_clause(specification):
+    with pytest.raises(ValidationError, match="has an empty clause"):
+        make_library(specification=specification)
+
+
+def test_library_accepts_a_plain_equality_pin_in_place_of_arbitrary_equality():
+    assert make_library(specification="==1.0").requirement == "requests==1.0"
+
+
+def test_library_accepts_a_specification_with_spaces_after_its_commas():
+    assert make_library(specification=">=1.0, <2").requirement == "requests>=1.0, <2"
 
 
 def test_venv_rename_changes_the_name():
@@ -50,6 +201,22 @@ def test_venv_accepts_a_name_of_letters_digits_spaces_hyphens_and_underscores(na
 def test_venv_rejects_a_name_with_any_other_character(name):
     with pytest.raises(ValidationError):
         make_venv(name=name)
+
+
+def test_venv_accepts_a_name_as_long_as_its_column():
+    assert make_venv(name="v" * 255).name == "v" * 255
+
+
+def test_venv_rejects_a_name_longer_than_its_column():
+    with pytest.raises(ValidationError, match="at most 255 characters"):
+        make_venv(name="v" * 256)
+
+
+def test_venv_rename_rejects_a_name_longer_than_its_column():
+    venv = make_venv(name="old")
+    with pytest.raises(ValidationError):
+        venv.rename("v" * 256)
+    assert venv.name == "old"
 
 
 def test_venv_rename_rejects_a_name_with_any_other_character():
@@ -176,6 +343,17 @@ def test_venv_apply_resolved_versions_stamps_each_library():
     ]
 
 
+def test_venv_apply_resolved_versions_stamps_a_library_declared_with_extras():
+    """The lock pins `requests`, never `requests[socks]`."""
+    venv = make_venv(libs=[make_library(name="requests[socks]", specification="")])
+
+    venv.apply_resolved_versions({"requests": "2.32.3", "pysocks": "1.7.1"})
+
+    assert [(lib.name, lib.version, lib.specification) for lib in venv.libs] == [
+        ("requests[socks]", "2.32.3", ">=2.32.3")
+    ]
+
+
 @pytest.mark.parametrize(
     ("declared_specification", "declared_version", "expected_specification"),
     [
@@ -259,6 +437,7 @@ def test_venv_apply_resolved_versions_does_not_touch_the_build_status():
         ("pydantic", "pydantic"),
         ("Pydantic", "pydantic"),
         ("zope.interface", "zope-interface"),
+        ("requests[socks]", "requests[security]"),
     ],
 )
 def test_venv_rejects_the_same_library_declared_twice(first, second):
@@ -267,6 +446,17 @@ def test_venv_rejects_the_same_library_declared_twice(first, second):
             libs=[
                 make_library(name=first, specification="==2.0"),
                 make_library(name=second, specification="==2.1"),
+            ]
+        )
+
+
+def test_a_repeat_with_other_extras_is_named_by_its_package():
+    """Extras do not make another package, so the refusal names the package itself."""
+    with pytest.raises(ValidationError, match="Library 'requests' is declared more than once"):
+        make_venv(
+            libs=[
+                make_library(name="requests", specification=">=2"),
+                make_library(name="requests[socks]", specification=">=2"),
             ]
         )
 

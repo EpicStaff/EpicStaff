@@ -412,7 +412,7 @@ export function buildGrantPurgePreview(overrides: Partial<PluginGrantPurgePrevie
         owned_resources: [
             { model: 'tables.StorageFile', label: 'Files', count: 1 },
             { model: 'tables.Graph', label: 'Flows', count: 1 },
-            { model: 'tables.LLMConfig', label: 'LLM configs', count: 1 },
+            { model: 'ai_models.LLMConfig', label: 'LLM configs', count: 1 },
             { model: 'tables.Secret', label: 'Secrets', count: 1 },
         ],
         flows: {
@@ -476,7 +476,7 @@ export function buildSuspendPreview(overrides: Partial<PluginSuspendPreview> = {
         owned_resources: [
             { model: 'tables.StorageFile', label: 'Files', count: 1 },
             { model: 'tables.Graph', label: 'Flows', count: 1 },
-            { model: 'tables.LLMConfig', label: 'LLM configs', count: 1 },
+            { model: 'ai_models.LLMConfig', label: 'LLM configs', count: 1 },
             { model: 'tables.Secret', label: 'Secrets', count: 1 },
         ],
         flows: {

@@ -23,6 +23,7 @@ class PermissionCatalogView(APIView):
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(**PERMISSIONS_CATALOG_GET)
     def get(self, request):
@@ -68,6 +69,7 @@ class MyOrgsPermissionsView(APIView):
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     _resolver = CrossOrgPermissionResolver()
 

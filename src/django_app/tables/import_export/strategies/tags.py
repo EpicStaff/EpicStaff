@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+from ai_models.models import EmbeddingModelTag, LLMConfigTag, LLMModelTag
+
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.serializers.tags import (
@@ -11,13 +13,7 @@ from tables.import_export.serializers.tags import (
 )
 from tables.import_export.strategies.base import EntityImportExportStrategy
 from tables.import_export.utils import create_filters
-from tables.models import (
-    AgentTag,
-    EmbeddingModelTag,
-    GraphTag,
-    LLMConfigTag,
-    LLMModelTag,
-)
+from tables.models import AgentTag, GraphTag
 
 
 class BaseTagStrategy(EntityImportExportStrategy):

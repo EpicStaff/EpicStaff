@@ -27,7 +27,7 @@ from tables.models.flow_assistant_models import (
     FlowAssistantConversation,
     FlowAssistantMessage,
 )
-from tables.models.llm_models import LLMConfig, LLMModel, Provider
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.services.llm_clients.base import DoneEvent, TokenEvent
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole

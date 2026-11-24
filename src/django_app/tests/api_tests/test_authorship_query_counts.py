@@ -25,8 +25,6 @@ from tables.models import (
     ClassificationDecisionTableNode,
     DecisionTableNode,
     ElevenLabsRealtimeConfig,
-    EmbeddingConfig,
-    EmbeddingModel,
     EndNode,
     FileExtractorNode,
     GeminiRealtimeConfig,
@@ -34,11 +32,8 @@ from tables.models import (
     GraphNote,
     KeyValueTable,
     KnowledgeNode,
-    LLMConfig,
-    LLMModel,
     McpTool,
     OpenAIRealtimeConfig,
-    Provider,
     PythonCode,
     PythonCodeTool,
     PythonCodeToolConfig,
@@ -60,6 +55,13 @@ from tables.models import (
     TwilioChannel,
     WebhookTrigger,
     WebhookTriggerNode,
+)
+from ai_models.models import (
+    EmbeddingConfig,
+    EmbeddingModel,
+    LLMConfig,
+    LLMModel,
+    Provider,
 )
 from tables.services.secrets import secret_encryption
 from tables.services.storage_service.manager import StorageManager

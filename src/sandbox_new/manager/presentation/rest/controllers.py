@@ -175,7 +175,9 @@ class VenvController(Controller):
                 such as a version outside its specification. Rendered as 400.
         """
         orchestrator = VenvCRUDOrchestrator(uow)
-        obj = await orchestrator.create(data.name, [lib.to_domain() for lib in data.libs])
+        obj = await orchestrator.create(
+            data.name, [lib.to_domain() for lib in data.libs], data.scope
+        )
         return schemas.VenvRetrieveSchema.from_domain(obj)
 
     @patch(
@@ -189,7 +191,10 @@ class VenvController(Controller):
             "so renaming a built venv does not rebuild it."
         ),
         response_description="The venv as stored after the change.",
-        responses=ERROR_RESPONSES_WITH_NOT_FOUND,
+        responses=error_responses(
+            not_found="No venv with this id.",
+            conflict="The venv is built by the sandbox itself.",
+        ),
     )
     async def update(
         self, id: int, data: schemas.VenvUpdateSchema, uow: AbstractUnitOfWork
@@ -198,10 +203,12 @@ class VenvController(Controller):
 
         Raises:
             VenvNotFoundError: No venv with this id, rendered as 404.
+            SystemVenvProtectedError: The venv is built by the sandbox itself, rendered
+                as 409.
         """
         orchestrator = VenvCRUDOrchestrator(uow)
         libs = None if data.libs is None else [lib.to_domain() for lib in data.libs]
-        obj = await orchestrator.update(id, data.name, libs)
+        obj = await orchestrator.update(id, data.name, libs, data.scope)
         return schemas.VenvRetrieveSchema.from_domain(obj)
 
     @delete(
@@ -213,13 +220,18 @@ class VenvController(Controller):
             "space comes back a little later."
         ),
         response_description="The venv was deleted.",
-        responses=ERROR_RESPONSES_WITH_NOT_FOUND,
+        responses=error_responses(
+            not_found="No venv with this id.",
+            conflict="The venv is built by the sandbox itself.",
+        ),
     )
     async def remove(self, id: int, uow: AbstractUnitOfWork) -> None:
         """Delete a venv, leaving its directory for the housekeeping task.
 
         Raises:
             VenvNotFoundError: No venv with this id, rendered as 404.
+            SystemVenvProtectedError: The venv is built by the sandbox itself, rendered
+                as 409.
         """
         orchestrator = VenvCRUDOrchestrator(uow)
         await orchestrator.remove(id)
@@ -236,10 +248,11 @@ class ExecutionController(Controller):
             "Accepts a submission and answers immediately with its `execution_id` and "
             "`status`. The result is not in this response: it is published out of band, "
             "and the caller correlates it by that id.\n\n"
-            "What happens next depends on the venv, chosen by `venv_id` or the default "
-            "one when it is omitted. A built venv has the job queued at once; a venv "
-            "still building holds the job until its build finishes (a job still held "
-            "when the hold timeout passes gets a failed result instead of a run); a venv "
+            "What happens next depends on the venv, chosen by `venv_id`, by `system_venv` "
+            "for a built-in node, or the default one when both are omitted. A built venv "
+            "has the job queued at once; a venv still building holds the job until its "
+            "build finishes (a job still held when the hold timeout passes gets a failed "
+            "result instead of a run); a venv "
             "whose build failed produces a failed result rather than a run. All three "
             "answer 202 -- "
             "acceptance says the submission was understood, not that the code will run.\n\n"
@@ -260,8 +273,9 @@ class ExecutionController(Controller):
         """Accept a code submission and hand it to the job orchestrator.
 
         Raises:
-            VenvNotFoundError: `venv_id` names no venv, or none is given and there is no
-                default venv. Rendered as 404.
+            VenvNotFoundError: `venv_id` names no venv. Rendered as 404.
+            SystemVenvNotFoundError: `system_venv`, or the default key when neither is
+                given, names no venv the sandbox owns. Rendered as 404.
             SandboxOverloadedError: The sandbox cannot take the job now. Rendered as 503.
             SecretNotDecryptableError: A secret is not a transport ciphertext this
                 sandbox can open. Rendered as 400.
@@ -282,6 +296,7 @@ class ExecutionController(Controller):
             func_kwargs=data.func_kwargs,
             secrets=data.secrets,
             venv_id=data.venv_id,
+            system_venv=data.system_venv,
             use_storage=data.use_storage,
             storage_allowed_paths=data.storage_allowed_paths,
             storage_org_prefix=data.storage_org_prefix,
@@ -414,7 +429,7 @@ class CustomLibraryController(Controller):
         """
         filename = PurePosixPath(data.file.filename or "").name
         library_orchestrator = CustomLibraryCRUDOrchestrator(uow)
-        obj = await library_orchestrator.create_for(filename)
+        obj = await library_orchestrator.create_for(filename, data.scope)
         try:
             wheel = await WheelCRUDOrchestrator(uow, file_storage).upload(
                 library_id=obj.id, file=data.file
@@ -427,6 +442,34 @@ class CustomLibraryController(Controller):
         # The library was created for this upload, so its one version is the whole
         # state of it; nothing is read back to work that out.
         return schemas.CustomLibraryRetrieveSchema.from_domain(obj, [wheel])
+
+    @patch(
+        path="/{id:int}",
+        summary="Move a custom library to a scope",
+        description=(
+            "Sets the scope the library's name is unique in and venvs of that scope find "
+            "it by. Only the scope can be changed; the name comes from the wheel."
+        ),
+        response_description="The library as stored after the change.",
+        responses=error_responses(
+            not_found="No custom library with this id.",
+            conflict="Another library of that scope already has this name.",
+        ),
+    )
+    async def update(
+        self, id: int, data: schemas.CustomLibraryUpdateSchema, uow: AbstractUnitOfWork
+    ) -> schemas.CustomLibraryRetrieveSchema:
+        """Move a custom library to a scope.
+
+        Raises:
+            CustomLibraryNotFoundError: No library with this id, rendered as 404.
+            CustomLibraryNameTakenError: Another library of that scope has this name,
+                rendered as 409.
+        """
+        orchestrator = CustomLibraryCRUDOrchestrator(uow)
+        await orchestrator.update(id, data.scope)
+        obj, wheels = await orchestrator.retrieve(id)
+        return schemas.CustomLibraryRetrieveSchema.from_domain(obj, wheels)
 
     @delete(
         path="/{id:int}",

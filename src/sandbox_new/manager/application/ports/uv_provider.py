@@ -24,8 +24,15 @@ class AbstractUVProvider(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    async def install_local(cls, venv_path: Path, *packages: Path):
-        """Install local source packages (by directory path) into the venv."""
+    async def install_local(cls, venv_path: Path, *packages: str, wheelhouse: Path):
+        """Install `packages` into the venv from `wheelhouse` alone, without the network.
+
+        Args:
+            venv_path: The venv to install into.
+            packages: Distribution names, each with its wheel in `wheelhouse`.
+            wheelhouse: A directory holding the wheels of `packages` and of all their
+                dependencies; a missing one fails the install instead of being fetched.
+        """
 
     @classmethod
     @abc.abstractmethod

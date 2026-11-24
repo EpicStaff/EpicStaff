@@ -1,7 +1,7 @@
 import pytest
 
 from rbac.models import Organization
-from tables.serializers.model_serializers.llm_serializers import LLMConfigSerializer
+from ai_models.serializers.model_serializers.llm_serializers import LLMConfigSerializer
 
 
 @pytest.mark.django_db

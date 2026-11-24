@@ -34,7 +34,14 @@ SSRF_GUARD_COPIES = [
     "crewai_scrape_element_from_website_tool",
     "crewai_jina_scraper_website_tool",
     "crewai_website_search_tool",
+    "crewai_txt_search_tool_tool",
+    "crewai_xml_search_tool",
+    "crewai_github_search_tool",
 ]
+
+# Tools that hand the URL to a subprocess (git) which resolves the host itself,
+# so they have no connect-time `_public_only_resolution` to keep in sync.
+WITHOUT_CONNECT_TIME_RESOLUTION = ["crewai_github_search_tool"]
 
 
 class _BlankStringConstants(ast.NodeTransformer):
@@ -130,6 +137,9 @@ class TestSsrfGuardDrift:
             "crewai_scrape_element_from_website_tool",
             "crewai_website_search_tool",
             "crewai_jina_scraper_website_tool",
+            "crewai_txt_search_tool_tool",
+            "crewai_xml_search_tool",
+            "crewai_github_search_tool",
         ]
         for tool_dir_name in byte_identical_copies:
             module = load_tool_main(tool_dir_name)
@@ -157,6 +167,8 @@ class TestSsrfGuardDrift:
             "crewai_scrape_element_from_website_tool",
             "crewai_website_search_tool",
             "crewai_jina_scraper_website_tool",
+            "crewai_txt_search_tool_tool",
+            "crewai_xml_search_tool",
         ]
 
         canonical_name = byte_identical_copies[0]
@@ -186,6 +198,11 @@ class TestSsrfGuardDrift:
         for helper_name in ("_is_internal_address", "_public_only_resolution"):
             canonical_source = inspect.getsource(getattr(canonical, helper_name))
             for tool_dir_name in SSRF_GUARD_COPIES:
+                if (
+                    helper_name == "_public_only_resolution"
+                    and tool_dir_name in WITHOUT_CONNECT_TIME_RESOLUTION
+                ):
+                    continue
                 module = load_tool_main(tool_dir_name)
                 source = inspect.getsource(getattr(module, helper_name))
                 assert source == canonical_source, (

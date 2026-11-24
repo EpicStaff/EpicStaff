@@ -14,10 +14,8 @@ itself on a separate real call.
 import pytest
 
 from agents.models import AgentDefinition
-from tables.models import (
-    Graph,
-    LLMConfig,
-)
+from tables.models import Graph
+from ai_models.models import LLMConfig
 from tables.models.graph_models import ClassificationDecisionTableNode
 from tables.models.knowledge_models.collection_models import (
     BaseRagType,

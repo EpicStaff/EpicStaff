@@ -21,6 +21,12 @@ class AudioFormatChoices(models.TextChoices):
 # ---------------------------------------------------------------------------
 # Provider-specific realtime configuration models
 # ---------------------------------------------------------------------------
+# Unlike LLMConfig, EmbeddingConfig and SystemOneConfig, these models have no DB
+# unique constraint on (org, custom_name). Existing installs may already hold
+# duplicate names that we chose not to rename, so uniqueness is enforced only by
+# the serializer validator. Postgres cannot add a unique constraint that skips
+# existing rows, so adding one later needs a data migration that renames the
+# duplicates first.
 
 
 class OpenAIRealtimeConfig(OrgScopedModel, LastEditTrackedModel, models.Model):

@@ -185,6 +185,64 @@ describe('ChatThreadHeaderComponent', () => {
         expect(host().textContent).not.toContain('Held by');
     });
 
+    describe("the section's badge on the avatar", () => {
+        const badge = (): HTMLElement | null => host().querySelector('.conversation-section-badge');
+        const badgeIcon = (): string | null => badge()?.querySelector('use')?.getAttribute('href') ?? null;
+
+        it('shows the section the list shows the conversation in, and who took it, as its row does', () => {
+            render({
+                mode: 'human',
+                handoff_at: TEN_MINUTES_AGO,
+                assigned_operator_id: 7,
+                assigned_operator_name: 'Grace Hopper',
+                last_message_at: TEN_MINUTES_AGO,
+            });
+            expect(badgeIcon()).toBe('#icon-headset-outline');
+            expect(tooltipOf('.conversation-section-badge')?.message).toBe('Taken by Grace Hopper');
+        });
+
+        it('tells a screen reader the section and, as the only place that says it, who took it', () => {
+            render({
+                mode: 'human',
+                handoff_at: TEN_MINUTES_AGO,
+                assigned_operator_id: 7,
+                assigned_operator_name: 'Grace Hopper',
+                last_message_at: TEN_MINUTES_AGO,
+            });
+            const describedBy = badge()?.getAttribute('aria-describedby') ?? '';
+            expect(badge()?.getAttribute('role')).toBe('img');
+            expect(badge()?.getAttribute('aria-label')).toBe('In progress');
+            expect(document.getElementById(describedBy)?.textContent?.trim()).toBe('Taken by Grace Hopper');
+            expect(badge()?.tabIndex).toBe(0);
+        });
+
+        it('names only the section, and is no Tab stop, while nobody holds the conversation', () => {
+            render({ last_message_at: TEN_MINUTES_AGO });
+            expect(badge()?.getAttribute('aria-label')).toBe('Bot');
+            expect(badge()?.hasAttribute('aria-describedby')).toBe(false);
+            expect(badge()?.hasAttribute('tabindex')).toBe(false);
+        });
+
+        it("follows the conversation into another section: a test's flask, then Closed's icon once it closes", () => {
+            render({ is_test: true, last_message_at: TEN_MINUTES_AGO });
+            expect(badgeIcon()).toBe('#icon-flask');
+            expect(tooltipOf('.conversation-section-badge')?.message).toBe('');
+
+            fixture.componentRef.setInput(
+                'conversation',
+                conversation({ is_test: true, last_message_at: TEN_MINUTES_AGO, status: 'closed' })
+            );
+            fixture.detectChanges();
+            expect(badgeIcon()).toBe('#icon-closed');
+        });
+
+        it('shows none on a conversation no section lists: one without a message yet', () => {
+            render({ last_message_at: null });
+            expect(host().querySelector('.thread-header__avatar')).not.toBeNull();
+            expect(badge()).toBeNull();
+        });
+    });
+
     describe('the wait chip', () => {
         const chip = (): HTMLElement | null => host().querySelector('.thread-header__wait');
         const chipIcon = (): string | null => chip()?.querySelector('use')?.getAttribute('href') ?? null;

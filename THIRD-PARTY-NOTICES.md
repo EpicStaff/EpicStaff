@@ -12,7 +12,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Wed, 11 Nov 2026 08:25:03 GMT -->
+<!-- generated: 2026-11-20T15:11:03Z UTC -->
 <!-- commit: 042e01bd097a98bb7ce60bdbb4635d0d37845a26 -->
 <!-- package-lock.json sha256: d7c8adf8cadb653b -->
 
@@ -3923,9 +3923,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-11-07T09:05:47Z UTC -->
-<!-- commit: 618a918a420c867551b6ea1450f759baac90d133 -->
-<!-- lock-hashes: agent:33485be7b40d1c4d, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:3b8a9513930f183b, django_app:9edcfe4f5547fa9d, es_plugins:dbaccc6cdbe28892, foundation:42ce6227dbb12b91, knowledge_new:2a1b626c6c054648, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:465ed704a7143a7e, sandbox:117c57af453053a0, sandbox_new:6d8bd33d7277129b, shared:4fe7d63d599aa036, webhook:241b4e1b204ef7f8 -->
+<!-- generated: 2026-11-19T12:45:06Z UTC -->
+<!-- commit: UNKNOWN -->
+<!-- lock-hashes: agent:fc6db491b10362f7, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:d70ae5876449fdea, django_app:a46a1a072518e92d, es_plugins:dbaccc6cdbe28892, foundation:eb9639484fc6d726, knowledge_new:fe6c346b612f027f, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:eacb693cf9accb5e, sandbox:117c57af453053a0, sandbox_new:a43e19009b028dcd, shared:65c1a59f70ec0dc0, webhook:be4edcbb5252064a -->
 
 ## Backend (Python)
 
@@ -3937,7 +3937,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 |---|---|
 | MIT License | 76 |
 | MIT | 74 |
-| BSD-3-Clause | 30 |
+| BSD-3-Clause | 31 |
 | Apache Software License | 27 |
 | Apache-2.0 | 25 |
 | BSD License | 25 |
@@ -3970,7 +3970,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | MPL-2.0 AND MIT | 1 |
 | PSF-2.0 | 1 |
 | The Unlicense (Unlicense) | 1 |
-| **Total** | **310** |
+| **Total** | **311** |
 
 ### Python package index
 
@@ -4128,7 +4128,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `langgraph-sdk` | 0.4.4 | MIT | Copyright (c) 2024 LangChain, Inc. |
 | `langsmith` | 0.10.15 | MIT | Copyright (c) LangChain <support@langchain.dev> |
 | `langsmith` | 0.12.2 | MIT | Copyright (c) LangChain <support@langchain.dev> |
-| `litellm` | 1.108.1 | MIT | Copyright (c) 2023 Berri AI |
+| `litellm` | 1.108.12 | MIT | Copyright (c) 2023 Berri AI |
 | `litestar` | 2.24.0 | MIT License | Copyright (c) 2021, 2022, 2023, 2024, 2025, 2026 Litestar Org. |
 | `litestar-htmx` | 0.5.0 | MIT License | Copyright (c) 2021, 2022, 2023, 2024 Litestar Org. |
 | `loguru` | 0.7.2 | MIT License | Copyright (c) 2017 |
@@ -4203,6 +4203,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pyasn1` | 0.6.4 | BSD-2-Clause | Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com> |
 | `pyasn1_modules` | 0.4.2 | BSD License | Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com> |
 | `pycparser` | 3.0 | BSD-3-Clause | Copyright (c) 2008-2022, Eli Bendersky |
+| `pycparser` | 3.12 | BSD-3-Clause | Copyright (c) 2008-2027, Eli Bendersky |
 | `pycryptodome` | 3.23.0 | BSD License; Public Domain | Copyright (c) Helder Eijs |
 | `pycryptodome` | 3.24.1 | BSD License; Public Domain | Copyright (c) Helder Eijs |
 | `pydantic` | 2.13.4 | MIT | Copyright (c) 2017 to present Pydantic Services Inc. and individual contributors. |
@@ -15085,7 +15086,7 @@ SOFTWARE.
 > No LICENSE file shipped by upstream wheel.
 > No NOTICE file shipped by upstream.
 
-#### litellm@1.108.1
+#### litellm@1.108.12
 
 - **License:** MIT
 - **Author:** BerriAI
@@ -29050,6 +29051,47 @@ POSSIBILITY OF SUCH DAMAGE.
 pycparser -- A C parser in Python
 
 Copyright (c) 2008-2022, Eli Bendersky
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this 
+  list of conditions and the following disclaimer.
+* Redistributions in binary form must reproduce the above copyright notice, 
+  this list of conditions and the following disclaimer in the documentation 
+  and/or other materials provided with the distribution.
+* Neither the name of the copyright holder nor the names of its contributors may 
+  be used to endorse or promote products derived from this software without 
+  specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE 
+GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) 
+HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT 
+OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+</pre>
+
+</details>
+
+> No NOTICE file shipped by upstream.
+
+#### pycparser@3.12
+
+- **License:** BSD-3-Clause
+- **Author:** Eli Bendersky <eliben@gmail.com>
+
+<details><summary>License text</summary>
+
+<pre>
+pycparser -- A C parser in Python
+
+Copyright (c) 2008-2027, Eli Bendersky
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,

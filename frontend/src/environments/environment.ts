@@ -8,6 +8,6 @@ export const environment = {
     chatApiUrl: '/chat/',
     isSessionAuditEnabled: true,
     isUserAuditEnabled: true,
-    // Needs PLUGINS_ENABLED on the backend and nginx (plugin hosts under PLUGINS_BASE_DOMAIN).
+    // Needs PLUGINS_ENABLED on the backend and nginx (plugin hosts named by PLUGINS_HOST_TEMPLATE).
     isPluginsEnabled: false,
 };

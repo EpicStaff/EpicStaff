@@ -65,6 +65,7 @@ async def test_build_installs_the_predefined_packages_into_the_final_venv(
     venv_path, packages = uv_provider.install_local_calls[0]
     assert venv_path == venvs_dir / f"venv-{built.hash}"
     assert packages == settings.PREDEFINED_VENV_PACKAGES
+    assert uv_provider.install_local_wheelhouses == [settings.PREDEFINED_WHEELHOUSE_DIR]
 
 
 async def test_build_marks_the_venv_processing_before_it_starts(uow, uv_provider, venvs_dir, file_storage):
@@ -227,9 +228,9 @@ class CountingCustomLibraryRepository(FakeCustomLibraryRepository):
         super().__init__()
         self.list_by_names_calls = 0
 
-    async def list_by_names(self, names):
+    async def list_by_names(self, scope, names):
         self.list_by_names_calls += 1
-        return await super().list_by_names(names)
+        return await super().list_by_names(scope, names)
 
 
 class CountingWheelRepository(FakeWheelRepository):
@@ -242,9 +243,16 @@ class CountingWheelRepository(FakeWheelRepository):
         return await super().list_by_library_ids(ids)
 
 
-def publish(uow, file_storage, name: str, versions: dict[str, WheelStatus]) -> CustomLibrary:
+def publish(
+    uow,
+    file_storage,
+    name: str,
+    versions: dict[str, WheelStatus],
+    *,
+    scope: str | None = None,
+) -> CustomLibrary:
     """A stored library whose versions are in the given states, with files to download."""
-    library = uow.custom_library_repo.seed(CustomLibrary(name=name))[0]
+    library = uow.custom_library_repo.seed(CustomLibrary(name=name, scope=scope))[0]
     for index, (version, status) in enumerate(versions.items()):
         built = status is WheelStatus.COMPLETED
         wheel = uow.wheel_repo.seed(
@@ -418,3 +426,77 @@ async def test_a_venv_refused_before_the_build_is_never_marked_processing(
     await VenvBuildOrchestrator(uow, uv_provider, file_storage).build(stored)
 
     assert uv_provider.init_venv_calls == []
+
+
+async def test_a_venv_installs_the_library_of_its_own_scope(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    """Two tenants may each store an `acme-core`; a venv gets its own tenant's."""
+    publish(uow, file_storage, "acme-core", {"9.9.9": WheelStatus.COMPLETED}, scope="org-2")
+    publish(uow, file_storage, "acme-core", {"1.4.2": WheelStatus.COMPLETED}, scope="org-1")
+    stored = uow.venv_repo.seed(make_venv(scope="org-1", libs=[custom("acme-core")]))[0]
+
+    await VenvBuildOrchestrator(uow, uv_provider, file_storage).build(stored)
+
+    assert uv_provider.wheelhouse_contents[0] == ["acme_core-1.4.2-py3-none-any.whl"]
+
+
+async def test_a_venv_does_not_find_a_library_of_another_scope(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    publish(uow, file_storage, "acme-core", {"1.4.2": WheelStatus.COMPLETED}, scope="org-2")
+    stored = uow.venv_repo.seed(make_venv(scope="org-1", libs=[custom("acme-core")]))[0]
+
+    await VenvBuildOrchestrator(uow, uv_provider, file_storage).build(stored)
+
+    assert uow.venv_repo.rows[stored.id].status is VenvStatus.FAILED
+    assert uv_provider.apply_calls == []
+
+
+async def test_prepare_builds_a_venv_that_is_not_built(uow, uv_provider, venvs_dir, file_storage):
+    stored = uow.venv_repo.seed(make_venv())[0]
+
+    venv = await VenvBuildOrchestrator(uow, uv_provider, file_storage).prepare(stored)
+
+    assert venv.status is VenvStatus.COMPLETED
+    assert (venvs_dir / f"venv-{venv.hash}").is_dir()
+
+
+async def test_prepare_only_refreshes_the_predefined_packages_of_a_built_venv(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    from manager import settings
+
+    (venvs_dir / "venv-1abc").mkdir(parents=True)
+    stored = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    venv = await VenvBuildOrchestrator(uow, uv_provider, file_storage).prepare(stored)
+
+    assert (venv.status, venv.hash) == (VenvStatus.COMPLETED, "1abc")
+    assert uv_provider.apply_calls == []
+    assert uv_provider.install_local_calls == [
+        (venvs_dir / "venv-1abc", settings.PREDEFINED_VENV_PACKAGES)
+    ]
+
+
+async def test_prepare_rebuilds_a_built_venv_whose_directory_is_gone(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    stored = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1gone"))[0]
+
+    venv = await VenvBuildOrchestrator(uow, uv_provider, file_storage).prepare(stored)
+
+    assert venv.status is VenvStatus.COMPLETED
+    assert (venvs_dir / f"venv-{venv.hash}").is_dir()
+    assert len(uv_provider.apply_calls) == 1
+
+
+async def test_prepare_returns_a_venv_that_failed_to_build_as_failed(
+    uow, uv_provider, venvs_dir, file_storage
+):
+    uv_provider.fail_apply = RuntimeError("index unreachable")
+    stored = uow.venv_repo.seed(make_venv())[0]
+
+    venv = await VenvBuildOrchestrator(uow, uv_provider, file_storage).prepare(stored)
+
+    assert venv.status is VenvStatus.FAILED
