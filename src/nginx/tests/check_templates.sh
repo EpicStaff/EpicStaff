@@ -9,11 +9,13 @@
 #     each lab's nginx must set; and that the hooks refuse what they must: TLS on without a
 #     certificate, an NGINX_HSTS_ENABLED that is not a boolean, and an NGINX_TRUSTED_PROXIES that
 #     is not none or a list of IPv4 addresses and CIDRs, or that holds an empty entry, a /0 range
-#     or a CIDR with host bits set, and a DJANGO_SGI_WORKERS or DJANGO_PORT that is not a whole
-#     number in range;
+#     or a CIDR with host bits set, a DJANGO_SGI_WORKERS or DJANGO_PORT that is not a whole
+#     number in range, and a DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE that is not a byte size greater
+#     than 0, which the import-job routes' body cap is rendered from in bytes;
 #   - that Django's upstreams are least_conn (requests) and round-robin (websockets, the session
 #     event stream) over django_app's servers, DJANGO_SGI_WORKERS of them on their own ports
-#     from DJANGO_PORT + 1 up, none of which nginx ever marks failed (max_fails=0);
+#     from DJANGO_PORT + 1 up, none of which nginx ever marks failed (max_fails=0) or keeps an
+#     idle connection to (keepalive 0);
 #   - that every X-Forwarded-Proto a template sets is $forwarded_proto, never the client's header,
 #     and never $scheme but on the plugin listeners, which no proxy is in front of; that every
 #     location that proxies and passes the client's headers on sends one, so none passes the
@@ -153,7 +155,7 @@ stack_environment=(
   PLUGINS_ENABLED=false PLUGINS_DEV_MODE=false "PLUGINS_HOST_TEMPLATE={id}.plugins.epicstaff.test"
   PLUGINS_MAX_PACKAGE_MB=300 PLUGINS_MAX_REQUEST_BODY_MB=20 PLUGINS_GATEWAY_SECRET="$gateway_secret"
   DJANGO_FRONTEND_BASE_URL=https://epicstaff.test PLUGINS_NETWORK_SUBNET=10.235.0.0/24
-  STORAGE_HOST=storage STORAGE_PORT=9000 STORAGE_BUCKET=epicstaff
+  STORAGE_HOST=storage STORAGE_PORT=9000 STORAGE_BUCKET=epicstaff DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=150mb
   AVATAR_URL_SIGNING_SECRET="$avatar_signing_secret"
 )
 
@@ -1042,6 +1044,33 @@ expect_refused "NGINX_HSTS_ENABLED=maybe is refused" "NGINX_HSTS_ENABLED='maybe'
 expect_refused "an unset NGINX_HSTS_ENABLED is refused" "environment variable NGINX_HSTS_ENABLED is not set" \
   unset:NGINX_HSTS_ENABLED
 
+# The import-job routes cap their body at DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE, which Django reads as a
+# byte size (src/shared/humanize.py); 19-derive-knowledge-archive-size.envsh renders it in bytes
+# and refuses what Django would refuse, and none and 0 (no cap, to nginx).
+if expect_valid "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=150mb is accepted"; then
+  expect_directives "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=150mb caps every import-job route at 157286400 bytes" \
+    "location = /api/graphs/import-jobs/" "location = /api/source-collections/import-jobs/" \
+    "location = /api/agent-definitions/import-jobs/" \
+    "client_max_body_size 157286400;" "error_page 413 = @knowledge_archive_too_large;"
+fi
+if expect_valid "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=' 1.5 GB ' is accepted" \
+  "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE= 1.5 GB "; then
+  expect_directives "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=' 1.5 GB ' is read as 1610612736 bytes" \
+    "client_max_body_size 1610612736;"
+fi
+if expect_valid "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=1048576 is accepted" \
+  DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=1048576; then
+  expect_directives "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=1048576 is read as bytes" \
+    "client_max_body_size 1048576;"
+fi
+for value in none 0 150mib 150m mb -5mb; do
+  expect_refused "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=$value is refused" \
+    "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE='$value' is not a byte size" \
+    "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=$value"
+done
+expect_refused "an unset DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE is refused" \
+  "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE='' is not a byte size" unset:DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE
+
 # Every X-Forwarded-Proto nginx sets is $forwarded_proto (default.conf.template): $scheme tells
 # Django http behind a load balancer that ends TLS, and the client's own header would let anyone
 # claim https. The one exception is plugins-api-listener.snippet, which sends $scheme: only the
@@ -1275,7 +1304,8 @@ fi
 # DJANGO_SGI_WORKERS (19-render-django-upstream.envsh): django_app runs single-worker servers, each
 # on its own port from DJANGO_PORT + 1 up (DJANGO_PORT is the one they share for direct callers).
 # nginx balances requests across them with least_conn, and the long-lived connections in turn,
-# and never takes one out of the group after an error (max_fails=0).
+# never takes one out of the group after an error (max_fails=0) and keeps no idle connection to
+# one (keepalive 0).
 # $1 = upstream name; prints the directives of that upstream in the last render, one per line.
 django_upstream_directives() {
   directives | awk -v name="$1" '$0 == "upstream " name " {" { inside = 1; next }
@@ -1287,8 +1317,8 @@ expect_django_upstreams() {
   local requests streams
   requests=$(django_upstream_directives backend_server | paste -sd '|' -)
   streams=$(django_upstream_directives backend_stream_server | paste -sd '|' -)
-  if [ "$requests" = "zone backend_server 64k;|least_conn;|$2" ] \
-    && [ "$streams" = "zone backend_stream_server 64k;|$2" ]; then
+  if [ "$requests" = "zone backend_server 64k;|least_conn;|keepalive 0;|$2" ] \
+    && [ "$streams" = "zone backend_stream_server 64k;|keepalive 0;|$2" ]; then
     pass "$1"
   else
     fail "$1: backend_server [$requests], backend_stream_server [$streams]"
@@ -1297,6 +1327,12 @@ expect_django_upstreams() {
 if expect_valid "DJANGO_SGI_WORKERS=1 is accepted"; then
   expect_django_upstreams "DJANGO_SGI_WORKERS=1 sends Django's requests to the one server's own port, DJANGO_PORT + 1" \
     "server django:8001 max_fails=0 resolve;"
+  # Uvicorn closes idle connections after 5 s; a webhook POST sent on one as it closes is not retried.
+  if django_upstream_directives webhook_server | grep -qx 'keepalive 0;'; then
+    pass "nginx keeps no idle connection to the webhook service (keepalive 0)"
+  else
+    fail "webhook_server must set keepalive 0: [$(django_upstream_directives webhook_server | paste -sd '|' -)]"
+  fi
 fi
 if expect_valid "DJANGO_SGI_WORKERS=3 is accepted" DJANGO_SGI_WORKERS=3 DJANGO_PORT=8100; then
   expect_django_upstreams "DJANGO_SGI_WORKERS=3 balances Django's requests across the three servers' own ports" \
@@ -2537,6 +2573,8 @@ for plugins_enabled in false true; do
     "/webhooks/x 8009 -" "/voice/x 8050 -" "/voice/stream 8050 -" "/realtime/x 8050 -" \
     "/auditor/api/x 8010 -" "/api/x/ 8000 django" "/admin/ 8000 django" "/ws/x 8000 django" \
     "/api/storage/upload/stream 8000 django" "/api/run-session/subscribe/1/ 8000 django" \
+    "/api/graphs/import-jobs/ 8000 django" "/api/source-collections/import-jobs/ 8000 django" \
+    "/api/agent-definitions/import-jobs/ 8000 django" \
     "/static/x 8000 django" "/media/x 8000 django"; do
     read -r path port upstream <<< "$target"
     live sh -c 'curl -s -D /tmp/headers -o /tmp/body -H "Host: epicstaff.test" \
@@ -2571,7 +2609,9 @@ for plugins_enabled in false true; do
     "/ 404" "/api/x/ 404" "/admin/ 404" "/ht/ 404" "/swagger/ 404" \
     "/media/x 404" "/media/avatars/x 404" "/static/x 404" "/ws/x 404" "/realtime/x 404" \
     "/auditor/api/x 404" "/chat 404" "/chat/api/x 404" "/plugins/weather 404" \
-    "/api/storage/upload/stream 404" "/api/run-session/subscribe/1/ 404"; do
+    "/api/storage/upload/stream 404" "/api/run-session/subscribe/1/ 404" \
+    "/api/graphs/import-jobs/ 404" "/api/source-collections/import-jobs/ 404" \
+    "/api/agent-definitions/import-jobs/ 404"; do
     read -r path port location <<< "$target"
     status=$(live sh -c 'curl -s -D /tmp/headers -o /tmp/body -w "%{http_code}" -H "Host: epicstaff.test" \
       -H "Cookie: __Host-auth.refresh=live-refresh" "http://127.0.0.1:$2$1"' request "$path" "$tunnel_port" || true)
@@ -2639,6 +2679,8 @@ forwarded_proto_targets=("epicstaff.test /" "epicstaff.test /chat" "epicstaff.te
   "epicstaff.test /webhooks/x" "epicstaff.test /voice/x" "epicstaff.test /voice/stream"
   "epicstaff.test /realtime/x" "epicstaff.test /auditor/api/x" "epicstaff.test /api/x/"
   "epicstaff.test /admin/" "epicstaff.test /ws/x" "epicstaff.test /api/storage/upload/stream"
+  "epicstaff.test /api/graphs/import-jobs/" "epicstaff.test /api/source-collections/import-jobs/"
+  "epicstaff.test /api/agent-definitions/import-jobs/"
   "epicstaff.test /api/run-session/subscribe/1/" "epicstaff.test /static/x" "epicstaff.test /media/x"
   "alpha.plugins.epicstaff.test /.well-known/epicstaff/config.json")
 # $1 = description, $2 = the scheme to ask nginx in, $3 = the X-Forwarded-Proto the client sends

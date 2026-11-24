@@ -31,9 +31,13 @@ map "$trusted_proxy:$http_x_forwarded_proto" $forwarded_proto {
 # 19-render-django-upstream.envsh renders one line per server from DJANGO_SGI_WORKERS. least_conn
 # sends each request to the server with the fewest active requests, so a burst spreads evenly and
 # a server busy with slow requests gets fewer new ones.
+# keepalive 0: a new connection per request (nginx caches them by default since 1.29.7). Gunicorn
+# closes idle ones after 2 s (--keep-alive) and on every max-requests recycle; a request sent on one
+# as it closes is reset, and nginx never retries a POST.
 upstream backend_server {
     zone backend_server 64k;
     least_conn;
+    keepalive 0;
 ${NGINX_DJANGO_UPSTREAM_SERVERS}}
 
 # The same servers for the long-lived connections (websockets, the session event stream), in
@@ -41,6 +45,7 @@ ${NGINX_DJANGO_UPSTREAM_SERVERS}}
 # a server holding many of them look busy, and steer a burst onto the others.
 upstream backend_stream_server {
     zone backend_stream_server 64k;
+    keepalive 0;
 ${NGINX_DJANGO_UPSTREAM_SERVERS}}
 
 upstream frontend_server {
@@ -53,8 +58,10 @@ upstream realtime_server {
     server ${REALTIME_HOST}:${REALTIME_PORT} resolve;
 }
 
+# keepalive 0: as for backend_server; Uvicorn closes idle connections after 5 s.
 upstream webhook_server {
     zone webhook_server 64k;
+    keepalive 0;
     server ${WEBHOOK_HOST}:${WEBHOOK_PORT} resolve;
 }
 
@@ -176,6 +183,78 @@ server {
         proxy_set_header X-Forwarded-Proto $forwarded_proto;
     }
 
+    # Import jobs: the raw body is a .zip export archive, streamed to Django, which writes it to
+    # a temporary file as it arrives. Both cap it at DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE, in bytes
+    # here (19-derive-knowledge-archive-size.envsh); a larger body gets the JSON 413 Django would
+    # send. Timeouts as for the upload stream above.
+    location = /api/graphs/import-jobs/ {
+        error_page 413 = @knowledge_archive_too_large;
+        proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        client_max_body_size ${KNOWLEDGE_ARCHIVE_MAX_BYTES};
+        proxy_read_timeout 6h;
+        proxy_send_timeout 6h;
+        client_body_timeout 150s;
+
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+    }
+
+    location = /api/source-collections/import-jobs/ {
+        error_page 413 = @knowledge_archive_too_large;
+        proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        client_max_body_size ${KNOWLEDGE_ARCHIVE_MAX_BYTES};
+        proxy_read_timeout 6h;
+        proxy_send_timeout 6h;
+        client_body_timeout 150s;
+
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+    }
+
+    location = /api/agent-definitions/import-jobs/ {
+        error_page 413 = @knowledge_archive_too_large;
+        proxy_pass http://backend_server;
+        include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
+        include /etc/nginx/conf.d/strip-plugin-internal-headers.snippet;
+        proxy_http_version 1.1;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        client_max_body_size ${KNOWLEDGE_ARCHIVE_MAX_BYTES};
+        proxy_read_timeout 6h;
+        proxy_send_timeout 6h;
+        client_body_timeout 150s;
+
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-API-Key $http_x_api_key;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $forwarded_proto;
+    }
+
+    location @knowledge_archive_too_large {
+        default_type application/json;
+        return 413 '{"status_code":413,"code":"archive_too_large","message":"The archive is larger than the import size limit."}';
+    }
+
     location ~ ^/(api|admin|ht|swagger)(/|$) {
         proxy_pass http://backend_server;
         include /etc/nginx/conf.d/strip-underscore-forwarding-headers.snippet;
@@ -214,7 +293,7 @@ server {
 
     location /auditor/ {
         # The auditor runs only under the auditor compose profile and exits on
-        # startup when AUDIT_TRAIL_ENABLED is not true, so its hostname may not exist. A static upstream would be resolved when
+        # startup when neither SESSION_AUDIT_TRAIL_ENABLED nor USER_AUDIT_TRAIL_ENABLED is true, so its hostname may not exist. A static upstream would be resolved when
         # nginx starts and a missing host stops nginx entirely; proxying to a
         # variable resolves only when a request arrives, so /auditor/ returns
         # 502 while the auditor is disabled and nothing else is affected.

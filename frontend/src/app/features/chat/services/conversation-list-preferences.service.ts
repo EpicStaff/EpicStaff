@@ -1,22 +1,27 @@
 import { computed, Injectable, signal } from '@angular/core';
 
-import { ChatInboxOrder, ChatInboxSection } from '../models/chat.model';
+import { ConversationListTab, InboxSection, TestingSection } from '../utils/conversation-list-tab.util';
 
 const STORAGE_KEY = 'chat:conversationList';
-const SECTIONS: readonly ChatInboxSection[] = ['waiting', 'in_progress', 'test', 'closed', 'bot'];
-const ORDERS: readonly ChatInboxOrder[] = ['newest', 'oldest'];
+const TABS: readonly ConversationListTab[] = ['inbox', 'testing'];
+// In column order, which is the order they are stored in.
+const SECTIONS: readonly InboxSection[] = ['waiting', 'in_progress', 'bot', 'closed'];
+const TESTING_SECTIONS: readonly TestingSection[] = ['test_open', 'test_closed'];
 
 /** What the conversations column remembers per browser, as one JSON object. The search is never remembered. */
 interface ConversationListPreferences {
-    expanded: ChatInboxSection | null;
-    order: ChatInboxOrder;
+    tab: ConversationListTab;
+    // Inbox's open sections, and Bot Testing's: each tab remembers its own; empty when every one is folded.
+    openSections: readonly InboxSection[];
+    openTestingSections: readonly TestingSection[];
     // Only the conversations the user holds.
     isMineOnly: boolean;
 }
 
 const defaults = (): ConversationListPreferences => ({
-    expanded: 'waiting',
-    order: 'newest',
+    tab: 'inbox',
+    openSections: SECTIONS,
+    openTestingSections: TESTING_SECTIONS,
     isMineOnly: false,
 });
 
@@ -28,17 +33,23 @@ const defaults = (): ConversationListPreferences => ({
 export class ConversationListPreferencesService {
     private readonly preferences = signal<ConversationListPreferences>(this.read());
 
-    readonly expanded = computed(() => this.preferences().expanded);
-    /** In progress, Tests and Bot; Waiting is always longest wait first, Closed most recently closed first. */
-    readonly order = computed(() => this.preferences().order);
+    readonly tab = computed(() => this.preferences().tab);
+    /** Inbox's open sections, in column order. */
+    readonly openSections = computed(() => this.preferences().openSections);
+    /** Bot Testing's open sections, in column order. */
+    readonly openTestingSections = computed(() => this.preferences().openTestingSections);
     readonly isMineOnly = computed(() => this.preferences().isMineOnly);
 
-    setExpanded(expanded: ChatInboxSection | null): void {
-        this.save({ expanded });
+    setTab(tab: ConversationListTab): void {
+        this.save({ tab });
     }
 
-    setOrder(order: ChatInboxOrder): void {
-        this.save({ order });
+    setOpenSections(sections: readonly InboxSection[]): void {
+        this.save({ openSections: inColumnOrder(SECTIONS, sections) });
+    }
+
+    setOpenTestingSections(sections: readonly TestingSection[]): void {
+        this.save({ openTestingSections: inColumnOrder(TESTING_SECTIONS, sections) });
     }
 
     setMineOnly(isMineOnly: boolean): void {
@@ -54,6 +65,10 @@ export class ConversationListPreferencesService {
         }
     }
 
+    /**
+     * Fields this version does not know are ignored, so a value saved when one section was open at a time (its
+     * `expanded`) opens every section, and keeps the rest of it.
+     */
     private read(): ConversationListPreferences {
         let stored: string | null;
         try {
@@ -71,12 +86,22 @@ export class ConversationListPreferencesService {
         if (!value || typeof value !== 'object') return defaults();
         const fields = value as Record<string, unknown>;
         const fallback = defaults();
-        const expanded = fields['expanded'];
         return {
-            expanded:
-                expanded === null ? null : (SECTIONS.find((section) => section === expanded) ?? fallback.expanded),
-            order: ORDERS.find((order) => order === fields['order']) ?? fallback.order,
+            tab: TABS.find((tab) => tab === fields['tab']) ?? fallback.tab,
+            openSections: readSections(SECTIONS, fields['openSections']) ?? fallback.openSections,
+            openTestingSections:
+                readSections(TESTING_SECTIONS, fields['openTestingSections']) ?? fallback.openTestingSections,
             isMineOnly: typeof fields['isMineOnly'] === 'boolean' ? fields['isMineOnly'] : fallback.isMineOnly,
         };
     }
+}
+
+/** A stored list of sections: the known ones in it, in column order; null when it is no list at all. */
+function readSections<T extends string>(known: readonly T[], value: unknown): readonly T[] | null {
+    return Array.isArray(value) ? inColumnOrder(known, value) : null;
+}
+
+// Each section once, in column order; anything else is dropped.
+function inColumnOrder<T extends string>(known: readonly T[], sections: readonly unknown[]): readonly T[] {
+    return known.filter((section) => sections.includes(section));
 }

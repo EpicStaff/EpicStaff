@@ -1,7 +1,6 @@
 """POST /api/run-session/ answers 201 once crew has the session, whatever fails after the publish.
 
-A 5xx at that point would make a retrying caller (the fanout tool retries one) start the
-run a second time. The failures below are real database errors: inside the test's own
+A 5xx at that point would make a retrying caller start the run a second time. The failures below are real database errors: inside the test's own
 transaction, as inside the schedule trigger's, a failed query left unguarded would abort
 the transaction the started session lives in.
 """

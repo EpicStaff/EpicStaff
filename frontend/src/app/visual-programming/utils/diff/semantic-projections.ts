@@ -17,6 +17,7 @@ import { ComputationConfig, PromptConfig } from '../../core/models/classificatio
 import { ConditionGroup } from '../../core/models/decision-table.model';
 import { AgentNodeModel, BaseNodeModel, NodeModel, NoteLinkedRegion } from '../../core/models/node.model';
 import { ScheduleTriggerNodeData } from '../../core/models/schedule-trigger.model';
+import { StorageGrants } from '../../core/models/storage-grants.model';
 import { InlineSurface } from '../../core/models/task-node.model';
 import { FieldName } from './field-display';
 import {
@@ -152,7 +153,7 @@ export const SEMANTIC_PROJECTIONS = {
             node_name: nodeName(node),
             // Only here: the webhook and table load mappers drop the venv, so their models never hold one.
             python_code: { ...pythonCode(node.data, context), venv_id: node.data.venv_id ?? null },
-            use_storage: node.data.use_storage ?? false,
+            storage_grants: storageGrants(node.storageGrants),
             ...inputOutput(node),
         }),
         ignored: { test_input: TEST_AID, ...prefixKeys('data.', PYTHON_CODE_IGNORED) },
@@ -161,7 +162,7 @@ export const SEMANTIC_PROJECTIONS = {
         project: (node, context) => ({
             node_name: nodeName(node),
             python_code: pythonCode(node.data.python_code, context),
-            use_storage: node.data.use_storage ?? false,
+            storage_grants: storageGrants(node.storageGrants),
             webhook_trigger: node.data.webhook_trigger,
         }),
         ignored: {
@@ -301,7 +302,7 @@ export const SEMANTIC_PROJECTIONS = {
                     },
                     context
                 ),
-                pre_use_storage: table.pre_use_storage ?? false,
+                pre_storage_grants: storageGrants(node.preStorageGrants),
                 post_computation: computation(
                     table.post_computation,
                     {
@@ -311,7 +312,7 @@ export const SEMANTIC_PROJECTIONS = {
                     },
                     context
                 ),
-                post_use_storage: table.post_use_storage ?? false,
+                post_storage_grants: storageGrants(node.postStorageGrants),
                 condition_groups: keyedBy(
                     comparedConditionGroups(NodeType.CLASSIFICATION_TABLE, table.condition_groups ?? []),
                     ({ key }) => key,
@@ -367,6 +368,14 @@ function prefixKeys(prefix: string, record: Readonly<Record<string, string>>): R
 /** Restore and import renumber nodes, so the ` #N` suffix is not part of the name. Stored trimmed. */
 function nodeName(node: BaseNodeModel): string {
     return stripNodeNumberSuffix(storedText(node.node_name ?? ''));
+}
+
+/**
+ * What code may do with the flow's attached files. A node the server stored no grants for (a version snapshot older
+ * than grants) reads as every box ticked, as the server restores it.
+ */
+function storageGrants(grants: StorageGrants | undefined): Projection {
+    return { read: grants?.read ?? true, write: grants?.write ?? true, delete: grants?.delete ?? true };
 }
 
 function inputOutput(node: BaseNodeModel): Projection {

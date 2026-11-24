@@ -3,10 +3,16 @@ from collections.abc import Callable
 from domain.errors import (
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
+    EntityNotFoundError,
+    GraphArtifactsNotReadyError,
+    GraphNotIndexedError,
     GraphRagConfigNotFoundError,
+    InvalidArtifactArchiveError,
     KnowledgeError,
     NotRunningOperationError,
+    RagInProcessingError,
     RagNotFoundError,
+    RelationshipNotFoundError,
     UnsupportedError,
 )
 from litestar import Request, Response, status_codes
@@ -49,16 +55,45 @@ def registry(*errors: type[Exception]):
     RagNotFoundError,
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
+    EntityNotFoundError,
     GraphRagConfigNotFoundError,
     NotRunningOperationError,
+    RelationshipNotFoundError,
 )
 def handler_not_found(request: Request, error: Exception) -> Response:
     return create_response(request, status_codes.HTTP_404_NOT_FOUND, "not_found", error)
 
 
+@registry(GraphNotIndexedError)
+def handler_graph_not_indexed(request: Request, error: Exception) -> Response:
+    # The RAG exists but has no index output yet: a state the caller can resolve by
+    # indexing, not a missing resource. django_app recognises the code and tells the
+    # browser so.
+    return create_response(request, status_codes.HTTP_409_CONFLICT, "graph_not_indexed", error)
+
+
 @registry(UnsupportedError)
 def handler_unsupported(request, error: Exception) -> Response:
     return create_response(request, status_codes.HTTP_400_BAD_REQUEST, "unsupported", error)
+
+
+@registry(InvalidArtifactArchiveError)
+def handle_invalid_artifact_archive(request, error: Exception) -> Response:
+    return create_response(
+        request, status_codes.HTTP_400_BAD_REQUEST, "invalid_artifact_archive", error
+    )
+
+
+@registry(GraphArtifactsNotReadyError)
+def handle_graph_artifacts_not_ready(request, error: Exception) -> Response:
+    return create_response(
+        request, status_codes.HTTP_409_CONFLICT, "graph_artifacts_not_ready", error
+    )
+
+
+@registry(RagInProcessingError)
+def handle_rag_in_processing(request, error: Exception) -> Response:
+    return create_response(request, status_codes.HTTP_409_CONFLICT, "rag_in_processing", error)
 
 
 @registry(KnowledgeError)

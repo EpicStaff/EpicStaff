@@ -1,13 +1,15 @@
 import pytest
-from rest_framework.test import APIClient
 
 from agents.models import AgentInlineSurface, AgentInlineSurfacePythonTool
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
 from rbac.models.role import RolePermission
-from tables.models import AgentNode, Graph
+from tables.models import AgentNode, Graph, TransferJob
 from tables.models.label_models import Label
 from tables.models.python_models import PythonCode, PythonCodeTool
+from tables.services.transfer_jobs.export_definitions import export_definition
+from tables.services.transfer_jobs.job_service import TransferJobService
+from tests.transfer_job_helpers import run_job
 
 
 @pytest.fixture
@@ -21,7 +23,7 @@ def org_b(db):
 
 
 @pytest.fixture
-def client_a(db, django_user_model, org_a):
+def exporter_a(db, django_user_model, org_a):
     role = Role.objects.create(name="FlowExporter", org=org_a, is_built_in=False)
     RolePermission.objects.create(
         role=role,
@@ -37,10 +39,7 @@ def client_a(db, django_user_model, org_a):
         email="flow_exporter_a@example.com", password="StrongPass123!"
     )
     OrganizationUser.objects.create(user=user, org=org_a, role=role)
-    client = APIClient()
-    client.force_authenticate(user=user)
-    client.credentials(HTTP_X_ORGANIZATION_ID=str(org_a.id))
-    return client
+    return user
 
 
 @pytest.fixture
@@ -65,29 +64,19 @@ def flow_using_shared_built_in_tool(org_a, org_b):
 
 @pytest.mark.django_db
 def test_flow_export_does_not_leak_other_org_labels_on_shared_tool(
-    client_a, flow_using_shared_built_in_tool
+    exporter_a, org_a, flow_using_shared_built_in_tool
 ):
-    response = client_a.get(f"/api/graphs/{flow_using_shared_built_in_tool.id}/export/")
-
-    assert response.status_code == 200, response.content
-    body = response.content.decode()
-    assert "SharedBuiltIn" in body
-    assert "OrgALabel" in body
-    assert "OrgBLabel" not in body
-
-
-@pytest.mark.django_db
-def test_flow_bulk_export_does_not_leak_other_org_labels_on_shared_tool(
-    client_a, flow_using_shared_built_in_tool
-):
-    response = client_a.post(
-        "/api/graphs/bulk-export/",
-        {"ids": [flow_using_shared_built_in_tool.id]},
-        format="json",
+    job = TransferJobService().start_export(
+        user=exporter_a,
+        org_id=org_a.id,
+        definition=export_definition(TransferJob.MainEntity.FLOW),
+        validated_data={"ids": [flow_using_shared_built_in_tool.id], "include_knowledge": False},
     )
 
-    assert response.status_code == 200, response.content
-    body = response.content.decode()
+    exported = run_job(job.id)
+
+    assert exported.job.status == TransferJob.Status.COMPLETED, exported.job.error
+    body = exported.members["export.json"].decode()
     assert "SharedBuiltIn" in body
     assert "OrgALabel" in body
     assert "OrgBLabel" not in body

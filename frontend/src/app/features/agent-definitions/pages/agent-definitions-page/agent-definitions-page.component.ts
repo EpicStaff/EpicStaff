@@ -11,7 +11,9 @@ import {
     inject,
     Injector,
     OnInit,
+    ResourceRef,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -26,9 +28,9 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { escapeHtml } from '@shared/utils';
+import { escapeHtml, takeQueryParams } from '@shared/utils';
 import { Observable, of } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { finalize, map, switchMap, tap } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -37,10 +39,16 @@ import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-age
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
-import { AgentDefinition } from '../../models/agent-definition.model';
+import { AgentDefinition, AgentInstruction, AgentSurfacePlace } from '../../models/agent-definition.model';
 import { ExplorerSectionId, GroupAssignTarget } from '../../models/explorer.model';
 import { CreateSurfaceRequest } from '../../models/surface.model';
 import { SURFACE_CATEGORIES, SurfaceCategoryConfig, SurfaceCategoryId } from '../../models/surface-category.model';
+import {
+    SurfaceUsage,
+    surfaceUsageAgentCount,
+    surfaceUsageFlowCount,
+    surfaceUsageTotal,
+} from '../../models/surface-usage.model';
 import { BranchTreeNode } from '../../models/tree-node.model';
 import { AgentsPageStore } from '../../services/agents-page-store.service';
 import { SurfaceCatalogsStore } from '../../services/surface-catalogs-store.service';
@@ -70,7 +78,6 @@ import {
     SurfaceSummaryDialogData,
 } from './components/surface-summary-dialog/surface-summary-dialog.component';
 import {
-    SurfaceUsage,
     SurfaceUsageDialogComponent,
     SurfaceUsageDialogData,
 } from './components/surface-usage-dialog/surface-usage-dialog.component';
@@ -156,23 +163,27 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     );
 
     private readonly explorer = viewChild(ExplorerComponent);
+    private readonly agentDetail = viewChild(AgentDetailComponent);
     private readonly headerMenuTrigger = viewChild<string, ElementRef<HTMLButtonElement>>('headerMenuTrigger', {
         read: ElementRef,
     });
 
-    private preselectApplied = false;
+    // Surfaces whose delete confirmation is being prepared or shown: a repeat click must not stack a second one.
+    private readonly surfaceDeletesInFlight = new Set<number>();
+    // `?agentId=` and `?surfaceId=`, taken from the URL at init and applied once the agent list has loaded
+    private queryPreselect: Partial<Record<'agentId' | 'surfaceId', string>> = {};
     private sawLoading = false;
 
     protected readonly hasUnsavedChanges = signal<boolean>(false);
 
-    protected readonly selectedSurfaceUsage = computed<SurfaceUsage | null>(() => {
-        const sv = this.store.selectedSurfaceView();
-        return sv ? this.store.surfaceUsage(sv.surface.id) : null;
-    });
+    protected readonly selectedSurfaceUsageFailed = computed<boolean>(
+        () => this.store.selectedSurfaceUsage.error() !== undefined
+    );
 
-    protected readonly selectedSurfaceUsageCount = computed<number>(() => {
-        const u = this.selectedSurfaceUsage();
-        return u ? u.agents.length + u.flows.length + u.chats.length : 0;
+    /** Null until the server has answered; the "Used by" button shows an ellipsis meanwhile. */
+    protected readonly selectedSurfaceUsageCount = computed<number | null>(() => {
+        const usage = this.store.selectedSurfaceUsage;
+        return usage.hasValue() ? surfaceUsageTotal(usage.value()) : null;
     });
 
     protected readonly selectedSurfacePlace = computed<SurfaceCategoryConfig | null>(() => {
@@ -258,30 +269,26 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         });
 
         effect(() => {
-            if (this.preselectApplied) return;
             const loading = this.store.loading();
             if (loading) {
                 this.sawLoading = true;
                 return;
             }
-            if (!this.sawLoading) return;
-            this.preselectApplied = true;
-            this.applySurfaceIdPreselect();
+            // Only the end of a load reruns this: not the lists and selection the preselect reads and sets.
+            if (this.sawLoading) untracked(() => this.applyQueryPreselect());
         });
     }
 
-    private applySurfaceIdPreselect(): void {
-        const raw = this.route.snapshot.queryParamMap.get('surfaceId');
-        if (raw == null) return;
-        void this.router.navigate([], {
-            relativeTo: this.route,
-            queryParams: { surfaceId: null },
-            queryParamsHandling: 'merge',
-            replaceUrl: true,
-        });
-        const surfaceId = Number(raw);
-        if (!Number.isFinite(surfaceId)) return;
-        const surface = this.store.surfaces().find((s) => s.id === surfaceId);
+    /** `?agentId=` selects that agent; `?surfaceId=` opens that surface where it lives. An unknown id is ignored. */
+    private applyQueryPreselect(): void {
+        const { agentId, surfaceId } = this.queryPreselect;
+        this.queryPreselect = {};
+        if (agentId != null) {
+            const id = Number(agentId);
+            if (this.store.agents().some((agent) => agent.id === id)) this.store.selectAgent(id);
+        }
+        if (surfaceId == null) return;
+        const surface = this.store.surfaces().find((s) => s.id === Number(surfaceId));
         if (!surface) return;
         if (surface.owner_agent != null) {
             this.store.selectAgent(surface.owner_agent);
@@ -291,6 +298,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     ngOnInit(): void {
+        this.queryPreselect = takeQueryParams(this.route, this.router, ['agentId', 'surfaceId']);
         this.store.load();
     }
 
@@ -406,30 +414,61 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         this.hasUnsavedChanges.set(false);
     }
 
+    onSelectedInstructionList(instructionList: AgentInstruction[]): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.updateInstructionList(agentId, instructionList);
+    }
+
+    onCreateSurfaceForSelected(event: { body: CreateSurfaceRequest; place: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.createSurfaceForAgent(agentId, event.body, event.place);
+    }
+
+    onSetSharedForSelected(event: { surfaceIds: number[]; category: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.setSharedSurfacesInCategory(event.surfaceIds, agentId, event.category);
+    }
+
+    onDropSharedForSelected(event: { surfaceId: number; category: SurfaceCategoryId }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.dropSharedSurfaceOnAgent(event.surfaceId, agentId, event.category);
+    }
+
+    onSetSurfacePlacesForSelected(event: { surfaceId: number; places: AgentSurfacePlace[] }): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.setSurfacePlaces(event.surfaceId, agentId, event.places);
+    }
+
+    onDetachSurfaceForSelected(surfaceId: number): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.detachSurfaceFromAgent(surfaceId, agentId);
+    }
+
+    onMakeAgentSpecificCopyForSelected(surfaceId: number): void {
+        const agentId = this.store.selectedAgent()?.id;
+        if (agentId == null) return;
+        this.store.makeAgentSpecificCopy(surfaceId, agentId);
+    }
+
     onCreateSurface(body: CreateSurfaceRequest): void {
         this.store.saveNewSurface(body);
         this.hasUnsavedChanges.set(false);
     }
 
     onOpenUsage(): void {
-        const usage = this.selectedSurfaceUsage();
-        if (!usage) return;
-        this.dialog
-            .open<number | undefined, SurfaceUsageDialogData>(SurfaceUsageDialogComponent, {
-                width: 'calc(100vw - 2rem)',
-                height: 'calc(100vh - 2rem)',
-                maxWidth: '100vw',
-                panelClass: 'surface-usage-dialog-panel',
-                injector: this.injector,
-                data: { usage },
-            })
-            .closed.subscribe((agentId) => {
-                if (typeof agentId !== 'number') return;
-                this.guardUnsaved(() => {
-                    this.storageFacade.selectedFile.set(null);
-                    this.store.selectAgent(agentId);
-                });
-            });
+        // Flow-editor changes made since the last load must show up.
+        this.store.selectedSurfaceUsage.reload();
+        this.openUsageDialog(this.store.selectedSurfaceUsage);
+    }
+
+    onOpenSurfaceUsage(surfaceId: number): void {
+        this.openUsageDialog(this.store.openSurfaceUsage(surfaceId), () => this.store.closeSurfaceUsage());
     }
 
     onViewSummary(event: { place: SurfaceCategoryId; surfaceIds: number[] }): void {
@@ -526,6 +565,26 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     /** Off the menu item first: a dialog the action opens returns the focus to what had it, and the item goes away. */
+    private openUsageDialog(usage: ResourceRef<SurfaceUsage | undefined>, onClosed?: () => void): void {
+        this.dialog
+            .open<number | undefined, SurfaceUsageDialogData>(SurfaceUsageDialogComponent, {
+                width: 'calc(100vw - 2rem)',
+                height: 'calc(100vh - 2rem)',
+                maxWidth: '100vw',
+                panelClass: 'surface-usage-dialog-panel',
+                injector: this.injector,
+                data: { usage },
+            })
+            .closed.subscribe((agentId) => {
+                onClosed?.();
+                if (typeof agentId !== 'number') return;
+                this.guardUnsaved(() => {
+                    this.storageFacade.selectedFile.set(null);
+                    this.store.selectAgent(agentId);
+                });
+            });
+    }
+
     private closeHeaderMenuToTrigger(): void {
         this.headerMenuTrigger()?.nativeElement.focus();
         this.closeHeaderMenu();
@@ -664,13 +723,10 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
     canDeactivate(): boolean | Observable<boolean> {
         if (!this.hasUnsavedChanges()) return true;
-        return this.unsavedChangesDialog.confirmUnsavedChanges().pipe(
-            map((result) => {
-                if (result === UNSAVED_CHANGES_RESULT.dontSave) {
-                    this.hasUnsavedChanges.set(false);
-                    return true;
-                }
-                return false;
+        return this.confirmLeaveAgent().pipe(
+            map((leave) => {
+                if (leave) this.hasUnsavedChanges.set(false);
+                return leave;
             })
         );
     }
@@ -698,18 +754,31 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         const surface = this.store.surfaces().find((s) => s.id === surfaceId);
         if (!surface) return of(false);
 
-        const usageRaw = this.store.surfaceUsage(surfaceId);
-        const shared = surface.owner_agent == null;
-        const usage = {
-            agents: shared ? usageRaw.agents.length : 0,
-            flows: usageRaw.flows.length,
-            chats: usageRaw.chats.length,
-        };
-        const dialog = buildDeleteSurfaceDialog(surface, usage, shared, this.recycleBinSettings.retentionDays());
+        if (this.surfaceDeletesInFlight.has(surfaceId)) return of(false);
+        this.surfaceDeletesInFlight.add(surfaceId);
 
-        return this.confirmationDialog
-            .confirm(dialog, { width: DELETE_CONFIRM_DIALOG_WIDTH })
-            .pipe(map((result) => result === true));
+        const shared = surface.owner_agent == null;
+        // Fetched fresh: the surface may not be the selected one, and a stale or missing count would understate the impact.
+        return this.store.loadSurfaceUsage(surfaceId).pipe(
+            switchMap((usageRaw) => {
+                if (!usageRaw) return of(false);
+                const usage = {
+                    agents: shared ? surfaceUsageAgentCount(usageRaw) : 0,
+                    flows: surfaceUsageFlowCount(usageRaw),
+                    chats: 0,
+                };
+                const dialog = buildDeleteSurfaceDialog(
+                    surface,
+                    usage,
+                    shared,
+                    this.recycleBinSettings.retentionDays()
+                );
+                return this.confirmationDialog
+                    .confirm(dialog, { width: DELETE_CONFIRM_DIALOG_WIDTH })
+                    .pipe(map((result) => result === true));
+            }),
+            finalize(() => this.surfaceDeletesInFlight.delete(surfaceId))
+        );
     }
 
     private guardUnsaved(action: () => void, onCancel?: () => void): void {
@@ -717,14 +786,40 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             action();
             return;
         }
-        this.unsavedChangesDialog.confirmUnsavedChanges().subscribe((result) => {
-            if (result === UNSAVED_CHANGES_RESULT.dontSave) {
+        this.confirmLeaveAgent().subscribe((leave) => {
+            if (leave) {
                 this.hasUnsavedChanges.set(false);
                 action();
             } else {
                 onCancel?.();
             }
         });
+    }
+
+    /**
+     * Asks whether to drop the agent's unsaved edits; true to leave. There is no Save: a draft needs a name
+     * to be created, and an existing agent saves itself when its field loses focus. Staying on a draft
+     * points the user at the missing name.
+     */
+    private confirmLeaveAgent(): Observable<boolean> {
+        const drafting = this.store.isDraftingAgent();
+        return this.unsavedChangesDialog
+            .confirm({
+                title: drafting ? 'Agent not created' : 'Unsaved Changes',
+                message: drafting
+                    ? "This agent hasn't been created yet. Fix the name to save it, or discard it."
+                    : 'You have unsaved changes in this agent.',
+                dontSaveText: 'Discard & Leave',
+                cancelText: 'Keep Editing',
+                type: 'warning',
+                showSave: false,
+            })
+            .pipe(
+                map((result) => result === UNSAVED_CHANGES_RESULT.dontSave),
+                tap((leave) => {
+                    if (!leave && drafting) this.agentDetail()?.requireName();
+                })
+            );
     }
 
     private openExplorerAgentDetails({ node, trigger }: ExplorerTreeMenuEvent): void {

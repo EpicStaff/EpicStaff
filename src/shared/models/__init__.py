@@ -32,6 +32,10 @@ from .audit.base import (
 from .audit.session_audit import (
     SessionAuditEvent,
 )
+from .audit.user_action_audit import (
+    UserAction,
+    UserActionEvent,
+)
 from .base import ValueObject
 from .graph_nodes import (
     AgentDefinitionData,
@@ -136,6 +140,7 @@ from .tools import (
     PythonCodeToolData,
 )
 from .variable_conversion import (
+    InvalidInputTypeError,
     _normalize_type,
     args_schema_to_variables,
     json_schema_node_to_nested_variable,
@@ -216,6 +221,7 @@ __all__ = [
     "GraphSearchConfig",
     "GraphSessionMessageData",
     "IndexRequest",
+    "InvalidInputTypeError",
     "KeyValueNodeData",
     "KnowledgeChunkResponse",
     "KnowledgeNodeData",
@@ -287,6 +293,8 @@ __all__ = [
     "TokenUsage",
     "ToolModeLiteral",
     "ToolResult",
+    "UserAction",
+    "UserActionEvent",
     # knowledge_rag (cross-service pub/sub contract)
     "ValueObject",
     "Variable",

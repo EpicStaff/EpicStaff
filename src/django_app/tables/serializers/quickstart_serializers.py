@@ -1,13 +1,9 @@
+from ai_models.models import Provider
+from ai_models.serializers.model_serializers.embedding_serializers import EmbeddingConfigSerializer
+from ai_models.serializers.model_serializers.llm_serializers import LLMConfigSerializer
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
 from rest_framework import serializers
-from tables.models.provider import Provider
 from tables.models.secret_models import Secret
-from tables.serializers.model_serializers.embedding_serializers import (
-    EmbeddingConfigSerializer,
-)
-from tables.serializers.model_serializers.llm_serializers import (
-    LLMConfigSerializer,
-)
 
 
 class QuickstartSerializer(serializers.Serializer):

@@ -5,7 +5,7 @@ Tests for the duration validation in settings.
 from __future__ import annotations
 
 import pytest
-from settings import positive_seconds, whole_seconds_at_least_one
+from settings import positive_seconds, whole_seconds_at_least_one, without_empty_items
 
 
 @pytest.mark.parametrize(("seconds", "expected"), [(3600.0, 3600), (1.5, 1)])
@@ -47,3 +47,16 @@ def test_new_durations_are_parsed_as_seconds():
         settings.AGENT_MCP_DESCRIBE_CACHE_TTL,
     ):
         assert isinstance(value, float)
+
+
+@pytest.mark.parametrize(
+    ("items", "expected"),
+    [
+        (None, []),
+        ([""], []),
+        (["old-key-1", "", "old-key-2", ""], ["old-key-1", "old-key-2"]),
+    ],
+)
+def test_without_empty_items_drops_none_and_empty_entries(items, expected):
+    # The previous transport keys: `none`, an empty value and stray commas mean no key.
+    assert without_empty_items(items) == expected

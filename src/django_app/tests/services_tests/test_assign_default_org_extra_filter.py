@@ -1,7 +1,7 @@
 import pytest
 
 from tables.migrations._helpers import assign_default_org
-from tables.models import LLMModel, Provider
+from ai_models.models import LLMModel, Provider
 from rbac.models import Organization
 
 

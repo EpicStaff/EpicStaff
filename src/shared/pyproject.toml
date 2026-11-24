@@ -7,12 +7,13 @@ dependencies = [
 ]
 
 # Everything the suites under src/shared import. The libraries are the versions the
-# services and the tools' own venvs run (see the requirements.txt of each tool).
-# A tool is imported by its tests the way the sandbox would, so the modules a tool
-# lists in its requirements.txt have to be importable here too. The exception is
-# sqlalchemy: the mysql, postgresql and natural-language SQL tool tests skip
-# themselves without it, and with it natural_language_to_sql_tool would also need
-# langchain_community, so it stays out.
+# services and the sandbox's `builtin_tools` venv run (see SYSTEM_VENV_LIBS in
+# sandbox_new/manager/domain/models.py). A tool is imported by its tests the way the
+# sandbox would, so the modules a tool imports have to be importable here too. The exception is
+# sqlalchemy: the mysql and natural-language SQL tool tests skip themselves without
+# it, and with it natural_language_to_sql_tool would also need langchain_community,
+# so it stays out. postgresql_search_tool needs only psycopg and sqlparse, so its
+# tests run; testcontainers starts the PostgreSQL server they need.
 #
 # certifi, idna, pyjwt, soupsieve and urllib3 are transitive. They are pinned to the
 # shared dependency floor (.github/dependency-floor.toml): left to resolve, they
@@ -29,6 +30,7 @@ tests = [
     "loguru==0.7.3",
     "minio==7.2.20",
     "openai==2.54.0",
+    "psycopg[binary]==3.3.4",
     "pydantic==2.13.4",
     "pyjwt==2.15.1",
     "pytest-asyncio==1.4.0",
@@ -36,6 +38,7 @@ tests = [
     "redis==5.3.1",
     "requests==2.34.2",
     "soupsieve==2.9.2",
+    "sqlparse==0.6.0",
     "testcontainers==4.14.2",
     "urllib3==2.7.0",
 ]

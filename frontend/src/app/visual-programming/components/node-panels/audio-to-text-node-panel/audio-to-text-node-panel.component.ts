@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
-import { AbstractControl, FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { CustomInputComponent, ValidationErrorsComponent } from '@shared/components';
+import { FormArray, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { CustomInputComponent, HintMessageComponent, ValidationErrorsComponent } from '@shared/components';
 
 import { AudioToTextNodeModel } from '../../../core/models/node.model';
 import { BaseSidePanel } from '../../../core/models/node-panel.abstract';
@@ -8,15 +8,13 @@ import { NODE_PANEL_DIFF } from '../../../core/providers/node-panel-diff.token';
 import { mapFieldRowChanges } from '../../../utils/diff';
 import { DiffFieldMarkComponent } from '../../diff-field-mark/diff-field-mark.component';
 import { InputMapComponent } from '../../input-map/input-map.component';
-interface InputMapPair {
-    key: string;
-    value: string;
-}
+import { inputMapFromRows } from '../../input-map/input-map-rows';
 @Component({
     selector: 'app-audio-to-text-node-panel',
     imports: [
         ReactiveFormsModule,
         CustomInputComponent,
+        HintMessageComponent,
         InputMapComponent,
         ValidationErrorsComponent,
         DiffFieldMarkComponent,
@@ -28,6 +26,9 @@ interface InputMapPair {
                     [formGroup]="form"
                     class="form-container"
                 >
+                    @if (filesReadLock(); as lock) {
+                        <app-hint-message tone="warning">{{ lock }}</app-hint-message>
+                    }
                     <!-- Node Name Field -->
                     <div class="node-name-field">
                         <app-diff-field-mark [diffField]="'node_name'">
@@ -143,8 +144,7 @@ export class AudioToTextNodePanelComponent extends BaseSidePanel<AudioToTextNode
     }
 
     protected createUpdatedNode(): AudioToTextNodeModel {
-        const validInputPairs = this.getValidInputPairs();
-        const inputMapValue = this.createInputMapFromPairs(validInputPairs);
+        const inputMapValue = inputMapFromRows(this.inputMapPairs.getRawValue());
 
         return {
             ...this.node(),
@@ -174,22 +174,5 @@ export class AudioToTextNodePanelComponent extends BaseSidePanel<AudioToTextNode
                 })
             );
         }
-    }
-
-    private getValidInputPairs(): AbstractControl[] {
-        return this.inputMapPairs.controls.filter((control) => {
-            const value = control.value as InputMapPair;
-            return value.key?.trim() !== '' || value.value?.trim() !== '';
-        });
-    }
-
-    private createInputMapFromPairs(pairs: AbstractControl[]): Record<string, string> {
-        return pairs.reduce((acc: Record<string, string>, curr: AbstractControl) => {
-            const pair = curr.value as InputMapPair;
-            if (pair.key?.trim()) {
-                acc[pair.key.trim()] = pair.value;
-            }
-            return acc;
-        }, {});
     }
 }

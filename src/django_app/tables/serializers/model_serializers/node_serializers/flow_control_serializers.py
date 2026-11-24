@@ -1,3 +1,4 @@
+from ai_models.models import LLMConfig
 from django.db import transaction
 from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import (
@@ -16,7 +17,7 @@ from tables.models.graph_models import (
     Graph,
     StartNode,
 )
-from tables.models.llm_models import LLMConfig, SystemOneConfig
+from tables.models.llm_models import SystemOneConfig
 from tables.serializers.base_serializer import (
     BaseGraphEntityMixin,
     ContentHashWritableMixin,
@@ -281,8 +282,12 @@ class ClassificationDecisionTableNodeSerializer(
             "post_python_code",
             "post_input_map",
             "post_output_variable_path",
-            "pre_use_storage",
-            "post_use_storage",
+            "pre_storage_grant_read",
+            "pre_storage_grant_write",
+            "pre_storage_grant_delete",
+            "post_storage_grant_read",
+            "post_storage_grant_write",
+            "post_storage_grant_delete",
             "default_llm_config",
             "default_next_node_id",
             "next_error_node_id",

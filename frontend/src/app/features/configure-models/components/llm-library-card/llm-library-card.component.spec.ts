@@ -13,8 +13,19 @@ const MODEL: LlmLibraryModel = {
     temperature: 0.7,
     usedByCount: null,
     configType: ModelTypes.LLM,
-    isDeprecated: false,
+    needsReview: false,
+    reviewReasons: [],
 };
+
+// The names show their full text in a tooltip when cut, which watches their size; jsdom has no ResizeObserver.
+class ResizeObserverStub {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+}
+
+beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+afterEach(() => vi.unstubAllGlobals());
 
 function render(canWrite: boolean): {
     fixture: ComponentFixture<LlmLibraryCardComponent>;
@@ -72,6 +83,16 @@ describe('LlmLibraryCardComponent more menu', () => {
         fixture.detectChanges();
 
         expect(viewDetailsItem(overlay)).not.toBeNull();
+    });
+});
+
+describe('LlmLibraryCardComponent names', () => {
+    it('shows the config name in the top row and the model name below it', () => {
+        const { fixture } = render(false);
+        const host = fixture.nativeElement as HTMLElement;
+
+        expect(host.querySelector('.llm-card__top .llm-card__label')!.textContent!.trim()).toBe(MODEL.customName);
+        expect(host.querySelector('.llm-card__name')!.textContent!.trim()).toBe(MODEL.modelName);
     });
 });
 

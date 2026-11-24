@@ -4,6 +4,7 @@ The registered checks are replaced by test checks (`run_admission_fixtures`), so
 never depend on a real check. Redis is mocked; the database, views and services are real.
 """
 
+import json
 from datetime import timedelta
 
 import pytest
@@ -50,6 +51,7 @@ from tables.services.telegram_trigger_service import TelegramTriggerService
 from tables.services.trigger_spec import TriggerSpec
 from tables.services.webhook_trigger_service import WebhookTriggerService
 from tests.fixtures import _make_secret
+from tests.sealed_values import open_sealed
 from tests.services_tests.run_admission_fixtures import *  # noqa: F401,F403
 from tests.services_tests.run_admission_fixtures import (
     REFUSAL_EXTRA,
@@ -529,7 +531,8 @@ def test_a_refused_secret_named_in_the_realtime_config_override_is_never_used(
     assert response.status_code == 201, response.content
     published = "".join(str(call) for call in redis_client_mock.publish.call_args_list)
     assert "sk-refused-override" not in published
-    assert "sk-own" in published
+    _channel, body = redis_client_mock.publish.call_args[0]
+    assert open_sealed(json.loads(body)["rt_api_key"]) == "sk-own"
 
 
 # --- Code test runs ---------------------------------------------------------------------
@@ -578,20 +581,17 @@ def test_code_run_of_a_target_answers_a_refusal_with_409_and_writes_no_result(
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("use_storage, expected_status", [(True, 409), (False, 200)])
 def test_a_code_test_run_that_can_read_a_refused_attached_file_is_refused(
     run_admission_checks,
     flow,
     default_org,
     auth_client,
     redis_client_mock,
-    use_storage,
-    expected_status,
 ):
     attached = StorageFile.objects.create(org=default_org, name="input.csv", path="input.csv")
     GraphStorageFile.objects.create(graph=flow, storage_file=attached)
     code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
-    node = PythonNode.objects.create(graph=flow, python_code=code, use_storage=use_storage)
+    node = PythonNode.objects.create(graph=flow, python_code=code)
     run_admission_checks.append(RefusesRunsUsing(ResourceRef("tables.StorageFile", attached.pk)))
 
     response = auth_client.post(
@@ -600,8 +600,8 @@ def test_a_code_test_run_that_can_read_a_refused_attached_file_is_refused(
         format="json",
     )
 
-    assert response.status_code == expected_status, response.content
-    assert PythonCodeResult.objects.exists() is (expected_status == 200)
+    assert response.status_code == 409, response.content
+    assert not PythonCodeResult.objects.exists()
 
 
 # --- Triggers: refused quietly, logged once ---------------------------------------------

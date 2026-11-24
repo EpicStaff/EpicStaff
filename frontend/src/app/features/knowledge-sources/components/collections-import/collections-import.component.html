@@ -1,0 +1,9 @@
+<app-button
+    *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Create]"
+    type="outline-primary"
+    [leftIcon]="'download'"
+    [ariaDisabled]="isImporting()"
+    (click)="importCollections()"
+>
+    {{ isImporting() ? 'Importing…' : 'Import' }}
+</app-button>

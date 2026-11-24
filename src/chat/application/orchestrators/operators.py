@@ -150,9 +150,7 @@ class OperatorOrchestrator:
             run_in_flight, session_to_stop = await free_run_slot(uow, conversation)
             now = utcnow()
             await uow.operator_profiles.remember(org_id, operator_id, display_name, now)
-            conversation.change_mode(Mode.HUMAN, now)
-            conversation.assigned_operator_id = operator_id
-            conversation.late_reply_run_id = None
+            conversation.claim(operator_id, now)
             emitter = Emitter(uow, self._fanout)
             await emitter.conversation(conversation, "mode.changed", {"mode": Mode.HUMAN.value})
             if run_in_flight:

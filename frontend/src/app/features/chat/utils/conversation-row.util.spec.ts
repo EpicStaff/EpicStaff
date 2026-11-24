@@ -2,7 +2,7 @@ import {
     conversationTime,
     conversationTimeLabel,
     deskRulesOf,
-    isOverdue,
+    messageTime,
     operatorName,
     senderPrefix,
     visitorAvatarText,
@@ -105,6 +105,15 @@ describe('conversationTime', () => {
         expect(plain(conversationTime(iso(date), NOW, LOCALE))).toBe(expected);
     });
 
+    it.each([
+        ['under a minute ago', at(2026, 10, 12, 14, 29, 31), 'now'],
+        ['one minute ago', at(2026, 10, 12, 14, 29), '1m ago'],
+        ['under an hour ago', at(2026, 10, 12, 13, 31), '59m ago'],
+        ['earlier today', at(2026, 10, 12, 9, 5), '9:05 AM'],
+    ])("in the thread, shows %s as %s: minutes read 'ago'", (_case, date, expected) => {
+        expect(plain(messageTime(iso(date), NOW, LOCALE))).toBe(expected);
+    });
+
     it('counts minutes, not the calendar, within the hour across midnight', () => {
         const justAfterMidnight = at(2026, 10, 13, 0, 10).getTime();
         expect(conversationTime(iso(at(2026, 10, 12, 23, 50)), justAfterMidnight, LOCALE)).toBe('20m');
@@ -145,13 +154,16 @@ describe('conversationTimeLabel', () => {
 
 describe('waitDuration', () => {
     it.each([
-        [at(2026, 10, 12, 14, 29, 30), '<1m'],
-        [at(2026, 10, 12, 14, 26), '4m'],
+        [at(2026, 10, 12, 14, 29, 15), '45s'],
+        [at(2026, 10, 12, 14, 29, 1), '59s'],
+        [at(2026, 10, 12, 14, 29), '1m 0s'],
+        [at(2026, 10, 12, 14, 17, 44), '12m 16s'],
+        [at(2026, 10, 12, 13, 30, 1), '59m 59s'],
         [at(2026, 10, 12, 13, 25), '1h 5m'],
         [at(2026, 10, 12, 11, 30), '3h'],
         [at(2026, 10, 10, 13, 0), '2d'],
         // Clock skew: never a negative wait.
-        [at(2026, 10, 12, 14, 35), '<1m'],
+        [at(2026, 10, 12, 14, 35), '0s'],
     ])('waited since %s: %s', (since, expected) => {
         expect(waitDuration(iso(since), NOW)).toBe(expected);
     });
@@ -160,24 +172,6 @@ describe('waitDuration', () => {
         expect(waitDuration(null, NOW)).toBe('');
         expect(waitDuration(undefined, NOW)).toBe('');
         expect(waitDuration('not a time', NOW)).toBe('');
-    });
-});
-
-describe('isOverdue', () => {
-    const tenMinutes = 10 * 60_000;
-    const since = iso(at(2026, 10, 12, 14, 20));
-
-    it('marks a wait past the response time, not one that has just reached it', () => {
-        expect(isOverdue(since, tenMinutes, NOW - 1)).toBe(false);
-        expect(isOverdue(since, tenMinutes, NOW)).toBe(false);
-        expect(isOverdue(since, tenMinutes, NOW + 1)).toBe(true);
-    });
-
-    it('marks nothing on a desk that does not mark overdue, nor without a usable wait', () => {
-        expect(isOverdue(since, null, NOW + 60 * 60_000)).toBe(false);
-        expect(isOverdue(null, tenMinutes, NOW)).toBe(false);
-        expect(isOverdue(undefined, tenMinutes, NOW)).toBe(false);
-        expect(isOverdue('not a time', tenMinutes, NOW)).toBe(false);
     });
 });
 

@@ -5,12 +5,14 @@ from application.commands import RunSearch
 from application.orchestrators.searching.strategies import naive_search
 from application.orchestrators.searching.strategies.naive_search import NaiveSearchOrchestrator
 from domain.enums import EmbedderProviderEnum
+from domain.errors import SecretDecryptError
 from domain.models import (
     EmbeddingConfig,
     FoundChunk,
     NaiveSearchConfig,
 )
 from infrastructure.naive.embedders.strategies import litellm_embedder
+from tests.orchestrators.conftest import CRYPTOGRAPHER, seal, sealed_marker
 
 
 class FakeNaiveRagRepo:
@@ -76,10 +78,8 @@ def _make_command(
     rag_id: int = 1,
     query: str = "find me",
     search_config: NaiveSearchConfig | None = None,
-    embedding_api_key: str = "sk-test",
-    llm_api_key: str | None = None,
-    embedding_extra_headers: dict[str, str] | None = None,
-    llm_extra_headers: dict[str, str] | None = None,
+    embedding_api_key: str | None = None,
+    **command_fields,
 ) -> RunSearch:
     if search_config is None:
         search_config = NaiveSearchConfig(search_limit=5, similarity_threshold=0.3)
@@ -87,10 +87,8 @@ def _make_command(
         rag_id=rag_id,
         query=query,
         search_config=search_config,
-        embedding_api_key=embedding_api_key,
-        llm_api_key=llm_api_key,
-        embedding_extra_headers=embedding_extra_headers or {},
-        llm_extra_headers=llm_extra_headers or {},
+        embedding_api_key=embedding_api_key or seal("sk-test"),
+        **command_fields,
     )
 
 
@@ -101,8 +99,8 @@ async def test_search_embeds_the_query_and_returns_the_closest_chunks(embedding_
     ]
     repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=found_chunks)
 
-    response = await NaiveSearchOrchestrator(FakeUoW(repo)).execute(
-        _make_command(query="find me", embedding_api_key="sk-request")
+    response = await NaiveSearchOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+        _make_command(query="find me", embedding_api_key=seal("sk-request"))
     )
 
     assert response.result == found_chunks
@@ -121,27 +119,88 @@ async def test_search_embeds_the_query_and_returns_the_closest_chunks(embedding_
     ]
 
 
-async def test_embedding_extra_headers_reach_the_embedding_provider(
-    embedding_api, monkeypatch
-):
+async def test_embedding_extra_headers_reach_the_embedding_provider(embedding_api, monkeypatch):
     monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
     repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
 
-    await NaiveSearchOrchestrator(FakeUoW(repo)).execute(
+    await NaiveSearchOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
         _make_command(embedding_extra_headers={"X-Gateway-Key": "resolved-value"})
     )
 
     assert embedding_api.await_args.kwargs["extra_headers"] == {"X-Gateway-Key": "resolved-value"}
 
 
-def test_resolved_headers_are_kept_out_of_the_command_repr():
+async def test_request_connection_and_settings_reach_the_embedding_provider(
+    embedding_api, monkeypatch
+):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
+
+    await NaiveSearchOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+        _make_command(
+            embedding_connection={"api_base": "http://gateway/v1"},
+            embedding_parameters={"dimensions": 256},
+        )
+    )
+
+    assert embedding_api.await_args.kwargs["api_base"] == "http://gateway/v1"
+    assert embedding_api.await_args.kwargs["dimensions"] == 256
+
+
+async def test_sealed_header_markers_reach_the_embedding_provider_decrypted(
+    embedding_api, monkeypatch
+):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
+
+    await NaiveSearchOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+        _make_command(embedding_extra_headers={"X-Gateway-Key": sealed_marker("gateway-token")})
+    )
+
+    assert embedding_api.await_args.kwargs["extra_headers"] == {"X-Gateway-Key": "gateway-token"}
+
+
+@pytest.mark.parametrize(
+    ("field", "command_fields"),
+    [
+        ("embedding_api_key", {"embedding_api_key": "sk-never-sealed"}),
+        (
+            "embedding_extra_headers",
+            {"embedding_extra_headers": {"X-Key": "epicstaff_secret(sk-never-sealed)"}},
+        ),
+    ],
+    ids=["api-key", "header-marker"],
+)
+async def test_secret_that_cannot_be_decrypted_fails_the_search_without_its_value(
+    embedding_api, field, command_fields
+):
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
+
+    with pytest.raises(SecretDecryptError) as raised:
+        await NaiveSearchOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+            _make_command(**command_fields)
+        )
+
+    assert embedding_api.await_count == 0
+    assert field in str(raised.value)
+    assert "sk-never-sealed" not in str(raised.value)
+
+
+def test_resolved_headers_and_connection_are_kept_out_of_the_command_repr():
     command = _make_command(
         embedding_extra_headers={"X-Gateway-Key": "resolved-secret"},
         llm_extra_headers={"X-Llm-Key": "resolved-llm-secret"},
+        embedding_connection={"api_base": "http://user:resolved-emb-password@gw/v1"},
+        llm_connection={"aws_access_key_id": "resolved-llm-key-id"},
     )
 
-    assert "resolved-secret" not in repr(command)
-    assert "resolved-llm-secret" not in repr(command)
+    for secret in (
+        "resolved-secret",
+        "resolved-llm-secret",
+        "resolved-emb-password",
+        "resolved-llm-key-id",
+    ):
+        assert secret not in repr(command)
 
 
 async def test_search_reports_embedding_tokens_and_priced_cost(embedding_api, monkeypatch):
@@ -149,7 +208,7 @@ async def test_search_reports_embedding_tokens_and_priced_cost(embedding_api, mo
     monkeypatch.setattr(naive_search, "embedding_cost", lambda model, tokens: tokens * 2e-8)
     repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
 
-    response = await NaiveSearchOrchestrator(FakeUoW(repo)).execute(_make_command())
+    response = await NaiveSearchOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(_make_command())
 
     assert response.usage.embedding_tokens == 250
     assert response.usage.embedding_cost_usd == 250 * 2e-8
@@ -160,7 +219,7 @@ async def test_search_reports_null_cost_for_unpriced_embedding_model(embedding_a
     unpriced = _EMBEDDING_CONFIG.model_copy(update={"model": "no-such-embedding-model"})
     repo = FakeNaiveRagRepo(embedding_config=unpriced, found_chunks=[])
 
-    response = await NaiveSearchOrchestrator(FakeUoW(repo)).execute(_make_command())
+    response = await NaiveSearchOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(_make_command())
 
     assert response.usage.embedding_tokens == 9
     assert response.usage.embedding_cost_usd is None

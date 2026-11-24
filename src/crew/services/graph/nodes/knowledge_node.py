@@ -1,4 +1,3 @@
-import asyncio
 from typing import Any
 
 from langgraph.types import StreamWriter
@@ -32,6 +31,10 @@ class KnowledgeNode(BaseNode):
         llm_api_key: str | None = None,
         embedder_extra_headers: dict[str, str] | None = None,
         llm_extra_headers: dict[str, str] | None = None,
+        embedder_connection: dict[str, str] | None = None,
+        embedder_parameters: dict[str, Any] | None = None,
+        llm_connection: dict[str, str] | None = None,
+        llm_parameters: dict[str, Any] | None = None,
         custom_session_message_writer: CustomSessionMessageWriter | None = None,
     ):
         super().__init__(
@@ -51,6 +54,10 @@ class KnowledgeNode(BaseNode):
         self.llm_api_key = llm_api_key
         self.embedder_extra_headers = embedder_extra_headers
         self.llm_extra_headers = llm_extra_headers
+        self.embedder_connection = embedder_connection
+        self.embedder_parameters = embedder_parameters
+        self.llm_connection = llm_connection
+        self.llm_parameters = llm_parameters
 
     def _build_query(self, input_: Any) -> str:
         """Interpolate mapped variables into the template (`{name}`, `{name[key]}`).
@@ -96,8 +103,7 @@ class KnowledgeNode(BaseNode):
 
         rag_search_config = self.rag_search_config.model_dump() if self.rag_search_config else {}
         try:
-            results = await asyncio.to_thread(
-                self.knowledge_search_service.search_knowledges,
+            results = await self.knowledge_search_service.search_knowledges(
                 sender="node",
                 knowledge_collection_id=self.collection_id,
                 rag_type_id=self.rag_type_id,
@@ -108,6 +114,10 @@ class KnowledgeNode(BaseNode):
                 rag_llm_api_key=self.llm_api_key,
                 rag_embedder_extra_headers=self.embedder_extra_headers,
                 rag_llm_extra_headers=self.llm_extra_headers,
+                rag_embedder_connection=self.embedder_connection,
+                rag_embedder_parameters=self.embedder_parameters,
+                rag_llm_connection=self.llm_connection,
+                rag_llm_parameters=self.llm_parameters,
                 writer=writer,
                 session_id=self.session_id,
                 node_name=self.node_name,

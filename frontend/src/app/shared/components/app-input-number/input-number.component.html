@@ -28,7 +28,10 @@
             (mousedown)="$event.preventDefault()"
             (click)="onStep(-1)"
         >
-            −
+            <app-svg-icon
+                icon="minus-fit"
+                [size]="stepIconSize()"
+            />
         </button>
     }
 
@@ -37,6 +40,7 @@
         type="number"
         class="input"
         [ngClass]="'input--mod-' + mod()"
+        [class.input--grouped]="groups()"
         [placeholder]="placeholder()"
         [attr.aria-label]="ariaLabel() || null"
         [matTooltip]="fieldName()"
@@ -50,6 +54,15 @@
         [attr.aria-describedby]="describedBy()"
     />
 
+    @if (groups(); as grouped) {
+        <span
+            class="input__grouped"
+            [ngClass]="'input__grouped--mod-' + mod()"
+            aria-hidden="true"
+            >{{ grouped }}</span
+        >
+    }
+
     @if (stepsShown()) {
         <button
             type="button"
@@ -61,7 +74,10 @@
             (mousedown)="$event.preventDefault()"
             (click)="onStep(1)"
         >
-            +
+            <app-svg-icon
+                icon="plus-fit"
+                [size]="stepIconSize()"
+            />
         </button>
     }
 </div>

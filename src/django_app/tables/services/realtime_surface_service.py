@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from agents.models.agent_models import (
     AgentDefaultSurface,
@@ -10,6 +10,14 @@ from agents.models.agent_models import (
 )
 from agents.serializers.surface_serializers import SurfaceReadSerializer
 from agents.services.surface_combine_service import SurfaceCombineService
+from ai_models.services.config_parameters import (
+    embedding_config_parameters,
+    llm_config_parameters,
+)
+from ai_models.services.connection_arguments import (
+    embedding_config_connection,
+    llm_config_connection,
+)
 from loguru import logger
 from rbac.authorship import OMIT_AUTHORSHIP_CONTEXT_KEY
 from src.shared.models import (
@@ -22,7 +30,6 @@ from src.shared.models import (
     NaiveRagSearchConfig,
     RagSearchConfig,
 )
-from storage_credentials.exceptions import CredentialScopeValidationError
 from storage_credentials.resource_names import org_storage_prefix
 from tables.models.graph_models import StorageFile
 from tables.models.knowledge_models.graphrag_models import GraphRag
@@ -44,6 +51,10 @@ class RealtimeAgentSurfaceResolution:
     rag_llm_api_key_secret_id: int | None = None
     rag_embedder_extra_headers: dict[str, str] | None = None
     rag_llm_extra_headers: dict[str, str] | None = None
+    rag_embedder_connection: dict[str, str] | None = None
+    rag_llm_connection: dict[str, str] | None = None
+    rag_embedder_parameters: dict[str, Any] | None = None
+    rag_llm_parameters: dict[str, Any] | None = None
 
 
 @dataclass
@@ -55,6 +66,10 @@ class RealtimeKnowledgeResolution:
     rag_llm_api_key_secret_id: int | None = None
     rag_embedder_extra_headers: dict[str, str] | None = None
     rag_llm_extra_headers: dict[str, str] | None = None
+    rag_embedder_connection: dict[str, str] | None = None
+    rag_llm_connection: dict[str, str] | None = None
+    rag_embedder_parameters: dict[str, Any] | None = None
+    rag_llm_parameters: dict[str, Any] | None = None
 
 
 GRAPH_SEARCH_CONFIG_FIELDS: tuple[tuple[str, type], ...] = (
@@ -133,18 +148,9 @@ class RealtimeSurfaceService:
         for python_tool in PythonCodeTool.objects.filter(pk__in=allowed_tool_ids).select_related(
             "python_code__venv"
         ):
-            if python_tool.use_storage and storage_org_prefix is None:
-                # Fail closed, like converter_service: silently dropping the tool
-                # would start the realtime agent without a capability its surface
-                # grants, which reads as a broken tool rather than a scope problem.
-                # This is a resolvable configuration issue, not an infra/mint
-                # failure (nothing has attempted to mint yet) -- same exception
-                # CredentialScopeValidator raises, same 400.
-                raise CredentialScopeValidationError(
-                    f"Tool '{python_tool.name}' needs file storage access, but no files are "
-                    "attached to this agent's surface. Attach the required files or folders."
-                )
-
+            # A storage tool with no attached files is kept (not dropped, not an
+            # error): no storage account is minted for the chat, and the realtime
+            # service tells the model the tool has no files when it is called.
             tools.append(
                 self.converter_service.convert_tool_to_base_tool_pydantic(
                     python_tool,
@@ -257,6 +263,12 @@ class RealtimeSurfaceService:
             rag_embedder_extra_headers=(
                 naive_rag.embedder.extra_headers if naive_rag.embedder else None
             ),
+            rag_embedder_connection=(
+                embedding_config_connection(naive_rag.embedder) if naive_rag.embedder else None
+            ),
+            rag_embedder_parameters=(
+                embedding_config_parameters(naive_rag.embedder) if naive_rag.embedder else None
+            ),
         )
 
     def _resolve_graph_rag(
@@ -291,4 +303,12 @@ class RealtimeSurfaceService:
                 graph_rag.embedder.extra_headers if graph_rag.embedder else None
             ),
             rag_llm_extra_headers=graph_rag.llm.extra_headers if graph_rag.llm else None,
+            rag_embedder_connection=(
+                embedding_config_connection(graph_rag.embedder) if graph_rag.embedder else None
+            ),
+            rag_llm_connection=llm_config_connection(graph_rag.llm) if graph_rag.llm else None,
+            rag_embedder_parameters=(
+                embedding_config_parameters(graph_rag.embedder) if graph_rag.embedder else None
+            ),
+            rag_llm_parameters=llm_config_parameters(graph_rag.llm) if graph_rag.llm else None,
         )

@@ -1,0 +1,116 @@
+<header
+    #header
+    class="header"
+    [class.header--icons]="toolbarLayout() === 'icons'"
+    [class.header--stacked]="isStacked()"
+>
+    <div class="header-left">
+        <h3 class="title">AI Models</h3>
+        <p class="subtitle">Models your agents, crews and tools use, and which model each role uses by default.</p>
+    </div>
+
+    <div
+        class="header-right"
+        [style.min-width.px]="toolbarMinWidth()"
+    >
+        <app-search
+            appearance="toolbar"
+            iconSize="16px"
+            placeholder="Search providers..."
+            [searchTerm]="searchQuery()"
+            (searchTermChange)="searchChange.emit($event)"
+        />
+
+        <div
+            #capabilitiesControl
+            class="filter"
+            [class.filter--labelled]="!toolbarIcons().capabilities"
+        >
+            <app-select
+                appearance="toolbar"
+                triggerIcon="filter"
+                tooltip="Capabilities"
+                placeholder="All capabilities"
+                [iconOnly]="toolbarIcons().capabilities"
+                [items]="capabilities"
+                (changed)="onSectionFilterChange($event)"
+            />
+        </div>
+
+        <!-- One condition for both modes: entering select mode must not recreate it (and close its menu). -->
+        @if (showSelect()) {
+            <!-- At 0 selected a plain "Select" that toggles select mode; the menu comes with a selection. -->
+            <app-bulk-select-dropdown
+                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Delete]"
+                appearance="toolbar"
+                menu="select-clear"
+                [toggleWhenEmpty]="true"
+                [iconOnly]="toolbarIcons().select"
+                [selectMode]="selectMode()"
+                [selectedCount]="selectedCount()"
+                [allSelected]="allSelected()"
+                [disabled]="isDeleting()"
+                (selectModeEntered)="selectModeEntered.emit()"
+                (selectAllToggled)="selectAllToggled.emit()"
+                (cleared)="selectModeExited.emit()"
+                (selectionCleared)="selectionCleared.emit()"
+            />
+        }
+
+        @if (hasSelection()) {
+            <app-button
+                #actionControl
+                type="danger"
+                appearance="toolbar"
+                leftIcon="trash"
+                iconSize="14px"
+                [iconOnly]="toolbarIcons().action"
+                [disabled]="isDeleting()"
+                (click)="deleteClicked.emit()"
+            >
+                Delete
+            </app-button>
+        } @else {
+            <!-- A native button: the menu trigger must be the focusable element itself. -->
+            <button
+                #addButton
+                #actionControl
+                *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
+                type="button"
+                class="add-button text-body-medium"
+                matTooltip="Add Model"
+                [class.add-button--icon-only]="toolbarIcons().action"
+                [attr.aria-label]="toolbarIcons().action ? 'Add Model' : null"
+                [matTooltipDisabled]="!toolbarIcons().action"
+                [cdkMenuTriggerFor]="addMenu"
+                [cdkMenuPosition]="addMenuPositions"
+            >
+                <app-svg-icon
+                    icon="plus"
+                    size="16px"
+                    aria-hidden="true"
+                />
+                @if (!toolbarIcons().action) {
+                    <span>Add Model</span>
+                }
+            </button>
+        }
+        <ng-template #addMenu>
+            <div
+                cdkMenu
+                class="add-menu"
+            >
+                @for (option of addOptions; track option.key) {
+                    <button
+                        cdkMenuItem
+                        type="button"
+                        class="add-menu__item"
+                        (cdkMenuItemTriggered)="addClicked.emit(option.key)"
+                    >
+                        {{ option.label }}
+                    </button>
+                }
+            </div>
+        </ng-template>
+    </div>
+</header>

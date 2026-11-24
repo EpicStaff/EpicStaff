@@ -3,7 +3,8 @@ import { formatDate } from '@angular/common';
 import { ChatBinding, ChatConversation, ChatConversationStyle } from '../models/chat.model';
 import { deskInitials } from './desk-avatar.util';
 
-const MINUTE = 60_000;
+const SECOND = 1_000;
+const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 // Older than this many calendar days, a time shows as a date rather than a weekday.
@@ -100,6 +101,13 @@ export function conversationTime(iso: string | null, now: number, locale: string
     }
 }
 
+/** A message's time in the thread: as `conversationTime`, but minutes read "6m ago". */
+export function messageTime(iso: string | null, now: number, locale: string): string {
+    if (!iso) return '';
+    const bucket = timeBucket(iso, now);
+    return bucket.kind === 'minutes' ? `${bucket.minutes}m ago` : conversationTime(iso, now, locale);
+}
+
 /**
  * The same time in words for a screen reader, absolute so it stays the same while the clock ticks (it changes at
  * midnight only): "today at 2:05 PM", "yesterday at 9:00 AM", "Wednesday at 4:30 PM", "October 5".
@@ -115,33 +123,22 @@ export function conversationTimeLabel(iso: string | null, now: number, locale: s
     return formatDate(date, date.getFullYear() === new Date(now).getFullYear() ? 'MMMM d' : 'MMMM d, y', locale);
 }
 
-/** How long someone has waited: "<1m", "4m", "1h 5m", "3h", "2d". Empty without a usable time. */
+/**
+ * How long someone has waited, to the second while under an hour: "16s", "12m 16s", "1h 5m", "3h", "2d". Empty without
+ * a usable time.
+ */
 export function waitDuration(sinceIso: string | null | undefined, now: number): string {
     const since = sinceIso ? Date.parse(sinceIso) : NaN;
     if (Number.isNaN(since)) return '';
     const waited = Math.max(0, now - since);
-    if (waited < MINUTE) return '<1m';
-    if (waited < HOUR) return `${Math.floor(waited / MINUTE)}m`;
+    if (waited < MINUTE) return `${Math.floor(waited / SECOND)}s`;
+    if (waited < HOUR) return `${Math.floor(waited / MINUTE)}m ${Math.floor((waited % MINUTE) / SECOND)}s`;
     if (waited < DAY) {
         const hours = Math.floor(waited / HOUR);
         const minutes = Math.floor((waited % HOUR) / MINUTE);
         return minutes ? `${hours}h ${minutes}m` : `${hours}h`;
     }
     return `${Math.floor(waited / DAY)}d`;
-}
-
-/**
- * Whether a visitor has waited longer than `overdueAfterMs` (null: the desk marks no one overdue). Exactly the response
- * time is not overdue yet; a missing or unusable time never is.
- */
-export function isOverdue(
-    waitingSinceIso: string | null | undefined,
-    overdueAfterMs: number | null,
-    now: number
-): boolean {
-    if (overdueAfterMs === null) return false;
-    const since = waitingSinceIso ? Date.parse(waitingSinceIso) : NaN;
-    return !Number.isNaN(since) && now - since > overdueAfterMs;
 }
 
 function timeBucket(iso: string, now: number): TimeBucket {

@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 from domain.enums import RAGStrategy
@@ -5,10 +6,18 @@ from domain.models import FoundChunk, SearchUsage
 
 __all__ = [
     "EmbeddingEstimate",
+    "EntityDetailResult",
+    "GraphTableDataResult",
+    "GraphTableSummaryItem",
+    "GraphTableSummaryResult",
+    "GraphVisualizationResult",
     "IndexEstimateResult",
     "MetricsResult",
+    "RelationshipDetailResult",
     "Result",
     "SearchResult",
+    "VisualizationEntity",
+    "VisualizationRelationship",
 ]
 
 
@@ -37,6 +46,62 @@ class MetricsResult(Result):
 
 
 @dataclass(frozen=True)
+class VisualizationEntity:
+    id: str
+    title: str
+    type: str | None
+    degree: int
+    community_ids: list[str]
+
+
+@dataclass(frozen=True)
+class VisualizationRelationship:
+    id: str
+    source: str
+    target: str
+    weight: float
+
+
+@dataclass(frozen=True)
+class GraphTableDataResult(Result):
+    columns: list[str]
+    rows: list[dict[str, object]]
+    total: int
+    page: int
+    page_size: int
+
+
+@dataclass(frozen=True)
+class GraphTableSummaryItem:
+    name: str
+    label: str
+    count: int
+
+
+@dataclass(frozen=True)
+class GraphTableSummaryResult(Result):
+    tables: list[GraphTableSummaryItem]
+
+
+@dataclass(frozen=True)
+class GraphVisualizationResult(Result):
+    entities: list[VisualizationEntity]
+    relationships: list[VisualizationRelationship]
+    total_entities: int
+    total_relationships: int
+
+
+@dataclass(frozen=True)
+class EntityDetailResult(Result):
+    description: str | None
+
+
+@dataclass(frozen=True)
+class RelationshipDetailResult(Result):
+    description: str | None
+
+
+@dataclass(frozen=True)
 class EmbeddingEstimate:
     tokens: int
     exact: bool
@@ -49,3 +114,8 @@ class IndexEstimateResult(Result):
     document_count: int
     chunk_count: int
     embedding: EmbeddingEstimate
+
+
+@dataclass(frozen=True)
+class ArtifactExportResult(Result):
+    stream: AsyncIterator[bytes]

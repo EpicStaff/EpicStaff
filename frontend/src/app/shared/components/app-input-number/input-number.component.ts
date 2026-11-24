@@ -20,8 +20,9 @@ import {
     Validator,
 } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
-import { generateUuid } from '@shared/utils';
+import { generateUuid, groupThousands } from '@shared/utils';
 
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
@@ -29,7 +30,7 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
     templateUrl: './input-number.component.html',
     styleUrls: ['./input-number.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FormsModule, NgClass, TooltipComponent, MatTooltip],
+    imports: [AppSvgIconComponent, FormsModule, NgClass, TooltipComponent, MatTooltip],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -74,6 +75,8 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     hovered = signal<boolean>(false);
     // Keyboard focus anywhere in the field (input or a step button) shows the steps, so Tab can reach them.
     protected readonly focusWithin = signal(false);
+    /** Drawn icons, not text glyphs: a glyph sits on the font's baseline, off the middle of its square. */
+    protected readonly stepIconSize = computed(() => (this.mod() === 'small' ? '10px' : '12px'));
     protected readonly stepsShown = computed(() => this.hovered() || this.focusWithin() || !!this.alwaysShowSteps());
     // The browser holds text it cannot parse as a number (e.g. "1.2.3" or a pasted "1,5") and reports it as empty.
     private readonly hasBadInput = signal(false);
@@ -93,6 +96,8 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     isInvalid = computed(() => {
         return this.invalid() || this.isOutOfRange() || this.hasBadInput();
     });
+
+    protected readonly groups = computed(() => (this.hasBadInput() ? null : groupThousands(this.value())));
 
     isAboveWarning = computed(() => {
         const value = this.value();

@@ -21,6 +21,9 @@ class VenvTable(Table, tablename="venv"):
     hash = Varchar(null=True, default=None)
     status = Varchar(length=20, choices=VenvStatus, default=VenvStatus.DECLARED)
     error = Text(null=True, default=None)
+    # Unique where set, by a partial index (see the migration).
+    system_key = Varchar(null=True, default=None)
+    scope = Varchar(null=True, default=None)
     created_at = Timestamptz(default=TimestamptzNow())
     updated_at = Timestamptz(default=TimestamptzNow())
 
@@ -31,6 +34,8 @@ class CustomLibraryTable(Table, tablename="custom_library"):
     # the library; a partial unique index (see the migration) still keeps every named
     # row distinct, since Postgres never treats two nulls as a clash.
     name = Varchar(null=True, default=None)
+    # The name is unique per scope, not globally (see the migration).
+    scope = Varchar(null=True, default=None)
     is_deleted = Boolean(default=False)
     created_at = Timestamptz(default=TimestamptzNow())
     updated_at = Timestamptz(default=TimestamptzNow())

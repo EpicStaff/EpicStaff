@@ -19,7 +19,7 @@ def test_catalog_invariants_the_role_editor_relies_on(catalog):
     # Matrix column order: View leads, then the actions built on it.
     assert [action["code"] for action in catalog["actions"]] == ["read", "create", "update", "delete", "export", "use"]
     assert [r["code"] for r in catalog["resource_types"] if r["group"] == "admin"] == [
-        "organizations", "memberships", "roles", "api_keys", "audit",
+        "organizations", "memberships", "roles", "api_keys", "audit", "user_audit",
     ]
     for resource in catalog["resource_types"]:
         # Every grantable action is a key (empty list included) so the client indexes without

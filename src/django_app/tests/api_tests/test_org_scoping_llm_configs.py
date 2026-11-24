@@ -1,9 +1,8 @@
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models import Agent, LLMConfig, Provider
-from tables.models.embedding_models import EmbeddingModel
-from tables.models.llm_models import LLMModel
+from tables.models import Agent
+from ai_models.models import EmbeddingModel, LLMConfig, LLMModel, Provider
 from tables.services.quickstart_service import QuickstartService
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
@@ -193,19 +192,27 @@ def test_llmmodel_cannot_be_promoted_to_shared(client_admin_a, org_a, org_b):
 # ---- quickstart never mints a shared row ----
 
 
+def _quickstart_openai_models(org):
+    result = QuickstartService().quickstart(
+        provider="openai", org_id=org.id, user=None, api_key="sk-test"
+    )
+    assert result["success"], result
+    return result["llm_config"].model, result["embedding_config"].model
+
+
 @pytest.mark.django_db
-def test_quickstart_llm_model_is_stamped_to_the_running_org(org_a, org_b):
+def test_quickstart_custom_models_are_stamped_to_the_running_org(org_a, org_b):
     """A quickstart run in org A must not leave a row in the shared bucket, where
     every other tenant could see, edit and (via CASCADE) delete it."""
-    provider = Provider.objects.create(name="openai")
+    Provider.objects.create(name="openai")
 
-    model = QuickstartService()._get_or_create_llm_model(
-        provider=provider, org_id=org_a.id, author=None
-    )
+    llm_model, embedding_model = _quickstart_openai_models(org_a)
 
-    assert model.org_id == org_a.id
-    assert model.is_custom is True
-    assert LLMModel.objects.filter(org__isnull=True, name=model.name).count() == 0
+    for model in (llm_model, embedding_model):
+        assert model.org_id == org_a.id
+        assert model.is_custom is True
+    assert not LLMModel.objects.filter(org__isnull=True).exists()
+    assert not EmbeddingModel.objects.filter(org__isnull=True).exists()
 
 
 @pytest.mark.django_db
@@ -218,38 +225,25 @@ def test_quickstart_reuses_an_existing_builtin(org_a):
         name=name, llm_provider=provider, is_custom=False, predefined=True
     )
 
-    model = QuickstartService()._get_or_create_llm_model(
-        provider=provider, org_id=org_a.id, author=None
-    )
+    llm_model, _ = _quickstart_openai_models(org_a)
 
-    assert model.id == builtin.id
+    assert llm_model.id == builtin.id
     assert LLMModel.objects.filter(name=name).count() == 1
 
 
 @pytest.mark.django_db
 def test_quickstart_prefers_builtin_over_own_org_row_with_same_name(org_a):
-    """A same-named custom model can carry a custom base_url, so quickstart must
-    not attach its secret to it; the built-in wins, deterministically."""
+    """The built-in wins over a same-named custom model, deterministically."""
     provider = Provider.objects.create(name="openai")
     name = QuickstartService().PROVIDER_CONFIGS["openai"]["llm_model"]
     builtin = LLMModel.objects.create(
         name=name, llm_provider=provider, is_custom=False, predefined=True
     )
-    LLMModel.objects.create(
-        name=name,
-        llm_provider=provider,
-        is_custom=True,
-        org=org_a,
-        base_url="https://my-proxy.example",
-    )
+    LLMModel.objects.create(name=name, llm_provider=provider, is_custom=True, org=org_a)
 
     for _ in range(5):  # .first() without ORDER BY was non-deterministic
-        assert (
-            QuickstartService()
-            ._get_or_create_llm_model(provider=provider, org_id=org_a.id, author=None)
-            .id
-            == builtin.id
-        )
+        llm_model, _ = _quickstart_openai_models(org_a)
+        assert llm_model.id == builtin.id
 
 
 @pytest.mark.django_db
@@ -260,31 +254,17 @@ def test_quickstart_does_not_reuse_another_orgs_row(org_a, org_b):
         name=name, llm_provider=provider, is_custom=True, org=org_b
     )
 
-    model = QuickstartService()._get_or_create_llm_model(
-        provider=provider, org_id=org_a.id, author=None
-    )
+    llm_model, _ = _quickstart_openai_models(org_a)
 
-    assert model.id != theirs.id
-    assert model.org_id == org_a.id
-
-
-@pytest.mark.django_db
-def test_quickstart_embedding_model_is_stamped_to_the_running_org(org_a):
-    provider = Provider.objects.create(name="openai")
-
-    model = QuickstartService()._get_or_create_embedder_model(
-        provider=provider, org_id=org_a.id, author=None
-    )
-
-    assert model.org_id == org_a.id
-    assert model.is_custom is True
+    assert llm_model.id != theirs.id
+    assert llm_model.org_id == org_a.id
 
 
 @pytest.mark.django_db
 def test_quickstart_tag_sweep_leaves_other_orgs_alone(org_a, org_b):
     """The sweep that moves the 'quickstart' tag to the newest config must not
     reach across orgs and untag another tenant's config."""
-    from tables.models.tag_models import LLMConfigTag
+    from ai_models.models import LLMConfigTag
 
     service = QuickstartService()
     p = Provider.objects.create(name="prov")

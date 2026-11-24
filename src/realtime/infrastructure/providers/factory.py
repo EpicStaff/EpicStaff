@@ -3,7 +3,9 @@ from collections.abc import Awaitable, Callable
 from application.tool_manager_service import ToolManagerService
 from domain.models.realtime_tool import RealtimeTool
 from domain.ports.i_realtime_agent_client import IRealtimeAgentClient
+from foundation.cryptographer import AbstractCryptographer
 from src.shared.models import RealtimeAgentChatData
+from utils.transport_secrets import decrypt_transport_secret
 
 from infrastructure.providers.elevenlabs.elevenlabs_agent_provisioner import (
     ElevenLabsAgentProvisioner,
@@ -25,8 +27,13 @@ class RealtimeAgentClientFactory:
     Adding a new provider means adding one elif here and implementing IRealtimeAgentClient.
     """
 
-    def __init__(self, elevenlabs_agent_provisioner: ElevenLabsAgentProvisioner):
+    def __init__(
+        self,
+        elevenlabs_agent_provisioner: ElevenLabsAgentProvisioner,
+        transport_cryptographer: AbstractCryptographer,
+    ):
         self._el_provisioner = elevenlabs_agent_provisioner
+        self._transport_cryptographer = transport_cryptographer
 
     def create(
         self,
@@ -40,14 +47,21 @@ class RealtimeAgentClientFactory:
         """
         Construct and return the correct provider adapter.
         Returns a fully built but NOT yet connected client — caller must await connect().
+
+        Raises:
+            SecretDecryptionError: `config.rt_api_key` is not a valid transport ciphertext.
         """
+        rt_api_key = decrypt_transport_secret(
+            self._transport_cryptographer, config.rt_api_key, field_name="rt_api_key"
+        )
+
         if config.rt_provider == "gemini":
             from infrastructure.providers.gemini.gemini_realtime_agent_client import (
                 GeminiRealtimeAgentClient,
             )
 
             client = GeminiRealtimeAgentClient(
-                api_key=config.rt_api_key,
+                api_key=rt_api_key,
                 connection_key=config.connection_key,
                 on_server_event=on_server_event,
                 tool_manager_service=tool_manager_service,
@@ -65,7 +79,7 @@ class RealtimeAgentClientFactory:
         if config.rt_provider == "elevenlabs":
             llm_model = config.llm.config.model if config.llm else _DEFAULT_LLM
             client = ElevenLabsRealtimeAgentClient(
-                api_key=config.rt_api_key,
+                api_key=rt_api_key,
                 connection_key=config.connection_key,
                 on_server_event=on_server_event,
                 tool_manager_service=tool_manager_service,
@@ -85,7 +99,7 @@ class RealtimeAgentClientFactory:
 
         # Default: OpenAI
         client = OpenaiRealtimeAgentClient(
-            api_key=config.rt_api_key,
+            api_key=rt_api_key,
             connection_key=config.connection_key,
             on_server_event=on_server_event,
             tool_manager_service=tool_manager_service,

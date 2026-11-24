@@ -33,11 +33,7 @@ from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.strategies.nodes.node_maps import NODE_TYPE_TO_ENTITY_TYPE
 from tables.models import (
-    EmbeddingConfig,
-    EmbeddingModel,
     Graph,
-    LLMConfig,
-    LLMModel,
     RealtimeConfig,
     RealtimeModel,
     RealtimeTranscriptionConfig,
@@ -45,6 +41,12 @@ from tables.models import (
     StartNode,
     SystemOneConfig,
     WebhookTrigger,
+)
+from ai_models.models import (
+    EmbeddingConfig,
+    EmbeddingModel,
+    LLMConfig,
+    LLMModel,
 )
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.models.label_models import Label
@@ -59,7 +61,9 @@ from tests.helpers import UNRESTRICTED_EXPORT_POLICY
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 NODE_ENTITY_TYPES = frozenset(NODE_TYPE_TO_ENTITY_TYPE.values())
-EXPORT_ONLY_ENTITY_TYPES = frozenset({EntityType.SESSION})
+# A knowledge collection imports only from an archive, which these round trips do not
+# build; its authorship is tested in test_source_collection_import.py.
+EXPORT_ONLY_ENTITY_TYPES = frozenset({EntityType.SESSION, EntityType.SOURCE_COLLECTION})
 # Needs the sandbox service to export or import at all; covered separately.
 OUT_OF_PROCESS_ENTITY_TYPES = frozenset({EntityType.VENV})
 
@@ -273,10 +277,7 @@ def _authored_top_level_entity_types() -> list[EntityType]:
         and entity_type not in NODE_ENTITY_TYPES
         and entity_type not in EXPORT_ONLY_ENTITY_TYPES
         and entity_type not in OUT_OF_PROCESS_ENTITY_TYPES
-        and (
-            _strategy_model(entity_type) is None
-            or has_author_field(_strategy_model(entity_type))
-        )
+        and (_strategy_model(entity_type) is None or has_author_field(_strategy_model(entity_type)))
     ]
 
 

@@ -5,7 +5,7 @@ from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.cross_org_resolver import (
     CrossOrgPermissionResolver,
 )
-from rbac.access.org_context import OrgContextService
+from rbac.access.org_context import OrgContextService, cache_active_org_id
 from rbac.access.principals import is_plugin_credential
 from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
@@ -25,26 +25,6 @@ class IsSuperadmin(BasePermission):
     def has_permission(self, request, view):
         user = getattr(request, "user", None)
         return bool(user and user.is_authenticated and getattr(user, "is_superadmin", False))
-
-
-class IsSuperadminOrReadOnly(BasePermission):
-    """Authenticated users may read (safe methods); only superadmins may write.
-
-    Method-based companion to `SuperadminWriteMixin` for **global** resources
-    exposed as plain APIViews (default-* config singletons, voice/Twilio
-    settings) where there is no DRF `action`. Reads stay open to any
-    authenticated user; create/update/delete require `is_superadmin`.
-    """
-
-    message = "Superadmin privileges are required to modify this resource."
-
-    def has_permission(self, request, view):
-        user = getattr(request, "user", None)
-        if not (user and user.is_authenticated):
-            return False
-        if request.method in SAFE_METHODS:
-            return True
-        return bool(getattr(user, "is_superadmin", False))
 
 
 class BaseRbacPermission(BasePermission):
@@ -110,8 +90,8 @@ class HasOrgPermission(BaseRbacPermission):
         # Cached under the key the scoping mixins and serializer fields read, so the
         # view does not run the membership query a second time.
         if not hasattr(request, "_rbac_active_org_id"):
-            request._rbac_active_org_id = self._org_context.resolve(
-                request=request, view_kwargs=view.kwargs
+            cache_active_org_id(
+                request, self._org_context.resolve(request=request, view_kwargs=view.kwargs)
             )
         org_id = request._rbac_active_org_id
         effective = self._resolver.resolve(user=request.user, org_id=org_id)

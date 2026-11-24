@@ -2,6 +2,7 @@ import { CommonModule, NgStyle } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, EventEmitter, inject, Input, Output } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
 import { FFlowModule } from '@foblex/flow';
 import { MATERIAL_FORMS } from '@shared/material-forms';
 import { NODE_COLORS, NODE_ICONS } from '@shared/models';
@@ -11,6 +12,7 @@ import { formatNodeLabel } from '@shared/utils';
 import { ClickOrDragDirective } from '../../../core/directives/click-or-drag.directive';
 import { showsNodeNumber } from '../../../core/helpers/node-number.util';
 import { CDT_HEADER_HEIGHT, CDT_ROW_HEIGHT } from '../../../core/helpers/node-size.util';
+import { buildNodeWarningChip, enableTooltipOnlyWhenTruncated } from '../../../core/helpers/node-warning-badge.util';
 import { PromptConfig } from '../../../core/models/classification-decision-table.model';
 import { ConditionGroup } from '../../../core/models/decision-table.model';
 import { ClassificationDecisionTableNodeModel } from '../../../core/models/node.model';
@@ -19,6 +21,12 @@ import { FlowService } from '../../../services/flow.service';
 import { FlowDiffStateService } from '../../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../../services/flow-readonly.service';
 import { FlowSettingsService } from '../../../services/flow-settings.service';
+
+interface CdtHeaderBadge {
+    label: string;
+    tooltip: string;
+    tooltipClass: string;
+}
 
 @Component({
     selector: 'app-classification-decision-table-node',
@@ -174,6 +182,25 @@ export class ClassificationDecisionTableNodeComponent {
     get errorsBadgeLabel(): string {
         const n = this.errorMessages.length;
         return n === 1 ? '1 issue' : `${n} issues`;
+    }
+
+    /**
+     * The one badge the header shows: the lone error, or a chip listing the messages one per line when there are
+     * several; `null` when there is none.
+     */
+    protected get headerBadge(): CdtHeaderBadge | null {
+        const errors = this.errorMessages.map((message) => `${message}.`);
+        if (errors.length >= 2) {
+            return buildNodeWarningChip(errors);
+        }
+        if (errors.length > 0) {
+            return { label: this.errorsBadgeLabel, tooltip: this.errorsTooltip, tooltipClass: '' };
+        }
+        return null;
+    }
+
+    protected onTitleHover(tooltip: MatTooltip, nameElement: HTMLElement): void {
+        enableTooltipOnlyWhenTruncated(tooltip, nameElement);
     }
 
     private get promptEntries(): PromptConfig[] {

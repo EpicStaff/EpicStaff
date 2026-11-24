@@ -52,22 +52,15 @@ _LLM_PASSTHROUGH_KEYS = {"provider", "config"}
 _LLM_CONFIG_PASSTHROUGH_KEYS = {
     "model",
     "timeout",
-    "temperature",
-    "top_p",
-    "stop",
-    "max_tokens",
-    "presence_penalty",
-    "frequency_penalty",
-    "logit_bias",
-    "seed",
+    "parameters",
+    "main_secret_argument",
     "input_cost_per_token",
     "output_cost_per_token",
-    "reasoning_effort",
 }
-"""Generation params only — matches ``LLMConfigData.to_litellm_kwargs``'s own split of
-"generation params" from "auth, base_url/api_version, deployment_id, extra_headers".
-Everything in that second group is digested by default, same as any field this
-allowlist has not seen yet."""
+"""Generation settings and what names the secret argument, never a value that could be
+secret: ``connection`` (resolved secret markers, endpoints), ``api_key`` and
+``extra_headers`` are digested by default, same as any field this allowlist has not
+seen yet."""
 
 
 _REQUEST_PASSTHROUGH_KEYS = {"correlation_id", "run_type", "agents", "payload"}
@@ -99,7 +92,7 @@ def _redact_request_for_logging(request: AgentRequest) -> dict:
     """Mask every free-text field of an ``AgentRequest`` before it reaches a log line.
 
     Every top-level field is digested by default — including ``tools``, so a Python-code
-    tool's plaintext secrets never reach this log line — except ``agents`` and ``payload``,
+    tool's sealed secrets never reach this log line, except ``agents`` and ``payload``,
     which get their own nested treatment instead of a blanket digest, since most of their
     fields are safe to read.
     """

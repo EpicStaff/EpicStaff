@@ -1,4 +1,7 @@
+from functools import partial
+
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
 from rest_framework.exceptions import AuthenticationFailed, UnsupportedMediaType
@@ -9,6 +12,11 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
+from src.shared.models import UserAction
+from user_audit.actor import Actor, actor_from_request
+from user_audit.background import run_off_request
+from user_audit.recorder import record_for_user_orgs
+from user_audit.targets import describe_user
 from utils.logger import logger
 
 from rbac.access.gates import DenyApiKeyAuth, IsSuperadmin
@@ -20,6 +28,7 @@ from rbac.exceptions import (
 from rbac.identity.authentication import ApiKeyAuthentication, JwtAuthentication
 from rbac.identity.first_setup import FirstSetupService
 from rbac.identity.first_setup_mode import FirstSetupMode
+from rbac.identity.passwords.failure_description import describe_failure
 from rbac.identity.passwords.recovery import PasswordRecoveryService
 from rbac.identity.refresh_cookie import (
     clear_refresh_cookie,
@@ -85,6 +94,10 @@ def _require_json_body(request) -> None:
         raise UnsupportedMediaType(request.content_type)
 
 
+def _user_actor(user) -> Actor:
+    return Actor(user_id=user.pk, email=user.email, api_key_name=None)
+
+
 # The longest valid email address; anything longer is cut so one request
 # cannot write megabytes into the log.
 _LOGGED_ACCOUNT_MAX_LENGTH = 254
@@ -125,23 +138,54 @@ class LoginView(TokenObtainPairView):
         # Shape-check both fields and aggregate missing/blank errors
         # before delegating to simplejwt. Wrong-credential errors stay a
         # flat 401 to avoid user-enumeration leaks.
-        self._validator.validate_login(request.data)
+        cleaned = self._validator.validate_login(request.data)
         try:
             response = super().post(request, *args, **kwargs)
         except AuthenticationFailed:
             _log_failed_login(request, request.data.get("email"))
+            self._record_sign_in(cleaned["email"], UserAction.SIGN_IN_FAILED)
             raise
         if response.status_code == 200:
+            self._record_sign_in(cleaned["email"], UserAction.SIGNED_IN)
             refresh_token = response.data.pop("refresh", None)
             if refresh_token:
                 remember_me = bool(request.data.get("remember_me", False))
                 set_refresh_cookie(response, refresh_token, remember_me=remember_me)
         return response
 
+    @staticmethod
+    def _record_sign_in(login: str, action: str) -> None:
+        # Best-effort, and skipped with the switch off: it must never change the login's
+        # response.
+        if not settings.USER_AUDIT_TRAIL_ENABLED:
+            return
+        if action == UserAction.SIGN_IN_FAILED:
+            # After the 401 is sent: the work below takes time only for an existing account.
+            run_off_request(partial(_record_sign_in_for_account, login, action))
+        else:
+            _record_sign_in_for_account(login, action)
+
+
+def _record_sign_in_for_account(login: str, action: str) -> None:
+    # The login is read only to find the account, the way the serializer's backend does; an
+    # unknown login records nothing, and the password is never read. Never raises, on the
+    # request thread or off it; a failure is logged only by where it was raised, because
+    # its message and locals can hold the login email.
+    try:
+        user_model = get_user_model()
+        user = user_model.objects.filter(**{user_model.USERNAME_FIELD: login}).first()
+        if user is not None:
+            record_for_user_orgs(action=action, actor=_user_actor(user))
+    except Exception as error:
+        logger.error(
+            "Failed to record user action {} for a login {}", action, describe_failure(error)
+        )
+
 
 class LogoutView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(**LOGOUT_POST)
     def post(self, request):
@@ -162,12 +206,16 @@ class LogoutView(APIView):
             status=status.HTTP_205_RESET_CONTENT,
         )
         clear_refresh_cookie(response)
+        actor = actor_from_request(request)
+        if actor is not None:
+            record_for_user_orgs(action=UserAction.SIGNED_OUT, actor=actor)
         return response
 
 
 class SseTicketView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(**SSE_TICKET_POST)
     def post(self, request):
@@ -193,6 +241,7 @@ class WsTicketView(APIView):
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(**WS_TICKET_POST)
     def post(self, request):
@@ -269,6 +318,7 @@ class FirstSetupView(APIView):
 class TokenIntrospectView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(**TOKEN_INTROSPECT_POST)
     def post(self, request):
@@ -316,6 +366,7 @@ class TokenIntrospectView(APIView):
 class ApiKeyValidateView(APIView):
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(**API_KEY_VALIDATE_GET)
     def get(self, request):
@@ -431,7 +482,12 @@ class PasswordResetConfirmView(APIView):
     )
     def post(self, request):
         cleaned = self._validator.validate_password_reset_confirm(request.data)
-        self._service.confirm_reset(cleaned["token"], cleaned["new_password"])
+        user = self._service.confirm_reset(cleaned["token"], cleaned["new_password"])
+        record_for_user_orgs(
+            action=UserAction.PASSWORD_RESET,
+            actor=_user_actor(user),
+            target_description=describe_user(user),
+        )
         return Response(
             {"detail": "Password has been reset."},
             status=status.HTTP_200_OK,
@@ -452,6 +508,7 @@ class AdminPasswordResetView(APIView):
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, IsSuperadmin]
+    uses_organization_context = False
 
     _validator = AuthValidationService()
     _service = PasswordRecoveryService()
@@ -468,10 +525,16 @@ class AdminPasswordResetView(APIView):
     )
     def post(self, request):
         cleaned = self._validator.validate_admin_password_reset(request.data)
-        self._service.admin_reset(
+        target = self._service.admin_reset(
             request.user,
             cleaned["user_id"],
             cleaned["new_password"],
+        )
+        record_for_user_orgs(
+            action=UserAction.PASSWORD_RESET,
+            actor=actor_from_request(request),
+            target_description=describe_user(target),
+            org_user_id=target.pk,
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -526,6 +589,7 @@ class ResetUserView(APIView):
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, DenyApiKeyAuth, IsSuperadmin]
+    uses_organization_context = False
 
     _service = ResetUserService()
     _validator = AuthValidationService()

@@ -61,7 +61,7 @@ def redis_service():
 @pytest.fixture
 def audit_writer(monkeypatch):
     writer = RecordingAuditWriter()
-    monkeypatch.setattr(session_audit_provider, "AUDIT_TRAIL_ENABLED", True)
+    monkeypatch.setattr(session_audit_provider, "SESSION_AUDIT_TRAIL_ENABLED", True)
     monkeypatch.setattr(session_audit_provider, "get_session_audit_writer", lambda: writer)
     session_audit_provider.register_session_audit_context(
         SESSION_ID,

@@ -1,12 +1,18 @@
+import hashlib
+import json
+
 from domain.enums import SlotEnum
 from domain.errors import GraphRagConfigNotFoundError
 from domain.models import EmbeddingConfig, GraphPricingConfig, Rag
 from graphrag.config.models.cluster_graph_config import ClusterGraphConfig
 from graphrag.config.models.extract_graph_config import ExtractGraphConfig
 from graphrag.config.models.graph_rag_config import GraphRagConfig
+from graphrag.config.models.reporting_config import ReportingConfig
+from graphrag_cache import CacheConfig
 from graphrag_chunking.chunking_config import ChunkingConfig as GraphRagChunkingConfig
 from graphrag_input import TextDocument
 from graphrag_llm.config import ModelConfig
+from graphrag_storage import StorageConfig
 from infrastructure.database.models import EmbeddingConfig as ORMEmbeddingConfig
 from infrastructure.database.models import (
     GraphRag,
@@ -14,73 +20,69 @@ from infrastructure.database.models import (
     GraphRagIndexConfig,
     LLMConfig,
 )
+from infrastructure.graphrag.reporting import PROPAGATE_ONLY_REPORTING
 from infrastructure.graphrag.storages import create_storage_config
 from infrastructure.graphrag.vector_stores import create_vector_store_config
-from loguru import logger
-from src.shared.models.ai_providers import LLMConfigData
 
-# GraphRAG never sends an LLM config's stop sequences or timeout. Stop sequences written
-# for agents would cut extraction output short, and the config's timeout (120 s by
-# default) would abort long extraction and community-report calls.
-_GRAPHRAG_EXCLUDED_GENERATION_FIELDS = {"stop", "timeout"}
-
-
-def _parse_logit_bias(llm_config: LLMConfig) -> dict[int, float] | None:
-    """Return the config's logit_bias with integer token ids, or None if it is malformed.
-
-    The column is JSON, so token ids arrive as string keys. A key or value that is not
-    numeric is dropped with a warning instead of failing the whole GraphRAG config.
-    """
-    raw_logit_bias = llm_config.logit_bias
-    if not raw_logit_bias:
-        return None
-    try:
-        return {int(token_id): float(bias) for token_id, bias in raw_logit_bias.items()}
-    except (AttributeError, TypeError, ValueError):
-        logger.warning(
-            "Ignoring malformed logit_bias on LLM config {}: {!r}",
-            llm_config.id,
-            raw_logit_bias,
-        )
-        return None
+_SET_BY_REQUEST = "set-by-request"
 
 
 def _build_completion_model(llm_config: LLMConfig) -> ModelConfig:
     llm_model = llm_config.model
-    provider = llm_model.llm_provider.name
-    # stop and timeout are left out here as well as excluded below: stop is unvalidated
-    # JSON, and a value GraphRAG discards must not be able to fail the config build.
-    llm_config_data = LLMConfigData(
-        model=llm_model.name,
-        temperature=llm_config.temperature,
-        top_p=llm_config.top_p,
-        max_tokens=llm_config.max_tokens,
-        presence_penalty=llm_config.presence_penalty,
-        frequency_penalty=llm_config.frequency_penalty,
-        logit_bias=_parse_logit_bias(llm_config),
-        seed=llm_config.seed,
-        reasoning_effort=llm_config.reasoning_effort,
-    )
-
-    return ModelConfig(
-        model_provider=provider,
-        model=llm_model.name,
-        api_key="dummy",
-        api_base=llm_model.base_url,
-        api_version=llm_model.api_version,
-        call_args=llm_config_data.to_litellm_kwargs(
-            provider=provider, exclude=_GRAPHRAG_EXCLUDED_GENERATION_FIELDS
-        ),
-    )
+    return _model_config_awaiting_request(llm_model.llm_provider.name, llm_model.name)
 
 
 def _build_embedding_model(embedder_config: ORMEmbeddingConfig) -> ModelConfig:
     embedding_model = embedder_config.model
+    return _model_config_awaiting_request(
+        embedding_model.embedding_provider.name, embedding_model.name
+    )
+
+
+def _model_config_awaiting_request(provider: str, model: str) -> ModelConfig:
+    # GraphRagConfig validates its models when built, and ModelConfig wants a key and, for
+    # Azure, an endpoint. Both arrive with each request, like the settings of the call:
+    # apply_request_access replaces these placeholders. Metrics loads this config too, and
+    # reads only its storage.
     return ModelConfig(
-        model_provider=embedding_model.embedding_provider.name,
-        model=embedding_model.name,
-        api_key="dummy",
-        api_base=embedding_model.base_url,
+        model_provider=provider,
+        model=model,
+        api_key=_SET_BY_REQUEST,
+        api_base=_SET_BY_REQUEST,
+    )
+
+
+_ANSWER_CHANGING_MODEL_FIELDS = {"model_provider", "model", "api_base", "api_version"}
+
+
+def graph_rag_cache_config(rag_id: int, models: list[tuple[ModelConfig, dict]]) -> CacheConfig:
+    """Return the cache config for a RAG whose models run with these settings.
+
+    `models` pairs each model with the settings (call arguments) a request runs it with.
+    graphrag keys a cached answer on the prompt alone, never on the model or its call
+    arguments, so the models and their settings name the cache: changing either starts a
+    new one. Cached answers are reused until one changes (graphrag never expires them).
+    `call_args` is left out: once a request is applied it also holds the connection secrets
+    and headers, and a key rotation must keep the cache.
+    """
+    settings_json = json.dumps(
+        [
+            {
+                **model.model_dump(mode="json", include=_ANSWER_CHANGING_MODEL_FIELDS),
+                "settings": settings,
+            }
+            for model, settings in models
+        ],
+        sort_keys=True,
+    )
+    # Per RAG, not per slot, so a reindex into the other slot reuses the answers. graphrag's
+    # defaults put the cache and the logs under the working directory, which is read-only.
+    return CacheConfig(
+        type="json",
+        storage=create_storage_config(
+            rag_id=rag_id,
+            subdir="cache/" + hashlib.sha256(settings_json.encode()).hexdigest()[:16],
+        ),
     )
 
 
@@ -114,22 +116,35 @@ def graph_rag_orm_to_rag(orm_rag: GraphRag) -> Rag:
     )
 
 
+def graph_rag_output_storage_config(rag_id: int, *, slot: SlotEnum) -> StorageConfig:
+    """Return the storage config where `slot`'s index run writes its output tables."""
+    return create_storage_config(rag_id=rag_id, subdir=f"{slot}/output")
+
+
 def graph_rag_orm_to_graphrag_config(orm_rag: GraphRag, *, slot: SlotEnum) -> GraphRagConfig:
     llm_config: LLMConfig = orm_rag.llm
     embedding_config: ORMEmbeddingConfig = orm_rag.embedder
     index_config: GraphRagIndexConfig = orm_rag.index_config
+    completion_model = _build_completion_model(llm_config)
+    embedding_model = _build_embedding_model(embedding_config)
     return GraphRagConfig(
-        completion_models={"default_completion_model": _build_completion_model(llm_config)},
-        embedding_models={"default_embedding_model": _build_embedding_model(embedding_config)},
+        completion_models={"default_completion_model": completion_model},
+        embedding_models={"default_embedding_model": embedding_model},
         chunking=_build_chunking_config(index_config),
         extract_graph=_build_extract_graph_config(index_config),
         cluster_graph=_build_cluster_graph_config(index_config),
         input_storage=create_storage_config(rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/input"),
-        output_storage=create_storage_config(rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/output"),
+        output_storage=graph_rag_output_storage_config(orm_rag.graph_rag_id, slot=slot),
         update_output_storage=create_storage_config(
             rag_id=orm_rag.graph_rag_id, subdir=f"{slot}/update_output"
         ),
         vector_store=create_vector_store_config(rag_id=orm_rag.graph_rag_id, subdir=slot),
+        # Named by the models alone until a request brings their settings and endpoints:
+        # the orchestrators name it again after `apply_request_access`.
+        cache=graph_rag_cache_config(
+            orm_rag.graph_rag_id, [(completion_model, {}), (embedding_model, {})]
+        ),
+        reporting=ReportingConfig(type=PROPAGATE_ONLY_REPORTING),
     )
 
 
@@ -174,7 +189,6 @@ def graph_rag_orm_to_pricing_config(orm_rag: GraphRag) -> GraphPricingConfig:
         embedding=EmbeddingConfig(
             provider=embedding_model.embedding_provider.name.lower(),
             model=embedding_model.name,
-            base_url=embedding_model.base_url or None,
         ),
         llm_provider=llm_model.llm_provider.name.lower(),
         llm_model=llm_model.name,

@@ -24,6 +24,7 @@ from app.tools.registry import ToolSpec
 from shared.models.agent_service import AgentSpec
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
+from tests.secret_sealing import agent_cryptographer, seal
 
 # ---------------------------------------------------------------------------
 # Chunk builders
@@ -78,7 +79,7 @@ async def collect(client: LiteLLMClient, messages, tools, model_config, **kw) ->
     return chunks
 
 
-MODEL_CONFIG = {"model": "gpt-4o", "api_key": "sk-test"}
+MODEL_CONFIG = {"model": "gpt-4o", "connection": {"api_key": "sk-test"}}
 MESSAGES = [{"role": "user", "content": "hello"}]
 
 
@@ -546,7 +547,7 @@ async def test_usage_cost_prices_claude_cache_writes_at_their_own_rate(model, wr
     pool = make_pool_with_router(make_router([_chunk(finish_reason="stop", usage=usage)]))
 
     client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], {"model": model, "api_key": "sk-test"})
+    result = await collect(client, MESSAGES, [], {"model": model, "connection": {"api_key": "sk-test"}})
 
     (usage_chunk,) = [c for c in result if c.usage is not None]
     expected = _claude_cost(model, plain=100, cache_read=2000, write_5m=write_5m, write_1h=write_1h)
@@ -563,7 +564,7 @@ async def test_usage_cost_prices_cached_reads_for_providers_without_cache_writes
     pool = make_pool_with_router(make_router([_chunk(finish_reason="stop", usage=usage)]))
 
     client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], {"model": model, "api_key": "sk-test"})
+    result = await collect(client, MESSAGES, [], {"model": model, "connection": {"api_key": "sk-test"}})
 
     (usage_chunk,) = [c for c in result if c.usage is not None]
     expected = (
@@ -585,7 +586,7 @@ async def test_usage_cost_prices_top_level_only_anthropic_cache_fields():
     pool = make_pool_with_router(make_router([_chunk(finish_reason="stop", usage=usage)]))
 
     client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], {"model": model, "api_key": "sk-test"})
+    result = await collect(client, MESSAGES, [], {"model": model, "connection": {"api_key": "sk-test"}})
 
     (usage_chunk,) = [c for c in result if c.usage is not None]
     expected = _claude_cost(model, plain=100, cache_read=2000, write_5m=3000, write_1h=0)
@@ -599,7 +600,7 @@ async def test_usage_cost_for_claude_cache_write_matches_the_published_rates():
 
     client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
     result = await collect(
-        client, MESSAGES, [], {"model": "claude-sonnet-4-5", "api_key": "sk-test"}
+        client, MESSAGES, [], {"model": "claude-sonnet-4-5", "connection": {"api_key": "sk-test"}}
     )
 
     (usage_chunk,) = [c for c in result if c.usage is not None]
@@ -616,7 +617,7 @@ async def test_usage_cost_handles_nested_usage_details_given_as_objects():
     pool = make_pool_with_router(make_router([_chunk(finish_reason="stop", usage=usage)]))
 
     client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], {"model": model, "api_key": "sk-test"})
+    result = await collect(client, MESSAGES, [], {"model": model, "connection": {"api_key": "sk-test"}})
 
     (usage_chunk,) = [c for c in result if c.usage is not None]
     expected = _claude_cost(model, plain=100, cache_read=2000, write_5m=0, write_1h=3000)
@@ -654,7 +655,10 @@ def _model_config_from_llm_config(provider: str, llm_config: LLMConfigData) -> d
         instructions="i",
         llm=LLMData(provider=provider, config=llm_config),
     )
-    return _build_model_config(AgentContext(agent=agent, attachments=[], correlation_id="c", is_cancelled=never_cancelled))
+    return _build_model_config(
+        AgentContext(agent=agent, attachments=[], correlation_id="c", is_cancelled=never_cancelled),
+        agent_cryptographer(),
+    )
 
 
 async def _acompletion_kwargs_for(model_config: dict) -> dict:
@@ -667,7 +671,8 @@ async def _acompletion_kwargs_for(model_config: dict) -> dict:
 
 async def test_reasoning_effort_reaches_router_acompletion():
     model_config = _model_config_from_llm_config(
-        "openai", LLMConfigData(model="gpt-5-mini", api_key="sk-test", reasoning_effort="low")
+        "openai",
+        LLMConfigData(model="gpt-5-mini", api_key=seal("sk-test"), parameters={"reasoning_effort": "low"}),
     )
 
     acompletion_kwargs = await _acompletion_kwargs_for(model_config)
@@ -678,7 +683,7 @@ async def test_reasoning_effort_reaches_router_acompletion():
 
 async def test_unset_reasoning_effort_is_not_sent_to_router_acompletion():
     model_config = _model_config_from_llm_config(
-        "openai", LLMConfigData(model="gpt-4o", api_key="sk-test")
+        "openai", LLMConfigData(model="gpt-4o", api_key=seal("sk-test"))
     )
 
     acompletion_kwargs = await _acompletion_kwargs_for(model_config)
@@ -686,36 +691,69 @@ async def test_unset_reasoning_effort_is_not_sent_to_router_acompletion():
     assert "reasoning_effort" not in acompletion_kwargs
 
 
-async def test_azure_deployment_id_and_extra_headers_reach_router_acompletion():
+async def test_azure_connection_stays_off_router_acompletion_and_extra_headers_reach_it():
     model_config = _model_config_from_llm_config(
         "azure",
         LLMConfigData(
-            model="my-deployment",
-            api_key="sk-test",
-            base_url="https://example.openai.azure.com",
-            api_version="2025-01-01-preview",
-            deployment_id="my-deployment",
+            model="gpt-4o",
+            api_key=seal("sk-test"),
+            connection={
+                "api_base": "https://example.openai.azure.com",
+                "api_version": "2025-01-01-preview",
+                "deployment_id": "my-deployment",
+            },
             extra_headers={"X-Team": "core"},
         ),
     )
 
     acompletion_kwargs = await _acompletion_kwargs_for(model_config)
 
-    assert acompletion_kwargs["deployment_id"] == "my-deployment"
+    assert model_config["model"] == "azure/my-deployment"
     assert acompletion_kwargs["extra_headers"] == {"X-Team": "core"}
-    for router_owned_key in ("api_key", "base_url", "api_version"):
-        assert router_owned_key not in acompletion_kwargs
+    for connection_argument in ("api_key", "api_base", "api_version", "deployment_id", "connection"):
+        assert connection_argument not in acompletion_kwargs
+
+
+async def test_router_receives_the_decrypted_api_key_and_one_router_serves_every_sealing_of_it():
+    """Full path: sealed LLM config -> _build_model_config -> LiteLLMClient -> RouterPool.
+
+    django_app seals each run's key afresh, so two runs carry different ciphertexts of
+    one key; both must reach the same Router, built with the plaintext key.
+    """
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="ok", tool_calls=None), finish_reason="stop")],
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+    )
+    built_model_lists = []
+
+    def build_router(model_list, **kwargs):
+        built_model_lists.append(model_list)
+        router = MagicMock()
+        router.model_list = model_list
+        router.acompletion = AsyncMock(return_value=response)
+        return router
+
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=RouterPool())
+    with patch("app.llm.router_pool.Router", side_effect=build_router):
+        for _ in range(2):
+            model_config = _model_config_from_llm_config(
+                "openai", LLMConfigData(model="gpt-4o", api_key=seal("sk-live-key"))
+            )
+            [chunk async for chunk in client.chat(MESSAGES, [], model_config, stream=False)]
+
+    (model_list,) = built_model_lists
+    assert model_list[0]["litellm_params"]["api_key"] == "sk-live-key"
 
 
 async def test_config_prices_are_in_model_config_only_when_set():
     priced = _model_config_from_llm_config(
         "openai",
         LLMConfigData(
-            model="gpt-4o", api_key="sk-test", input_cost_per_token=0.001, output_cost_per_token=0.002
+            model="gpt-4o", api_key=seal("sk-test"), input_cost_per_token=0.001, output_cost_per_token=0.002
         ),
     )
     unpriced = _model_config_from_llm_config(
-        "openai", LLMConfigData(model="gpt-4o", api_key="sk-test")
+        "openai", LLMConfigData(model="gpt-4o", api_key=seal("sk-test"))
     )
 
     assert priced["input_cost_per_token"] == 0.001
@@ -730,7 +768,7 @@ async def test_llm_config_prices_cost_the_usage_and_never_reach_the_provider():
         "openai",
         LLMConfigData(
             model="epicstaff-test-gateway-model-without-price",
-            api_key="sk-test",
+            api_key=seal("sk-test"),
             input_cost_per_token=0.001,
             output_cost_per_token=0.002,
         ),
@@ -760,7 +798,7 @@ async def test_llm_config_prices_cost_the_usage_and_never_reach_the_provider():
 UNPRICED_MODEL = "openai/epicstaff-test-gateway-model-without-price"
 PRICED_MODEL_CONFIG = {
     "model": UNPRICED_MODEL,
-    "api_key": "sk-test",
+    "connection": {"api_key": "sk-test"},
     "input_cost_per_token": 0.001,
     "output_cost_per_token": 0.002,
 }
@@ -812,7 +850,7 @@ async def test_usage_cost_falls_back_to_the_price_map_without_both_prices(prices
         _chunk(finish_reason="stop", usage={"prompt_tokens": 10, "completion_tokens": 5}),
     ]
     pool = make_pool_with_router(make_router(chunks_in))
-    model_config = {"model": "openai/gpt-4o", "api_key": "sk-test", **prices}
+    model_config = {"model": "openai/gpt-4o", "connection": {"api_key": "sk-test"}, **prices}
 
     client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
     result = await collect(client, MESSAGES, [], model_config)
@@ -832,7 +870,7 @@ async def test_unpriced_model_without_config_prices_costs_zero():
     pool = make_pool_with_router(make_router(chunks_in))
 
     client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=pool)
-    result = await collect(client, MESSAGES, [], {"model": UNPRICED_MODEL, "api_key": "sk-test"})
+    result = await collect(client, MESSAGES, [], {"model": UNPRICED_MODEL, "connection": {"api_key": "sk-test"}})
 
     usage_chunks = [c for c in result if c.usage is not None]
     assert usage_chunks[0].usage["total_cost_usd"] == 0.0

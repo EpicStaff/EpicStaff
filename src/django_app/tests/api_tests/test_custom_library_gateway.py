@@ -184,6 +184,29 @@ def test_creating_a_library_binds_it_to_the_active_org(auth_client, regular_user
 
 
 @pytest.mark.django_db
+def test_a_new_library_is_put_in_the_active_orgs_scope(
+    auth_client, default_org, sandbox_client
+):
+    """Its name is unique only in that scope, and only venvs of the org find it."""
+    sandbox_client.create.return_value = {
+        "id": 11,
+        "name": "mylib",
+        "created_at": "2026-11-04T10:00:00Z",
+        "updated_at": "2026-11-04T10:00:00Z",
+    }
+    upload = SimpleUploadedFile(
+        "mylib-1.0-py3-none-any.whl", b"PK\x03\x04zip", content_type="application/octet-stream"
+    )
+
+    response = auth_client.post(
+        "/api/custom-libraries/", {"file": upload, "scope": "999"}, format="multipart"
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    assert sandbox_client.create.call_args.kwargs["scope"] == str(default_org.id)
+
+
+@pytest.mark.django_db
 def test_a_caller_that_is_not_a_person_creates_a_library_without_an_owner(
     api_client, env_api_key, default_org, sandbox_client
 ):

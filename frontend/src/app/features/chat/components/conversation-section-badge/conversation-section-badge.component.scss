@@ -1,0 +1,31 @@
+// On the corner of the nearest positioned box (the avatar's, 4px wider than the avatar): 5px past the avatar's right
+// edge and 1px past its bottom.
+:host {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    display: block;
+    width: 14px;
+    height: 14px;
+}
+
+// An opaque disc: the ring's colour with a faint tint of the section's, so the avatar never shows through, and the
+// icon in it in the section's colour in full; its ring cuts it out of the avatar.
+.conversation-section-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--color-section-badge-border);
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--section-badge-color) 8%, var(--color-section-badge-border));
+    color: var(--section-badge-color);
+}
+
+// Focusable in the thread header, for its tooltip.
+.conversation-section-badge:focus-visible {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+}

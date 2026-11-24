@@ -15,13 +15,13 @@ import pytest
 
 from conftest import TOOLS_ROOT, load_tool_main
 
-# picture_tool/main.py imports openai at module level. Per its
-# requirements.txt, openai is installed into this tool's own dedicated venv by
-# the sandbox at execution time, not into any service venv -- skip cleanly
+# picture_tool/main.py imports openai at module level.
+# openai is installed into the sandbox's `builtin_tools` venv that every
+# built-in tool runs in, not into any service venv -- skip cleanly
 # instead of failing when running these tests outside that venv.
 pytest.importorskip(
     "openai",
-    reason="installed by the sandbox into this tool's own venv, not a service venv",
+    reason="installed by the sandbox into its builtin_tools venv, not a service venv",
 )
 
 PROMPT = "a red cube on a white table"

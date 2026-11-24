@@ -1,6 +1,7 @@
 <div
     class="search"
     [ngClass]="'search--mod-' + mod()"
+    [class.search--toolbar]="appearance() === 'toolbar'"
     [style.width]="width()"
 >
     <app-svg-icon
@@ -17,6 +18,8 @@
         [class.search__input--with-clear]="!!searchTerm()"
         [placeholder]="placeholder()"
         [attr.aria-label]="ariaLabel()"
+        [attr.maxlength]="maxLength()"
+        [matTooltip]="hint()"
         [ngModel]="searchTerm()"
         (ngModelChange)="onSearchTermChange($event)"
     />

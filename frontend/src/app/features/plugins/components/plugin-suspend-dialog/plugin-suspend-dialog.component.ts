@@ -41,8 +41,8 @@ export const PLUGIN_SUSPEND_DIALOG_TITLE_ID = 'plugin-suspend-dialog-title';
 export const PLUGIN_DEFAULT_MODELS_HINT =
     'New agents and features outside runs, such as the flow assistant, keep using these settings.';
 
-/** Added to the hint only when a listed setting is one the Default LLMs page can change. */
-export const PLUGIN_DEFAULT_MODELS_REPOINT_HINT = 'Repoint them in Settings → Default LLMs.';
+/** Added to the hint only when a listed setting is one the AI Models page can change. */
+export const PLUGIN_DEFAULT_MODELS_REPOINT_HINT = 'Repoint them in Settings → AI Models.';
 
 /** The preview as the dialog's sections show it. */
 interface SuspendPreviewView {

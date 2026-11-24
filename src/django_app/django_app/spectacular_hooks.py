@@ -1,4 +1,11 @@
 from tables.views.storage_upload_stream_view import UPLOAD_STREAM_PATH
+from tables.views.transfer_import_upload_view import (
+    AGENT_DEFINITION_IMPORT_JOBS_ROUTE,
+    COLLECTION_IMPORT_JOBS_ROUTE,
+    FLOW_IMPORT_JOBS_ROUTE,
+)
+
+from django_app.spectacular_schema import ORG_HEADER_SCHEME
 
 TAG_MAP = [
     # Authentication
@@ -42,6 +49,7 @@ TAG_MAP = [
     # Providers
     ("api/providers", "Providers"),
     # LLM & Embeddings
+    ("api/ai-models", "AI Models"),
     ("api/llm-models", "LLM Models"),
     ("api/llm-configs", "LLM Configs"),
     ("api/embedding-models", "Embedding Models"),
@@ -123,6 +131,8 @@ TAG_MAP = [
     ("api/admin/plugin-role-permissions", "Plugins"),
     # Notifications
     ("api/notify", "Notifications"),
+    # Transfer jobs
+    ("api/transfer-jobs", "Transfer Jobs"),
 ]
 
 TAGS_ORDER = [
@@ -155,6 +165,7 @@ TAGS_ORDER = [
     "Sessions",
     "Run Session",
     "Providers",
+    "AI Models",
     "LLM Models",
     "LLM Configs",
     "Embedding Models",
@@ -198,6 +209,7 @@ TAGS_ORDER = [
     "Key Value Tables",
     "Plugins",
     "Notifications",
+    "Transfer Jobs",
     "Other",
 ]
 
@@ -216,34 +228,6 @@ def assign_tags_postprocessing_hook(result, generator, request, public, **kwargs
                 operation["tags"] = [_get_tag(path)]
 
     result["tags"] = [{"name": tag} for tag in TAGS_ORDER]
-    return result
-
-
-ORG_HEADER_SCHEME = "OrganizationId"
-
-
-def add_org_header_postprocessing_hook(result, generator, request, public, **kwargs):
-    components = result.setdefault("components", {})
-    security_schemes = components.setdefault("securitySchemes", {})
-    security_schemes[ORG_HEADER_SCHEME] = {
-        "type": "apiKey",
-        "in": "header",
-        "name": "X-Organization-Id",
-        "description": (
-            "Active organization context. Required by org-scoped endpoints "
-            "(e.g. /api/admin/roles/). Click Authorize and paste the org UUID; "
-            "Swagger will send it on every request."
-        ),
-    }
-
-    for path_item in result.get("paths", {}).values():
-        for operation in path_item.values():
-            if not isinstance(operation, dict):
-                continue
-            security = operation.setdefault("security", [])
-            if not any(ORG_HEADER_SCHEME in entry for entry in security):
-                security.append({ORG_HEADER_SCHEME: []})
-
     return result
 
 
@@ -290,7 +274,7 @@ def add_stream_upload_postprocessing_hook(result, generator, request, public, **
     result.setdefault("paths", {})[UPLOAD_STREAM_PATH] = {
         "post": {
             "operationId": "storage_upload_stream",
-            "security": [{"BearerAuth": []}, {"ApiKeyAuth": []}],
+            "security": [{"BearerAuth": [], ORG_HEADER_SCHEME: []}, {"ApiKeyAuth": []}],
             "description": (
                 "Stream one file straight into storage: the raw body is the file, "
                 "proxied to object storage in bounded memory. A plain file may be at most "
@@ -348,6 +332,151 @@ def add_stream_upload_postprocessing_hook(result, generator, request, public, **
                     )
                 },
             },
+        }
+    }
+    return result
+
+
+_ZIP_BODY = {
+    "required": True,
+    "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}},
+}
+
+_IMPORT_JOB_CREATED = {
+    "type": "object",
+    "required": ["job_id"],
+    "properties": {
+        "job_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Poll GET /api/transfer-jobs/{job_id}/ for the outcome.",
+        }
+    },
+}
+
+_IMPORT_JOB_DESCRIPTION = (
+    "Queue a background import of a .zip export archive, streamed as the raw request body "
+    "(not multipart). At most DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE (413 archive_too_large, "
+    "checked against Content-Length first, then against the bytes received). The archive's "
+    "caps, version and main entity are checked before the job is created; a plain .json "
+    "export goes to the synchronous import/ endpoint instead. Started by a user or a personal "
+    "API key; throttled with the export jobs (transfer_job_create), and at most 3 unfinished "
+    "jobs per user and 10 per organization, a user's uploads still in progress counting as "
+    "unfinished jobs. Uploads share the storage uploads' slots per worker "
+    "(DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG, DJANGO_UPLOAD_MAX_CONCURRENCY). "
+    "Poll GET /api/transfer-jobs/{job_id}/."
+)
+
+_FILE_NAME_PARAMETER = {
+    "in": "query",
+    "name": "file_name",
+    "required": False,
+    "schema": {"type": "string", "maxLength": 255},
+    "description": "Name of the uploaded file, shown as the job's display_name.",
+}
+
+
+def _import_job_responses(permission: str) -> dict:
+    return {
+        "202": {
+            "description": "Job queued.",
+            "content": {"application/json": {"schema": _IMPORT_JOB_CREATED}},
+        },
+        "400": {
+            "description": (
+                "Invalid or unknown query parameter; or the archive is refused: "
+                "invalid_archive (not a zip, unsafe, over a cap), use_sync_import "
+                "(older than archives), invalid_file (wrong main entity)."
+            )
+        },
+        "401": {"description": "Not authenticated."},
+        "403": {
+            "description": (
+                f"Missing {permission} in the active organization; "
+                "transfer_job_requires_user for a caller with no user (system API key, "
+                "plugin service account); or the archive holds trigger nodes and the "
+                "caller lacks FLOWS:USE."
+            )
+        },
+        "413": {"description": "archive_too_large."},
+        "429": {
+            "description": "Throttled; too_many_jobs: the caller or the organization "
+            "is at its unfinished-job limit; or org_upload_limit_reached: the organization "
+            "already runs its share of uploads."
+        },
+        "503": {
+            "description": "upload_slots_busy (with Retry-After): no upload slot freed up "
+            "in time; or the storage is unreachable."
+        },
+    }
+
+
+def add_import_job_upload_postprocessing_hook(result, generator, request, public, **kwargs):
+    """Add the import-job uploads to the schema; they are raw ASGI, which the generator misses."""
+    paths = result.setdefault("paths", {})
+    paths[FLOW_IMPORT_JOBS_ROUTE.path] = {
+        "post": {
+            "operationId": "graphs_import_jobs_create",
+            "security": [{"BearerAuth": [], ORG_HEADER_SCHEME: []}, {"ApiKeyAuth": []}],
+            "description": _IMPORT_JOB_DESCRIPTION,
+            "parameters": [
+                _FILE_NAME_PARAMETER,
+                {
+                    "in": "query",
+                    "name": "preserve_uuids",
+                    "required": False,
+                    "schema": {"type": "boolean", "default": False},
+                    "description": "Keep the flows' UUIDs from the archive.",
+                },
+                {
+                    "in": "query",
+                    "name": "replace_existing",
+                    "required": False,
+                    "schema": {"type": "boolean", "default": False},
+                    "description": (
+                        "Overwrite flows with the same UUID; requires preserve_uuids "
+                        "and FLOWS:UPDATE."
+                    ),
+                },
+                {
+                    "in": "query",
+                    "name": "import_labels",
+                    "required": False,
+                    "schema": {"type": "boolean", "default": True},
+                    "description": "Import the flows' labels.",
+                },
+            ],
+            "requestBody": _ZIP_BODY,
+            "responses": _import_job_responses("FLOWS:CREATE"),
+        }
+    }
+    paths[COLLECTION_IMPORT_JOBS_ROUTE.path] = {
+        "post": {
+            "operationId": "source_collections_import_jobs_create",
+            "security": [{"BearerAuth": [], ORG_HEADER_SCHEME: []}, {"ApiKeyAuth": []}],
+            "description": _IMPORT_JOB_DESCRIPTION,
+            "parameters": [_FILE_NAME_PARAMETER],
+            "requestBody": _ZIP_BODY,
+            "responses": _import_job_responses("KNOWLEDGE_SOURCES:CREATE"),
+        }
+    }
+    paths[AGENT_DEFINITION_IMPORT_JOBS_ROUTE.path] = {
+        "post": {
+            "operationId": "agent_definitions_import_jobs_create",
+            "security": [{"BearerAuth": [], ORG_HEADER_SCHEME: []}, {"ApiKeyAuth": []}],
+            "description": _IMPORT_JOB_DESCRIPTION,
+            "parameters": [
+                _FILE_NAME_PARAMETER,
+                {
+                    "in": "query",
+                    "name": "import_labels",
+                    "required": False,
+                    "schema": {"type": "boolean", "default": True},
+                    "description": "Import the agents' labels.",
+                },
+            ],
+            "requestBody": _ZIP_BODY,
+            "responses": _import_job_responses("AGENTS:CREATE"),
         }
     }
     return result

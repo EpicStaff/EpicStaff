@@ -3,12 +3,12 @@ from typing import Any, ClassVar, Optional
 
 import settings
 from clients import KnowledgeClient
-from clients.errors import ClientTimeoutError
+from foundation.transport.http import ClientTimeoutError
 from langgraph.types import StreamWriter
 from loguru import logger
 from models.graph_models import GraphMessage
 from pydantic import TypeAdapter
-from services.graph.events import StopEvent
+from services.graph.events import StopEvent, until_stopped
 from services.redis_service import RedisService
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models import (
@@ -84,14 +84,16 @@ class KnowledgeSearchService:
     def __init__(
         self,
         redis_service: RedisService,
+        knowledge_client: KnowledgeClient,
         rag_embedder_api_key: str | None = None,
         rag_llm_api_key: str | None = None,
     ):
         self.redis_service = redis_service
+        self.knowledge_client = knowledge_client
         self.rag_embedder_api_key = rag_embedder_api_key
         self.rag_llm_api_key = rag_llm_api_key
 
-    def search_knowledges(
+    async def search_knowledges(
         self,
         sender: str,
         knowledge_collection_id: int,
@@ -104,6 +106,10 @@ class KnowledgeSearchService:
         rag_llm_api_key: str | None = None,
         rag_embedder_extra_headers: dict[str, str] | None = None,
         rag_llm_extra_headers: dict[str, str] | None = None,
+        rag_embedder_connection: dict[str, str] | None = None,
+        rag_embedder_parameters: dict[str, Any] | None = None,
+        rag_llm_connection: dict[str, str] | None = None,
+        rag_llm_parameters: dict[str, Any] | None = None,
         writer: Optional["StreamWriter"] = None,
         session_id: int | None = None,
         node_name: str | None = None,
@@ -117,7 +123,8 @@ class KnowledgeSearchService:
             rag_type_id: RAG type and ID in format "rag_type:id" (e.g., "naive:6")
             query: Search query text
             rag_search_config: RAG-specific search parameters dict
-            stop_event: Optional event to stop execution
+            stop_event: Checked while the search runs; once it is set, the search request
+                is cancelled. Its connection closes, and knowledge_new cancels the search too.
             timeout: Timeout in seconds. If None, resolved automatically by rag_type.
             writer: Stream writer to emit the `extracted_chunks` graph message to.
                 If None, no message is emitted.
@@ -128,6 +135,9 @@ class KnowledgeSearchService:
 
         Returns:
             List of knowledge results (strings)
+
+        Raises:
+            StopSession: `stop_event` was set before the search returned.
         """
 
         rag_type, rag_id = self._parse_rag_type_id(rag_type_id)
@@ -144,19 +154,23 @@ class KnowledgeSearchService:
         )
         resolved_llm_key = rag_llm_api_key if rag_llm_api_key is not None else self.rag_llm_api_key
 
+        searching = self.knowledge_client.search_with_usage(
+            strategy=RAGStrategy(rag_type),
+            rag_id=rag_id,
+            query=query,
+            search_config=search_config,
+            timeout=timeout,
+            embedding_api_key=resolved_embedder_key,
+            llm_api_key=resolved_llm_key,
+            embedding_extra_headers=rag_embedder_extra_headers,
+            llm_extra_headers=rag_llm_extra_headers,
+            embedding_connection=rag_embedder_connection,
+            embedding_parameters=rag_embedder_parameters,
+            llm_connection=rag_llm_connection,
+            llm_parameters=rag_llm_parameters,
+        )
         try:
-            with KnowledgeClient() as client:
-                outcome = client.search_with_usage(
-                    strategy=RAGStrategy(rag_type),
-                    rag_id=rag_id,
-                    query=query,
-                    search_config=search_config,
-                    timeout=timeout,
-                    embedding_api_key=resolved_embedder_key,
-                    llm_api_key=resolved_llm_key,
-                    embedding_extra_headers=rag_embedder_extra_headers,
-                    llm_extra_headers=rag_llm_extra_headers,
-                )
+            outcome = await until_stopped(searching, stop_event)
         except ClientTimeoutError as e:
             raise TimeoutError(
                 f"Knowledge search timeout for {rag_type_id} after {timeout}s"
@@ -227,6 +241,7 @@ class KnowledgeSearchService:
             "message_type": "extracted_chunks",
             "rag_type": rag_type,
             "collection_id": collection_id,
+            "rag_id": request.rag_id,
             "retrieved_chunks": len(chunks),
             "knowledge_query": request.query,
             "rag_search_config": request.search_config.model_dump(),

@@ -22,6 +22,7 @@ export enum ResourceCode {
     ApiKeys = 'api_keys',
     Secrets = 'secrets',
     Audit = 'audit',
+    UserAudit = 'user_audit',
     Voice = 'voice',
     Webhooks = 'webhooks',
     KeyValueTables = 'key_value_tables',

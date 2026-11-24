@@ -8,6 +8,9 @@ from collections import defaultdict
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from rest_framework.exceptions import PermissionDenied
+from src.shared.models import UserAction
+from user_audit.context import mark_request_handled
+from user_audit.recorder import record_user_action
 
 from rbac.access.asserts import assert_within_ceiling
 from rbac.access.effective import EffectivePermissions
@@ -75,6 +78,7 @@ class RoleManagementService(CrossOrgResourceService):
             except IntegrityError as exc:
                 raise RoleNameConflictError() from exc
             self._write_permission_rows(role=role, permissions=permissions)
+            record_user_action(action=UserAction.CREATED, org_id=org_id, target=role)
         return self._build_role_response(role_id=role.id)
 
     def update_role(self, actor, role_id, changes) -> Role:
@@ -93,6 +97,7 @@ class RoleManagementService(CrossOrgResourceService):
             self.assert_can(effective=effective, action=Permission.UPDATE)
             if "permissions" in changes:
                 self._assert_within_ceiling(effective=effective, permissions=changes["permissions"])
+            previous_name, previous_description = role.name, role.description
             if "name" in changes:
                 self._assert_name_available(
                     org_id=role.org_id, name=changes["name"], exclude_role_id=role.id
@@ -104,10 +109,36 @@ class RoleManagementService(CrossOrgResourceService):
                 role.save(update_fields=["name", "description", "updated_at"])
             except IntegrityError as exc:
                 raise RoleNameConflictError() from exc
+            permissions_changed = False
             if "permissions" in changes:
+                # The validator drops a resource granted nothing, so equal maps grant the same.
+                permissions_changed = dict(
+                    role.permissions_set.values_list("resource_type", "permissions")
+                ) != {entry["resource_type"]: entry["bitmask"] for entry in changes["permissions"]}
                 role.permissions_set.all().delete()
                 self._write_permission_rows(role=role, permissions=changes["permissions"])
+            self._record_update(
+                role,
+                previous_name=previous_name,
+                other_change=permissions_changed or role.description != previous_description,
+            )
         return self._build_role_response(role_id=role.id)
+
+    @staticmethod
+    def _record_update(role: Role, *, previous_name: str, other_change: bool) -> None:
+        """Record a rename as renamed with the old name and any other change as updated, both
+        when both changed, and nothing for an update that changed nothing."""
+        if role.name != previous_name:
+            record_user_action(
+                action=UserAction.RENAMED,
+                org_id=role.org_id,
+                target=role,
+                previous_name=previous_name,
+            )
+        if other_change:
+            record_user_action(action=UserAction.UPDATED, org_id=role.org_id, target=role)
+        if role.name == previous_name and not other_change:
+            mark_request_handled()
 
     def preview_delete(self, actor, role_id) -> dict:
         """Dry-run: report the memberships that a delete would reassign to
@@ -153,6 +184,8 @@ class RoleManagementService(CrossOrgResourceService):
             reassigned = OrganizationUser.objects.filter(role_id=role.id).update(
                 role_id=viewer_role.id
             )
+            # Recorded before the delete: a deleted instance has no pk left to describe.
+            record_user_action(action=UserAction.DELETED, org_id=role.org_id, target=role)
             role.delete()
         return reassigned
 

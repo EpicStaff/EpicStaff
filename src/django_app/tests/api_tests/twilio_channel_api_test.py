@@ -22,6 +22,7 @@ from tables.models.realtime_models import RealtimeAgent, RealtimeAgentDefinition
 from rbac.authorship import record_last_edit
 from rbac.models import Organization
 from tables.services.secrets import secret_resolver, secret_service
+from tests.sealed_values import open_sealed
 
 # Every fixture/test in this module needs a uniquely-named Secret (org-scoped
 # unique name) — a bare counter keeps that trivial without threading a name
@@ -663,7 +664,8 @@ class TestRealtimeChannelLookupByToken:
         assert response.status_code == 200, response.json()
         twilio = response.json().get("twilio")
         assert twilio is not None
-        assert twilio["auth_token"] == "webhook-signature-secret"
+        assert twilio["auth_token"] != "webhook-signature-secret"
+        assert open_sealed(twilio["auth_token"]) == "webhook-signature-secret"
 
     def test_lookup_by_token_omits_authorship_and_reads_no_user(
         self, api_client, db, default_org, env_api_key, django_user_model

@@ -14,6 +14,8 @@ export interface ChunkDeepLinkParams {
 export class ChunkDeepLinkService {
     private router = inject(Router);
 
+    private readonly pagePath = '/storage/knowledge-sources';
+
     pending = signal<ChunkDeepLinkParams | null>(null);
 
     /**
@@ -82,7 +84,7 @@ export class ChunkDeepLinkService {
      * Build a shareable URL string for a specific chunk.
      */
     buildUrl(collectionId: number, ragId: number, documentId: number, chunkId: number): string {
-        const base = window.location.origin + window.location.pathname;
+        const base = window.location.origin + this.pagePath;
         return `${base}?collection=${collectionId}&rag=${ragId}&doc=${documentId}&chunk=${chunkId}`;
     }
 }

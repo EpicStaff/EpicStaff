@@ -37,7 +37,7 @@ class ResizeObserverStub {
     disconnect(): void {}
 }
 
-describe('GlobalSessionsListComponent deleting sessions', () => {
+describe('GlobalSessionsListComponent bulk actions', () => {
     let fixture: ComponentFixture<GlobalSessionsListComponent>;
     let http: HttpTestingController;
 
@@ -55,11 +55,10 @@ describe('GlobalSessionsListComponent deleting sessions', () => {
                     useValue: { can: () => true, canAny: () => true } as unknown as PermissionsService,
                 },
                 {
-                    // the permission refresh after a 403 fails, so the interceptor does not navigate
+                    // the reload of the user after a 403 fails, so the interceptor does not navigate
                     provide: ProfileService,
                     useValue: {
-                        clearCurrentUser: () => undefined,
-                        bootstrapUser: () => throwError(() => new Error('offline')),
+                        reloadCurrentUser: () => throwError(() => new Error('offline')),
                     } as unknown as ProfileService,
                 },
             ],
@@ -279,5 +278,31 @@ describe('GlobalSessionsListComponent deleting sessions', () => {
         expectBulkDelete().flush({ deleted: 1, ids: [11] });
 
         expect(respondWithSessions(sessions(1, 10), 10)).toBe('0');
+    });
+    describe('export', () => {
+        function expectExportJob(): TestRequest {
+            return http.expectOne(
+                (request) => request.method === 'POST' && request.url === '/api/sessions/export-jobs/'
+            );
+        }
+
+        it('exports the selected sessions as one background job in the chosen format', () => {
+            respondWithSessions([session(1), session(2), session(3)]);
+            tickSession(2);
+
+            fixture.componentInstance.onExport('csv');
+
+            expect(expectExportJob().request.body).toEqual({ ids: [2], export_format: 'csv' });
+        });
+
+        it('exports every session the filters match when none is selected', () => {
+            respondWithSessions([session(1)]);
+            fixture.componentInstance.isErrorCauseFilter.set(true);
+
+            fixture.componentInstance.onExport('json');
+
+            expect(expectExportJob().request.body).toEqual({ is_error_cause: true, export_format: 'json' });
+            respondWithSessions([session(1)]);
+        });
     });
 });

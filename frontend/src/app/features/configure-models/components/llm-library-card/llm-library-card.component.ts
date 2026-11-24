@@ -1,7 +1,7 @@
-import { ChangeDetectionStrategy, Component, input, output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, CheckboxComponent } from '@shared/components';
-import { HasPermissionDirective } from '@shared/directives';
+import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, LlmLibraryModel, ResourceCode } from '@shared/models';
 
 import { ConfigCardMoreMenuComponent } from '../config-card-more-menu/config-card-more-menu.component';
@@ -17,6 +17,7 @@ export interface LlmLibraryCardViewDetailsEvent {
     imports: [
         MatTooltipModule,
         HasPermissionDirective,
+        TooltipOnOverflowDirective,
         AppSvgIconComponent,
         CheckboxComponent,
         ConfigCardMoreMenuComponent,
@@ -32,11 +33,19 @@ export class LlmLibraryCardComponent {
     /** True while a bulk delete is in flight; disables the selection checkbox and stops
      *  selection from being toggled by a card click. */
     public readonly isDeleting = input(false);
+    /** The default roles the config is assigned to, e.g. "Agent LLM"; the card shows a "Default" badge for any. */
+    public readonly defaultRoles = input<readonly string[]>([]);
 
     public readonly editClick = output<LlmLibraryModel>();
     public readonly deleteClick = output<LlmLibraryModel>();
     public readonly selectedChange = output<boolean>();
     public readonly viewDetailsClick = output<LlmLibraryCardViewDetailsEvent>();
+
+    protected readonly reviewTooltip = computed(() => this.model().reviewReasons.join('\n'));
+    protected readonly defaultTooltip = computed(() => this.defaultRoles().join('\n'));
+    protected readonly hasBottomRow = computed(
+        () => this.model().temperature !== null || this.model().needsReview || this.defaultRoles().length > 0
+    );
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;

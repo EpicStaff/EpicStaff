@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -55,6 +55,11 @@ class RealtimeAgentChatData(BaseModel):
     rag_llm_api_key_secret_id: int | None = Field(default=None, exclude=True)
     rag_embedder_extra_headers: dict[str, str] | None = None
     rag_llm_extra_headers: dict[str, str] | None = None
+    # Keyed by LiteLLM argument; markers until SecretResolver fills the published copy.
+    rag_embedder_connection: dict[str, str] | None = None
+    rag_embedder_parameters: dict[str, Any] | None = None
+    rag_llm_connection: dict[str, str] | None = None
+    rag_llm_parameters: dict[str, Any] | None = None
     llm: LLMData | None = None
     rt_model_name: str
     rt_api_key: str | None = None

@@ -262,8 +262,10 @@ class RedisPubSub:
 
             close_old_connections()
 
-            from tables.services.storage_service.db_sync import StorageFileSync
             from tables.services.storage_service.quota import is_over_quota
+            from tables.validators.file_upload_validator import FileValidator
+
+            file_validator = FileValidator()
 
             for mutation in event.mutations:
                 rel_path = mutation.path
@@ -274,9 +276,18 @@ class RedisPubSub:
                 # One bad mutation must not drop the rest of the batch or the bookkeeping below.
                 try:
                     if mutation.op == "write":
-                        self._record_external_write(org_id, rel_path)
+                        if file_validator.is_executable_filename(rel_path):
+                            # Not indexed, so never visible or downloadable. Not deleted
+                            # either: the path comes from code that can forge it.
+                            logger.warning(
+                                "Not indexing executable file {} written to storage in org {}",
+                                rel_path,
+                                org_id,
+                            )
+                        else:
+                            self._record_external_write(org_id, rel_path)
                     elif mutation.op == "delete":
-                        StorageFileSync.on_delete(org_id, rel_path)
+                        self._record_external_delete(org_id, rel_path)
                 except Exception:
                     logger.exception(
                         "Could not sync storage {} of {} in org {}", mutation.op, rel_path, org_id
@@ -294,6 +305,8 @@ class RedisPubSub:
                     entry = f"{org_id}:{rel_path}"
 
                     if mutation.op == "write":
+                        if file_validator.is_executable_filename(rel_path):
+                            continue
                         self.redis_client.sadd(redis_key, entry)
                     elif mutation.op == "delete":
                         self.redis_client.srem(redis_key, entry)
@@ -314,8 +327,33 @@ class RedisPubSub:
             logger.error(f"Error handling storage_mutations message: {e}")
 
     @staticmethod
+    def _record_external_delete(org_id: int, rel_path: str) -> None:
+        """Drop the index rows of a reported delete only if the object is really gone.
+
+        Mutations are hints from code that can forge them, so a delete of something still
+        stored is ignored. If the store can't be asked the rows stay.
+        """
+        from tables.services.storage_service import get_storage_manager
+
+        try:
+            dropped = get_storage_manager().record_external_delete(org_id, rel_path)
+        except Exception:
+            logger.exception(
+                "Could not check storage for {} in org {}; keeping its rows", rel_path, org_id
+            )
+            return
+        if not dropped:
+            logger.warning(
+                "Ignoring reported delete of {} in org {}: it is still in storage", rel_path, org_id
+            )
+
+    @staticmethod
     def _record_external_write(org_id: int, rel_path: str) -> None:
-        """Record an agent write at its stored size; if the store can't be asked, without a size."""
+        """Record an agent write at its stored size; if the store can't be asked, without a size.
+
+        A write the store has no object for, or whose path is not a valid storage path,
+        is skipped: the report is a hint, not proof.
+        """
         from tables.services.storage_service import get_storage_manager
         from tables.services.storage_service.db_sync import StorageFileSync
 
@@ -324,6 +362,12 @@ class RedisPubSub:
         except FileNotFoundError:
             logger.warning(
                 "Skipping storage write of {} in org {}: no such object", rel_path, org_id
+            )
+        except ValueError:
+            logger.warning(
+                "Skipping storage write of {} in org {}: not a valid storage path",
+                rel_path,
+                org_id,
             )
         except Exception:
             logger.exception(

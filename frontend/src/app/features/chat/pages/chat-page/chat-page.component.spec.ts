@@ -1,6 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { provideLocationMocks } from '@angular/common/testing';
-import { signal } from '@angular/core';
+import { NgZone, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { By } from '@angular/platform-browser';
@@ -36,6 +36,7 @@ import { ChatVisitorTokensStore } from '../../services/chat-visitor-tokens.store
 import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
 import { DeskDrawerService } from '../../services/desk-drawer.service';
 import { OpenConversationService } from '../../services/open-conversation.service';
+import { InboxSection } from '../../utils/conversation-list-tab.util';
 import { ChatPageComponent } from './chat-page.component';
 
 class ResizeObserverStub {
@@ -91,6 +92,7 @@ const row = (overrides: Partial<ChatConversation>): ChatConversation => ({
     last_message_preview: 'hello',
     handoff_reason: '',
     handoff_at: null,
+    claimed_at: null,
     visitor_number: 1,
     chat_user_id: null,
     assigned_operator_name: null,
@@ -155,7 +157,7 @@ describe('ChatPageComponent', () => {
     const chatApi = {
         getBindings: vi.fn(() => of(serverBindings)),
         getMyAliases: vi.fn(() => of([] as ChatMyAlias[])),
-        // By default Waiting, In progress and Tests are empty and Bot holds one conversation.
+        // By default Bot holds one conversation and every other section is empty.
         getConversations: vi.fn((params: ConversationListParams): Observable<ChatConversationPage> => {
             const answer = nextPages[params.section];
             if (answer) {
@@ -214,15 +216,35 @@ describe('ChatPageComponent', () => {
         );
     }
 
-    const rememberedSection = (): ChatInboxSection | null =>
-        TestBed.inject(ConversationListPreferencesService).expanded();
+    const rememberedSections = (): readonly InboxSection[] =>
+        TestBed.inject(ConversationListPreferencesService).openSections();
+    // Open: its rows shown, under an expanded header on Inbox, or Bot Testing's one section, which has none.
     const openSections = (): ChatInboxSection[] =>
         Array.from((fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>('.conversation-list__section'))
             .filter(
-                (section) =>
-                    section.querySelector('.conversation-section-header')?.getAttribute('aria-expanded') === 'true'
+                (section) => section.querySelector<HTMLElement>('.conversation-list__section-body')?.hidden === false
             )
             .map((section) => section.dataset['section'] as ChatInboxSection);
+    /**
+     * New Test Chat, on Bot Testing: the column moves there first, as the user would; undefined where the user cannot
+     * build desks (Bot Testing is aria-disabled: it stays focusable, so its reason can be read) or the button is not
+     * offered.
+     */
+    function newTestChat(): HTMLButtonElement | undefined {
+        const host = fixture.nativeElement as HTMLElement;
+        const testing = Array.from(host.querySelectorAll<HTMLButtonElement>('app-conversation-list-tabs button')).find(
+            (button) => button.textContent?.trim() === 'Bot Testing'
+        );
+        if (testing && testing.getAttribute('aria-disabled') !== 'true') {
+            testing.click();
+            fixture.detectChanges();
+        }
+        return host.querySelector<HTMLButtonElement>('.conversation-list-toolbar__new-test button') ?? undefined;
+    }
+    const pressedTab = (): string | undefined =>
+        (fixture.nativeElement as HTMLElement)
+            .querySelector('app-conversation-list-tabs button[aria-pressed="true"]')
+            ?.textContent?.trim();
 
     /** A reload requests the sections open now (only Waiting for a person at first): each answers its page, else nothing. */
     function reloadWith(pages: Partial<Record<ChatInboxSection, Observable<ChatConversationPage>>>): void {
@@ -250,12 +272,45 @@ describe('ChatPageComponent', () => {
         fixture.detectChanges();
     }
 
+    // By its visible label, or by its name for an icon-only button (Settings).
     const headerButton = (label: string): HTMLButtonElement | undefined =>
         Array.from(
             (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.header-actions button')
-        ).find((button) => button.textContent?.trim() === label);
+        ).find((button) => button.textContent?.trim() === label || button.getAttribute('aria-label') === label);
 
-    /** A button beside the open conversation's title (the holder's main action). */
+    /** Opens a conversation of the route desk, as picking its row does. */
+    function openConversation(conversation: ChatConversation = row({ id: 'c-1' })): void {
+        conversationUpdated$.next(conversation);
+        fixture.componentInstance.selectConversation(conversation);
+        fixture.detectChanges();
+    }
+
+    /** The open conversation's ⋯ menu, opened as the user would; its items' labels. */
+    function openThreadMenu(): string[] {
+        (fixture.nativeElement.querySelector('.thread-header .chat-action-menu__trigger') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        return Array.from(document.querySelectorAll<HTMLButtonElement>('.chat-action-menu__item')).map(
+            (item) => item.textContent?.trim() ?? ''
+        );
+    }
+
+    /** Closes the ⋯ menu that is open, as Escape does. */
+    function closeMenu(): void {
+        document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        fixture.detectChanges();
+    }
+
+    /** Picks Live or Paused in the desk status menu beside the title, as the user would. */
+    function pickRunState(label: 'Live' | 'Paused'): void {
+        (fixture.nativeElement.querySelector('.desk-toolbar .desk-status--button') as HTMLButtonElement).click();
+        fixture.detectChanges();
+        Array.from(document.querySelectorAll<HTMLButtonElement>('.desk-status-menu__item'))
+            .find((item) => item.querySelector('.desk-status-menu__label')?.textContent?.trim() === label)!
+            .click();
+        fixture.detectChanges();
+    }
+
+    /** A button in the open conversation's header (its main action). */
     const threadAction = (label: string): HTMLButtonElement | undefined =>
         Array.from(
             (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>(
@@ -322,6 +377,10 @@ describe('ChatPageComponent', () => {
         TestBed.inject(ActiveOrgService).set(1);
         // Desk pages are not routed here; the open conversation's URL (navigateByUrl) is, against the root route.
         navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+        // The user keeps only Waiting open, and only Tests on Bot Testing: these specs are about the page, not the
+        // sections, and each list open is one more request to answer.
+        TestBed.inject(ConversationListPreferencesService).setOpenSections(['waiting']);
+        TestBed.inject(ConversationListPreferencesService).setOpenTestingSections(['test_open']);
         fixture = TestBed.createComponent(ChatPageComponent);
         fixture.detectChanges();
     });
@@ -357,15 +416,49 @@ describe('ChatPageComponent', () => {
         expect(list().selectedId()).toBe('c-4');
     });
 
-    it('opens Tests in the conversations column when a test conversation starts, the remembered section unchanged', () => {
+    it('marks the open conversation read up to its last message, and each message that comes while it is open', () => {
+        const seen = (): Record<string, string> =>
+            JSON.parse(localStorage.getItem('chat:readMarks:3') ?? '{"seen":{}}').seen;
+        fixture.componentInstance.selectConversation(row({ id: 'c-1', last_message_at: '2026-10-10T10:00:00Z' }));
+        fixture.detectChanges();
+        expect(seen()['c-1']).toBe('2026-10-10T10:00:00Z');
+
+        conversationUpdated$.next(row({ id: 'c-1', last_message_at: '2026-10-10T10:05:00Z' }));
+        fixture.detectChanges();
+        expect(seen()['c-1']).toBe('2026-10-10T10:05:00Z');
+    });
+
+    it('offers New Test Chat on a desk only, disabled while the desk loads', () => {
+        expect(newTestChat()).toBeUndefined();
+
+        const desks$ = new Subject<ChatBinding[]>();
+        chatApi.getBindings.mockReturnValueOnce(desks$);
+        scopeTo('b-1');
+        const button = (): HTMLButtonElement => newTestChat()!;
+        const tooltip = (): MatTooltip =>
+            fixture.debugElement
+                .queryAll(By.directive(MatTooltip))
+                .find((element) => element.nativeElement === button())!
+                .injector.get(MatTooltip);
+        expect(button().disabled).toBe(true);
+        expect(tooltip().message).toBe('Loading the desk…');
+
+        desks$.next([binding]);
+        fixture.detectChanges();
+        expect(button().disabled).toBe(false);
+    });
+
+    it('moves the conversations column to Bot Testing when a test conversation starts, the remembered choices unchanged', () => {
         expect(openSections()).toEqual(['waiting']);
         fixture.componentInstance.onTestConversationStarted(row({ id: 'c-9', is_test: true, last_message_at: null }));
         fixture.detectChanges();
-        expect(openSections()).toEqual(['waiting', 'test']);
-        expect(rememberedSection()).toBe('waiting');
+        expect(pressedTab()).toBe('Bot Testing');
+        expect(openSections()).toEqual(['test_open']);
+        expect(rememberedSections()).toEqual(['waiting']);
+        expect(TestBed.inject(ConversationListPreferencesService).tab()).toBe('inbox');
     });
 
-    it('tests the route binding from the header, expands Tests, selects it and writes as the visitor', () => {
+    it('tests the route binding from New Test Chat on Bot Testing, selects it and writes as the visitor', () => {
         const component = fixture.componentInstance;
         const created = row({
             id: 'c-9',
@@ -381,23 +474,52 @@ describe('ChatPageComponent', () => {
         const host: HTMLElement = fixture.nativeElement;
         // The separator is aria-hidden and spaced by CSS.
         expect(text('.desk-toolbar__title')).toEqual(['Sales']);
-        expect(text('.desk-toolbar app-chat-binding-status')).toEqual(['Live']);
-        expect(fixture.nativeElement.querySelector('h2 app-chat-binding-status')).toBeNull();
+        expect(text('.desk-toolbar app-desk-status-select .desk-status__label')).toEqual(['Live']);
+        expect(fixture.nativeElement.querySelector('h2 app-desk-status-select')).toBeNull();
         expect(host.querySelector('.inbox__toolbar, app-select')).toBeNull();
 
-        headerButton('Test')!.click();
+        newTestChat()!.click();
         fixture.detectChanges();
 
         expect(chatApi.createTestConversation).toHaveBeenCalledWith('b-2');
-        expect(openSections()).toContain('test');
+        expect(openSections()).toEqual(['test_open']);
         expect(component.selectedId()).toBe('c-9');
-        expect(text('.thread-header .test-chip')).toEqual(['Test']);
-        expect(host.querySelector('app-tab-button button[aria-pressed="true"]')?.textContent?.trim()).toBe('Visitor');
+        expect(host.querySelector('.composer__role[aria-pressed="true"]')?.textContent?.trim()).toBe('Visitor');
 
         typeInComposer('hi');
         host.querySelector('.composer textarea')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
         expect(chatApi.sendAsVisitor).toHaveBeenCalledWith('c-9', 'vt-9', 'hi', {});
         expect(chatApi.reply).not.toHaveBeenCalled();
+        // Said in the thread, where the reply will appear, from the send on: before the stream reports the run.
+        fixture.detectChanges();
+        expect(text('.thread__replying')).toEqual(['Bot is replying...']);
+    });
+
+    it('shows the run a visitor message started under it on a test conversation only, on its lighter bubble', () => {
+        const visitorMessage: ChatOperatorMessage = {
+            id: 'm-1',
+            role: 'user',
+            content: 'hi',
+            actions: null,
+            action: null,
+            session_id: 41,
+            created_at: '2026-10-10T10:01:00Z',
+            author_user_id: null,
+            author_name: null,
+            visible_name: null,
+        };
+        const host: HTMLElement = fixture.nativeElement;
+        chatApi.getMessages.mockReturnValueOnce(of([visitorMessage]));
+        fixture.componentInstance.selectConversation(row({ id: 'c-1', is_test: true }));
+        fixture.detectChanges();
+        expect(text('.message--user .message__chip')).toEqual(['Run #41']);
+        expect(host.querySelector('.message--user')?.classList).toContain('message--test');
+
+        chatApi.getMessages.mockReturnValueOnce(of([visitorMessage]));
+        fixture.componentInstance.selectConversation(row({ id: 'c-2', is_test: false }));
+        fixture.detectChanges();
+        expect(text('.message--user .message__chip')).toEqual([]);
+        expect(host.querySelector('.message--user')?.classList).not.toContain('message--test');
     });
 
     // Waiting for a person only: the other sections load once opened.
@@ -407,7 +529,7 @@ describe('ChatPageComponent', () => {
         expect(chatApi.getConversations.mock.calls.map(([params]) => params.binding)).toEqual(['b-2']);
     });
 
-    it('shows the all-bindings inbox unscoped, without My name, Settings, Get snippet, Pause or Test', () => {
+    it('shows the all-bindings inbox unscoped, without Operator name, Settings, Copy install snippet, Pause or Test', () => {
         listBindings([binding]);
         fixture.detectChanges();
         expect(text('.desk-toolbar__title')).toEqual(['All desks']);
@@ -415,13 +537,13 @@ describe('ChatPageComponent', () => {
         expect(fixture.nativeElement.querySelector('.header-actions')).toBeNull();
     });
 
-    it('pauses or resumes the route binding and opens its settings, then reloads it', () => {
+    it('pauses or resumes the route binding from its status menu and opens its settings, then reloads it', () => {
         permissions.can = () => true;
         try {
             listBindings([binding]);
             scopeTo('b-1');
             bindingActions.pause.mockReturnValue(of(true));
-            headerButton('Pause')!.click();
+            pickRunState('Paused');
             expect(bindingActions.pause).toHaveBeenCalledWith(binding);
 
             const paused = { ...binding, is_active: false };
@@ -430,7 +552,7 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
             bindingActions.resume.mockReturnValue(of(true));
             const callsBefore = chatApi.getBindings.mock.calls.length;
-            headerButton('Resume')!.click();
+            pickRunState('Live');
             expect(bindingActions.resume).toHaveBeenCalled();
             expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1);
 
@@ -438,13 +560,14 @@ describe('ChatPageComponent', () => {
             headerButton('Settings')!.click();
             expect(bindingActions.openSettings).toHaveBeenCalledWith({ ...binding, is_active: false });
             expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 2);
+            expect(bindingActions.delete).not.toHaveBeenCalled();
         } finally {
             permissions.can = (resource, action) =>
                 resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
         }
     });
 
-    it('draws its header actions as the flow editor header buttons, each named even when collapsed to its icon', () => {
+    it('draws its header actions in order, each named even when collapsed to its icon', () => {
         permissions.can = () => true;
         try {
             listBindings([binding]);
@@ -454,17 +577,20 @@ describe('ChatPageComponent', () => {
             );
             expect(
                 buttons.map((button) => [
-                    [...button.classList].filter((name) => name.startsWith('header-action')).join(' '),
+                    [...button.classList]
+                        .filter(
+                            (name) =>
+                                name.startsWith('header-action') || ['operator-name', 'desk-icon-action'].includes(name)
+                        )
+                        .join(' '),
                     button.getAttribute('aria-label'),
                 ])
             ).toEqual([
+                ['header-action header-action--ghost header-action--snippet', 'Copy install snippet'],
+                ['desk-icon-action', 'Delete desk'],
                 // My aliases have not loaded here: the action names no one rather than a name that may be wrong.
-                ['header-action header-action--ghost', 'My name'],
-                ['header-action header-action--ghost', 'Settings'],
-                ['header-action header-action--ghost', 'Delete'],
-                ['header-action header-action--outline', 'Get snippet'],
-                ['header-action header-action--outline', 'Pause'],
-                ['header-action header-action--primary', 'Test'],
+                ['operator-name', 'Operator name'],
+                ['desk-icon-action', 'Settings'],
             ]);
         } finally {
             permissions.can = (resource, action) =>
@@ -472,14 +598,28 @@ describe('ChatPageComponent', () => {
         }
     });
 
-    it('copies the binding snippet from Get snippet through the shared binding actions, for a desk builder', () => {
+    it('copies the binding snippet from Copy install snippet through the shared binding actions, for a desk builder', () => {
         listBindings([binding]);
         scopeTo('b-1');
-        headerButton('Get snippet')!.click();
+        headerButton('Copy install snippet')!.click();
         expect(bindingActions.copySnippet).toHaveBeenCalledWith(binding);
     });
 
-    it('deletes the route binding after its confirmation, goes to All desks, then reloads the desks; a cancel stays', async () => {
+    // The desk is deleted from the toolbar only: a thread menu item would read as deleting the one conversation.
+    it("offers no delete in the thread's ⋯ menu, even to whoever may delete desks", () => {
+        permissions.can = () => true;
+        try {
+            listBindings([binding]);
+            scopeTo('b-1');
+            openConversation();
+            expect(openThreadMenu().filter((label) => label.includes('Delete'))).toEqual([]);
+        } finally {
+            permissions.can = (resource, action) =>
+                resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
+        }
+    });
+
+    it("deletes the route binding from the toolbar's Delete desk after its confirmation, goes to All desks, then reloads the desks; a cancel stays", async () => {
         permissions.can = () => true;
         try {
             listBindings([binding]);
@@ -488,20 +628,33 @@ describe('ChatPageComponent', () => {
             let finishNavigation: (navigated: boolean) => void = () => undefined;
             navigate.mockReturnValueOnce(new Promise<boolean>((resolve) => (finishNavigation = resolve)));
             bindingActions.delete.mockReturnValueOnce(of(true));
-            headerButton('Delete')!.click();
+
+            headerButton('Delete desk')!.click();
             expect(bindingActions.delete).toHaveBeenCalledWith(binding);
             expect(navigate).toHaveBeenCalledWith(['/chat-bindings', 'all']);
-            // Only once the page has left: a list without the desk must not read as "no longer exists".
+            // The delete does not reload before the page has left.
             expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore);
             finishNavigation(true);
             await vi.waitFor(() => expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1));
             expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
 
             navigate.mockClear();
-            // The shared action completes without emitting when the confirm is cancelled or the delete fails.
             bindingActions.delete.mockReturnValueOnce(of());
-            headerButton('Delete')!.click();
+            headerButton('Delete desk')!.click();
             expect(navigate).not.toHaveBeenCalled();
+        } finally {
+            permissions.can = (resource, action) =>
+                resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
+        }
+    });
+
+    it('offers Delete desk in the toolbar only with chats:delete', () => {
+        permissions.can = (resource, action) => resource === ResourceCode.Chats && action !== ActionCode.Delete;
+        try {
+            listBindings([binding]);
+            scopeTo('b-1');
+            expect(headerButton('Delete desk')).toBeUndefined();
+            expect(headerButton('Settings')).toBeDefined();
         } finally {
             permissions.can = (resource, action) =>
                 resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
@@ -515,7 +668,7 @@ describe('ChatPageComponent', () => {
             scopeTo('b-1');
             const deleted$ = new Subject<boolean>();
             bindingActions.delete.mockReturnValueOnce(deleted$);
-            headerButton('Delete')!.click();
+            headerButton('Delete desk')!.click();
             scopeTo('b-2');
             const callsBefore = chatApi.getBindings.mock.calls.length;
 
@@ -528,15 +681,16 @@ describe('ChatPageComponent', () => {
         }
     });
 
-    it('hides Pause and Settings without chats:update, Delete without chats:delete, My name without chats:use, Test and Get snippet without chats:create or update', () => {
+    it('shows a fixed status and no Settings without chats:update, no Operator name without chats:use, no New Test Chat or Copy install snippet without chats:create or update', () => {
         listBindings([binding]);
         scopeTo('b-1');
-        expect(headerButton('Test')).toBeDefined();
-        expect(headerButton('Get snippet')).toBeDefined();
-        expect(headerButton('My name')).toBeDefined();
-        expect(headerButton('Pause')).toBeUndefined();
+        expect(headerButton('Test')).toBeUndefined();
+        expect(newTestChat()).toBeDefined();
+        expect(headerButton('Copy install snippet')).toBeDefined();
+        expect(headerButton('Operator name')).toBeDefined();
+        expect(fixture.nativeElement.querySelector('.desk-toolbar .desk-status--button')).toBeNull();
+        expect(text('.desk-toolbar app-desk-status-select .desk-status__label')).toEqual(['Live']);
         expect(headerButton('Settings')).toBeUndefined();
-        expect(headerButton('Delete')).toBeUndefined();
 
         const can = permissions.can;
         try {
@@ -544,16 +698,16 @@ describe('ChatPageComponent', () => {
             fixture = TestBed.createComponent(ChatPageComponent);
             listBindings([binding]);
             scopeTo('b-1');
-            expect(headerButton('Test')).toBeUndefined();
-            expect(headerButton('Get snippet')).toBeUndefined();
-            expect(headerButton('My name')).toBeDefined();
+            expect(newTestChat()).toBeUndefined();
+            expect(headerButton('Copy install snippet')).toBeUndefined();
+            expect(headerButton('Operator name')).toBeDefined();
 
             permissions.can = () => false;
             fixture = TestBed.createComponent(ChatPageComponent);
             listBindings([binding]);
             scopeTo('b-1');
-            expect(headerButton('Test')).toBeUndefined();
-            expect(headerButton('My name')).toBeUndefined();
+            expect(newTestChat()).toBeUndefined();
+            expect(headerButton('Operator name')).toBeUndefined();
         } finally {
             permissions.can = can;
         }
@@ -563,11 +717,7 @@ describe('ChatPageComponent', () => {
         const host = (): HTMLElement => fixture.nativeElement as HTMLElement;
         const column = (): HTMLElement => host().querySelector('.inbox__sidebar') as HTMLElement;
         const handle = (): HTMLElement | null => host().querySelector('[role="separator"]');
-        const compactToggle = (): HTMLButtonElement | null =>
-            host().querySelector('app-conversation-list-toolbar button[aria-controls]');
         const searchField = (): HTMLInputElement | null => host().querySelector('app-conversation-list-toolbar input');
-        const list = (): ConversationListComponent =>
-            fixture.debugElement.query(By.directive(ConversationListComponent)).componentInstance;
 
         function press(key: string, times = 1): void {
             for (let time = 0; time < times; time++) {
@@ -576,46 +726,22 @@ describe('ChatPageComponent', () => {
             }
         }
 
-        function pressToggle(): void {
-            compactToggle()!.click();
-            fixture.detectChanges();
-        }
-
-        it('starts 340px wide beside a handle that resizes it, with a toggle that controls the list', () => {
-            expect(column().style.width).toBe('340px');
+        it('starts 427px wide beside a handle that resizes it', () => {
+            expect(column().style.width).toBe('427px');
             expect(handle()?.getAttribute('aria-label')).toBe('Resize conversations column');
-            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
-            expect(compactToggle()?.getAttribute('aria-expanded')).toBe('true');
-            expect(compactToggle()?.getAttribute('aria-controls')).toBe(
-                host().querySelector('app-conversation-list')!.id
-            );
         });
 
-        it('makes the same live list compact with the toggle, and lists it in full again at 280px', () => {
-            const shown = list();
-            pressToggle();
-            expect(column().style.width).toBe('64px');
-            expect(list()).toBe(shown);
-            expect(searchField()).toBeNull();
-            expect(compactToggle()?.getAttribute('aria-label')).toBe('Conversations');
-            expect(compactToggle()?.getAttribute('aria-expanded')).toBe('false');
-
-            pressToggle();
-            expect(column().style.width).toBe('280px');
-            expect(searchField()).not.toBeNull();
-        });
-
-        it('resizes between 280px and 480px with the handle, and goes compact past the narrowest', () => {
+        it('resizes between 343px and 480px with the handle, and never goes compact', () => {
             press('ArrowRight', 20);
             expect(column().style.width).toBe('480px');
 
-            press('ArrowLeft', 13);
-            expect(column().style.width).toBe('280px');
+            press('ArrowLeft', 20);
+            expect(column().style.width).toBe('343px');
             expect(searchField()).not.toBeNull();
 
-            press('ArrowLeft');
-            expect(column().style.width).toBe('64px');
-            expect(searchField()).toBeNull();
+            press('Enter');
+            expect(column().style.width).toBe('343px');
+            expect(searchField()).not.toBeNull();
         });
 
         it('keeps its width when the page opens again', () => {
@@ -623,15 +749,14 @@ describe('ChatPageComponent', () => {
             fixture.destroy();
             fixture = TestBed.createComponent(ChatPageComponent);
             fixture.detectChanges();
-            expect(column().style.width).toBe('356px');
+            expect(column().style.width).toBe('443px');
         });
 
-        it('is never compact nor resizable on a phone: the full list, whatever the width', () => {
-            pressToggle();
+        it('is not resizable on a phone: the full list, whatever the width', () => {
+            press('ArrowLeft', 20);
             isPhone.set(true);
             fixture.detectChanges();
             expect(handle()).toBeNull();
-            expect(compactToggle()).toBeNull();
             expect(column().style.width).toBe('');
             expect(searchField()).not.toBeNull();
         });
@@ -641,7 +766,7 @@ describe('ChatPageComponent', () => {
         it('names the action after the name visitors see once it is known, and opens the dialog for the open desk', () => {
             listBindings([binding]);
             scopeTo('b-1');
-            const action = (): HTMLButtonElement => headerButton('My name')!;
+            const action = (): HTMLButtonElement => headerButton('Operator name')!;
             const tooltipOf = (): MatTooltip =>
                 fixture.debugElement
                     .queryAll(By.directive(MatTooltip))
@@ -649,16 +774,16 @@ describe('ChatPageComponent', () => {
                     .injector.get(MatTooltip);
             const tooltip = (): string => tooltipOf().message;
             // Not known yet: no name at all, rather than the desk's while visitors may see an alias.
-            expect(action().getAttribute('aria-label')).toBe('My name');
+            expect(action().getAttribute('aria-label')).toBe('Operator name');
             expect(tooltipOf().disabled).toBe(true);
 
             loadAliases();
-            expect(action().getAttribute('aria-label')).toBe('My name: Support');
+            expect(action().getAttribute('aria-label')).toBe('Operator name: Support');
             expect(tooltipOf().disabled).toBe(false);
             expect(tooltip()).toBe('Visitors see you as Support');
 
             goBy('Mike');
-            expect(action().getAttribute('aria-label')).toBe('My name: Mike');
+            expect(action().getAttribute('aria-label')).toBe('Operator name: Mike');
             expect(tooltip()).toBe('Visitors see you as Mike');
 
             action().click();
@@ -712,10 +837,76 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
             expect(text('.message__author')).toEqual([
                 'Bea Agent · as Mike',
-                'You · as Support',
+                // The user's own: no name to add, they know what visitors see.
+                'You',
                 'Operator #9 · as Support',
                 'Bea Agent',
             ]);
+        });
+
+        it('places the hand-off to the queue and the operator joining where they happened in the thread', () => {
+            const message = (id: string, minute: number): ChatOperatorMessage => ({
+                id,
+                role: 'user',
+                content: id,
+                actions: null,
+                action: null,
+                session_id: null,
+                created_at: `2026-10-10T10:0${minute}:00Z`,
+                author_user_id: null,
+                author_name: null,
+                visible_name: null,
+            });
+            const threadItems = (): string[] =>
+                Array.from(
+                    (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLElement>(
+                        '.thread__messages > .message .message__content, .thread__messages > .thread-event > span'
+                    )
+                ).map((element) => element.textContent!.trim());
+            chatApi.getMessages.mockReturnValueOnce(of([message('m-1', 1), message('m-2', 3), message('m-3', 5)]));
+            fixture.componentInstance.selectConversation(
+                row({
+                    id: 'c-1',
+                    mode: 'human',
+                    assigned_operator_id: 3,
+                    handoff_reason: 'the flow asked for a human',
+                    handoff_at: '2026-10-10T10:02:00Z',
+                    claimed_at: '2026-10-10T10:06:00Z',
+                })
+            );
+            fixture.detectChanges();
+            expect(threadItems()).toEqual([
+                'm-1',
+                'Moved to the queue: the flow asked for a human',
+                'm-2',
+                'm-3',
+                'You have joined the conversation',
+            ]);
+            expect(fixture.nativeElement.querySelector('.thread-event--joined')).not.toBeNull();
+        });
+
+        it("names the visitor above the bubble and shows no run under a visitor's message", () => {
+            chatApi.getMessages.mockReturnValueOnce(
+                of([
+                    {
+                        id: 'm-1',
+                        role: 'user',
+                        content: 'hi',
+                        actions: null,
+                        action: null,
+                        session_id: 610,
+                        created_at: '2026-10-10T10:01:00Z',
+                        author_user_id: null,
+                        author_name: null,
+                        visible_name: null,
+                    },
+                ] satisfies ChatOperatorMessage[])
+            );
+            fixture.componentInstance.selectConversation(row({ id: 'c-1' }));
+            fixture.detectChanges();
+            expect(text('.message--user .message__author')).toEqual(['Visitor']);
+            expect(fixture.nativeElement.querySelector('.message--user .message__actions')).toBeNull();
+            expect(fixture.nativeElement.textContent).not.toContain('610');
         });
 
         it('keeps the name visitors saw on a streamed operator message, and on a later copy without it', () => {
@@ -758,7 +949,7 @@ describe('ChatPageComponent', () => {
         expect(text('.desk-toolbar__title')).toEqual(['Support']);
         scopeTo('b-2');
         expect(text('.desk-toolbar__title')).toEqual(['Sales']);
-        expect(text('.desk-toolbar app-chat-binding-status')).toEqual(['Paused']);
+        expect(text('.desk-toolbar app-desk-status-select .desk-status__label')).toEqual(['Paused']);
         expect(navigate).not.toHaveBeenCalled();
     });
 
@@ -783,8 +974,8 @@ describe('ChatPageComponent', () => {
         pending$.next([binding, { ...binding, id: 'b-2', name: 'Sales' }]);
         fixture.detectChanges();
         expect(text('.desk-toolbar__title')).toEqual(['Sales']);
-        expect(text('.desk-toolbar app-chat-binding-status')).toEqual(['Live']);
-        expect(fixture.nativeElement.querySelector('h2 app-chat-binding-status')).toBeNull();
+        expect(text('.desk-toolbar app-desk-status-select .desk-status__label')).toEqual(['Live']);
+        expect(fixture.nativeElement.querySelector('h2 app-desk-status-select')).toBeNull();
         expect(chatApi.getBindings).toHaveBeenCalledTimes(1);
         expect(navigate).not.toHaveBeenCalled();
     });
@@ -852,7 +1043,7 @@ describe('ChatPageComponent', () => {
         scopeTo('b-1');
         expect(host.querySelectorAll('h1').length).toBe(0);
         expect(text('.desk-toolbar h2')).toEqual(['Support']);
-        expect(text('.desk-toolbar app-chat-binding-status')).toEqual(['Live']);
+        expect(text('.desk-toolbar app-desk-status-select .desk-status__label')).toEqual(['Live']);
     });
 
     it('goes back to All desks without a message when the org changes on a binding page', () => {
@@ -893,7 +1084,7 @@ describe('ChatPageComponent', () => {
         const host: HTMLElement = fixture.nativeElement;
         expect(host.querySelector('app-chat-thread-composer')).not.toBeNull();
         expect(host.querySelector('.composer__roles')).toBeNull();
-        expect(composerInput().placeholder).toBe('Claim the conversation to reply');
+        expect(host.querySelector('.composer__take-over-button')?.textContent?.trim()).toBe('Take over');
     });
 
     it('adds an operator reply only to the thread it was sent on', () => {
@@ -1009,8 +1200,17 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
 
             expect(text('.message__content')).toEqual(['<i>why</i>']);
-            expect(text('.message__raw summary')).toEqual(Array(rawDataCount).fill('Raw data'));
+            expect(text('.message__actions button')).toEqual(Array(rawDataCount).fill('Raw data'));
             expect(fixture.nativeElement.querySelector('.message b, .message i')).toBeNull();
+
+            // Raw data is a closed disclosure naming the panel it opens (the Monaco editor itself is not mounted here).
+            const rawButtons = Array.from(
+                (fixture.nativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('.message__actions button')
+            );
+            expect(rawButtons.map((button) => button.getAttribute('aria-expanded'))).toEqual(
+                Array(rawDataCount).fill('false')
+            );
+            expect(rawButtons.every((button) => button.getAttribute('aria-controls'))).toBe(true);
         }
     );
 
@@ -1105,7 +1305,7 @@ describe('ChatPageComponent', () => {
             userScrolls();
             IntersectionObserverStub.current().intersect();
             // Runs the after-render check the landed page scheduled.
-            TestBed.tick();
+            TestBed.inject(NgZone).run(() => TestBed.tick());
 
             expect(chatApi.getMessages.mock.calls.map((call) => (call as unknown[])[1])).toEqual(['m-0', 'old-0']);
             expect(fixture.nativeElement.querySelector('.thread__older')).toBeNull();
@@ -1122,7 +1322,7 @@ describe('ChatPageComponent', () => {
             userScrolls();
             IntersectionObserverStub.current().intersect();
             // Runs the after-render check the landed page scheduled.
-            TestBed.tick();
+            TestBed.inject(NgZone).run(() => TestBed.tick());
             expect(chatApi.getMessages).toHaveBeenCalledTimes(1);
         });
 
@@ -1203,7 +1403,7 @@ describe('ChatPageComponent', () => {
             chatApi.getMessages.mockReturnValueOnce(of(thread(CHAT_MESSAGES_PAGE_SIZE)));
             userScrolls();
             IntersectionObserverStub.current().intersect();
-            TestBed.tick();
+            TestBed.inject(NgZone).run(() => TestBed.tick());
             expect(chatApi.getMessages).toHaveBeenCalledTimes(1);
         });
 
@@ -1339,7 +1539,7 @@ describe('ChatPageComponent', () => {
         const page$ = new Subject<ChatConversationPage>();
         const thread$ = new Subject<ChatOperatorMessage[]>();
         chatApi.getMessages.mockReturnValueOnce(thread$);
-        openSection('Bot');
+        // Opened from outside the column, the conversation brought its section, Bot, into it.
         reloadWith({ bot: page$ });
         expect(component.selectedId()).toBe('c-1');
         expect(text('.message__content')).toEqual(['first', 'second']);
@@ -1379,11 +1579,14 @@ describe('ChatPageComponent', () => {
 
         expect(component.selected()?.assigned_operator_id).toBe(7);
         expect(threadView().isClaimedByMe()).toBe(false);
-        expect(fixture.debugElement.query(By.css('.thread-header .mode-badge')).injector.get(MatTooltip).message).toBe(
-            'Held by Operator #7'
-        );
-        expect(composerInput().disabled).toBe(true);
-        expect(composerInput().placeholder).toBe('Claim the conversation to reply');
+        // Another operator's now: the header offers taking it over.
+        expect(
+            threadHeader()
+                .conversationMenuItems()
+                .map(({ label }) => label)
+        ).toContain('Take over');
+        // Not held any more: the call to take it over stands in place of the field.
+        expect(fixture.nativeElement.querySelector('.composer textarea')).toBeNull();
     });
 
     it('shows a started test conversation in the header even when its stream event came first', () => {
@@ -1402,7 +1605,7 @@ describe('ChatPageComponent', () => {
         conversationUpdated$.next({ ...created, state: 'processing' });
         fixture.detectChanges();
         expect(component.selected()?.state).toBe('processing');
-        expect(text('.thread-header__title')).toHaveLength(1);
+        expect(text('.thread-header__visitor')).toHaveLength(1);
     });
 
     it('enables the composer from the claim response without waiting for a stream event', () => {
@@ -1420,7 +1623,7 @@ describe('ChatPageComponent', () => {
 
     describe('visitor token of an older test conversation', () => {
         const visitorButton = (): HTMLButtonElement =>
-            fixture.nativeElement.querySelectorAll('.composer__roles app-tab-button button')[0];
+            fixture.nativeElement.querySelectorAll('.composer__roles .composer__role')[0];
         const caption = (): string =>
             fixture.nativeElement.querySelector('.composer__caption')?.textContent?.trim() ?? '';
 
@@ -1500,8 +1703,8 @@ describe('ChatPageComponent', () => {
         const rings = (): string[] =>
             Array.from(header().querySelectorAll('.usage-ring')).map((ring) => ring.getAttribute('aria-label') ?? '');
 
-        const pillTooltip = (): string =>
-            fixture.debugElement.query(By.css('.thread-header .mode-badge')).injector.get(MatTooltip).message;
+        const waitTooltip = (): string =>
+            fixture.debugElement.query(By.css('.thread-header__wait'))?.injector.get(MatTooltip).message ?? '';
 
         function open(conversation: ChatConversation): void {
             listBindings([binding]);
@@ -1510,25 +1713,20 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
         }
 
-        it("shows the mode, title, Test chip and today's turns and tokens against the binding's limits", () => {
+        it("shows the visitor, the path with the id and today's turns and tokens against the limits", () => {
             open(row({ id: 'c-1', is_test: true, tokens_used: 9000, tokens_today: 250, turns: 40, turns_today: 3 }));
-            expect(text('.thread-header .mode-badge')).toEqual(['Bot']);
-            expect(text('.thread-header__title')).toEqual(['Support · Visitor 1']);
-            const title = fixture.debugElement.query(By.css('.thread-header__title'));
-            expect(title.injector.get(MatTooltip).message).toBe('Conversation c-1');
-            expect(title.nativeElement.getAttribute('tabindex')).toBe('0');
-            expect(text('.thread-header .test-chip')).toEqual(['Test']);
+            expect(header().querySelector('.mode-badge')).toBeNull();
+            expect(text('.thread-header__visitor')).toEqual(['Visitor 1']);
+            expect(text('.thread-header__path')).toEqual(['Bot / c-1']);
             expect(rings()).toEqual(['Turns today: 3 of 50', 'Tokens today: 250 of 1,000']);
             expect(
                 Array.from(header().querySelectorAll('.usage-ring__icon use')).map((use) => use.getAttribute('href'))
             ).toEqual(['#icon-message', '#icon-token']);
-            // The shared status chip, with the closest of its looks per mode.
-            expect(header().querySelector('.mode-badge')?.className).toContain('mode-badge--bot');
             expect(text('.usage-ring__text')).toEqual(['3/50', '250/1K']);
             expect(header().querySelector('.thread-header__reason')).toBeNull();
         });
 
-        it('names who holds the conversation on the mode pill and shows the handoff reason only once handed off', () => {
+        it("shows the handoff reason in the wait chip's tooltip only while handed off", () => {
             open(
                 handedOff('c-1', '2026-10-10T09:00:00Z', {
                     mode: 'human',
@@ -1536,27 +1734,14 @@ describe('ChatPageComponent', () => {
                     handoff_reason: 'Asked for a human',
                 })
             );
-            const pill = header().querySelector('.mode-badge') as HTMLElement;
-            // The visible mode is its name; who holds it is the tooltip, announced as its description.
-            expect(pill.hasAttribute('aria-label')).toBe(false);
-            expect(pill.getAttribute('tabindex')).toBe('0');
-            expect(pillTooltip()).toBe('Held by Operator #7');
-            expect(text('.thread-header__reason')).toEqual(['Asked for a human']);
-
-            conversationUpdated$.next(row({ id: 'c-1', handoff_reason: 'Asked for a human' }));
-            fixture.detectChanges();
-            expect(header().querySelector('.thread-header__reason')).toBeNull();
-            expect(pill.hasAttribute('tabindex')).toBe(false);
-
-            conversationUpdated$.next(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 }));
-            fixture.detectChanges();
-            expect(pillTooltip()).toBe('Held by you');
+            expect(waitTooltip()).toContain('Asked for a human');
+            expect(text('.thread-header__path')[0]).toMatch(/^Bot \/ Human \/ /);
 
             conversationUpdated$.next(
-                row({ id: 'c-1', mode: 'human', assigned_operator_id: 7, assigned_operator_name: 'Grace Hopper' })
+                row({ id: 'c-1', handoff_reason: 'Asked for a human', visitor_waiting_since: '2026-10-10T09:00:00Z' })
             );
             fixture.detectChanges();
-            expect(pillTooltip()).toBe('Held by Grace Hopper');
+            expect(waitTooltip()).not.toContain('Asked for a human');
         });
 
         it('has no Claim or Take over in the header: the composer offers claiming', () => {
@@ -1564,16 +1749,17 @@ describe('ChatPageComponent', () => {
             const labels = Array.from(header().querySelectorAll('button')).map((button) => button.textContent?.trim());
             expect(labels).not.toContain('Claim');
             expect(labels).not.toContain('Take over');
-            // The bot's conversation on a Support desk: Resolve is all the ⋯ menu has.
+            // The bot's conversation on a Support desk: Resolve is the button, so the ⋯ menu has only the copy.
+            expect(text('.thread-header app-button')).toEqual(['Resolve']);
             expect(
                 threadHeader()
                     .conversationMenuItems()
                     .map(({ label }) => label)
-            ).toEqual(['Resolve']);
-            expect(text('.composer app-button')).toContain('Claim to reply');
+            ).toEqual(['Copy Visitor ID']);
+            expect(text('.composer__take-over-button')).toContain('Take over');
         });
 
-        it('offers Take over, Release to bot and Resolve in the ⋯ menu when another operator holds it', () => {
+        it('offers Take over and Hand Back to Bot in the ⋯ menu, and Resolve beside it, when another operator holds it', () => {
             open(handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 7 }));
             chatApi.claim.mockReturnValue(of(row({ id: 'c-1', mode: 'human', assigned_operator_id: 3 })));
             (header().querySelector('.chat-action-menu__trigger') as HTMLButtonElement).click();
@@ -1582,21 +1768,23 @@ describe('ChatPageComponent', () => {
                 Array.from(document.querySelectorAll<HTMLButtonElement>('.chat-action-menu__item')).find(
                     (button) => button.textContent?.trim() === label
                 );
-            expect(item('Release to bot')).toBeDefined();
-            expect(item('Resolve')).toBeDefined();
+            expect(item('Hand Back to Bot')).toBeDefined();
+            expect(item('Resolve')).toBeUndefined();
+            expect(threadAction('Resolve')).toBeDefined();
             item('Take over')!.click();
             expect(chatApi.claim).toHaveBeenCalledWith('c-1');
             fixture.detectChanges();
             expect(document.querySelector('.chat-action-menu')).toBeNull();
         });
 
-        it('offers Release beside the title while the desk is not known, and no ⋯ menu besides it', () => {
+        it('offers Release as the button while the desk is not known, and only the copy in the ⋯ menu', () => {
             open(
                 handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 3, binding_id: 'b-9' })
             );
             chatApi.release.mockReturnValue(of(row({ id: 'c-1', binding_id: 'b-9' })));
             expect(text('.thread-header app-button')).toEqual(['Release']);
-            expect(header().querySelector('.chat-action-menu__trigger')).toBeNull();
+            expect(openThreadMenu()).toEqual(['Copy Visitor ID']);
+            closeMenu();
             threadAction('Release')!.click();
             expect(chatApi.release).toHaveBeenCalledWith('c-1');
         });
@@ -1607,8 +1795,9 @@ describe('ChatPageComponent', () => {
                 fixture = TestBed.createComponent(ChatPageComponent);
                 fixture.detectChanges();
                 open(handedOff('c-1', '2026-10-10T09:00:00Z', { mode: 'human', assigned_operator_id: 3 }));
-                expect(header().querySelector('.chat-action-menu__trigger')).toBeNull();
                 expect(header().querySelector('app-button')).toBeNull();
+                // Copying the visitor's id changes nothing, so it stays.
+                expect(openThreadMenu()).toEqual(['Copy Visitor ID']);
             } finally {
                 permissions.can = (resource, action) =>
                     resource === ResourceCode.Chats && (action === ActionCode.Use || action === ActionCode.Create);
@@ -1651,23 +1840,26 @@ describe('ChatPageComponent', () => {
         // The table itself is `conversation-actions.util.spec.ts`; these prove the page feeds it.
         it("feeds the desk's style, who holds it, whether it is closed and the width into the actions", () => {
             openOn(binding, mine);
-            expect(actions()).toEqual({ primary: 'Resolve', menu: ['Release to bot'] });
+            expect(actions()).toEqual({ primary: 'Resolve', menu: ['Hand Back to Bot', 'Copy Visitor ID'] });
             openOn(ongoing, others);
-            expect(actions()).toEqual({ primary: null, menu: ['Take over', 'Release to bot', 'Close conversation'] });
+            expect(actions()).toEqual({
+                primary: null,
+                menu: ['Take over', 'Hand Back to Bot', 'Close conversation', 'Copy Visitor ID'],
+            });
             openOn(null, bots);
-            expect(actions()).toEqual({ primary: null, menu: [] });
+            expect(actions()).toEqual({ primary: null, menu: ['Copy Visitor ID'] });
             openOn(binding, unclaimed);
-            expect(actions()).toEqual({ primary: null, menu: ['Resolve'] });
+            expect(actions()).toEqual({ primary: 'Resolve', menu: ['Copy Visitor ID'] });
             openOn(binding, closed);
-            expect(actions()).toEqual({ primary: null, menu: [] });
+            expect(actions()).toEqual({ primary: null, menu: ['Copy Visitor ID'] });
             expect(threadView().isClaimedByMe()).toBe(false);
 
             isPhone.set(true);
             openOn(ongoing, mine);
-            expect(actions()).toEqual({ primary: 'Done', menu: ['Done', 'Close conversation'] });
+            expect(actions()).toEqual({ primary: 'Done', menu: ['Done', 'Close conversation', 'Copy Visitor ID'] });
         });
 
-        it('disables the menu items while an action runs', () => {
+        it("disables the conversation's actions while one runs; Copy Visitor ID, which changes nothing, stays", () => {
             openOn(binding, others);
             chatApi.claim.mockReturnValueOnce(NEVER);
             threadHeader().runConversationAction('take-over');
@@ -1675,11 +1867,15 @@ describe('ChatPageComponent', () => {
             expect(
                 threadHeader()
                     .conversationMenuItems()
-                    .every(({ disabled }) => disabled)
-            ).toBe(true);
+                    .map(({ label, disabled }) => [label, !!disabled])
+            ).toEqual([
+                ['Take over', true],
+                ['Hand Back to Bot', true],
+                ['Copy Visitor ID', false],
+            ]);
         });
 
-        it('resolves from the button beside the title at once, without asking', () => {
+        it('resolves from the main action button at once, without asking', () => {
             openOn(binding, mine);
             chatApi.close.mockReturnValue(of(closed));
             threadAction('Resolve')!.click();
@@ -1734,21 +1930,21 @@ describe('ChatPageComponent', () => {
             fixture.detectChanges();
         }
 
-        it('turns read-only as it closes: a banner instead of the composer, Closed instead of the mode', () => {
+        it('turns read-only as it closes: a banner instead of the composer, and no actions in the header', () => {
             openMine();
             expect(composerInput()).not.toBeNull();
-            expect(text('.thread-header__reason')).toEqual(['Asked for a human']);
+            expect(fixture.nativeElement.querySelector('.thread-header__wait')).not.toBeNull();
 
             conversationUpdated$.next(closedVersion({ close_reason: 'ended', closed_by_user_id: null }));
             fixture.detectChanges();
             expect(fixture.nativeElement.querySelector('app-chat-thread-composer')).toBeNull();
             expect(banner()?.getAttribute('role')).toBe('status');
             expect(text('.thread-closed')[0]).toMatch(/^Closed · Ended by the visitor · /);
-            expect(text('.thread-header .mode-badge')).toEqual(['Closed']);
-            expect(fixture.nativeElement.querySelector('.mode-badge')?.className).toContain('mode-badge--closed');
-            expect(fixture.nativeElement.querySelector('.thread-header__reason')).toBeNull();
-            expect(fixture.nativeElement.querySelector('.thread-header .chat-action-menu__trigger')).toBeNull();
+            // Nobody waits on a closed conversation; a person still took part in it.
+            expect(fixture.nativeElement.querySelector('.thread-header__wait')).toBeNull();
+            expect(text('.thread-header__path')[0]).toMatch(/^Bot \/ Human \/ /);
             expect(fixture.nativeElement.querySelector('.thread-header app-button')).toBeNull();
+            expect(openThreadMenu()).toEqual(['Copy Visitor ID']);
         });
 
         it('names who resolved it, by the desk style', () => {
@@ -1942,23 +2138,38 @@ describe('ChatPageComponent', () => {
             expect(host().querySelector('.phone-bar app-chat-binding-status')).toBeNull();
         });
 
-        it('offers Test beside the switcher and the other desk actions in its ⋯ menu, by permission', () => {
+        it('offers the desk actions in its ⋯ menu by permission, Delete desk last and set apart, with no Test', () => {
             const permitted = permissions.can;
             try {
                 permissions.can = () => true;
                 renderOnDesk();
-                expect(host().querySelector('.phone-bar [aria-label="Test"]')).not.toBeNull();
+                expect(host().querySelector('.phone-bar [aria-label="Test"]')).toBeNull();
                 openMenu('.phone-bar');
-                expect(menuItems()).toEqual(['My name', 'Settings', 'Get snippet', 'Pause', 'Delete']);
+                expect(menuItems()).toEqual([
+                    'Operator name',
+                    'Settings',
+                    'Copy install snippet',
+                    'Pause',
+                    'Delete desk',
+                ]);
+                expect(
+                    document
+                        .querySelector('.chat-action-menu [role="separator"]')
+                        ?.nextElementSibling?.textContent?.trim()
+                ).toBe('Delete desk');
+                closeMenu();
 
+                permissions.can = (resource, action) => resource === ResourceCode.Chats && action !== ActionCode.Delete;
+                renderOnDesk();
+                openMenu('.phone-bar');
+                expect(menuItems()).toEqual(['Operator name', 'Settings', 'Copy install snippet', 'Pause']);
                 bindingActions.openSettings.mockReturnValue(of(undefined));
                 chooseInMenu('Settings');
-                expect(bindingActions.openSettings).toHaveBeenCalledWith(binding);
+                expect(bindingActions.openSettings).toHaveBeenLastCalledWith(binding);
                 expect(document.querySelector('.chat-action-menu')).toBeNull();
 
                 permissions.can = (_resource, action) => action === ActionCode.Read;
                 renderOnDesk();
-                expect(host().querySelector('.phone-bar [aria-label="Test"]')).toBeNull();
                 // An operator's desk has nothing to change or connect: no ⋯ menu at all.
                 expect(host().querySelector('.phone-bar app-chat-action-menu')).toBeNull();
             } finally {
@@ -1966,9 +2177,45 @@ describe('ChatPageComponent', () => {
             }
         });
 
-        it('has no desk actions on All desks', () => {
+        it('deletes the desk from Delete desk with no conversation open, after its confirmation, goes to All desks, then reloads the desks', async () => {
+            const permitted = permissions.can;
+            try {
+                permissions.can = () => true;
+                renderOnDesk();
+                const callsBefore = chatApi.getBindings.mock.calls.length;
+                let finishNavigation: (navigated: boolean) => void = () => undefined;
+                navigate.mockReturnValueOnce(new Promise<boolean>((resolve) => (finishNavigation = resolve)));
+                bindingActions.delete.mockReturnValueOnce(of(true));
+                // No thread, so no thread ⋯ menu: the desk's own menu is the way to delete it.
+                expect(host().querySelector('.thread-header')).toBeNull();
+
+                openMenu('.phone-bar');
+                chooseInMenu('Delete desk');
+                expect(bindingActions.delete).toHaveBeenCalledWith(binding);
+                expect(navigate).toHaveBeenCalledWith(['/chat-bindings', 'all']);
+                // Only once the page has left: a list without the desk must not read as "no longer exists".
+                expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore);
+                finishNavigation(true);
+                await vi.waitFor(() => expect(chatApi.getBindings).toHaveBeenCalledTimes(callsBefore + 1));
+                expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
+            } finally {
+                permissions.can = permitted;
+            }
+        });
+
+        it('has no desk actions on All desks, whatever the permissions', () => {
             expect(host().querySelector('.phone-bar [aria-label="Test"]')).toBeNull();
             expect(host().querySelector('.phone-bar app-chat-action-menu')).toBeNull();
+
+            const permitted = permissions.can;
+            try {
+                permissions.can = () => true;
+                fixture = TestBed.createComponent(ChatPageComponent);
+                fixture.detectChanges();
+                expect(host().querySelector('.phone-bar app-chat-action-menu')).toBeNull();
+            } finally {
+                permissions.can = permitted;
+            }
         });
 
         it("heads the thread with Back to the list, the visitor and the conversation's actions, Resolve included", () => {
@@ -1985,8 +2232,8 @@ describe('ChatPageComponent', () => {
             expect(host().querySelector('.thread-header app-button')).toBeNull();
 
             openMenu('.thread-header__nav');
-            expect(menuItems()).toEqual(['Resolve', 'Release to bot']);
-            chooseInMenu('Release to bot');
+            expect(menuItems()).toEqual(['Resolve', 'Hand Back to Bot', 'Copy Visitor ID']);
+            chooseInMenu('Hand Back to Bot');
             expect(chatApi.release).toHaveBeenCalledWith('c-1');
         });
 
@@ -1999,12 +2246,12 @@ describe('ChatPageComponent', () => {
             chatApi.release.mockReturnValue(of(row({ id: 'c-1' })));
 
             openMenu('.thread-header__nav');
-            expect(menuItems()).toEqual(['Done', 'Close conversation']);
+            expect(menuItems()).toEqual(['Done', 'Close conversation', 'Copy Visitor ID']);
             chooseInMenu('Done');
             expect(chatApi.release).toHaveBeenCalledWith('c-1');
         });
 
-        it('replaces the composer with the banner and empties the thread menu once closed', () => {
+        it('replaces the composer with the banner and leaves only Copy Visitor ID in the thread menu once closed', () => {
             scopeTo('b-1');
             const closed = row({
                 id: 'c-1',
@@ -2015,7 +2262,8 @@ describe('ChatPageComponent', () => {
             conversationUpdated$.next(closed);
             fixture.componentInstance.selectConversation(closed);
             fixture.detectChanges();
-            expect(host().querySelector('.thread-header__nav app-chat-action-menu')).toBeNull();
+            openMenu('.thread-header__nav');
+            expect(menuItems()).toEqual(['Copy Visitor ID']);
             expect(host().querySelector('app-chat-thread-composer')).toBeNull();
             expect(text('.thread-closed')[0]).toMatch(/^Closed · Ended by the visitor · /);
         });

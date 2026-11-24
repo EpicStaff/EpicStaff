@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { ActionCode, NodeType, ResourceCode } from '@shared/models';
+import type { Mock } from 'vitest';
 
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ToastService } from '../../services/notifications';
@@ -11,7 +12,11 @@ import {
     FLOW_ACTIONS_WITHOUT_USE,
     grantPermissions,
 } from '../utils/testing/permissions.fixture';
-import { FlowReadOnlyService, TRIGGER_NODES_NEED_USE_MESSAGE } from './flow-readonly.service';
+import {
+    FILE_NODES_NEED_FILES_READ_MESSAGE,
+    FlowReadOnlyService,
+    TRIGGER_NODES_NEED_USE_MESSAGE,
+} from './flow-readonly.service';
 
 function setUp({
     isPreview,
@@ -142,6 +147,50 @@ describe('FlowReadOnlyService', () => {
             service.notifyNodeTypeBlocked(NodeType.WEBHOOK_TRIGGER);
 
             expect(toast.info).toHaveBeenCalledWith('You have read-only access to this flow.');
+        });
+    });
+
+    describe('nodes that always read the flow files', () => {
+        const FILE_NODE_TYPES = [NodeType.FILE_EXTRACTOR, NodeType.AUDIO_TO_TEXT];
+
+        /** The real PermissionsService, holding Flows:Update and exactly these Files actions. */
+        function serviceWithFiles(filesActions: ActionCode[]): { service: FlowReadOnlyService; toast: { info: Mock } } {
+            const toast = { info: vi.fn() };
+            TestBed.configureTestingModule({
+                providers: [
+                    provideHttpClient(),
+                    { provide: FLOW_EDITOR_PREVIEW, useValue: false },
+                    { provide: ToastService, useValue: toast },
+                ],
+            });
+            grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE, [ResourceCode.Files]: filesActions });
+            return { service: TestBed.inject(FlowReadOnlyService), toast };
+        }
+
+        it.each(FILE_NODE_TYPES)('a %s node is read-only without Files:Read', (type) => {
+            expect(serviceWithFiles([ActionCode.Create]).service.isNodeTypeReadOnly(type)).toBe(true);
+        });
+
+        it.each(FILE_NODE_TYPES)('a %s node stays editable with Files:Read', (type) => {
+            expect(serviceWithFiles([ActionCode.Read]).service.isNodeTypeReadOnly(type)).toBe(false);
+        });
+
+        it.each([NodeType.PYTHON, NodeType.START, NodeType.NOTE, NodeType.END])(
+            'a %s node does not need Files:Read',
+            (type) => {
+                expect(serviceWithFiles([]).service.isNodeTypeReadOnly(type)).toBe(false);
+            }
+        );
+
+        it('explains a blocked file node with the Files:Read message, throttled, and not with the Use message', () => {
+            const { service, toast } = serviceWithFiles([]);
+
+            service.notifyNodeTypeBlocked(NodeType.FILE_EXTRACTOR);
+            service.notifyNodeTypeBlocked(NodeType.AUDIO_TO_TEXT);
+
+            expect(FILE_NODES_NEED_FILES_READ_MESSAGE).toBe('You need Files: Read to use this node.');
+            expect(toast.info).toHaveBeenCalledTimes(1);
+            expect(toast.info).toHaveBeenCalledWith(FILE_NODES_NEED_FILES_READ_MESSAGE);
         });
     });
 

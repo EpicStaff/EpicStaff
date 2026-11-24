@@ -78,6 +78,7 @@ def bindings(state: State) -> BindingOrchestrator:
     return BindingOrchestrator(
         lambda: SQLAlchemyUnitOfWork(state.session_factory),
         flows=state.django,
+        user_actions=state.django,
         public_base_url=settings.CHAT_PUBLIC_BASE_URL,
         widget_url=settings.CHAT_WIDGET_URL,
         widget_integrity=settings.CHAT_WIDGET_INTEGRITY,

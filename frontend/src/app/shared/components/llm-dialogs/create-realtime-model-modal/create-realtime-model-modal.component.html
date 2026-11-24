@@ -4,7 +4,7 @@
     [appEnterSubmitDisabled]="form.invalid || isSubmitting()"
 >
     <div class="create-model__header">
-        <h3 class="create-model__title">{{ isEditMode ? 'Edit Realtime Model' : 'Add Realtime Model' }}</h3>
+        <h3 class="create-model__title">{{ isEditMode ? 'Edit Voice Model' : 'Add Voice Model' }}</h3>
         <button
             type="button"
             class="create-model__close-btn"
@@ -69,7 +69,7 @@
                         : 'Adding...'
                     : isEditMode
                       ? 'Save Changes'
-                      : 'Add Realtime Model'
+                      : 'Add Voice Model'
             }}
         </app-button>
     </div>

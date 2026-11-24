@@ -50,10 +50,11 @@ On import, the file's dependencies are created (or reused) in the active organiz
 
 Errors are **collected, not raised**. Callers should check `result.has_errors` before using `result.data`. A non-empty `result.errors` does not necessarily mean the export is unusable — it may only mean some specific nodes or edges were missing.
 
-The output is a plain dict whose top-level keys are `EntityType` string values (e.g. `"TaskNode"`, `"LLMConfig"`) plus the special key `"edge_list"`.
+The output is a plain dict whose top-level keys are `EntityType` string values (e.g. `"TaskNode"`, `"LLMConfig"`) plus the special keys `"edge_list"` and `"version"` (the current `IMPORT_VERSION`, as in a full export).
 
 ### Partial Import
 
+0. **Convert to the current version** — the file runs through the same `VersionConverter` chain as a full import. A file with a `version` is converted from that version; a file without one (every node file written before node files carried a version, from any earlier release or internal build) is converted from version 1. Every conversion therefore leaves entries already in a newer shape as they are, and converts the top-level node lists of a node file as it does the nodes of a `Flow` entry (`exported_nodes` in `import_export/utils.py`). A version that is not a whole number, is below 1 or newer than this release, or has no conversion path is refused with 400, as on a full import. So is a file whose shape the conversions cannot read (`_shape_errors` in `import_export/preparation.py`; at most 20 errors are listed).
 1. **Collect nodes** — all node entity types present in the export data are gathered into a flat list. Each node dict is tagged with a `"node_type"` key so `GraphStrategy._create_nodes()` can dispatch to the correct strategy.
 2. **Import non-node dependencies** — entity types that are not nodes and not `GRAPH` are processed in `DEPENDENCY_ORDER`. For each entity, `find_existing()` is called first (scoped to the active organization):
    - If a match is found in the active org it is reused (`was_created=False`) and the old ID is mapped to the existing entity's ID.
@@ -79,7 +80,7 @@ The whole operation runs inside one outer `transaction.atomic()` block — a fai
 | Graph included in file | Yes | No |
 | Target on import | New entity created | Nothing written to the graph; nodes and edges returned unsaved for the client to save |
 | `ImportSettings` (preserve_uuids, replace_existing, import_labels) | Supported | Not applicable |
-| Version conversion | Applied on import | Not applied (no `version` field in output) |
+| Version conversion | Applied on import | Applied on import; a file without `version` is converted from version 1 |
 | Labels | Exported and optionally imported | Not exported |
 
 ---
@@ -94,7 +95,7 @@ Partial import/export are actions on the `Graph` viewset and run under the same 
 
 | Action | Required permission |
 |---|---|
-| `partial-export` | `FLOWS` · `EXPORT` |
+| `partial-export-jobs` | `FLOWS` · `EXPORT` |
 | `partial-import` | `FLOWS` · `UPDATE` (it prepares content for an existing graph and creates dependencies) |
 
 **Per-dependency create enforcement.** Passing the view gate is not sufficient to create the dependencies an import pulls in. For every genuinely-new dependency (a `find_existing` miss), the caller must have `CREATE` on that dependency's resource type, mapped via `ENTITY_RESOURCE_MAP`:
@@ -122,9 +123,9 @@ This mirrors the enforcement applied to full graph/agent/crew import.
 
 Both operations are exposed on the `Graph` viewset.
 
-### `POST /graphs/{id}/partial-export`
+### `POST /graphs/{id}/partial-export-jobs`
 
-Exports selected nodes from graph `{id}`.
+Queues a background export job (`main_entity` `FlowNodes`) of selected nodes from graph `{id}`; answers `202 {"job_id"}`. Poll `GET /transfer-jobs/{job_id}/` and download the `.zip` once it completes.
 
 **Request body** (JSON):
 
@@ -138,15 +139,15 @@ Exports selected nodes from graph `{id}`.
 
 Supported list keys: `start_node_list`, `python_node_list`, `audio_transcription_node_list`, `file_extractor_node_list`, `telegram_trigger_node_list`, `webhook_trigger_node_list`, `decision_table_node_list`, `classification_decision_table_node_list`, `subgraph_node_list`, `end_node`, `graph_note_list`, `schedule_trigger_node_list`, `agent_node_list`, `task_node_list`.
 
-The view converts these keys to `NodeRef` objects using `LIST_KEY_TO_ENTITY_TYPE` defined in `services/partial_export_service.py`, then calls `GraphPartialExportService.export()`.
+The job (`FlowNodesExportDefinition` in `tables/services/transfer_jobs/export_definitions.py`) converts these keys to `NodeRef` objects using `LIST_KEY_TO_ENTITY_TYPE` defined in `services/partial_export_service.py`, then calls `GraphPartialExportService.export()`. A node or edge id outside the graph's organization fails the job with `not_found`.
 
-**Response**: a downloadable JSON file containing the serialized nodes and their dependencies.
+**Result**: the job's archive holds `export.json` with the serialized nodes and their dependencies; dependencies left out for missing export rights are listed in the job's `result.excluded`.
 
 ### `POST /graphs/{id}/partial-import`
 
 Prepares the nodes of a partial-export file for pasting into graph `{id}`. Dependencies are created and committed; nodes and edges are not saved.
 
-**Request body**: multipart/form-data upload of the JSON file produced by `partial-export`.
+**Request body**: multipart/form-data upload of the `.zip` a `partial-export-jobs` job produced, or the plain `.json` of an older partial export. A `.zip` carrying knowledge collections is refused with `400 use_import_job`.
 
 **Response**: `200` with
 

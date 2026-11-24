@@ -74,6 +74,32 @@ Regenerate the lock for one service only.
 make uv-lock-crew
 ```
 
+### `make uv-lock-predefined`
+
+Regenerate `src/sandbox_new/predefined-requirements.txt`: the hash-pinned third-party
+dependencies of the shared packages every sandbox venv gets (`dotdict`,
+`epicstaff_secrets`, `epicstaff_common`, `epicstaff_storage`). The sandbox manager image
+downloads exactly these, so venvs are built without the network. Run after editing the
+`dependencies` of one of those packages; `make uv-lock` runs it too. A dependency missing
+from the file fails the `sandbox_new` image build.
+
+```bash
+make uv-lock-predefined
+```
+
+### `make uv-lock-system-venvs`
+
+Regenerate `src/sandbox_new/system-venv-requirements/<venv>.txt`: the hash-pinned
+dependencies of the libraries the sandbox's own venvs install (`SYSTEM_VENV_LIBS` in
+`src/sandbox_new/manager/domain/models.py`: `file_extractor`, `audio_transcription`,
+`builtin_tools`). The sandbox manager image downloads exactly these, so the manager builds
+those venvs at startup without the internet. Run after changing a pin in `SYSTEM_VENV_LIBS`;
+`make uv-lock` runs it too. A pin missing from the files fails the `sandbox_new` image build.
+
+```bash
+make uv-lock-system-venvs
+```
+
 ---
 
 ## Local Django Development
@@ -140,10 +166,38 @@ make django-manage CMD=shell
 
 # Create a superuser
 make django-manage CMD=createsuperuser
-
-# Collect static files
-make django-manage CMD="collectstatic --noinput"
 ```
+
+### `make django-model-catalog` / `make django-model-catalog-check`
+
+Rebuild or check the AI model catalog.
+
+
+`src/django_app/ai_models/data/catalog.json` holds the models and settings the AI Models
+page offers. It is built from the pinned LiteLLM release and the hand-written
+`ai_models/data/parameter_registry.yaml`. Rebuild it after you upgrade LiteLLM or edit
+the registry, and commit both files together:
+
+```bash
+# Rewrite catalog.json and print what changed (models added/removed, settings, drafts)
+make django-model-catalog
+
+# Write nothing; list what keeps catalog.json from being complete and current, exit 1 on any error
+make django-model-catalog-check
+```
+
+Both targets set the two variables `build_model_catalog` refuses to run without, so the
+catalog always comes from the model list bundled with the pinned LiteLLM, never from
+LiteLLM's GitHub. Running the command through `make django-manage` needs them on the
+command line yourself:
+
+- `LITELLM_LOCAL_MODEL_COST_MAP=True` stops LiteLLM from downloading its model list on import.
+- `LITELLM_MODEL_COST_REFRESH_ENABLED=False` turns off EpicStaff's daily refresh of that list.
+
+A setting LiteLLM reports that the registry does not describe is added as a draft;
+describe it under `parameters` or list it under `hidden`. The CI job
+`model-catalog-check` runs the `--check` form and fails the PR while a draft is left or
+`catalog.json` is out of date.
 
 ### `make django-tests ARGS=<pytest-args>`
 
@@ -240,7 +294,7 @@ the machine it runs on, hyperthreads counted: 1-3 small, 4-7 medium, 8 or more l
 server itself, or pick the size under advanced settings.
 
 With an existing `src/.env`, `--setup` offers to change features (it rewrites only
-`CHAT_ENABLED`, `AUDIT_TRAIL_ENABLED`, `PLUGINS_ENABLED` and `COMPOSE_PROFILES`; turning
+`CHAT_ENABLED`, `SESSION_AUDIT_TRAIL_ENABLED`, `USER_AUDIT_TRAIL_ENABLED`, `PLUGINS_ENABLED` and `COMPOSE_PROFILES`; turning
 plugins on also fills unset plugin secrets, asks for the plugin addresses (`PLUGINS_HOST_TEMPLATE`,
 pre-filled with `{id}-app.<parent of EpicStaff's host>`) unless it is valid, and locally moves EpicStaff to `http://epicstaff.localhost`, the host plugins need), tune performance and limits
 (server size, the longest a code node may run, the log level of every service), add missing settings, or start

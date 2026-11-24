@@ -111,7 +111,7 @@ CREDENTIALS = StorageCredentials(access_key="test-access", secret_key="test-secr
             id="org-id-wins-over-global",
         ),
         pytest.param({"org_id": 77}, None, {"global_kwargs": {"org_id": 77}, "org_id": 77}, id="org-id-injected"),
-        # Tools read `session_id` from globals() (e.g. fanout_tool's recursion guard).
+        # Tools can read `session_id` from globals().
         pytest.param({"session_id": 42}, None, {"global_kwargs": {"session_id": 42}, "session_id": 42}, id="session-id-injected"),
         pytest.param(
             {"session_id": 42, "global_kwargs": {"session_id": 999, "mode": "production"}}, None,
@@ -127,6 +127,12 @@ CREDENTIALS = StorageCredentials(access_key="test-access", secret_key="test-secr
             {"session_id": 42, "org_id": 77}, None,
             {"global_kwargs": {"session_id": 42, "org_id": 77}},
             id="session-id-and-org-id-both-injected",
+        ),
+        # A built-in tool runs in the sandbox's own venv, named instead of a venv id.
+        pytest.param(
+            {"venv_id": None, "system_venv": "builtin_tools"}, None,
+            {"venv_id": None, "system_venv": "builtin_tools"},
+            id="system-venv",
         ),
         # The sandbox enforces the tool's own timeout instead of its default.
         pytest.param({"execution_timeout": 42}, None, {"execution_timeout": 42}, id="execution-timeout"),

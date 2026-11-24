@@ -206,3 +206,24 @@ def test_rename_between_preview_and_delete_invalidates_the_phrase(superadmin, do
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert response.data["code"] == "invalid_verification_phrase"
     assert Organization.objects.filter(pk=doomed_org.pk).exists()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("query", ["", "?dry_run=true"], ids=["delete", "dry-run"])
+def test_custom_models_go_with_the_org_together_with_the_configs_that_use_them(
+    superadmin, doomed_org, surviving_org, query
+):
+    from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel
+
+    llm_model = LLMModel.objects.create(org=doomed_org, name="doomed-llm", is_custom=True)
+    LLMConfig.objects.create(org=doomed_org, custom_name="doomed", model=llm_model)
+    embedding_model = EmbeddingModel.objects.create(org=doomed_org, name="doomed-embed", is_custom=True)
+    EmbeddingConfig.objects.create(org=doomed_org, custom_name="doomed", model=embedding_model)
+
+    response = as_user(superadmin).delete(url(doomed_org.pk) + query, data=phrase_body(doomed_org), format="json")
+
+    assert response.status_code == status.HTTP_200_OK
+    deleted = query == ""
+    assert LLMModel.objects.filter(pk=llm_model.pk).exists() is not deleted
+    assert EmbeddingModel.objects.filter(pk=embedding_model.pk).exists() is not deleted
+    assert LLMConfig.objects.filter(org_id=doomed_org.pk).exists() is not deleted

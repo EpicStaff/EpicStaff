@@ -7,12 +7,14 @@ from django.apps import apps
 from django.db import IntegrityError, models, transaction
 from django.db.models.signals import post_save
 from loguru import logger
+from src.shared.models import UserAction
 from tables.exceptions import NotInRecycleBinError, RestoreConflictError
 from tables.import_export.utils import clean_base_name, slug_base
 from tables.models.base_models import SoftDeleteFields
 from tables.services.copy_services.helpers import name_lock_key, next_copy_name
 from tables.services.recycle_bin.registry import BinResource, bin_resource_for, bin_resources
 from tables.services.recycle_bin.restoring import mark_restoring
+from user_audit.recorder import record_user_action
 
 _RESTORED_FIELDS = ["active", "soft_deleted_at", "soft_delete_batch"]
 
@@ -46,7 +48,8 @@ class RestoreService:
         "#N" name, the same pattern a copy uses. An owned row whose owner is
         still in the bin (a surface deleted with its agent) comes back on its
         own, without its owner: see _detach_from_binned_owner. Its last edit
-        stays the deletion: "Last edited by" then shows who deleted it.
+        stays the deletion: "Last edited by" then shows who deleted it. Records the
+        root's restore as a user action, under the name it came back with.
 
         Raises:
             NotInRecycleBinError: The root isn't binned, or was binned before
@@ -79,6 +82,11 @@ class RestoreService:
                 # taken after the restore checked it: nothing is restored.
                 raise RestoreConflictError() from error
             stored.refresh_from_db()
+            record_user_action(
+                action=UserAction.RESTORED,
+                org_id=getattr(stored, f"{resource.org_field}_id"),
+                target=stored,
+            )
             if resource.after_restore is not None:
                 restored_root = stored
                 transaction.on_commit(lambda: resource.after_restore(restored_root))

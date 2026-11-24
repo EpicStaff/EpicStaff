@@ -3,7 +3,9 @@ from typing import Any
 from django.db import transaction
 from django.utils import timezone
 from loguru import logger
+from src.shared.models import UserAction
 from src.shared.retention import DataType
+from user_audit.context import mark_request_handled
 
 from rbac.exceptions import OrganizationNotFoundError
 from rbac.governance.cross_org_base import CrossOrgResourceService
@@ -84,6 +86,7 @@ class OrganizationRetentionService(CrossOrgResourceService):
             OrganizationConfig.RETENTION_FIELD_BY_DATA_TYPE[data_type]: days
             for data_type, days in values.items()
         }
+        changed = any(getattr(config, field_name) != days for field_name, days in fields.items())
         for field_name, days in fields.items():
             setattr(config, field_name, days)
         config.retention_updated_at = timezone.now()
@@ -95,4 +98,11 @@ class OrganizationRetentionService(CrossOrgResourceService):
             actor.pk,
             fields,
         )
+        if changed:
+            # Imported here: the recorder imports this module for the retention read.
+            from user_audit.recorder import record_user_action
+
+            record_user_action(action=UserAction.UPDATED, org_id=org_id, target=config.org)
+        else:
+            mark_request_handled()
         return config

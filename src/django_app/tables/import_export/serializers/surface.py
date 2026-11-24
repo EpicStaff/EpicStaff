@@ -2,6 +2,10 @@ from agents.models import Surface
 from rest_framework import serializers
 
 from tables.import_export.enums import EntityType
+from tables.import_export.serializers.surface_knowledge import (
+    SEARCH_CONFIG_RELATIONS,
+    serialize_knowledge,
+)
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
@@ -20,4 +24,7 @@ class SurfaceImportSerializer(ExcludeSoftDeleteFieldsMixin, serializers.ModelSer
             ),
             EntityType.MCP_TOOL: list(instance.mcp_tools.values("mcp_tool_id", "mode")),
         }
+        ret["knowledge"] = serialize_knowledge(
+            instance.knowledge.select_related("collection", *SEARCH_CONFIG_RELATIONS)
+        )
         return ret

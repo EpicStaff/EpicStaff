@@ -1,21 +1,24 @@
 import { Component, computed, ElementRef, inject, input, LOCALE_ID, output, viewChild } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
-import { AppSvgIconComponent, ButtonComponent, UserAvatarComponent } from '@shared/components';
+import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
 import { ChatConversation } from '../../models/chat.model';
+import { ConversationReadMarksService } from '../../services/conversation-read-marks.service';
 import { closeReasonLabel, closeReasonWord, isClosed } from '../../utils/conversation-close.util';
+import { holderName } from '../../utils/conversation-holder.util';
+import { ConversationListSection } from '../../utils/conversation-list-tab.util';
 import {
     ConversationDeskRules,
     conversationTime,
     conversationTimeLabel,
-    isOverdue,
-    operatorName,
     senderPrefix,
     visitorName,
     waitDuration,
 } from '../../utils/conversation-row.util';
+import { isWaitingForPerson, isWaitOverdue, WAIT_OVERDUE_NOTE } from '../../utils/conversation-wait.util';
 import { ConversationAvatarComponent } from '../conversation-avatar/conversation-avatar.component';
+import { ConversationSectionBadgeComponent } from '../conversation-section-badge/conversation-section-badge.component';
 
 export type ConversationRowMove = 'next' | 'previous' | 'first' | 'last';
 
@@ -26,29 +29,30 @@ const ROW_MOVES: Record<string, ConversationRowMove> = {
     End: 'last',
 };
 
-interface ConversationHolder {
-    /** For the avatar's initials; null while the chat service does not know the name. */
-    name: string | null;
-    avatarUrl: string | null;
-    /** "you", their name, or "Operator #7". */
-    label: string;
-}
-
 /**
  * One conversation in the list, as chat apps draw it: the visitor's avatar, name and last activity, then the last
- * message after who wrote it ("Bot is replying…" while a run is in flight). A conversation where the visitor waits for
- * a person has a bold name, a dot and how long they have waited (an alert icon instead, in the error colour, once
- * overdue); a taken one its operator's small avatar. On a waiting row the current user does not hold, hover or keyboard
- * focus reveals Take over. A closed one is done: it says why and when it closed, and nothing else.
+ * message after who wrote it ("Bot is replying..." while a run is in flight). The avatar's corner has the icon of the
+ * section it is listed in, which says who took it, when someone did. A conversation where the visitor waits for a person
+ * has a bold name and, on its right, how long they have waited and Take over (unless the current user holds it); the
+ * wait gets an alert icon and the error colour once overdue. In progress, one with news the user has not opened has a
+ * green dot by its time and a brighter preview. A closed one says why and when it closed.
  */
 @Component({
     selector: 'app-conversation-row',
-    imports: [MatTooltipModule, AppSvgIconComponent, ButtonComponent, UserAvatarComponent, ConversationAvatarComponent],
+    imports: [
+        MatTooltipModule,
+        AppSvgIconComponent,
+        ButtonComponent,
+        ConversationAvatarComponent,
+        ConversationSectionBadgeComponent,
+    ],
     templateUrl: './conversation-row.component.html',
     styleUrl: './conversation-row.component.scss',
 })
 export class ConversationRowComponent {
     readonly conversation = input.required<ChatConversation>();
+    /** The section the row is listed in: its icon goes on the avatar's corner, as on the section's header. */
+    readonly section = input.required<ConversationListSection>();
     /** The current time, ticking, for the relative time. */
     readonly now = input.required<number>();
     /** Shown under the visitor's name on All desks; null on a desk's own list. */
@@ -61,7 +65,8 @@ export class ConversationRowComponent {
     /** The current user may take conversations over (chats use). */
     readonly canTakeOver = input(false);
     readonly isActionPending = input(false);
-    readonly isCompact = input(false);
+    /** The row's section marks news the user has not opened (In progress): a dot and a brighter preview. */
+    readonly marksUnread = input(false);
     readonly selectRequested = output<void>();
     readonly takeOverRequested = output<void>();
     readonly moveRequested = output<ConversationRowMove>();
@@ -69,13 +74,14 @@ export class ConversationRowComponent {
     private readonly selectButton = viewChild.required<ElementRef<HTMLButtonElement>>('selectButton');
 
     private readonly myUserId = computed(() => this.profileService.currentUserSignal()?.id ?? null);
+    protected readonly isUnread = computed(() => this.marksUnread() && this.readMarks.isUnread(this.conversation()));
     protected readonly name = computed(() => visitorName(this.conversation()));
     /** A signed visitor's id can be long: the full value is in a tooltip. */
     protected readonly isSigned = computed(() => !!this.conversation().chat_user_id);
     protected readonly isClosed = computed(() => isClosed(this.conversation()));
     /**
      * A closed row's time is its close, as Closed sorts by it; any other row's, its last message. A closed test stays
-     * in Tests, which sorts by the last message, so it keeps that time too.
+     * in Bot Testing, which sorts by the last message, so it keeps that time too.
      */
     private readonly isTimedByClose = computed(() => this.isClosed() && !this.conversation().is_test);
     private readonly shownTime = computed(() => {
@@ -83,37 +89,29 @@ export class ConversationRowComponent {
         return this.isTimedByClose() ? conversation.closed_at : conversation.last_message_at;
     });
     protected readonly time = computed(() => conversationTime(this.shownTime(), this.now(), this.locale));
-    /** Waiting for a person, whether or not someone took it: a visitor message after the last operator reply waits too. */
-    // Loose on purpose: a row without the field (an older chat service) is not waiting. A closed row never waits.
+    /**
+     * Waiting for a person (see `isWaitingForPerson`). Never a test's row: the tester writes as the visitor and the
+     * operator both, so how long "the visitor" waited says nothing; it shows its last activity as any other row.
+     */
     protected readonly isWaiting = computed(
-        () => !this.isClosed() && this.conversation().visitor_waiting_since != null
+        () => !this.conversation().is_test && isWaitingForPerson(this.conversation())
     );
     protected readonly waitedFor = computed(() => waitDuration(this.conversation().visitor_waiting_since, this.now()));
     /** Waited past the desk's response time on a desk that marks it; moves with the clock. Tests run no timers. */
-    protected readonly isOverdue = computed(
-        () =>
-            this.isWaiting() &&
-            !this.conversation().is_test &&
-            isOverdue(this.conversation().visitor_waiting_since, this.rules()?.overdueAfterMs ?? null, this.now())
+    protected readonly isOverdue = computed(() =>
+        isWaitOverdue(this.conversation(), this.rules()?.overdueAfterMs ?? null, this.now())
     );
     protected readonly isReplying = computed(() => !this.isClosed() && this.conversation().state === 'processing');
-    protected readonly preview = computed(() =>
-        this.isReplying() ? 'Bot is replying…' : this.conversation().last_message_preview || 'No messages yet'
-    );
+    // While the bot replies the template says so instead, with its animated dots.
+    protected readonly preview = computed(() => this.conversation().last_message_preview || 'No messages yet');
     protected readonly sender = computed(() =>
         this.isReplying() ? null : senderPrefix(this.conversation(), this.myUserId())
     );
     protected readonly isSystemNote = computed(
         () => !this.isReplying() && this.conversation().last_message_role === 'system'
     );
-    /** Nobody is on a closed conversation, so it shows no holder. */
-    protected readonly holder = computed((): ConversationHolder | null => {
-        const { assigned_operator_id: operatorId, assigned_operator_name: operatorDisplayName } = this.conversation();
-        if (operatorId === null || this.isClosed()) return null;
-        const me = this.profileService.currentUserSignal();
-        if (me?.id === operatorId) return { name: me.display_name || me.email, avatarUrl: me.avatar_url, label: 'you' };
-        return { name: operatorDisplayName, avatarUrl: null, label: operatorName(operatorId, operatorDisplayName) };
-    });
+    /** Who holds the conversation: "you", their name, or "Operator #7" (see `holderName`). */
+    protected readonly holder = computed(() => holderName(this.conversation(), this.myUserId()));
     /** Why it closed, in a word ("Resolved"), with the full reason ("Resolved by Mike") as its tooltip. */
     protected readonly closeWord = computed(() =>
         this.isClosed() ? closeReasonWord(this.conversation().close_reason, this.rules()?.style ?? null) : ''
@@ -123,11 +121,7 @@ export class ConversationRowComponent {
     );
     /** Not for a conversation the current user holds; one another operator holds asks before it is taken from them. */
     protected readonly offersTakeOver = computed(
-        () =>
-            !this.isCompact() &&
-            this.isWaiting() &&
-            this.canTakeOver() &&
-            this.conversation().assigned_operator_id !== this.myUserId()
+        () => this.isWaiting() && this.canTakeOver() && this.conversation().assigned_operator_id !== this.myUserId()
     );
     /**
      * Visitor, desk (All desks only), last activity in words (the close, on a row timed by it), and what the
@@ -150,15 +144,18 @@ export class ConversationRowComponent {
             closeReason ? lowerFirst(closeReason) : null,
             waitingSince ? `waiting for a person since ${waitingSince}` : null,
             this.isOverdue() ? 'overdue' : null,
-            holder ? `taken by ${holder.label}` : null,
+            holder ? `taken by ${holder}` : null,
             this.isReplying() ? 'bot is replying' : null,
+            this.isUnread() ? 'unread' : null,
         ]
             .filter(Boolean)
             .join(', ');
     });
     protected readonly previewId = computed(() => `conversation-preview-${this.conversation().id}`);
+    protected readonly overdueNote = WAIT_OVERDUE_NOTE;
 
     private readonly profileService = inject(ProfileService);
+    private readonly readMarks = inject(ConversationReadMarksService);
     private readonly locale = inject(LOCALE_ID);
 
     focus(options?: FocusOptions): void {

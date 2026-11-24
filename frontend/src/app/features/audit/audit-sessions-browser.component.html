@@ -1,8 +1,4 @@
 <div class="audit-browser">
-    <header class="audit-browser__header">
-        <h1 class="audit-browser__title">Audit</h1>
-    </header>
-
     <div class="audit-browser__body">
         <div class="audit-browser__main">
             <div class="audit-browser__toolbar">
@@ -95,10 +91,10 @@
                     <table
                         class="audit-table"
                         [class.audit-table--expanded]="areColumnsExpanded()"
-                        [style.width.px]="tableWidth()"
+                        [style.width.px]="resizableColumns.tableWidth()"
                     >
                         <colgroup>
-                            @for (width of columnWidths(); track $index) {
+                            @for (width of resizableColumns.widths(); track $index) {
                                 <!-- the last column is left auto so it absorbs any width the viewport has to spare -->
                                 <col [style.width.px]="$last ? null : width" />
                             }
@@ -113,9 +109,9 @@
                                             <span
                                                 class="audit-table__resize-handle"
                                                 aria-hidden="true"
-                                                (pointerdown)="startColumnResize($event, index)"
-                                                (pointermove)="resizeColumn($event)"
-                                                (lostpointercapture)="stopColumnResize()"
+                                                (pointerdown)="resizableColumns.start($event, index)"
+                                                (pointermove)="resizableColumns.move($event)"
+                                                (lostpointercapture)="resizableColumns.stop()"
                                             ></span>
                                         }
                                     </th>

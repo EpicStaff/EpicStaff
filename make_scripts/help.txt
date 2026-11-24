@@ -21,6 +21,16 @@
    Regenerate the lock for one service only.
    Example: make uv-lock-crew
 
+ make uv-lock-predefined
+   Regenerate src/sandbox_new/predefined-requirements.txt (also run by
+   make uv-lock). Run after editing a dependency of a shared package
+   that every sandbox venv gets.
+
+ make uv-lock-system-venvs
+   Regenerate src/sandbox_new/system-venv-requirements/ (also run by
+   make uv-lock). Run after changing a pin in SYSTEM_VENV_LIBS, the
+   libraries of the sandbox's own venvs.
+
  LOCAL DJANGO DEVELOPMENT
 ----------------------------------------------------------------
  make django-tests ARGS=<pytest-args>
@@ -39,6 +49,15 @@
  make django-manage CMD=<command>
    Run any manage.py command locally.
    Example: make django-manage CMD=shell
+
+ make django-model-catalog
+   Rebuild src/django_app/ai_models/data/catalog.json from the
+   pinned LiteLLM and parameter_registry.yaml; prints what changed.
+   Run after a LiteLLM upgrade or a registry edit.
+
+ make django-model-catalog-check
+   Write nothing; list what keeps catalog.json from being complete
+   and current, and exit 1 on any error (what CI runs).
 
  SERVICE TESTS
 ----------------------------------------------------------------

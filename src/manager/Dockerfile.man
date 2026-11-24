@@ -49,6 +49,15 @@ ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+# Code and venv stay root-owned (read-only for the runtime user); only the
+# auditor export directory, shared with auditor (also uid 1000), is writable.
+RUN groupadd --system --gid 1000 app \
+ && useradd --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app \
+ && mkdir -p /app/export_data \
+ && chown app:app /app/export_data
+
 WORKDIR /app/src/manager
+
+USER app
 
 CMD ["python", "-u", "main.py"]

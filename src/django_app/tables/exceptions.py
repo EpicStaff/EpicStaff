@@ -7,6 +7,7 @@ from utils.exceptions import CustomAPIExeption
 from tables.constants.knowledge_constants import (
     ALLOWED_FILE_TYPES,
 )
+from tables.import_export.enums import EntityType
 
 if TYPE_CHECKING:
     # Only a type here: the import service imports this module.
@@ -224,6 +225,31 @@ class RestoreConflictError(CustomAPIExeption):
     status_code = 409
     default_code = "restore_conflict"
     default_detail = "Something else just took this item's name. Try the restore again."
+
+
+class TwilioUnavailableError(CustomAPIExeption):
+    """Twilio gave no usable answer, so a phone number is unproven and nothing is changed.
+
+    A 503, not a field error: an outage or a rate limit is nothing the user's input can fix.
+    """
+
+    status_code = 503
+    default_code = "twilio_unavailable"
+
+
+class RestoreNeedsTwilioAuthTokenError(CustomAPIExeption):
+    """A voice channel's restore can't check its phone number: the Twilio auth token is unreadable.
+
+    409 like the other restore refusals: nothing is restored, and the number is kept so
+    a restore after the token's own restore can still prove it.
+    """
+
+    status_code = 409
+    default_code = "restore_needs_twilio_auth_token"
+    default_detail = (
+        "The channel's Twilio auth token can't be read, so its phone number can't be checked. "
+        "If the token is in the recycle bin, restore it first."
+    )
 
 
 class CrossOrgCascadeError(CustomAPIExeption):
@@ -662,10 +688,18 @@ class BulkSaveValidationError(CustomAPIExeption):
         super().__init__(str(errors))
 
 
+class RagIndexNotReadyException(RagException):
+    """Base for a RAG that exists but whose index has not finished building."""
+
+    status_code = 409
+    default_code = "rag_index_not_ready"
+
+
 class NoGraphRagForCollectionException(RagException):
     """Raised when a collection has no GraphRag configuration at all."""
 
     status_code = 404
+    default_code = "graph_rag_not_found"
 
     def __init__(self, collection_id):
         self.collection_id = collection_id
@@ -675,16 +709,49 @@ class NoGraphRagForCollectionException(RagException):
         )
 
 
-class GraphRagIndexNotReadyException(RagException):
+class GraphRagIndexNotReadyException(RagIndexNotReadyException):
     """Raised when GraphRag exists but its index has not finished building."""
-
-    status_code = 409
 
     def __init__(self, collection_id):
         self.collection_id = collection_id
         super().__init__(
             f"GraphRAG index for collection {collection_id} not ready. "
             f"Run indexing and wait for rag_status='completed'."
+        )
+
+
+class GraphRagLlmNotConfiguredException(RagException):
+    """Raised when GraphRag has no LLM config, e.g. after its LLM config was deleted."""
+
+    status_code = 409
+    default_code = "graph_rag_llm_not_configured"
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(f"GraphRag for collection {collection_id} has no LLM config.")
+
+
+class GraphRagEmbedderNotConfiguredException(RagException):
+    """Raised when GraphRag has no embedder config, e.g. after its embedder was deleted."""
+
+    status_code = 409
+    default_code = "graph_rag_embedder_not_configured"
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(f"GraphRag for collection {collection_id} has no embedder config.")
+
+
+class GraphRagLlmAndEmbedderNotConfiguredException(RagException):
+    """Raised when GraphRag has neither an LLM nor an embedder config."""
+
+    status_code = 409
+    default_code = "graph_rag_llm_and_embedder_not_configured"
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRag for collection {collection_id} has no LLM config and no embedder config."
         )
 
 
@@ -705,6 +772,7 @@ class NoNaiveRagForCollectionException(RagException):
     """Raised when a collection has no NaiveRag configuration at all."""
 
     status_code = 404
+    default_code = "naive_rag_not_found"
 
     def __init__(self, collection_id):
         self.collection_id = collection_id
@@ -714,10 +782,8 @@ class NoNaiveRagForCollectionException(RagException):
         )
 
 
-class NaiveRagIndexNotReadyException(RagException):
+class NaiveRagIndexNotReadyException(RagIndexNotReadyException):
     """Raised when NaiveRag exists but its index has not finished building."""
-
-    status_code = 409
 
     def __init__(self, collection_id):
         self.collection_id = collection_id
@@ -728,11 +794,12 @@ class NaiveRagIndexNotReadyException(RagException):
 
 
 class LLMConfigMissingError(CustomAPIExeption):
-    """Raised when FlowAssistant.llm_config is None."""
+    """Raised when the Flow Assistant has no LLM config and its org has no default agent LLM."""
 
     status_code = 400
     default_detail = (
-        "No LLM config is set for this flow assistant. Please configure one in the settings panel."
+        "No LLM is set for the Flow Assistant. Choose one in the assistant settings, "
+        "or set a default agent LLM in Settings → AI Models."
     )
     default_code = "flow_assistant_llm_config_missing"
 
@@ -767,21 +834,49 @@ class ConfigProviderMissingError(CustomAPIExeption):
         )
 
 
-class UnsupportedReasoningEffortError(CustomAPIExeption):
-    """Raised when an LLM config's reasoning effort is one its model cannot take.
+class ConfigNeedsReviewError(CustomAPIExeption):
+    """Raised when a run would send a config's stored settings that its model does not accept.
 
-    The response carries `errors=[{"field", "value", "reason"}]` for the client to mark
-    the field. Deliberately not a ValidationError: DRF's Serializer.run_validation
-    re-raises a ValidationError from validate() as a new one, which drops `errors`.
+    A catalog update can lower a model's limit, drop a choice or drop a setting under a
+    config that stored it. The run refuses instead of sending something other than what
+    the user set. One class for both kinds: only the label in the message differs.
     """
 
     status_code = 400
-    default_detail = "The reasoning effort is not supported."
-    default_code = "unsupported_reasoning_effort"
+    default_detail = "The config's settings need review before it can run."
+    default_code = "config_needs_review"
 
-    def __init__(self, reasoning_effort: str, reason: str):
-        self.errors = [{"field": "reasoning_effort", "value": reasoning_effort, "reason": reason}]
-        super().__init__(detail=reason)
+    def __init__(self, config_kind: str, config_name: str, problems: list[str]):
+        self.config_kind = config_kind
+        self.config_name = config_name
+        self.problems = problems
+        super().__init__(
+            f"{config_kind} config '{config_name}' has settings its model does not accept: "
+            # A problem line may end with its own period.
+            f"{'; '.join(problem.rstrip('.') for problem in problems)}. "
+            "Edit the config in Settings → AI Models and try again.",
+            code=self.default_code,
+        )
+
+
+class ConfigValidationError(CustomAPIExeption):
+    """Raised when a model config's `parameters` or `connection` break the model catalog.
+
+    `detail` holds the field errors a ValidationError would, so the response `message`
+    reads the same; `errors=[{"field", "value", "reason"}]` names each field by its dotted
+    path (`parameters.temperature`) for the client to mark it, without the value of a
+    secret connection field. Deliberately not a ValidationError: DRF's
+    Serializer.run_validation re-raises a ValidationError from validate() as a new one,
+    which drops `errors`.
+    """
+
+    status_code = 400
+    default_detail = "The config's settings are not valid for its model."
+    default_code = "invalid"
+
+    def __init__(self, detail: dict, errors: list[dict]):
+        self.errors = errors
+        super().__init__(detail=detail)
 
 
 class ToolExecutionError(CustomAPIExeption):
@@ -1078,3 +1173,123 @@ class InvalidTestRunPayloadError(CustomAPIExeption):
     def __init__(self, messages: list[str]):
         self.errors = messages
         super().__init__(detail={"payload": messages}, code=self.default_code)
+
+
+class ExportEntitiesNotFoundError(CustomAPIExeption):
+    """An export named an id that is no item the caller may export from the active organization.
+
+    404, like any other organization's row: the message names no id, so it tells
+    nothing about which ids exist in another organization, or which one is missing.
+    """
+
+    status_code = 404
+    default_code = "export_entities_not_found"
+    default_detail = "Some entity IDs do not exist"
+
+
+class TooManyTransferJobsError(CustomAPIExeption):
+    """Starting a transfer job would pass the caller's or the organization's unfinished-job limit."""
+
+    status_code = 429
+    default_code = "too_many_jobs"
+    default_detail = "Too many exports or imports are running; wait for one to finish."
+
+
+class TransferJobRequiresUserError(CustomAPIExeption):
+    """The caller is no user (a system API key, a plugin service account) who could own a job.
+
+    A job runs with its creator's permissions and only its creator may read it,
+    so a caller with no user row cannot start one.
+    """
+
+    status_code = 403
+    default_code = "transfer_job_requires_user"
+    default_detail = "Exports and imports are started by a user or a personal API key."
+
+
+class TransferJobNotReadyError(CustomAPIExeption):
+    """The job's archive cannot be downloaded: it is not a completed export."""
+
+    status_code = 409
+    default_code = "job_not_ready"
+    default_detail = "The job has no archive to download yet."
+
+
+class TransferJobArchiveRemovedError(CustomAPIExeption):
+    """The export completed, but its archive was deleted to make room for the creator's newer ones."""
+
+    status_code = 410
+    default_code = "archive_removed"
+    default_detail = "This archive was deleted to make room for newer exports. Export again."
+
+
+class TransferJobRunningError(CustomAPIExeption):
+    """The job cannot be deleted while it runs; it can once it has finished."""
+
+    status_code = 409
+    default_code = "job_running"
+    default_detail = "The job is running; it can be removed once it has finished."
+
+
+class TooManySessionsToExportError(CustomAPIExeption):
+    """A session export by filters matches more sessions than one export job may carry."""
+
+    status_code = 400
+    default_code = "too_many_sessions"
+
+    def __init__(self, limit: int):
+        super().__init__(
+            detail=f"More than {limit} sessions match these filters; narrow them and export again."
+        )
+
+
+class UseImportJobError(CustomAPIExeption):
+    """A `.zip` carrying knowledge collections was sent to a synchronous import.
+
+    Only an import job reads a collection's files out of an archive. The message
+    names the import job that takes the archive's main entity.
+    """
+
+    status_code = 400
+    default_code = "use_import_job"
+    default_detail = "This archive carries knowledge collections; import it as an import job."
+
+    _JOB_BY_MAIN_ENTITY = {
+        EntityType.GRAPH: "a flow import job",
+        EntityType.SOURCE_COLLECTION: "a knowledge collection import job",
+        EntityType.AGENT_DEFINITION: "an agent import job",
+    }
+
+    def __init__(self, main_entity: object = None):
+        # The main entity is read from an uploaded file, so it may be any JSON value.
+        job = self._JOB_BY_MAIN_ENTITY.get(main_entity) if isinstance(main_entity, str) else None
+        super().__init__(
+            detail=(
+                f"This archive carries knowledge collections; import it as {job}." if job else None
+            )
+        )
+
+
+class ImportArchiveTooLargeError(CustomAPIExeption):
+    """An import upload is larger than `MAX_KNOWLEDGE_ARCHIVE_SIZE`."""
+
+    status_code = 413
+    default_code = "archive_too_large"
+    default_detail = "The archive is larger than the import size limit."
+
+
+class ImportArchiveRejectedError(CustomAPIExeption):
+    """An uploaded archive an import job would refuse; refused before the job is created.
+
+    Carries the code the import itself reports for the same archive (`invalid_archive`,
+    `use_sync_import`, ...), so a client sees one code whether the archive is refused
+    at upload or by the job.
+    """
+
+    status_code = 400
+    default_code = "invalid_file"
+
+    def __init__(self, code: str, message: str):
+        super().__init__(detail=message)
+        # The error envelope reads the code from default_code.
+        self.default_code = code

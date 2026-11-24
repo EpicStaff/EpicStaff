@@ -6,7 +6,7 @@ from tables.services.run_admission import RunAdmissionRefusedError
 class SecretDecryptionError(CustomAPIExeption):
     """Raised by SecretEncryption.decrypt() when an encryptedtext cannot be
     decrypted under the current key: tampered, truncated, or encrypted under a
-    different key than the one currently derived from SECRET_KEY."""
+    key not among SECRETS_ENCRYPTION_KEY and its previous keys."""
 
     status_code = 500
     default_detail = "Secret value could not be decrypted."
@@ -70,15 +70,16 @@ class SecretUseDeniedError(Exception):
 
 
 class ModelEndpointNotSettableError(Exception):
-    """Raised when a pinned-org principal (a plugin's service account) sets a model's endpoint.
+    """Raised when a pinned-org principal (a plugin's service account) sets where a model
+    configuration sends requests (an endpoint field of its `connection`).
 
     A domain error, not an HTTP one: `utils.exception_handler` renders it as a 400
-    naming each field, and the model import strategy re-raises it as a validation error.
+    naming each field, and the config import strategy re-raises it as a validation error.
     """
 
     message = (
-        "This credential cannot set where a model sends requests; the organization's "
-        "configurations may use this model with their own keys."
+        "This credential cannot set where a model configuration sends requests; people "
+        "in the organization may add their own keys to it."
     )
 
     def __init__(self, *, fields: tuple[str, ...]):

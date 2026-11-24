@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Tue, 03 Nov 2026 11:31:15 GMT -->
-<!-- commit: 94206ddd98fade1a198796bd6e1627d0d9dfd1ac -->
-<!-- package-lock.json sha256: c545f5ca8f1743fc -->
+<!-- generated: 2026-11-20T15:11:03Z UTC -->
+<!-- commit: 042e01bd097a98bb7ce60bdbb4635d0d37845a26 -->
+<!-- package-lock.json sha256: d7c8adf8cadb653b -->
 
 ## Frontend license summary
 
@@ -22,16 +22,16 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 
 | License | Packages |
 |---|---|
-| MIT | 47 |
+| MIT | 51 |
+| ISC | 5 |
 | Apache-2.0 | 2 |
-| ISC | 2 |
 | OFL-1.1 | 1 |
 | (MPL-2.0 OR Apache-2.0) | 1 |
 | BSD-2-Clause | 1 |
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MIT AND Zlib) | 1 |
 | 0BSD | 1 |
-| **Total** | **57** |
+| **Total** | **64** |
 
 ## Package index
 
@@ -60,6 +60,12 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | `ag-grid-community` | 36.1.0 | MIT |
 | `ag-stack` | 36.1.0 | MIT |
 | `core-util-is` | 1.0.3 | MIT |
+| `d3-binarytree` | 1.0.2 | MIT |
+| `d3-dispatch` | 3.0.2 | ISC |
+| `d3-force-3d` | 3.0.6 | MIT |
+| `d3-octree` | 1.1.0 | MIT |
+| `d3-quadtree` | 3.0.2 | ISC |
+| `d3-timer` | 3.0.2 | ISC |
 | `docx-preview` | 0.3.7 | Apache-2.0 |
 | `dompurify` | 3.4.17 | (MPL-2.0 OR Apache-2.0) |
 | `entities` | 8.0.0 | BSD-2-Clause |
@@ -88,6 +94,7 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | `safe-buffer` | 5.1.2 | MIT |
 | `setimmediate` | 1.0.5 | MIT |
 | `string_decoder` | 1.1.1 | MIT |
+| `three` | 0.187.0 | MIT |
 | `tslib` | 2.8.1 | 0BSD |
 | `unzipper-esm` | 0.13.3 | MIT |
 | `util-deprecate` | 1.0.2 | MIT |
@@ -1339,6 +1346,186 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 IN THE SOFTWARE.
+```
+
+</details>
+
+### d3-binarytree@1.0.2
+
+- **License:** MIT
+- **Publisher:** Vasco Asturiano
+- **Repository:** https://github.com/vasturiano/d3-binarytree
+
+<details><summary>License text</summary>
+
+```
+MIT License
+
+Copyright (c) 2017 Vasco Asturiano
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+</details>
+
+### d3-dispatch@3.0.2
+
+- **License:** ISC
+- **Publisher:** Mike Bostock
+- **Repository:** https://github.com/d3/d3-dispatch
+
+<details><summary>License text</summary>
+
+```
+Copyright 2010-2026 Mike Bostock
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
+```
+
+</details>
+
+### d3-force-3d@3.0.6
+
+- **License:** MIT
+- **Publisher:** Vasco Asturiano
+- **Repository:** https://github.com/vasturiano/d3-force-3d
+
+<details><summary>License text</summary>
+
+```
+MIT License
+
+Copyright (c) 2017 Vasco Asturiano
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+</details>
+
+### d3-octree@1.1.0
+
+- **License:** MIT
+- **Publisher:** Vasco Asturiano
+- **Repository:** https://github.com/vasturiano/d3-octree
+
+<details><summary>License text</summary>
+
+```
+MIT License
+
+Copyright (c) 2017 Vasco Asturiano
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+</details>
+
+### d3-quadtree@3.0.2
+
+- **License:** ISC
+- **Publisher:** Mike Bostock
+- **Repository:** https://github.com/d3/d3-quadtree
+
+<details><summary>License text</summary>
+
+```
+Copyright 2010-2026 Mike Bostock
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
+```
+
+</details>
+
+### d3-timer@3.0.2
+
+- **License:** ISC
+- **Publisher:** Mike Bostock
+- **Repository:** https://github.com/d3/d3-timer
+
+<details><summary>License text</summary>
+
+```
+Copyright 2010-2026 Mike Bostock
+
+Permission to use, copy, modify, and/or distribute this software for any purpose
+with or without fee is hereby granted, provided that the above copyright notice
+and this permission notice appear in all copies.
+
+THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND
+FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
+OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER
+TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
+THIS SOFTWARE.
 ```
 
 </details>
@@ -3458,6 +3645,40 @@ IN THE SOFTWARE.
 
 </details>
 
+### three@0.187.0
+
+- **License:** MIT
+- **Publisher:** mrdoob
+- **Repository:** https://github.com/mrdoob/three.js
+
+<details><summary>License text</summary>
+
+```
+The MIT License
+
+Copyright © 2010-2026 three.js authors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+</details>
+
 ### tslib@2.8.1
 
 - **License:** 0BSD
@@ -3702,9 +3923,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-11-07T09:05:47Z UTC -->
-<!-- commit: 618a918a420c867551b6ea1450f759baac90d133 -->
-<!-- lock-hashes: agent:33485be7b40d1c4d, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:3b8a9513930f183b, django_app:9edcfe4f5547fa9d, es_plugins:dbaccc6cdbe28892, foundation:42ce6227dbb12b91, knowledge_new:2a1b626c6c054648, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:465ed704a7143a7e, sandbox:117c57af453053a0, sandbox_new:6d8bd33d7277129b, shared:4fe7d63d599aa036, webhook:241b4e1b204ef7f8 -->
+<!-- generated: 2026-11-19T12:45:06Z UTC -->
+<!-- commit: UNKNOWN -->
+<!-- lock-hashes: agent:fc6db491b10362f7, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:d70ae5876449fdea, django_app:a46a1a072518e92d, es_plugins:dbaccc6cdbe28892, foundation:eb9639484fc6d726, knowledge_new:fe6c346b612f027f, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:eacb693cf9accb5e, sandbox:117c57af453053a0, sandbox_new:a43e19009b028dcd, shared:65c1a59f70ec0dc0, webhook:be4edcbb5252064a -->
 
 ## Backend (Python)
 
@@ -3716,7 +3937,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 |---|---|
 | MIT License | 76 |
 | MIT | 74 |
-| BSD-3-Clause | 30 |
+| BSD-3-Clause | 31 |
 | Apache Software License | 27 |
 | Apache-2.0 | 25 |
 | BSD License | 25 |
@@ -3749,7 +3970,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | MPL-2.0 AND MIT | 1 |
 | PSF-2.0 | 1 |
 | The Unlicense (Unlicense) | 1 |
-| **Total** | **310** |
+| **Total** | **311** |
 
 ### Python package index
 
@@ -3907,7 +4128,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `langgraph-sdk` | 0.4.4 | MIT | Copyright (c) 2024 LangChain, Inc. |
 | `langsmith` | 0.10.15 | MIT | Copyright (c) LangChain <support@langchain.dev> |
 | `langsmith` | 0.12.2 | MIT | Copyright (c) LangChain <support@langchain.dev> |
-| `litellm` | 1.108.1 | MIT | Copyright (c) 2023 Berri AI |
+| `litellm` | 1.108.12 | MIT | Copyright (c) 2023 Berri AI |
 | `litestar` | 2.24.0 | MIT License | Copyright (c) 2021, 2022, 2023, 2024, 2025, 2026 Litestar Org. |
 | `litestar-htmx` | 0.5.0 | MIT License | Copyright (c) 2021, 2022, 2023, 2024 Litestar Org. |
 | `loguru` | 0.7.2 | MIT License | Copyright (c) 2017 |
@@ -3982,6 +4203,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `pyasn1` | 0.6.4 | BSD-2-Clause | Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com> |
 | `pyasn1_modules` | 0.4.2 | BSD License | Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com> |
 | `pycparser` | 3.0 | BSD-3-Clause | Copyright (c) 2008-2022, Eli Bendersky |
+| `pycparser` | 3.12 | BSD-3-Clause | Copyright (c) 2008-2027, Eli Bendersky |
 | `pycryptodome` | 3.23.0 | BSD License; Public Domain | Copyright (c) Helder Eijs |
 | `pycryptodome` | 3.24.1 | BSD License; Public Domain | Copyright (c) Helder Eijs |
 | `pydantic` | 2.13.4 | MIT | Copyright (c) 2017 to present Pydantic Services Inc. and individual contributors. |
@@ -14864,7 +15086,7 @@ SOFTWARE.
 > No LICENSE file shipped by upstream wheel.
 > No NOTICE file shipped by upstream.
 
-#### litellm@1.108.1
+#### litellm@1.108.12
 
 - **License:** MIT
 - **Author:** BerriAI
@@ -28829,6 +29051,47 @@ POSSIBILITY OF SUCH DAMAGE.
 pycparser -- A C parser in Python
 
 Copyright (c) 2008-2022, Eli Bendersky
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without modification,
+are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice, this 
+  list of conditions and the following disclaimer.
+* Redistributions in binary form must reproduce the above copyright notice, 
+  this list of conditions and the following disclaimer in the documentation 
+  and/or other materials provided with the distribution.
+* Neither the name of the copyright holder nor the names of its contributors may 
+  be used to endorse or promote products derived from this software without 
+  specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE 
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE 
+GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) 
+HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT 
+LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT 
+OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+</pre>
+
+</details>
+
+> No NOTICE file shipped by upstream.
+
+#### pycparser@3.12
+
+- **License:** BSD-3-Clause
+- **Author:** Eli Bendersky <eliben@gmail.com>
+
+<details><summary>License text</summary>
+
+<pre>
+pycparser -- A C parser in Python
+
+Copyright (c) 2008-2027, Eli Bendersky
 All rights reserved.
 
 Redistribution and use in source and binary forms, with or without modification,

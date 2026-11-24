@@ -49,6 +49,7 @@
                     >
                         <label class="label"> Agent Name<span class="required">*</span> </label>
                         <input
+                            #agentNameInput
                             type="text"
                             class="text-input"
                             formControlName="name"
@@ -57,6 +58,9 @@
                             appEnterBlur
                             (blur)="autosaveName()"
                         />
+                        @if (showNameRequired()) {
+                            <span class="field__error">Agent name is required</span>
+                        }
                         @if (form.controls.name.hasError('maxlength')) {
                             <span class="field__error">Agent name must be at most 255 characters.</span>
                         }
@@ -210,6 +214,7 @@
                     (duplicateSurface)="duplicateSurface.emit($event)"
                     (makeAgentSpecificCopy)="makeAgentSpecificCopy.emit($event)"
                     (openSource)="openSurfaceSource.emit($event)"
+                    (openUsage)="openSurfaceUsage.emit($event)"
                     (renameSurface)="renameSurface.emit($event)"
                     (surfaceChange)="surfaceChange.emit($event)"
                     (viewSummary)="viewSummary.emit($event)"

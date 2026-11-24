@@ -2,6 +2,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .storage_scope import StorageAction
+
 __all__ = [
     "ExecutionRequest",
     "ExecutionStorageCredentials",
@@ -18,14 +20,19 @@ class ExecutionStorageCredentials(BaseModel):
 
     access_key: str = Field(min_length=1, repr=False)
     secret_key: str = Field(min_length=1, repr=False)
+    # The same scope fields as `StorageCredentials`: the sandbox hands them to the
+    # in-sandbox storage library, which refuses disallowed operations up front.
+    shared_actions: list[StorageAction] | None = None
+    own_paths: list[str] = Field(default_factory=list)
 
 
 class ExecutionRequest(BaseModel):
     """The body a producer posts to the sandbox's `POST /executions`.
 
     The sandbox's submit schema subclasses this one, so the field set and types are the
-    wire contract on both sides. `secrets` and `storage_credentials` carry plaintext
-    and are excluded from `repr()`.
+    wire contract on both sides. `secrets` carries transport-sealed values (the
+    sandbox opens them), `storage_credentials` carries plaintext; both are
+    excluded from `repr()`.
     """
 
     model_config = ConfigDict(frozen=True, from_attributes=True)
@@ -39,6 +46,9 @@ class ExecutionRequest(BaseModel):
     func_kwargs: dict[str, Any] = {}
     secrets: dict[str, Any] = Field(default={}, repr=False)
     venv_id: int | None = None
+    # The venv the sandbox builds for a built-in node (`file_extractor`,
+    # `audio_transcription`); never together with `venv_id`.
+    system_venv: str | None = None
     use_storage: bool = False
     storage_allowed_paths: list[str] = []
     storage_org_prefix: str | None = None

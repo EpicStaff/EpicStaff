@@ -43,6 +43,18 @@ from tables.services.copy_services.inline_surface_copy_helpers import (
 )
 from tables.services.key_value_table_service import KeyValueTableService
 from tables.services.secrets.secret_use_service import SecretActor
+from tables.services.storage_grants.actor import grant_actor_for
+from tables.services.storage_grants.capping import copied_grant_fields
+from tables.services.storage_grants.write_checks import assert_can_write_file_node
+
+
+def _assert_can_copy_file_node(user, graph: Graph) -> None:
+    """Copying a File Extractor or Audio to Text node creates one, so it needs Files: Read.
+
+    A copy with no acting user is internal and has no one whose permissions could be short.
+    """
+    if user is not None:
+        assert_can_write_file_node(grant_actor_for(user, graph))
 
 
 def copy_start_node(
@@ -81,6 +93,7 @@ def copy_graph_note(
 def copy_file_extractor_node(
     graph: Graph, node: FileExtractorNode, user, node_number: int | None, actor: SecretActor | None
 ) -> FileExtractorNode:
+    _assert_can_copy_file_node(user, graph)
     return FileExtractorNode.objects.create(
         graph=graph,
         node_number=node_number,
@@ -118,6 +131,7 @@ def copy_audio_transcription_node(
     node_number: int | None,
     actor: SecretActor | None,
 ) -> AudioTranscriptionNode:
+    _assert_can_copy_file_node(user, graph)
     return AudioTranscriptionNode.objects.create(
         graph=graph,
         node_number=node_number,
@@ -147,6 +161,7 @@ def copy_python_node(
         node_number=node_number,
         created_by=resolve_author(user),
         python_code=new_code,
+        **copied_grant_fields(node, grant_actor_for(user, graph)),
         **get_base_node_fields(node),
     )
 
@@ -162,7 +177,7 @@ def copy_webhook_trigger_node(
         node_name=node.node_name,
         webhook_trigger=node.webhook_trigger,
         python_code=new_code,
-        use_storage=node.use_storage,
+        **copied_grant_fields(node, grant_actor_for(user, graph)),
         metadata=node.metadata,
         test_payload=node.test_payload,
     )
@@ -315,8 +330,7 @@ def copy_classification_decision_table_node(
         default_next_node_id=node.default_next_node_id,
         next_error_node_id=node.next_error_node_id,
         metadata=node.metadata,
-        pre_use_storage=node.pre_use_storage,
-        post_use_storage=node.post_use_storage,
+        **copied_grant_fields(node, grant_actor_for(user, graph)),
     )
 
     new_prompts = ClassificationDecisionTablePrompt.objects.bulk_create(

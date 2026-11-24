@@ -35,116 +35,86 @@
                 [attr.data-setting-key]="setting.key"
             >
                 <!-- Each control shows its own label (and required marker); a text input is tied to it by id. -->
-                @switch (setting.type) {
-                    @case ('boolean') {
-                        <app-toggle-switch
-                            [label]="setting.label"
-                            [required]="setting.required"
-                            [ariaLabel]="setting.label"
-                            [formControl]="control(setting.key)"
-                        />
-                    }
-                    @case ('enum') {
-                        <app-select
-                            placeholder="Not set"
-                            [label]="setting.label"
-                            [required]="setting.required"
-                            [invalid]="!!fieldError(setting)"
-                            [formControl]="control(setting.key)"
-                            [items]="enumItems(setting)"
-                        />
-                    }
-                    @case ('text') {
-                        <app-textarea
-                            [label]="setting.label"
-                            [required]="setting.required"
-                            [invalid]="!!fieldError(setting)"
-                            [formControl]="control(setting.key)"
-                            [rows]="4"
-                        />
-                    }
-                    @case ('secret') {
-                        <span class="settings__secret-label">
-                            {{ setting.label }}
-                            @if (setting.required) {
-                                <span class="settings__required">*</span>
+                @if (setting.type === 'secret') {
+                    <span class="settings__secret-label">
+                        {{ setting.label }}
+                        @if (setting.required) {
+                            <span class="settings__required">*</span>
+                        }
+                    </span>
+                    <div class="settings__secret">
+                        @switch (secretEdit(setting.key)) {
+                            @case ('replace') {
+                                <app-custom-input
+                                    type="password"
+                                    autocomplete="new-password"
+                                    placeholder="Enter the new value"
+                                    [id]="fieldId(setting)"
+                                    [formControl]="secretControl(setting.key)"
+                                    [ariaLabel]="setting.label"
+                                />
+                                <app-button
+                                    type="outline-secondary"
+                                    mod="small"
+                                    (click)="keepSecret(setting.key)"
+                                >
+                                    Cancel
+                                </app-button>
                             }
-                        </span>
-                        <div class="settings__secret">
-                            @switch (secretEdit(setting.key)) {
-                                @case ('replace') {
-                                    <app-custom-input
-                                        type="password"
-                                        autocomplete="new-password"
-                                        placeholder="Enter the new value"
-                                        [id]="fieldId(setting)"
-                                        [formControl]="secretControl(setting.key)"
-                                        [ariaLabel]="setting.label"
-                                    />
+                            @case ('clear') {
+                                <span class="settings__secret-value text-body">Cleared when you save.</span>
+                                <app-button
+                                    type="outline-secondary"
+                                    mod="small"
+                                    (click)="keepSecret(setting.key)"
+                                >
+                                    Undo
+                                </app-button>
+                            }
+                            @default {
+                                @if (setting.is_set) {
+                                    <code class="settings__secret-value text-body"
+                                        >{{ secretMask }} {{ setting.tail }}</code
+                                    >
+                                    <app-button
+                                        type="outline-primary"
+                                        mod="small"
+                                        [ariaLabel]="'Replace ' + setting.label"
+                                        (click)="replaceSecret(setting.key)"
+                                    >
+                                        Replace
+                                    </app-button>
                                     <app-button
                                         type="outline-secondary"
                                         mod="small"
-                                        (click)="keepSecret(setting.key)"
+                                        [ariaLabel]="'Clear ' + setting.label"
+                                        (click)="clearSecret(setting.key)"
                                     >
-                                        Cancel
+                                        Clear
                                     </app-button>
-                                }
-                                @case ('clear') {
-                                    <span class="settings__secret-value text-body">Cleared when you save.</span>
+                                } @else {
+                                    <span class="settings__secret-value settings__muted text-body">Not set</span>
                                     <app-button
-                                        type="outline-secondary"
+                                        type="outline-primary"
                                         mod="small"
-                                        (click)="keepSecret(setting.key)"
+                                        [ariaLabel]="'Set ' + setting.label"
+                                        (click)="replaceSecret(setting.key)"
                                     >
-                                        Undo
+                                        Set
                                     </app-button>
-                                }
-                                @default {
-                                    @if (setting.is_set) {
-                                        <code class="settings__secret-value text-body"
-                                            >{{ secretMask }} {{ setting.tail }}</code
-                                        >
-                                        <app-button
-                                            type="outline-primary"
-                                            mod="small"
-                                            [ariaLabel]="'Replace ' + setting.label"
-                                            (click)="replaceSecret(setting.key)"
-                                        >
-                                            Replace
-                                        </app-button>
-                                        <app-button
-                                            type="outline-secondary"
-                                            mod="small"
-                                            [ariaLabel]="'Clear ' + setting.label"
-                                            (click)="clearSecret(setting.key)"
-                                        >
-                                            Clear
-                                        </app-button>
-                                    } @else {
-                                        <span class="settings__secret-value settings__muted text-body">Not set</span>
-                                        <app-button
-                                            type="outline-primary"
-                                            mod="small"
-                                            [ariaLabel]="'Set ' + setting.label"
-                                            (click)="replaceSecret(setting.key)"
-                                        >
-                                            Set
-                                        </app-button>
-                                    }
                                 }
                             }
-                        </div>
-                    }
-                    @default {
-                        <app-custom-input
-                            [label]="setting.label"
-                            [required]="setting.required"
-                            [id]="fieldId(setting)"
-                            [placeholder]="setting.type === 'url' ? 'https://' : ''"
-                            [errorMessage]="fieldError(setting)"
-                            [formControl]="control(setting.key)"
-                        />
-                    }
+                        }
+                    </div>
+                } @else {
+                    <app-schema-field
+                        [property]="settingProperties()[setting.key]"
+                        [control]="control(setting.key)"
+                        [required]="setting.required"
+                        [error]="fieldError(setting)"
+                        [fieldId]="fieldId(setting)"
+                        [placeholder]="setting.type === 'url' ? 'https://' : ''"
+                    />
                 }
 
                 <p class="settings__muted text-body-small">
@@ -154,8 +124,8 @@
                     }
                 </p>
 
-                <!-- A text input shows its error itself; the other controls get it here, announced. -->
-                @if (setting.type !== 'string' && setting.type !== 'url' && setting.type !== 'integer') {
+                <!-- The other controls show their error themselves. -->
+                @if (setting.type === 'secret') {
                     @if (fieldError(setting); as message) {
                         <p
                             class="settings__field-error text-body-small"

@@ -106,7 +106,7 @@ async def test_data_loader_redacts_agent_instructions():
 
 @pytest.mark.asyncio
 async def test_data_loader_redacts_python_code_tool_secrets():
-    """A Python-code tool's resolved secrets are plaintext credentials; a key-name
+    """A Python-code tool's secrets dict holds secret values; a key-name
     denylist does not know the key `secrets`, so they must be digested by default
     along with the rest of `tools` rather than passed through unmasked."""
     secret_value = "SENSITIVE_STRIPE_SECRET_KEY_24680"
@@ -163,7 +163,7 @@ async def test_data_loader_redacts_python_code_tool_secrets():
 
 
 @pytest.mark.asyncio
-async def test_data_loader_redacts_agent_llm_credentials():
+async def test_data_loader_redacts_agent_llm_secrets():
     """An agent's resolved LLM config carries a plaintext provider api_key and any
     auth extra_headers; a blanket passthrough of `llm`/`fcm_llm` would leak both —
     on either field, since `fcm_llm` is the same `LLMData` shape as `llm`."""
@@ -201,6 +201,33 @@ async def test_data_loader_redacts_agent_llm_credentials():
     assert "gpt-4o" in request_line
     assert "gpt-4o-mini" in request_line
     assert loaded_request.agents[0].llm.config.api_key == api_key_marker
+
+
+@pytest.mark.asyncio
+async def test_data_loader_logs_llm_settings_but_never_a_connection_value():
+    """A resolved `connection` holds secret-marker values and endpoints; the generation
+    settings are safe to show."""
+    region_marker = "SENSITIVE_REGION_31415"
+    access_key_marker = "SENSITIVE_AWS_ACCESS_KEY_92653"
+    blob = copy.deepcopy(EXAMPLE_BLOB)
+    blob["agents"][0]["llm"] = {
+        "provider": "bedrock",
+        "config": {
+            "model": "anthropic.claude-v2",
+            "parameters": {"max_tokens": 4321},
+            "connection": {"aws_region_name": region_marker, "aws_access_key_id": access_key_marker},
+            "main_secret_argument": "api_key",
+        },
+    }
+
+    with capture_logs_at("DEBUG") as logs:
+        loaded_request = await _loader_returning(json.dumps(_wire_blob(agents=blob["agents"]))).load(_ENVELOPE)
+
+    request_line = log_line_starting_with(logs, "AgentRequest correlation_id=")
+    assert region_marker not in request_line
+    assert access_key_marker not in request_line
+    assert "4321" in request_line
+    assert loaded_request.agents[0].llm.config.connection["aws_region_name"] == region_marker
 
 
 @pytest.mark.asyncio

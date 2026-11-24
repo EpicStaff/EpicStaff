@@ -23,10 +23,9 @@ import {
 } from '@shared/components';
 import { DragScrollDirective } from '@shared/directives';
 import { BulkDeleteService, LABELS_STORE } from '@shared/services';
-import { extractHttpErrorMessage, showExportExclusionWarning } from '@shared/utils';
+import { extractHttpErrorMessage } from '@shared/utils';
 import { filter, switchMap } from 'rxjs/operators';
 
-import { ImportExportService } from '../../../../../../core/services/import-export.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
 import {
@@ -67,7 +66,6 @@ export class MyFlowsComponent implements AfterViewChecked {
     private readonly toastService = inject(ToastService);
     private readonly bulkDeleteService = inject(BulkDeleteService);
     private readonly recycleBinSettings = inject(RecycleBinSettingsService);
-    private readonly importExportService = inject(ImportExportService);
     private readonly labelsStorage = inject(LabelsStorageService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
     private readonly destroyRef = inject(DestroyRef);
@@ -230,7 +228,7 @@ export class MyFlowsComponent implements AfterViewChecked {
                 break;
 
             case 'export':
-                this.exportFlow(flow);
+                this.flowCopyImport.exportFlows([flow.id]);
                 break;
 
             case 'viewDetails':
@@ -326,18 +324,9 @@ export class MyFlowsComponent implements AfterViewChecked {
             },
             error: (err) => {
                 console.error(`Error running flow ${flow.id}`, err);
-
-                // Extract error message from backend response
-                let errorMessage = 'Failed to run flow';
-                if (err.error && err.error.message) {
-                    errorMessage = err.error.message;
-                } else if (err.error && typeof err.error === 'string') {
-                    errorMessage = err.error;
-                } else if (err.message) {
-                    errorMessage = err.message;
-                }
-
-                this.toastService.error(`Error running flow "${flow.name}": ${errorMessage}`);
+                this.toastService.error(
+                    `Error running flow "${flow.name}": ${extractHttpErrorMessage(err, 'Failed to run flow')}`
+                );
             },
         });
     }
@@ -374,26 +363,5 @@ export class MyFlowsComponent implements AfterViewChecked {
             last_edited_by: flow.last_edited_by ?? null,
             last_edited_at: flow.last_edited_at ?? null,
         };
-    }
-
-    private exportFlow(flow: GetGraphLightRequest): void {
-        this.importExportService.exportFlow(flow.id.toString()).subscribe({
-            next: ({ blob, excluded }) => {
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${flow.name}_export_${Date.now()}.json`;
-                a.click();
-                window.URL.revokeObjectURL(url);
-
-                this.toastService.success(`Flow "${flow.name}" exported successfully`);
-
-                showExportExclusionWarning(this.toastService, excluded);
-            },
-            error: (error: HttpErrorResponse) => {
-                console.error('Export failed:', error);
-                this.toastService.error(extractHttpErrorMessage(error, `Failed to export flow "${flow.name}"`));
-            },
-        });
     }
 }

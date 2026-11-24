@@ -4,6 +4,7 @@ from django.db import transaction
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.gates import HasOrgPermission
+from rbac.access.resolver import resolve_request_permissions
 from rbac.authorship import authorship_prefetches
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.mixins import OrgScopedViewSetMixin
@@ -13,21 +14,29 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from tables.services.recycle_bin.sources import RecycleBinSource
 from tables.views.recycle_bin_mixins import RECYCLE_BIN_ACTION_MAP, RecycleBinActionsMixin
+from user_audit.read_only import reads_only
 
 from agents.models.surface_models import Surface
 from agents.serializers.surface_serializers import (
     SurfaceCombineRequestSerializer,
     SurfacePatchWriteSerializer,
     SurfaceReadSerializer,
+    SurfaceUsageSerializer,
     SurfaceWriteSerializer,
 )
 from agents.services.surface_combine_service import SurfaceCombineService
+from agents.services.surface_usage_service import SurfaceUsageService
 
 
 class SurfaceViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, HasOrgPermission]
     rbac_resource_type = ResourceType.SURFACES
-    rbac_action_map = {**DEFAULT_ACTION_MAP, **RECYCLE_BIN_ACTION_MAP, "combine": Permission.READ}
+    rbac_action_map = {
+        **DEFAULT_ACTION_MAP,
+        **RECYCLE_BIN_ACTION_MAP,
+        "combine": Permission.READ,
+        "usage": Permission.READ,
+    }
     recycle_bin_resource_key = RecycleBinSource.SURFACE
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     queryset = Surface.objects.select_related(
@@ -45,6 +54,13 @@ class SurfaceViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.Mod
         "knowledge__graph_global_search_config",
         "knowledge__graph_drift_search_config",
     )
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.action == "usage":
+            # Usage reads only the surface and its owner; the detail prefetches would be wasted queries.
+            return queryset.prefetch_related(None)
+        return queryset
 
     def get_serializer_class(self):
         if self.action in ("list", "retrieve"):
@@ -103,6 +119,7 @@ class SurfaceViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.Mod
         },
     )
     @action(detail=False, methods=["post"], url_path="combine")
+    @reads_only
     def combine(self, request):
         ctx = self.get_serializer_context()
         request_serializer = SurfaceCombineRequestSerializer(data=request.data, context=ctx)
@@ -116,3 +133,18 @@ class SurfaceViewSet(OrgScopedViewSetMixin, RecycleBinActionsMixin, viewsets.Mod
 
         combined = SurfaceCombineService.combine(surface_dicts)
         return Response(combined, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        responses={
+            200: OpenApiResponse(
+                response=SurfaceUsageSerializer,
+                description="Agents defaulting to this surface and flow nodes attaching it.",
+            ),
+        },
+    )
+    @action(detail=True, methods=["get"], url_path="usage")
+    @reads_only
+    def usage(self, request, pk=None):
+        surface = self.get_object()
+        effective = resolve_request_permissions(request)
+        return Response(SurfaceUsageService.usage(surface=surface, effective=effective))

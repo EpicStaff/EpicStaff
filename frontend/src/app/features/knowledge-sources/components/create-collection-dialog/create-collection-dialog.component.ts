@@ -2,7 +2,16 @@ import { CdkMonitorFocus } from '@angular/cdk/a11y';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { NgComponentOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, signal, ViewChild } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    DestroyRef,
+    inject,
+    signal,
+    ViewChild,
+    viewChild,
+} from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
@@ -13,6 +22,7 @@ import {
     StepperComponent,
 } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { extractHttpErrorMessage } from '@shared/utils';
 import { EMPTY, filter, Observable, of } from 'rxjs';
 import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 
@@ -26,6 +36,7 @@ import { IndexingDocumentInfo, RagConfiguration } from '../../models/rag-configu
 import { CollectionsStorageService } from '../../services/collections-storage.service';
 import { IndexingConfirmationDialogService } from '../../services/indexing-confirmation-dialog.service';
 import { RagDeleteRegistryService } from '../../services/rag-delete-registry.service';
+import { GraphRagTab, GraphRagTabbedViewComponent } from '../graph-rag-tabbed-view/graph-rag-tabbed-view.component';
 import { StepSelectRagComponent } from './components/steps/step-select-rag/step-select-rag.component';
 import { StepUploadFilesComponent } from './components/steps/step-upload-files/step-upload-files.component';
 import { RagCreationStrategy } from './factory/interfaces/rag-creation-strategy.interface';
@@ -50,6 +61,7 @@ export interface CreateCollectionDialogData {
         NgComponentOutlet,
         MatTooltipModule,
         CdkMonitorFocus,
+        GraphRagTabbedViewComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -131,6 +143,15 @@ export class CreateCollectionDialogComponent {
     configurationComponent = computed(() => this.strategy()?.getConfigurationComponent() ?? null);
 
     configurationInputs = computed(() => this.strategy()?.getConfigurationInputs());
+
+    graphRagId = computed(() => this.strategy()?.getRagId() ?? null);
+
+    showGraphTabs = computed(
+        () => this.currentStepIndex() === 2 && this.selectedRagType() === 'graph' && this.graphRagId() != null
+    );
+    activeTab = computed<GraphRagTab>(() => this.tabbedView()?.activeTab() ?? 'configuration');
+
+    private tabbedView = viewChild(GraphRagTabbedViewComponent);
 
     @ViewChild(NgComponentOutlet, { static: false })
     private strategyComponent!: NgComponentOutlet;
@@ -279,7 +300,7 @@ export class CreateCollectionDialogComponent {
                             componentInstance.setServerValidationErrors?.(err.validationErrors);
                             return of(false);
                         }
-                        this.toastService.error('Indexing failed');
+                        this.toastService.error(extractHttpErrorMessage(err, 'Indexing failed'));
                         return of(false);
                     })
                 );

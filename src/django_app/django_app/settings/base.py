@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rbac",
     "tables",
+    "ai_models",
     "agents",
     "plugins",
     "proxies",
@@ -50,6 +51,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "plugins.ownership.request_scope.PluginRequestScopeMiddleware",
+    "user_audit.middleware.UserActionMiddleware",
 ]
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -72,7 +74,6 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -103,7 +104,7 @@ SESSION_CALLBACK_ALLOWED_HOSTS = parse_callback_hosts(
 CHAT_ENABLED = env.bool("CHAT_ENABLED")
 
 # Off: litellm's model map is the one bundled with the pinned litellm release, and the web
-# server makes no request to GitHub (tables/utils/litellm_model_info.py).
+# server makes no request to GitHub (ai_models/utils/litellm_model_info.py).
 LITELLM_MODEL_COST_REFRESH_ENABLED = env.bool("LITELLM_MODEL_COST_REFRESH_ENABLED")
 
 SSE_TICKET_TTL = 30
@@ -124,6 +125,14 @@ MAX_ARCHIVE_UNCOMPRESSED_SIZE = env.byte_size("DJANGO_MAX_ARCHIVE_UNCOMPRESSED_S
 ORG_STORAGE_QUOTA = env.byte_size("DJANGO_ORG_STORAGE_QUOTA")
 MAX_STREAM_UPLOAD_FILE_SIZE = env.byte_size("DJANGO_MAX_STREAM_UPLOAD_FILE_SIZE")
 MAX_ARCHIVE_FILE_SIZE = env.byte_size("DJANGO_MAX_ARCHIVE_FILE_SIZE")
+MAX_KNOWLEDGE_ARCHIVE_SIZE = env.byte_size("DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE")
+MAX_KNOWLEDGE_ARCHIVE_ENTRIES = env.int("DJANGO_MAX_KNOWLEDGE_ARCHIVE_ENTRIES")
+MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE = env.byte_size(
+    "DJANGO_MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE"
+)
+MAX_EXPORT_ENVELOPE_SIZE = env.byte_size("DJANGO_MAX_EXPORT_ENVELOPE_SIZE")
+# Seconds a transfer job and its archive are kept before the sweep deletes them.
+TRANSFER_ARCHIVE_TTL = env.time("DJANGO_TRANSFER_ARCHIVE_TTL")
 UPLOAD_PART_SIZE = env.byte_size("DJANGO_UPLOAD_PART_SIZE")
 UPLOAD_MAX_CONCURRENCY = env.int("DJANGO_UPLOAD_MAX_CONCURRENCY")
 UPLOAD_MAX_CONCURRENCY_PER_ORG = env.int("DJANGO_UPLOAD_MAX_CONCURRENCY_PER_ORG")

@@ -56,6 +56,10 @@ class FakeSandbox:
         self.venvs[self._next_id] = venv
         return venv
 
+    def list(self, *, ids, search=None, order=None, limit=None, offset=None) -> dict:
+        wanted = {int(venv_id) for venv_id in ids}
+        return {"result": [venv for key, venv in self.venvs.items() if key in wanted]}
+
     def remove(self, venv_id: str) -> None:
         self.removed.append(str(venv_id))
 

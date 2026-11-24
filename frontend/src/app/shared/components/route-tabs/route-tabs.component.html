@@ -1,8 +1,14 @@
-<div class="tabs-wrapper">
+<div
+    #strip
+    class="tabs-wrapper"
+    (wheel)="onWheel($event)"
+>
     @for (tab of visibleTabs(); track tab.routerLink) {
         <a
+            #tabLink
             [routerLink]="tab.routerLink"
             routerLinkActive="active"
+            (isActiveChange)="onActiveChange($event, tabLink)"
             class="route-tab"
             [attr.data-tour]="tab.tourAnchor ?? null"
         >

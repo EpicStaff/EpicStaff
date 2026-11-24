@@ -16,7 +16,7 @@ RustFS starts automatically as a core service (compose service name `storage`). 
 docker compose up
 ```
 
-The `storage-init` service creates the bucket on first start. The RustFS web console is disabled (`RUSTFS_CONSOLE_ENABLE=false`), because the service is reachable from `sandbox-network`.
+The `storage-init` service creates the bucket on first start. The RustFS web console is disabled (`RUSTFS_CONSOLE_ENABLE=false`), because the service is reachable from `sandbox-worker-network`.
 
 ---
 
@@ -393,6 +393,9 @@ Minting itself (`_mint_and_persist()`):
   (`scope_validator.py`), which fails closed on an empty, malformed, or
   org-escaping path list. This is what stops a session from ever being handed
   a credential wider than the union of its own nodes' declared paths.
+  `build_temporary_policy` also refuses any path containing `*`, `?` or `${`:
+  IAM reads them as wildcards or a policy variable, so a folder named `*`
+  would grant the whole org prefix. A bare `$` is allowed.
 - Calls `create_service_account()` with that policy and an expiration derived
   from `STORAGE_TEMP_CREDENTIALS_TTL_HOURS` (default 24h; `<= 0` means no
   expiration — the `expiration` argument is omitted from the request

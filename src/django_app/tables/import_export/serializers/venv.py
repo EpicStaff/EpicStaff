@@ -5,75 +5,34 @@ here, so there is no model to serialize against. `libs` is carried in the shape
 the sandbox's own create schema takes, which is what the import posts back to it.
 No installed `version`: that field holds the author's pin and the build's own
 result at once, so an export resolves a pin into `specification` instead.
+
+What a venv name, a library name or a version specification may hold is the
+sandbox's rule, so the values are checked here for shape only and passed on exactly
+as the file writes them. A value the sandbox refuses fails the import with the
+sandbox's message. That includes files of earlier releases that carry a version bound
+in a library name (`numpy>=1`): the sandbox refuses a bound anywhere but in
+`specification`, so such a file does not import until it is corrected.
 """
 
-from django.core.validators import RegexValidator
-from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from rest_framework import serializers
-
-from tables.import_export.constants import VENV_NAME_MAX_LENGTH, VENV_NAME_PATTERN
-from tables.validators.python_libraries_validator import validate_python_library_spec
 
 
 class VenvLibraryImportSerializer(serializers.Serializer):
-    name = serializers.CharField()
-    specification = serializers.CharField(required=False, allow_blank=True, default="")
+    """One library of an imported venv, checked for shape only.
 
-    def validate_name(self, value: str) -> str:
-        """Reject a name pip would read as a path or a URL.
+    What a library name or a version specification may hold is the sandbox's rule, so
+    the values are passed on exactly as the file writes them. The sandbox refuses a
+    name it would not build, a version bound written into the name included, and the
+    import then fails with its message.
+    """
 
-        An import file is untrusted input and the sandbox runs `pip install` on
-        every entry, so the same rule a library declared through the API passes
-        applies here.
-
-        Raises:
-            serializers.ValidationError: The name is not a plain named requirement.
-        """
-        validate_python_library_spec(value)
-        return value
-
-    def validate_specification(self, value: str) -> str:
-        """Reject a specifier set the resolver could not read, or one with whitespace.
-
-        Checked apart from the name rather than as one token: concatenated, a
-        nonsense specifier parses as part of the package name and reaches the
-        sandbox as a package that does not exist.
-
-        Whitespace is refused because the sandbox feeds the requirements to
-        `uv pip compile` on stdin, one per line: a newline here would split the
-        entry and smuggle in a second requirement.
-
-        Raises:
-            serializers.ValidationError: The value is not a PEP 440 specifier set,
-                or it contains whitespace.
-        """
-        if not value:
-            return value
-        if any(character.isspace() for character in value):
-            raise serializers.ValidationError(
-                f"Version specification '{value}' must not contain whitespace. "
-                "Write it as a single token, for example '>=2,<3'."
-            )
-        try:
-            SpecifierSet(value)
-        except InvalidSpecifier as error:
-            raise serializers.ValidationError(
-                f"'{value}' is not a valid version specification: {error}."
-            ) from error
-        return value
+    # Not trimmed and not refused when blank: either would be a rule about the value.
+    name = serializers.CharField(allow_blank=True, trim_whitespace=False)
+    specification = serializers.CharField(
+        required=False, allow_blank=True, default="", trim_whitespace=False
+    )
 
 
 class VenvImportSerializer(serializers.Serializer):
-    # The sandbox's rule, checked here as well: a refused name becomes a 400 on this
-    # field instead of an upstream error, the length the sandbox only enforces at its
-    # column is caught before it, and converter output can be tested against it.
-    name = serializers.CharField(
-        max_length=VENV_NAME_MAX_LENGTH,
-        validators=[
-            RegexValidator(
-                VENV_NAME_PATTERN,
-                "A venv name may only hold letters, digits, spaces, underscores and hyphens.",
-            )
-        ],
-    )
+    name = serializers.CharField()
     libs = VenvLibraryImportSerializer(many=True)

@@ -8,7 +8,7 @@ Django resolves this carrier inside publish_session_data / publish_realtime_agen
 import pytest
 
 from tables.models import Agent
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
+from ai_models.models import EmbeddingConfig, EmbeddingModel
 from tables.models.knowledge_models.collection_models import (
     BaseRagType,
     SourceCollection,

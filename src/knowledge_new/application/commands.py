@@ -1,12 +1,27 @@
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
+from application.graph_index_read_limits import (
+    GRAPH_TABLE_DEFAULT_PAGE,
+    GRAPH_TABLE_DEFAULT_PAGE_SIZE,
+    GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
+)
 from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
     "Command",
+    "ExportGraphArtifacts",
+    "GetEntityDetail",
+    "GetGraphTableData",
+    "GetGraphTableSummary",
+    "GetGraphVisualization",
     "GetIndexEstimate",
     "GetMetrics",
+    "GetRelationshipDetail",
     "RemoveRag",
+    "RestoreGraphArtifacts",
+    "RewriteGraphDocumentIds",
     "RunIndex",
     "RunPrechunk",
     "RunSearch",
@@ -25,9 +40,14 @@ class RunIndex(Command):
     # Provider keys stay out of repr, so logging a command never writes them in cleartext.
     embedding_api_key: str = field(repr=False)
     llm_api_key: str | None = field(default=None, repr=False)
-    # Resolved header values can carry credentials; repr=False keeps them out of logs.
+    # Resolved header and connection values can carry credentials; repr=False keeps them
+    # out of logs. Connection arguments arrive under their LiteLLM names.
     embedding_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
     llm_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
+    embedding_connection: dict[str, str] = field(default_factory=dict, repr=False)
+    embedding_parameters: dict[str, Any] = field(default_factory=dict)
+    llm_connection: dict[str, str] = field(default_factory=dict, repr=False)
+    llm_parameters: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -38,9 +58,14 @@ class RunSearch(Command):
     # Provider keys stay out of repr, so logging a command never writes them in cleartext.
     embedding_api_key: str = field(repr=False)
     llm_api_key: str | None = field(default=None, repr=False)
-    # Resolved header values can carry credentials; repr=False keeps them out of logs.
+    # Resolved header and connection values can carry credentials; repr=False keeps them
+    # out of logs. Connection arguments arrive under their LiteLLM names.
     embedding_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
     llm_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
+    embedding_connection: dict[str, str] = field(default_factory=dict, repr=False)
+    embedding_parameters: dict[str, Any] = field(default_factory=dict)
+    llm_connection: dict[str, str] = field(default_factory=dict, repr=False)
+    llm_parameters: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -61,8 +86,63 @@ class GetMetrics(Command):
 
 
 @dataclass(frozen=True)
+class GetGraphVisualization(Command):
+    rag_id: int
+    max_entities: int = GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES
+    search: str | None = None
+
+
+@dataclass(frozen=True)
+class GetGraphTableData(Command):
+    rag_id: int
+    table_name: str
+    page: int = GRAPH_TABLE_DEFAULT_PAGE
+    page_size: int = GRAPH_TABLE_DEFAULT_PAGE_SIZE
+    search: str | None = None
+    # Optional exact-match filter on a single column. Both filter_column and
+    # filter_value must be set together; the match is applied before `search`.
+    filter_column: str | None = None
+    filter_value: str | None = None
+
+
+@dataclass(frozen=True)
+class GetGraphTableSummary(Command):
+    rag_id: int
+
+
+@dataclass(frozen=True)
+class GetEntityDetail(Command):
+    rag_id: int
+    entity_id: str
+
+
+@dataclass(frozen=True)
+class GetRelationshipDetail(Command):
+    rag_id: int
+    relationship_id: str
+
+
+@dataclass(frozen=True)
 class GetIndexEstimate(Command):
     rag_id: int
     document_ids: frozenset[int]
     # Chunking settings the user has not saved yet, by document id; they replace the stored ones.
     chunking_overrides: dict[int, ChunkingConfig] = field(default_factory=dict)
+
+
+# GraphRAG artifact transfer (export, restore, document id rewrite)
+@dataclass(frozen=True)
+class ExportGraphArtifacts(Command):
+    rag_id: int
+
+
+@dataclass(frozen=True)
+class RestoreGraphArtifacts(Command):
+    rag_id: int
+    archive_path: str
+
+
+@dataclass(frozen=True)
+class RewriteGraphDocumentIds(Command):
+    rag_id: int
+    document_id_map: Mapping[str, int]

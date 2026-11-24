@@ -225,10 +225,11 @@ def test_session_export_requires_export_permission(
     member_client_a, admin_client_a, org_a
 ):
     session = _make_session(org_a, "SA flow")
+    body = {"ids": [session.id]}
     # Member has no EXPORT on flows.
-    assert member_client_a.get(f"/api/sessions/{session.id}/export/").status_code == 403
+    assert member_client_a.post("/api/sessions/export-jobs/", body, format="json").status_code == 403
     # Org Admin does.
-    assert admin_client_a.get(f"/api/sessions/{session.id}/export/").status_code == 200
+    assert admin_client_a.post("/api/sessions/export-jobs/", body, format="json").status_code == 202
 
 
 # ---- stop ----

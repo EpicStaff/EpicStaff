@@ -8,14 +8,9 @@ pk (no existence leak).
 import pytest
 from rest_framework.test import APIClient
 
-from tables.models.embedding_models import EmbeddingModel
+from ai_models.models import EmbeddingModel, LLMConfig, LLMModel
 from tables.models.graph_models import Graph, SubGraphNode
-from tables.models.llm_models import (
-    LLMConfig,
-    LLMModel,
-    RealtimeModel,
-    RealtimeTranscriptionModel,
-)
+from tables.models.llm_models import RealtimeModel, RealtimeTranscriptionModel
 from tables.models.python_models import PythonCode, PythonCodeTool
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole

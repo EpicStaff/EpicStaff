@@ -51,6 +51,7 @@ export class GraphRagFilesListComponent {
     indexMode = input<GraphRagIndexMode>('update_new');
 
     toggleDoc = output<number>();
+    toggleAll = output<void>();
     pendingDelete = output<number>();
     reIncludeFiles = output<void>();
 
@@ -62,6 +63,27 @@ export class GraphRagFilesListComponent {
             disabled: this.indexMode() === 'update_new' && d.status === 'completed',
         }))
     );
+
+    selectableDocIds = computed(() =>
+        this.documentsWithDisabled()
+            .filter((d) => !d.disabled)
+            .map((d) => d.graph_rag_document_id)
+    );
+
+    checkedSelectableCount = computed(() => {
+        const checked = this.checkedDocIds();
+        return this.selectableDocIds().filter((id) => checked.has(id)).length;
+    });
+
+    allChecked = computed(() => {
+        const selectable = this.selectableDocIds();
+        return selectable.length > 0 && this.checkedSelectableCount() === selectable.length;
+    });
+
+    someChecked = computed(() => {
+        const count = this.checkedSelectableCount();
+        return count > 0 && count < this.selectableDocIds().length;
+    });
 
     processingIds = this.collectionsStorage.processingConfigIds;
 

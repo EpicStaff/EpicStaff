@@ -85,7 +85,7 @@ import { ResizeHandleComponent } from '../../resize-handle/resize-handle.compone
                 position: absolute;
                 inset: 0;
                 border-radius: inherit;
-                background: var(--note-bg);
+                background-color: var(--note-bg);
                 opacity: 0.55;
                 pointer-events: none;
             }

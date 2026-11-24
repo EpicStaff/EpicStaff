@@ -1,33 +1,18 @@
-from typing import Literal, get_args
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, ConfigDict, Field
 
 # Every level litellm knows, weakest first; the order is the one the UI lists them in.
 # Which levels a given model accepts is decided per model in django_app
-# (tables.utils.litellm_model_info.reasoning_support).
+# (ai_models.utils.litellm_model_info.reasoning_support).
 ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 REASONING_EFFORT_VALUES: tuple[str, ...] = get_args(ReasoningEffort)
-
-# Allowlist, not denylist: a transport field added to LLMConfigData later
-# (credentials, endpoints, headers) must never leak into generation kwargs.
-# A tuple keeps the kwargs order stable across processes.
-LITELLM_GENERATION_FIELDS = (
-    "temperature",
-    "top_p",
-    "stop",
-    "max_tokens",
-    "presence_penalty",
-    "frequency_penalty",
-    "logit_bias",
-    "seed",
-    "timeout",
-    "reasoning_effort",
-)
 
 # Only Anthropic's own API is covered. Claude reached through bedrock, vertex_ai or
 # azure_ai shares a litellm provider prefix with non-Claude models, so the rules below
 # cannot be keyed on the provider there.
 _ANTHROPIC_PROVIDER = "anthropic"
+_AZURE_DEPLOYMENT_ARGUMENT = "deployment_id"
 
 
 class LLMConfigData(BaseModel):
@@ -43,21 +28,19 @@ class LLMConfigData(BaseModel):
     """Display name of the LLMConfig this was built from. Used to label which
     config served a run; never sent to litellm."""
     timeout: float | int | None = None
-    temperature: float | None = None
-    top_p: float | None = None
-    stop: str | list[str] | None = None
-    max_tokens: int | None = None
-    presence_penalty: float | None = None
-    frequency_penalty: float | None = None
-    logit_bias: dict[int, float] | None = None
-    seed: int | None = None
-    base_url: str | None = None
-    api_version: str | None = None
-    api_key: str | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    """The model's settings as litellm keyword arguments (`temperature`, `max_tokens`...),
+    already limited by django_app to the ones the model catalog allows."""
+    connection: dict[str, str] = Field(default_factory=dict, repr=False)
+    """Provider connection arguments under their litellm names (`api_base`,
+    `aws_region_name`...). SecretResolver fills its `epicstaff_secret(<name>)` markers,
+    so a resolved copy holds secrets: never log it."""
+    main_secret_argument: str = "api_key"
+    """The litellm argument `api_key` is sent as for this provider."""
+    api_key: str | None = Field(default=None, repr=False)
     api_key_secret_id: int | None = Field(default=None, exclude=True)
     """In-memory carrier for SecretResolver; excluded from every dump so no
     Secret id reaches the Redis payload or anything persisted from this model."""
-    deployment_id: str | None = None
     extra_headers: dict[str, str] | None = None
     input_cost_per_token: float | None = None
     """USD per prompt token. Used for cost, together with output_cost_per_token,
@@ -65,16 +48,15 @@ class LLMConfigData(BaseModel):
     output_cost_per_token: float | None = None
     """USD per completion token. Used for cost, together with input_cost_per_token,
     instead of litellm's price map; null means litellm's price map."""
-    reasoning_effort: ReasoningEffort | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
     def to_litellm_kwargs(self, *, provider: str, exclude: set[str] | None = None) -> dict:
         """Return the generation parameters to pass to litellm, omitting unset ones.
 
-        Generation params only. The model string, auth, base_url/api_version,
-        deployment_id, extra_headers, store, response_format and tools stay with
-        each caller.
+        Generation params only: `parameters` plus `timeout`. The model string,
+        `connection_kwargs()`, extra_headers, store, response_format and tools stay
+        with each caller.
 
         On Anthropic, sampling params its API would reject are left out, because litellm
         forwards them unchanged: current Claude models answer 400 to temperature together
@@ -91,12 +73,21 @@ class LLMConfigData(BaseModel):
         excluded = exclude or set()
         kwargs = {
             name: value
-            for name in LITELLM_GENERATION_FIELDS
-            if name not in excluded and (value := getattr(self, name)) is not None
+            for name, value in {**self.parameters, "timeout": self.timeout}.items()
+            if name not in excluded and value is not None
         }
         if provider == _ANTHROPIC_PROVIDER:
             _drop_sampling_params_anthropic_rejects(kwargs)
         return kwargs
+
+    def connection_kwargs(self) -> dict[str, str]:
+        """Return the connection arguments and the main secret for a litellm call.
+
+        `deployment_id` is left out: it only names the model of an Azure config
+        (`litellm_call_model`), and litellm sends any call carrying it to Azure.
+        Holds the resolved secrets: never log it or put it in an error message.
+        """
+        return _connection_kwargs(self.connection, self.main_secret_argument, self.api_key)
 
 
 def _drop_sampling_params_anthropic_rejects(kwargs: dict) -> None:
@@ -108,15 +99,41 @@ def _drop_sampling_params_anthropic_rejects(kwargs: dict) -> None:
         kwargs.pop("top_p", None)
 
 
+def _connection_kwargs(
+    connection: dict[str, str], main_secret_argument: str, api_key: str | None
+) -> dict[str, str]:
+    # An empty field is "not set": litellm then falls back to its own default.
+    kwargs = {
+        name: value
+        for name, value in connection.items()
+        if value and name != _AZURE_DEPLOYMENT_ARGUMENT
+    }
+    if api_key:
+        kwargs[main_secret_argument] = api_key
+    return kwargs
+
+
 class EmbedderConfigData(BaseModel):
+    """Embedding settings a run sends; `parameters` and `connection` as on LLMConfigData."""
+
     model: str
-    deployment_name: str | None = None
-    base_url: str | None = None
-    api_key: str | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    connection: dict[str, str] = Field(default_factory=dict, repr=False)
+    main_secret_argument: str = "api_key"
+    api_key: str | None = Field(default=None, repr=False)
     api_key_secret_id: int | None = Field(default=None, exclude=True)
     extra_headers: dict[str, str] | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+    def connection_kwargs(self) -> dict[str, str]:
+        """Return the connection arguments and the main secret for a litellm call.
+
+        `deployment_id` is left out: it only names the model of an Azure config
+        (`litellm_call_model`), and litellm sends any call carrying it to Azure.
+        Holds the resolved secrets: never log it or put it in an error message.
+        """
+        return _connection_kwargs(self.connection, self.main_secret_argument, self.api_key)
 
 
 class LLMData(BaseModel):

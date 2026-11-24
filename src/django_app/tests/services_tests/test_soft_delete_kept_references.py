@@ -1,7 +1,8 @@
 """A secret in the recycle bin keeps the links that point at it; a purge clears them."""
 
 import pytest
-from tables.models import LLMConfig, PythonCode, Secret
+from tables.models import PythonCode, Secret
+from ai_models.models import LLMConfig
 from tables.services.recycle_bin.restore_service import RestoreService
 from tables.services.secrets.exceptions import SecretResolutionError
 from tables.services.secrets.secret_resolver import secret_resolver

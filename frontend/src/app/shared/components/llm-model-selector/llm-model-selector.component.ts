@@ -1,7 +1,6 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
-import { ComponentType } from '@angular/cdk/portal';
 import { NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
@@ -35,11 +34,14 @@ import { getProviderIconPath } from '@shared/utils';
 import { finalize, Observable } from 'rxjs';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
-import { LlmModelConfigDialogComponent, VoiceModelConfigDialogComponent } from '../llm-dialogs';
+import { ModelConfigDialogComponent, ModelConfigDialogData, VoiceModelConfigDialogComponent } from '../llm-dialogs';
 import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component';
 
 export type ModelSelectorKind = 'llm' | 'realtime';
 type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
+
+/** Search row + "Create LLM Model" need more room than a narrow trigger (e.g. side-by-side fallbacks). */
+const PANEL_MIN_WIDTH_PX = 280;
 
 @Component({
     selector: 'app-llm-model-selector',
@@ -113,9 +115,12 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                     cdkConnectedOverlay
                     [cdkConnectedOverlayOrigin]="trigger"
                     [cdkConnectedOverlayOpen]="isDropdownOpen()"
-                    [cdkConnectedOverlayWidth]="triggerWidth()"
+                    [cdkConnectedOverlayWidth]="overlayWidth()"
+                    [cdkConnectedOverlayMinWidth]="panelMinWidthPx"
                     [cdkConnectedOverlayPositions]="overlayPositions"
                     [cdkConnectedOverlayFlexibleDimensions]="true"
+                    [cdkConnectedOverlayPush]="true"
+                    [cdkConnectedOverlayViewportMargin]="8"
                     (overlayOutsideClick)="onOverlayOutsideClick($event)"
                     (detach)="closeDropdown()"
                 >
@@ -129,6 +134,7 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
                             <input
                                 type="text"
                                 [ngModel]="searchTerm()"
+                                [ngModelOptions]="{ standalone: true }"
                                 (ngModelChange)="searchTerm.set($event)"
                                 placeholder="Search models..."
                                 aria-label="Search models"
@@ -347,13 +353,15 @@ type SelectorConfig = FullLLMConfig | FullRealtimeConfig;
 
             .search-container {
                 display: flex;
+                flex-wrap: wrap;
                 gap: 8px;
                 padding: 6px 8px;
                 border-bottom: 1px solid var(--color-divider-subtle);
             }
 
             .search-container input {
-                width: 100%;
+                flex: 1 1 8rem;
+                min-width: 0;
                 background-color: var(--color-input-background);
                 border: 1px solid var(--color-input-border);
                 border-radius: 4px;
@@ -453,6 +461,8 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     public readonly selectedConfigId = signal<number | null>(null);
     public readonly isDropdownOpen = signal(false);
     public readonly triggerWidth = signal(0);
+    protected readonly panelMinWidthPx = PANEL_MIN_WIDTH_PX;
+    public readonly overlayWidth = computed(() => Math.max(this.triggerWidth(), PANEL_MIN_WIDTH_PX));
     // Self-managed spinner during the selector's own initial pool load, OR'd with the
     // external `loading` input so consumers don't need to load the data just to drive it.
     private readonly configsLoading = signal(false);
@@ -490,10 +500,12 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
         });
     });
 
-    // Prefer opening below the trigger; flip above when there isn't room.
+    // Below first; flip above or align to the trigger's end when the panel would clip on the right.
     readonly overlayPositions: ConnectedPosition[] = [
         { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 4 },
+        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
         { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -4 },
+        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
     ];
 
     private readonly dropdownId: string;
@@ -598,13 +610,12 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     }
 
     onCreateLlm(): void {
-        const component: ComponentType<unknown> =
-            this.kind() === 'realtime' ? VoiceModelConfigDialogComponent : LlmModelConfigDialogComponent;
-        this.dialog.open(component, {
-            autoFocus: false,
-            height: '90vh',
-            width: '600px',
-        });
+        if (this.kind() === 'realtime') {
+            this.dialog.open(VoiceModelConfigDialogComponent, { autoFocus: false, height: '90vh', width: '600px' });
+            return;
+        }
+        const data: ModelConfigDialogData = { kind: 'llm' };
+        this.dialog.open(ModelConfigDialogComponent, { autoFocus: false, data });
     }
 
     // ControlValueAccessor implementation

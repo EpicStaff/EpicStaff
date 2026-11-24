@@ -1,11 +1,11 @@
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { IPoint, PointExtensions } from '@foblex/2d';
 import { FFlowComponent } from '@foblex/flow';
-import { ActionCode, NodeType, ResourceCode } from '@shared/models';
+import { NodeType } from '@shared/models';
 
-import { PermissionsService } from '../../services/auth/permissions.service';
 import { GraphNoteModel, NoteLinkedRegion } from '../core/models/node.model';
 import { FlowService } from '../services/flow.service';
+import { FlowReadOnlyService } from '../services/flow-readonly.service';
 import { NodeFactoryService } from '../services/node-factory.service';
 import { UndoRedoService } from '../services/undo-redo.service';
 import { FlowArrangeAnimatorService } from './flow-arrange-animator.service';
@@ -36,7 +36,7 @@ export class NoteInteractionService {
     private readonly flowService = inject(FlowService);
     private readonly selectionManager = inject(FlowSelectionManagerService);
     private readonly nodeFactory = inject(NodeFactoryService);
-    private readonly permissionService = inject(PermissionsService);
+    private readonly flowReadOnly = inject(FlowReadOnlyService);
     private readonly arrangeAnimator = inject(FlowArrangeAnimatorService);
     private readonly undoRedoService = inject(UndoRedoService);
 
@@ -90,7 +90,8 @@ export class NoteInteractionService {
     });
 
     readonly isNoteRegionResizable = computed(() => {
-        if (!this.permissionService.can(ResourceCode.Flows, ActionCode.Update)) return false;
+        // Read-only covers a version preview as well as a user without Flows:Update.
+        if (this.flowReadOnly.isReadOnly()) return false;
 
         const selectedIds = this.selectionManager.selectedNodeIds();
         if (selectedIds.length !== 1) return false;

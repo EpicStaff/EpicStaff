@@ -2,26 +2,40 @@
     display: inline-flex;
 }
 
+// The icon and the numbers on top, the bar under them across the same width.
 .usage-ring {
     display: inline-flex;
-    align-items: center;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
     gap: 4px;
+    // As tall as the small buttons and the more-menu trigger beside it in the thread header, so the row lines up.
+    height: 28px;
+    box-sizing: border-box;
+    // With the numbers hidden (a narrow header) the bar still needs room to read as a scale.
+    min-width: 32px;
     border-radius: 4px;
     color: var(--color-text-secondary);
     // Accent while there is room, the warning status near the limit, the failed status at it.
-    --ring-color: var(--accent-color);
+    --bar-color: var(--accent-color);
 
     &--warning {
-        --ring-color: var(--color-ks-status-warning);
+        --bar-color: var(--color-ks-status-warning);
     }
 
     &--full {
-        --ring-color: var(--color-ks-status-failed);
+        --bar-color: var(--color-ks-status-failed);
     }
 
     &:focus-visible {
         outline: 2px solid var(--accent-color);
         outline-offset: 2px;
+    }
+
+    &__summary {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
     }
 
     &__icon {
@@ -32,24 +46,17 @@
         display: var(--usage-ring-text-display, inline);
     }
 
-    &__svg {
-        flex-shrink: 0;
-        // The arc starts at the top and runs clockwise.
-        transform: rotate(-90deg);
+    &__bar {
+        display: block;
+        height: 3px;
+        overflow: hidden;
+        border-radius: 2px;
+        background: var(--color-input-background);
     }
 
-    &__track,
-    &__value {
-        fill: none;
-        stroke-width: 3;
-    }
-
-    &__track {
-        stroke: var(--color-input-background);
-    }
-
-    &__value {
-        stroke: var(--ring-color);
-        stroke-linecap: butt;
+    &__fill {
+        display: block;
+        height: 100%;
+        background: var(--bar-color);
     }
 }

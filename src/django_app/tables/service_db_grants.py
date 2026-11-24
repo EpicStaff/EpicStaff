@@ -68,8 +68,8 @@ MANAGER_GRANTS = ServiceRoleGrants(
         # The retention job deletes expired sessions. Its FOR UPDATE SKIP LOCKED needs UPDATE
         # on at least one column.
         TableGrant("tables_session", (SELECT, DELETE), update_columns=("finished_at",)),
-        # ScheduleService reads the schedule triggers and records their runs.
-        TableGrant("tables_scheduletriggernode", (SELECT, UPDATE)),
+        # ScheduleService only reads the schedule triggers; django_app writes them.
+        TableGrant("tables_scheduletriggernode", (SELECT,)),
         # Deleted by the temporary storage credentials cleanup and with their session.
         TableGrant("storage_credentials_temp_account", (SELECT, DELETE)),
         # The temporary storage credentials cleanup reads when a run finished
@@ -108,19 +108,11 @@ MANAGER_GRANTS = ServiceRoleGrants(
 KNOWLEDGE_LLM_CONFIG_COLUMNS = (
     "id",
     "model_id",
-    "temperature",
-    "top_p",
-    "max_tokens",
-    "presence_penalty",
-    "frequency_penalty",
-    "logit_bias",
-    "seed",
-    "reasoning_effort",
     "input_cost_per_token",
     "output_cost_per_token",
 )
-KNOWLEDGE_LLM_MODEL_COLUMNS = ("id", "llm_provider_id", "name", "base_url", "api_version")
-KNOWLEDGE_EMBEDDING_CONFIG_COLUMNS = ("id", "custom_name", "task_type", "is_visible", "model_id")
+KNOWLEDGE_LLM_MODEL_COLUMNS = ("id", "llm_provider_id", "name")
+KNOWLEDGE_EMBEDDING_CONFIG_COLUMNS = ("id", "custom_name", "is_visible", "model_id")
 
 KNOWLEDGE_GRANTS = ServiceRoleGrants(
     service="knowledge",
@@ -135,8 +127,8 @@ KNOWLEDGE_GRANTS = ServiceRoleGrants(
         TableGrant("tables_baseragtype", (SELECT,)),
         # Only the columns the knowledge ORM maps (EmbeddingConfig in .../models/common.py,
         # LLMConfig and LLMModel in .../models/graph.py under
-        # src/knowledge_new/infrastructure/database): the service never reads credentials
-        # such as extra_headers, it receives them resolved in each request.
+        # src/knowledge_new/infrastructure/database): the service never reads what can name
+        # a secret (connection, extra_headers); it receives both resolved in each request.
         TableGrant("tables_embeddingconfig", (), select_columns=KNOWLEDGE_EMBEDDING_CONFIG_COLUMNS),
         TableGrant("tables_llmconfig", (), select_columns=KNOWLEDGE_LLM_CONFIG_COLUMNS),
         TableGrant("tables_llmmodel", (), select_columns=KNOWLEDGE_LLM_MODEL_COLUMNS),
@@ -158,7 +150,8 @@ KNOWLEDGE_GRANTS = ServiceRoleGrants(
 REALTIME_GRANTS = ServiceRoleGrants(
     service="realtime",
     role_variable="REALTIME_DB_USER",
-    tables=(TableGrant("realtime_session_items", READ_WRITE),),
+    # Realtime only appends events. SELECT is for INSERT ... RETURNING and the refresh after it.
+    tables=(TableGrant("realtime_session_items", (SELECT, INSERT)),),
     sequences=(SequenceGrant("realtime_session_items_id_seq", (USAGE,)),),
 )
 
