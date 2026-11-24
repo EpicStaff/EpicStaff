@@ -144,7 +144,6 @@ def test_embedding_config(test_embedding_model, default_org):
         custom_name="Test Embedder Config",
         defaults={
             "model": test_embedding_model,
-            "parameters": {"task_type": "retrieval_document"},
             "org": default_org,
         },
     )

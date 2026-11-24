@@ -1,7 +1,8 @@
 """Cancelling a RAG's indexing or a document's chunking: both ask knowledge_new to stop.
 
-knowledge_new answering 404 means nothing was running (a no-op, 204); an upstream
-failure must reach the caller instead of being swallowed. The knowledge client is
+knowledge_new answering 404 means nothing was running (a no-op, 204). How an upstream
+failure reaches the caller is covered in
+test_knowledge_service_errors_on_indexing_and_chunking.py. The knowledge client is
 the HTTP boundary to knowledge_new, so it is the only thing replaced.
 """
 
@@ -11,7 +12,7 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 
-from tables.clients.errors import ClientBadGatewayError, ClientResourceNotFoundError
+from tables.clients.errors import ClientResourceNotFoundError
 
 pytestmark = pytest.mark.django_db
 
@@ -25,18 +26,11 @@ def cancel_url(request, naive_rag_document_config):
     )
 
 
-@pytest.mark.parametrize(
-    ("upstream_error", "expected_status"),
-    [
-        (ClientResourceNotFoundError("no running operation"), status.HTTP_204_NO_CONTENT),
-        (ClientBadGatewayError("knowledge_new is down"), status.HTTP_502_BAD_GATEWAY),
-    ],
-    ids=["nothing-running", "knowledge-down"],
-)
-def test_cancel_maps_the_knowledge_service_answer(auth_client, cancel_url, upstream_error, expected_status):
-    with patch("tables.clients.knowledge.KnowledgeClient.cancel", side_effect=upstream_error):
+def test_cancel_with_nothing_running_is_a_no_op(auth_client, cancel_url):
+    with patch(
+        "tables.clients.knowledge.KnowledgeClient.cancel",
+        side_effect=ClientResourceNotFoundError("no running operation"),
+    ):
         response = auth_client.delete(cancel_url)
 
-    assert response.status_code == expected_status
-    if expected_status >= 400:
-        assert "error" in response.data
+    assert response.status_code == status.HTTP_204_NO_CONTENT
