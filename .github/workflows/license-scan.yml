@@ -148,12 +148,17 @@ jobs:
       # reported through GitHub instead: one open issue while alerting is broken
       # (no duplicates, no daily comments), closed by the next healthy run. The
       # repository is public, so the issue says only that alerting is broken.
+      # LICENSE_ALERT_ISSUE_ASSIGNEES: comma-separated GitHub logins (a repository
+      # variable; logins are public anyway). They are assigned after the issue
+      # exists, one by one, so a login that is no longer valid only warns instead
+      # of stopping the issue from being opened.
       - name: Open an issue when alerting is broken
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ASSIGNEES: ${{ vars.LICENSE_ALERT_ISSUE_ASSIGNEES }}
         run: |
           title='Licence alerting is broken'
           existing=$(gh issue list --state open --search "\"$title\" in:title" --json number,title \
@@ -162,11 +167,22 @@ jobs:
             echo "Issue #$existing is already open."
             exit 0
           fi
-          gh issue create --title "$title" --body "The daily licence scan could not run its alert step, so licence problems on \`main\` are currently **not emailed** to anyone.
+          url=$(gh issue create --title "$title" --body "The daily licence scan could not run its alert step, so licence problems on \`main\` are currently **not emailed** to anyone.
 
           Failed run: $RUN_URL
 
-          The run log names the cause. Usually the Gmail credential stopped working (the alert mailbox's password changed or its access was revoked): sign in as the alert mailbox again and replace \`LICENSE_ALERT_OAUTH_REFRESH_TOKEN\` in the \`license-alerts\` environment. This issue closes itself on the next healthy run."
+          The run log names the cause. Usually the Gmail credential stopped working (the alert mailbox's password changed or its access was revoked): sign in as the alert mailbox again and replace \`LICENSE_ALERT_OAUTH_REFRESH_TOKEN\` in the \`license-alerts\` environment. This issue closes itself on the next healthy run.")
+          number="${url##*/}"
+          echo "Opened issue #$number."
+          for login in ${ASSIGNEES//,/ }; do
+            assigned=$(gh api -X POST "repos/$GH_REPO/issues/$number/assignees" -f "assignees[]=$login" \
+              --jq "[.assignees[].login] | index(\"$login\") != null" || echo false)
+            if [ "$assigned" = true ]; then
+              echo "Assigned $login."
+            else
+              echo "::warning::Could not assign $login to issue #$number (not a collaborator, or the login changed)."
+            fi
+          done
 
       - name: Close the issue once alerting works again
         if: success()
