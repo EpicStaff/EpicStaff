@@ -282,6 +282,8 @@ class FlowAssistantSendMessageView(APIView):
         message = serializer.validated_data["message"]
 
         service = FlowAssistantService()
+        # Refused before the message is stored, so a refused turn leaves nothing to answer.
+        service.assert_reply_admitted(conversation.flow_assistant, organization_user.org_id)
         service.append_user_message(conversation, message)
         service.apply_title_if_missing(conversation, message)
 
@@ -319,7 +321,8 @@ class FlowAssistantStreamView(SSEMixin):
     """
 
     async def authorize(self, request, *args, **kwargs):
-        """Refuse unless the ticket user owns the conversation and holds FLOWS READ in its org.
+        """Refuse unless the ticket user owns the conversation and holds FLOWS READ in its org,
+        and the reply is admitted (`FlowAssistantService.assert_reply_admitted`).
 
         Runs before the stream opens, so a refused caller never starts an LLM reply.
         Keeps the conversation in ``self.conversation`` for `get_live_updates()`.
@@ -331,6 +334,11 @@ class FlowAssistantStreamView(SSEMixin):
                 self.kwargs["graph_id"],
                 self.kwargs["conversation_id"],
                 api_key_org_id=self.api_key_org_id,
+            )
+            # Asked again here, not only when the message was sent: this is where the model is
+            # called, and the plugin may have been suspended since.
+            await sync_to_async(FlowAssistantService().assert_reply_admitted)(
+                self.conversation.flow_assistant, self.conversation.flow_assistant.graph.org_id
             )
         except APIException as exc:
             return self.refuse(exc)

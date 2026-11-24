@@ -301,6 +301,8 @@ RUN_START_MODELS: Mapping[RunKind, str] = MappingProxyType(
         RunKind.REALTIME: "agents.AgentDefinition",
         RunKind.VOICE_CHANNEL: "tables.RealtimeChannel",
         RunKind.CODE: "tables.PythonCode",
+        RunKind.LLM_CONFIG: "ai_models.LLMConfig",
+        RunKind.EMBEDDING_CONFIG: "ai_models.EmbeddingConfig",
     }
 )
 

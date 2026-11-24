@@ -28,6 +28,7 @@ from tables.services.llm_clients.base import (
     UnsupportedLLMProviderError,
 )
 from tables.services.secrets.pinned_principal_rules import pinned_principal_of_user
+from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
 
 from .context import render_user_message
 from .output_schema import CDT_EXPLAIN_OUTPUT_SCHEMA
@@ -59,6 +60,8 @@ class CdtExplainService:
     ) -> ExplainResult:
         self._assert_node_visible(pk, org_id)
         llm_config = self._get_llm_config_or_404(llm_config_id, org_id)
+        # The explanation calls the model as a run would, so it is admitted like one.
+        assert_run_admitted(RunSubject(RunKind.LLM_CONFIG, llm_config.pk, org_id))
 
         try:
             client = get_llm_client(

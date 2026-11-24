@@ -49,6 +49,9 @@ Suspending takes effect at once:
   the organization's own flows that use one of the plugin's resources. That covers flow runs,
   test runs from a trigger node, realtime conversations, voice calls to a channel, and code
   test-runs. The answer names the plugin and the organization, never the resource.
+- **AI features that call one of the plugin's model configurations outside a run** are refused
+  the same way: the flow assistant's replies, decision-table explanations, and knowledge
+  indexing with an embedder or LLM configuration the plugin owns.
 - **Running sessions** of those flows are stopped.
 - **Triggers** of those flows keep firing, and each time the run is refused: a schedule is
   refused at every tick (a one-time schedule that fires while suspended does not run later),
