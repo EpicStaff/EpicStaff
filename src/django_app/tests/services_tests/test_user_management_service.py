@@ -14,11 +14,14 @@ What is NOT duplicated here:
 """
 
 
+import uuid
+
 import pytest
 from django.contrib.auth import get_user_model
 
 from tables.graph_versioning.services import GraphVersioningService
 from tables.models.graph_models import Graph, GraphNote, GraphVersion
+from tables.models.flow_assistant_models import FlowAssistant, FlowAssistantConversation
 from rbac.models import ApiKey, Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from rbac.exceptions import (
@@ -734,6 +737,50 @@ def test_revoke_keeps_keys_where_membership_remains_and_other_users_keys(
     remaining = set(ApiKey.objects.values_list("pk", flat=True))
     assert {kept_key.pk, bystander_key.pk} <= remaining
     assert deleted_key.pk not in remaining
+
+
+def _conversation(user, org):
+    graph = Graph.objects.create(name=f"assistant-flow-{uuid.uuid4()}", org=org)
+    return FlowAssistantConversation.objects.create(
+        flow_assistant=FlowAssistant.objects.create(graph=graph), user=user
+    )
+
+
+@pytest.mark.django_db
+def test_promotion_keeps_assistant_conversations_although_memberships_are_purged(
+    service, active_superadmin, authorship_orgs, django_user_model
+):
+    org_a, _ = authorship_orgs
+    member_role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    promoted = django_user_model.objects.create_user(
+        email="promoted-conversation-owner@example.com", password="StrongPass123!"
+    )
+    OrganizationUser.objects.create(user=promoted, org=org_a, role=member_role)
+    conversation = _conversation(promoted, org_a)
+
+    service.grant_superadmin(actor=active_superadmin, target_user_id=promoted.pk)
+
+    assert FlowAssistantConversation.objects.filter(pk=conversation.pk).exists()
+
+
+@pytest.mark.django_db
+def test_revoke_deletes_assistant_conversations_outside_remaining_memberships(
+    service, active_superadmin, second_active_superadmin, authorship_orgs
+):
+    org_a, org_b = authorship_orgs
+    member_role = Role.objects.get(name=BuiltInRole.MEMBER, is_built_in=True, org__isnull=True)
+    OrganizationUser.objects.create(user=second_active_superadmin, org=org_a, role=member_role)
+    kept = _conversation(second_active_superadmin, org_a)
+    deleted = _conversation(second_active_superadmin, org_b)
+    bystander = _conversation(active_superadmin, org_b)
+
+    service.revoke_superadmin(
+        actor=active_superadmin, target_user_id=second_active_superadmin.pk
+    )
+
+    remaining = set(FlowAssistantConversation.all_objects.values_list("pk", flat=True))
+    assert {kept.pk, bystander.pk} <= remaining
+    assert deleted.pk not in remaining
 
 
 @pytest.mark.django_db

@@ -5,6 +5,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Prefetch, Q, QuerySet
 from loguru import logger
 from src.shared.models import UserAction
+from tables.models.flow_assistant_models import FlowAssistantConversation
 from tables.models.user import User
 from user_audit.recorder import record_for_user_orgs, record_user_action
 from user_audit.targets import describe_user
@@ -232,7 +233,8 @@ class UserManagementService(CrossOrgResourceService):
         """Sets is_superadmin=False on target_user_id and clears their authorship in
         every org they are not a member of, including the authorship recorded in that
         org's flow version snapshots. Deletes their USER API keys bound to those orgs,
-        which the account can no longer act in. Last-active-superadmin guard.
+        which the account can no longer act in, and their flow assistant conversations
+        in them. Last-active-superadmin guard.
         Idempotent if already False. Not recorded as a user action (see below)."""
         UserModel = get_user_model()  # noqa: N806
         superadmins = (
@@ -255,6 +257,7 @@ class UserManagementService(CrossOrgResourceService):
         released = 0
         scrubbed_snapshots = 0
         deleted_api_keys = 0
+        deleted_conversations = 0
         if target.is_superadmin:
             target.is_superadmin = False
             target.save(update_fields=["is_superadmin", "updated_at"])
@@ -263,22 +266,30 @@ class UserManagementService(CrossOrgResourceService):
             scrubbed_snapshots = SnapshotAuthorshipScrubService().scrub_outside_memberships(
                 user_id=target.pk
             )
+            member_org_ids = OrganizationUser.objects.filter(user=target).values("org_id")
             deleted_api_keys, _ = (
                 ApiKey.objects.filter(created_by=target, key_type=ApiKey.KeyType.USER)
-                .exclude(org_id__in=OrganizationUser.objects.filter(user=target).values("org_id"))
+                .exclude(org_id__in=member_org_ids)
                 .delete()
             )
+            _, deleted_by_model = (
+                FlowAssistantConversation.all_objects.filter(user=target)
+                .exclude(flow_assistant__graph__org_id__in=member_org_ids)
+                .delete()
+            )
+            deleted_conversations = deleted_by_model.get(FlowAssistantConversation._meta.label, 0)
             # Not audited: a superadmin holds no membership, so the revoke reaches no org's
             # trail, and there is no platform-level trail yet.
 
         logger.info(
             "UserManagementService.revoke_superadmin actor={a} target={t} released_authorship={r} "
-            "scrubbed_snapshots={v} deleted_api_keys={k}",
+            "scrubbed_snapshots={v} deleted_api_keys={k} deleted_assistant_conversations={c}",
             a=getattr(actor, "email", "system"),
             t=target.email,
             r=released,
             v=scrubbed_snapshots,
             k=deleted_api_keys,
+            c=deleted_conversations,
         )
 
         return target

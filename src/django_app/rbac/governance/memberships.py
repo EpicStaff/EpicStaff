@@ -5,6 +5,7 @@ from django.db.models.functions import Lower
 from loguru import logger
 from rest_framework.exceptions import PermissionDenied
 from src.shared.models import UserAction
+from tables.models.flow_assistant_models import FlowAssistantConversation
 from user_audit.context import mark_request_handled
 from user_audit.recorder import record_user_action
 from user_audit.targets import TargetDescription
@@ -233,7 +234,7 @@ class MembershipManagementService(CrossOrgResourceService):
     @transaction.atomic
     def remove_member(self, actor, membership_id):
         """Remove a membership, clear the user's authorship in that org and delete
-        their API keys bound to it.
+        their API keys bound to it and their flow assistant conversations in it.
 
         Clears the user as author and last editor of the org's resources and of the
         flow version snapshots recorded in it, in the same transaction. Their keys in
@@ -259,14 +260,19 @@ class MembershipManagementService(CrossOrgResourceService):
         deleted_api_keys, _ = ApiKey.objects.filter(
             created_by_id=membership.user_id, org_id=membership.org_id
         ).delete()
+        _, deleted_by_model = FlowAssistantConversation.all_objects.filter(
+            user_id=membership.user_id, flow_assistant__graph__org_id=membership.org_id
+        ).delete()
         logger.info(
             "MembershipManagementService.remove_member actor={a} membership={m} "
-            "released_authorship={r} scrubbed_snapshots={v} deleted_api_keys={k}",
+            "released_authorship={r} scrubbed_snapshots={v} deleted_api_keys={k} "
+            "deleted_assistant_conversations={c}",
             a=getattr(actor, "email", "system"),
             m=membership_id,
             r=released,
             v=scrubbed_snapshots,
             k=deleted_api_keys,
+            c=deleted_by_model.get(FlowAssistantConversation._meta.label, 0),
         )
         record_user_action(
             action=UserAction.DELETED,
