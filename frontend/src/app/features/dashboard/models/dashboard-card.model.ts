@@ -8,4 +8,5 @@ export interface DashboardResourceCard {
     label: string;
     value: number;
     details: DashboardCardDetail[];
+    link: string;
 }

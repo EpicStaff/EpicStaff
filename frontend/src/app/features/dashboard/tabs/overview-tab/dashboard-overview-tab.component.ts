@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { FetchErrorStateComponent, LoadingSpinnerComponent } from '@shared/components';
 import { GraphSessionStatus } from '@shared/models';
 import { formatFileSize, formatTokens } from '@shared/utils';
@@ -29,6 +30,7 @@ import { sumStats } from '../../utils/dashboard-stats.util';
         LoadingSpinnerComponent,
         KpiDeltaComponent,
         SessionsByStatusCardComponent,
+        RouterLink,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -79,8 +81,8 @@ export class DashboardOverviewTabComponent {
 
 function toResourceCards(totals: DashboardTotals): DashboardResourceCard[] {
     return [
-        { icon: 'ti-robot', label: 'Agents', value: totals.agents, details: [] },
-        { icon: 'ti-share', label: 'Flows', value: totals.flows, details: [] },
+        { icon: 'ti-robot', label: 'Agents', value: totals.agents, details: [], link: '/agents' },
+        { icon: 'ti-share', label: 'Flows', value: totals.flows, details: [], link: '/flows' },
         {
             icon: 'ti-briefcase',
             label: 'Roles',
@@ -89,8 +91,9 @@ function toResourceCards(totals: DashboardTotals): DashboardResourceCard[] {
                 { value: totals.roles_builtin, label: 'built-in' },
                 { value: totals.roles_custom, label: 'custom' },
             ],
+            link: '/workspace/roles',
         },
-        { icon: 'ti-users', label: 'Users', value: totals.users, details: [] },
+        { icon: 'ti-users', label: 'Users', value: totals.users, details: [], link: '/workspace/users' },
         {
             icon: 'ti-books',
             label: 'Knowledge',
@@ -100,12 +103,14 @@ function toResourceCards(totals: DashboardTotals): DashboardResourceCard[] {
                 { value: totals.knowledge_graph, label: 'GraphRAG' },
                 { value: totals.knowledge_not_indexed, label: 'no RAG' },
             ],
+            link: '/storage/knowledge-sources',
         },
         {
             icon: 'ti-files',
             label: 'Files',
             value: totals.files,
             details: [{ value: formatFileSize(totals.files_bytes, 'auto'), label: 'in total' }],
+            link: '/storage/files',
         },
         {
             icon: 'ti-cpu',
@@ -116,6 +121,7 @@ function toResourceCards(totals: DashboardTotals): DashboardResourceCard[] {
                 { value: totals.embedding_configs, label: 'embedding' },
                 { value: totals.realtime_configs, label: 'realtime' },
             ],
+            link: '/settings/llm-library',
         },
         {
             icon: 'ti-tools',
@@ -125,7 +131,8 @@ function toResourceCards(totals: DashboardTotals): DashboardResourceCard[] {
                 { value: totals.tools_python, label: 'custom' },
                 { value: totals.tools_mcp, label: 'MCP' },
             ],
+            link: '/tools',
         },
-        { icon: 'ti-puzzle', label: 'Plugins', value: totals.plugins, details: [] },
+        { icon: 'ti-puzzle', label: 'Plugins', value: totals.plugins, details: [], link: '/workspace/plugins' },
     ];
 }

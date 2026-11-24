@@ -75,12 +75,17 @@
         </div>
         <div class="overview__resources">
             @for (card of resourceCards(); track card.label) {
-                <app-resource-card
-                    [icon]="card.icon"
-                    [label]="card.label"
-                    [value]="card.value"
-                    [details]="card.details"
-                />
+                <a
+                    class="overview__resource-link"
+                    [routerLink]="card.link"
+                >
+                    <app-resource-card
+                        [icon]="card.icon"
+                        [label]="card.label"
+                        [value]="card.value"
+                        [details]="card.details"
+                    />
+                </a>
             }
         </div>
     </section>
