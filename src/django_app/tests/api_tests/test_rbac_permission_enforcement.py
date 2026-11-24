@@ -133,6 +133,42 @@ def test_permissions_me_needs_an_org_the_caller_belongs_to(auth_client, member_u
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("caller", ["member_user", "superadmin_user"])
+def test_permissions_me_in_a_deactivated_org_says_it_is_deactivated(
+    request, auth_client, org_acme, caller
+):
+    org_acme.is_active = False
+    org_acme.save(update_fields=["is_active"])
+
+    response = auth_client(request.getfixturevalue(caller)).get(
+        "/api/permissions/me/", HTTP_X_ORGANIZATION_ID=str(org_acme.id)
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert response.json()["code"] == "organization_inactive"
+
+
+@pytest.mark.django_db
+def test_permissions_me_refuses_a_non_member_alike_whatever_the_org(auth_client, member_user):
+    active_org = Organization.objects.create(name="Active Inc (permissions-me tests)")
+    deactivated_org = Organization.objects.create(
+        name="Deactivated Inc (permissions-me tests)", is_active=False
+    )
+    nonexistent_org_id = deactivated_org.id + 1000
+    client = auth_client(member_user)
+
+    responses = [
+        client.get("/api/permissions/me/", HTTP_X_ORGANIZATION_ID=str(org_id))
+        for org_id in (active_org.id, deactivated_org.id, nonexistent_org_id)
+    ]
+
+    assert [response.status_code for response in responses] == [status.HTTP_403_FORBIDDEN] * 3
+    assert responses[0].json()["code"] == "org_membership_required"
+    assert responses[1].content == responses[0].content
+    assert responses[2].content == responses[0].content
+
+
+@pytest.mark.django_db
 def test_permissions_me_superadmin_star(auth_client, superadmin_user, org_acme):
     response = auth_client(superadmin_user).get("/api/permissions/me/", HTTP_X_ORGANIZATION_ID=str(org_acme.id))
 
