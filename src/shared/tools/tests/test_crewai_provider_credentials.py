@@ -7,8 +7,8 @@ kwarg is ignored, a missing one is reported as an error string, and a provider
 error never echoes the secret back to the agent.
 
 The providers' SDKs are replaced by fakes that record the credentials they are
-built with. Several SDKs are not installed in the test environment (each tool
-gets its own venv in the sandbox), so the fakes are installed into sys.modules
+built with. Several SDKs are not installed in the test environment (built-in tools
+run in the sandbox's builtin_tools venv), so the fakes are installed into sys.modules
 before the tool is loaded.
 """
 

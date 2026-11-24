@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 
 from tables.models.base_models import (
@@ -37,8 +38,12 @@ class FlowAssistantConversation(SoftDeleteFields, models.Model):
         on_delete=models.CASCADE,
         related_name="conversations",
     )
-    organization_user = models.ForeignKey(
-        "rbac.OrganizationUser",
+    # Owned by the person, not their membership: a superadmin acting in an org they
+    # are not a member of has no membership row. The org is the flow's org.
+    # Losing access to that org deletes the conversation (MembershipManagementService,
+    # UserManagementService.revoke_superadmin).
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="flow_assistant_conversations",
     )
@@ -62,7 +67,7 @@ class FlowAssistantConversation(SoftDeleteFields, models.Model):
         constraints = [soft_delete_consistency_constraint()]
 
     def __str__(self):
-        return f"FlowAssistantConversation(id={self.pk}, org_user_id={self.organization_user_id})"
+        return f"FlowAssistantConversation(id={self.pk}, user_id={self.user_id})"
 
     @property
     def messages(self) -> list[dict]:

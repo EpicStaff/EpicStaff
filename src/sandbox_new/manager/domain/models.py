@@ -170,6 +170,36 @@ SYSTEM_VENV_LIBS: dict[str, list[Library]] = {
         # PyAV 19 removed.
         Library(name="av", specification="==18.1.1"),
     ],
+    # Every library the built-in tools in shared/tools import: they all run here. A tool
+    # that needs a new library gets it added to this list.
+    "builtin_tools": [
+        Library(name="beautifulsoup4", specification="==4.15.0"),
+        Library(name="charset-normalizer", specification="==3.5.3"),
+        Library(name="couchbase", specification="==4.7.0"),
+        Library(name="httpx", specification="==0.28.1"),
+        Library(name="hyperbrowser", specification="==1.15.6"),
+        Library(name="jsonschema", specification="==4.26.0"),
+        Library(name="langchain", specification="==1.5.2"),
+        Library(name="langchain-community", specification="==0.4.2"),
+        Library(name="langchain-litellm", specification="==0.10.0"),
+        Library(name="litellm", specification="==1.100.5"),
+        Library(name="markdownify", specification="==1.2.4"),
+        Library(name="openai", specification="==2.54.0"),
+        Library(name="psycopg[binary]", specification="==3.3.4"),
+        Library(name="psycopg2-binary", specification="==2.9.13"),
+        Library(name="pydantic", specification="==2.13.4"),
+        Library(name="pymongo", specification="==4.20.1"),
+        Library(name="pymysql", specification="==1.2.4"),
+        # trafilatura imports urllib3's SOCKS support, which without PySocks warns on
+        # stderr, and the agent reads any stderr as a failed tool call.
+        Library(name="pysocks", specification="==1.7.1"),
+        Library(name="qdrant-client", specification="==1.20.0"),
+        Library(name="requests", specification="==2.34.2"),
+        Library(name="scrapfly-sdk", specification="==1.0.0"),
+        Library(name="sqlalchemy", specification="==2.1.8"),
+        Library(name="sqlparse", specification="==0.6.0"),
+        Library(name="trafilatura", specification="==2.4.0"),
+    ],
 }
 
 

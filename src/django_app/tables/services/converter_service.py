@@ -482,10 +482,12 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
         org_id: int | None = None,
         storage_grant: StorageGrant | None = None,
+        system_venv: str | None = None,
     ):
         return PythonCodeData(
             storage_grant=storage_grant,
             venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
+            system_venv=system_venv,
             code=python_code.code,
             entrypoint=python_code.entrypoint,
             global_kwargs=python_code.global_kwargs,
@@ -554,6 +556,7 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            system_venv=python_code_tool.system_venv,
         )
         # A PythonCodeTool is org-owned, not graph-owned, so the session-start graph
         # walk cannot reach it. Gate it here, where the tool is already in hand and
@@ -625,6 +628,7 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            system_venv=python_code_tool.system_venv,
         )
         # A configured tool reaches the session through this method only, so gating
         # convert_python_code_tool_to_pydantic alone would leave it ungated.

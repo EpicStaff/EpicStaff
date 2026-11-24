@@ -9,8 +9,8 @@ web_fetch_module = load_tool_main("web_fetch_tool")
 web_fetch_main = web_fetch_module.main
 
 # web_fetch_tool/main.py converts HTML to markdown via trafilatura, falling
-# back to markdownify — both installed into this tool's own dedicated venv by
-# the sandbox at execution time (per requirements.txt), not into any service
+# back to markdownify -- both installed into the sandbox's `builtin_tools` venv
+# that every built-in tool runs in, not into any service
 # venv. Tests that exercise that conversion need at least one of them.
 _HTML_TO_MARKDOWN_MISSING = (
     importlib.util.find_spec("trafilatura") is None

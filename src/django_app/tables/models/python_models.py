@@ -14,6 +14,9 @@ from tables.models.base_models import (
     without_internal_rows,
 )
 
+#: The sandbox's own venv every built-in tool runs in: it holds each library they import.
+BUILTIN_TOOLS_SYSTEM_VENV = "builtin_tools"
+
 #: Where `linked_secrets_prefetch()` puts a PythonCode's secrets, binned ones included.
 LINKED_SECRETS_ATTR = "prefetched_linked_secrets"
 
@@ -98,6 +101,11 @@ class PythonCodeTool(
         # Built-in tools are shared by every organization; an editor of one org
         # must not be shown to the others.
         return not self.built_in
+
+    @property
+    def system_venv(self) -> str | None:
+        """The sandbox's own venv this tool runs in; None for a tool that is not built in."""
+        return BUILTIN_TOOLS_SYSTEM_VENV if self.built_in else None
 
 
 class PythonCodeToolConfig(OrgScopedModel, SoftDeleteFields):

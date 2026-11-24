@@ -1,5 +1,6 @@
 import re
 from collections import Counter
+from collections.abc import Iterator
 
 from django.conf import settings
 from django.db.models import Case, IntegerField, Q, QuerySet, Value, When
@@ -8,7 +9,7 @@ from rbac.models import Organization
 from rest_framework.exceptions import ValidationError
 
 from tables.import_export.constants import OWNED_SURFACE_ENTRIES_KEY
-from tables.import_export.enums import EntityType
+from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
 from tables.models.label_models import Label
 
@@ -170,6 +171,22 @@ def nest_owned_surface_entries(export_data: dict) -> dict:
     if EntityType.SURFACE in export_data:
         nested_data[EntityType.SURFACE] = list(surface_entries_by_id.values())
     return nested_data
+
+
+def exported_nodes(data: dict) -> Iterator[tuple[str | None, dict]]:
+    """Yield `(node_type, node)` for every node entry of an export file, for in-place edits.
+
+    A full export nests its nodes in each `Flow` entry, each tagged with `node_type`. A
+    partial export (nodes copied out of a flow) has no `Flow`: it lists the nodes at the
+    top level under their node type, untagged. Conversions that rewrite nodes read both,
+    so a partial file is converted like a full one.
+    """
+    for graph in data.get(EntityType.GRAPH, []):
+        for node in graph.get("nodes", []):
+            yield node.get("node_type"), node
+    for node_type in NodeType:
+        for node in data.get(node_type, []):
+            yield node_type, node
 
 
 def resolve_import_organization(org_id: int | None) -> Organization | None:
