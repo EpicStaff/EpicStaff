@@ -34,8 +34,8 @@ def ensure_unique_slug(
 ) -> str:
     """`base_name`, or the first free `base_name-N` (N from 2) when it's taken.
 
-    For identifiers that can only hold letters, digits, "-" and "_" (webhook
-    paths), where ensure_unique_identifier's " #N" isn't allowed. The base is
+    For names that can't hold "#" (webhook paths, secret names), where
+    ensure_unique_identifier's " #N" isn't allowed. The base is
     kept whole: "orders-2024" becomes "orders-2024-2", never "orders-2". With
     `max_length`, the base is shortened so the suffix still fits.
     """

@@ -24,7 +24,7 @@ def test_every_ownable_model_has_a_label_and_nothing_else_does():
 def test_the_summary_counts_by_model_sorted_by_label(grant, acme, beta, grant_to, running_plugin):
     for number in range(2):
         own(flow(acme, f"Forecast {number}"), grant)
-    own(secret_row(acme, "Weather · LLM key"), grant)
+    own(secret_row(acme, "Weather - LLM key"), grant)
     own(llm_config(acme, "Weather summaries"), grant)
     own(StorageFile.objects.create(org=acme, path="weather/README.md", name="README.md", parent_path="weather/"), grant)
     almanac_grant = grant_to(running_plugin(id="almanac", name="Almanac"), acme)
@@ -52,7 +52,7 @@ def test_a_binned_resource_still_counts_and_a_deleted_one_does_not(grant, acme):
 def test_the_summary_is_one_query_for_the_kinds_present_and_one_per_kind(grant, acme):
     own(flow(acme, "Forecast"), grant)
     own(flow(acme, "Alerts"), grant)
-    own(secret_row(acme, "Weather · LLM key"), grant)
+    own(secret_row(acme, "Weather - LLM key"), grant)
     owned_resource_summary(grant)
 
     with CaptureQueriesContext(connection) as captured:
@@ -63,7 +63,7 @@ def test_the_summary_is_one_query_for_the_kinds_present_and_one_per_kind(grant, 
 
 def test_each_kind_is_counted_with_only_its_own_existence_check(grant, acme):
     own(flow(acme, "Forecast"), grant)
-    own(secret_row(acme, "Weather · LLM key"), grant)
+    own(secret_row(acme, "Weather - LLM key"), grant)
     owned_resource_summary(grant)
 
     with CaptureQueriesContext(connection) as captured:
