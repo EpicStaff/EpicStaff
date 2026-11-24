@@ -1,4 +1,5 @@
-"""Per-uid egress firewall that keeps user code off private networks.
+"""Per-uid egress firewall that keeps user code off private networks, and off the internet
+when SANDBOX_BLOCK_NETWORK is on.
 
 Ported from the legacy sandbox (src/sandbox/egress_firewall.py). sandbox-worker-network is an
 ordinary Docker bridge, so without this an execution can reach the Docker host (on
@@ -10,14 +11,18 @@ host.docker.internal regardless, and on Linux the bridge gateway stays reachable
 
 The rules match the socket owner's uid (`-m owner --uid-owner`), so only the
 dropped-privilege user-code child is filtered: the root worker's own seam traffic to the
-manager is unaffected, and user code keeps plain internet access. Only private,
-link-local, shared, reserved and multicast destinations (plus Azure's host endpoint) are
-rejected, with carve-outs for DNS and storage. The manager sits on a private range with
-no carve-out, so user code cannot reach its API either.
+manager is unaffected. Private, link-local, shared, reserved and multicast destinations
+(plus Azure's host endpoint) are rejected, with carve-outs for DNS and storage. The
+manager sits on a private range with no carve-out, so user code cannot reach its API
+either. User code keeps plain internet access unless the internet is blocked too: then
+everything but the carve-outs is rejected. That is what keeps a storage-enabled
+execution off the internet, since its per-execution Landlock rule allows the storage
+port on any host and does not cover UDP at all.
 
 Applied once at worker startup via `iptables-restore`. Needs the iptables binary
 (Dockerfile.worker), CAP_NET_ADMIN, and a kernel with the xt_owner match. With
-SANDBOX_BLOCK_PRIVATE_NETWORK on, a worker that cannot install it refuses to start.
+SANDBOX_BLOCK_PRIVATE_NETWORK or SANDBOX_BLOCK_NETWORK on, a worker that cannot install
+it refuses to start.
 """
 
 import ipaddress
@@ -104,10 +109,13 @@ def build_ipv4_rules(
     uid: int,
     nameservers: Iterable[str],
     storage_endpoints: Iterable[tuple[str, int]],
+    block_internet: bool,
 ) -> str:
     """Build `iptables-restore` input rejecting `uid`'s traffic to private IPv4 ranges.
 
-    The ACCEPT carve-outs precede the REJECTs because the chain is first-match.
+    With `block_internet` the chain ends by rejecting everything else as well, so the
+    DNS and storage carve-outs are all `uid` can reach. The ACCEPT carve-outs precede
+    the REJECTs because the chain is first-match.
     The input replaces the whole `filter` table (no `--noflush`), so applying it
     twice yields the same ruleset. That is safe because Docker only writes to
     the container netns's `nat` table, which this input does not touch.
@@ -116,6 +124,10 @@ def build_ipv4_rules(
         "*filter",
         f":{_CHAIN} - [0:0]",
         f"-A OUTPUT -m owner --uid-owner {uid} -j {_CHAIN}",
+        # Docker's embedded DNS (127.0.0.11) is DNATed to a random port before this
+        # chain sees the packet, so the port 53 carve-out below never matches it;
+        # without this, blocking the internet would break name resolution.
+        f"-A {_CHAIN} -o lo -j ACCEPT",
     ]
     for nameserver in nameservers:
         for protocol in ("udp", "tcp"):
@@ -128,6 +140,8 @@ def build_ipv4_rules(
         f"-A {_CHAIN} -d {blocked_range} -j REJECT --reject-with icmp-admin-prohibited"
         for blocked_range in BLOCKED_IPV4_RANGES
     )
+    if block_internet:
+        lines.append(f"-A {_CHAIN} -j REJECT --reject-with icmp-admin-prohibited")
     lines.append("COMMIT")
     return "\n".join(lines) + "\n"
 
@@ -199,8 +213,10 @@ def _restore(command: str, rules: str) -> None:
         ) from error
 
 
-def apply(uid: int) -> None:
+def apply(uid: int, *, block_internet: bool) -> None:
     """Install the egress firewall for `uid` and mark it active.
+
+    `block_internet` closes the public internet too, leaving only the carve-outs.
 
     Runs a blocking subprocess: it is called once from startup, before the
     event loop serves any job, so there is nothing for it to stall.
@@ -222,6 +238,7 @@ def apply(uid: int) -> None:
             uid=uid,
             nameservers=carve_outs.nameservers,
             storage_endpoints=carve_outs.storage_endpoints,
+            block_internet=block_internet,
         ),
     )
     if _IF_INET6_PATH.exists():
