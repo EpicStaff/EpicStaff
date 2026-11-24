@@ -159,6 +159,14 @@ async def test_venv_id_is_null_when_the_code_declares_none(executor, sandbox_int
 
 
 @pytest.mark.asyncio
+async def test_system_venv_reaches_the_sandbox(executor, sandbox_intake):
+    """A built-in tool names the sandbox's own venv instead of a venv id."""
+    await executor.run_code(build_python_code_data(system_venv="builtin_tools"), inputs={})
+
+    assert submitted_task(sandbox_intake)["system_venv"] == "builtin_tools"
+
+
+@pytest.mark.asyncio
 async def test_the_code_execution_does_not_go_over_redis(executor, fake_redis_service):
     await executor.run_code(build_python_code_data(), inputs={})
 
