@@ -241,8 +241,8 @@ export class AgentDetailComponent implements OnInit {
                 this.savedSnapshot = this.form.getRawValue();
             } else if (a) {
                 const serverValue = this.valueFromAgent(a);
-                // The create request already left on name blur. A model picked while it was in
-                // flight is only in the form — keep it and save it once this agent exists.
+                // The create request already left. Edits made while it was in flight are only in
+                // the form — keep them and save them once this agent exists.
                 const next = wasCreating ? this.withEditsMadeWhileCreating(serverValue) : serverValue;
                 this.form.reset(next);
                 this.form.markAsPristine();
@@ -408,13 +408,21 @@ export class AgentDetailComponent implements OnInit {
         return { name: '', description: '', llm_config: null, fallback_llm_config: null };
     }
 
-    /** LLM picks made after the create request was sent, before the saved agent replaced the draft. */
+    /**
+     * The created agent with the fields edited after the create request was sent: those the form holds otherwise than
+     * the request (`savedSnapshot`) did. A name differing only in surrounding spaces was not edited, as a save trims it.
+     */
     private withEditsMadeWhileCreating(serverValue: AgentFormValue): AgentFormValue {
         const local = this.form.getRawValue();
+        const sent = this.savedSnapshot;
         return {
-            ...serverValue,
-            llm_config: serverValue.llm_config ?? local.llm_config,
-            fallback_llm_config: serverValue.fallback_llm_config ?? local.fallback_llm_config,
+            name: local.name.trim() === sent.name ? serverValue.name : local.name,
+            description: local.description === sent.description ? serverValue.description : local.description,
+            llm_config: local.llm_config === sent.llm_config ? serverValue.llm_config : local.llm_config,
+            fallback_llm_config:
+                local.fallback_llm_config === sent.fallback_llm_config
+                    ? serverValue.fallback_llm_config
+                    : local.fallback_llm_config,
         };
     }
 

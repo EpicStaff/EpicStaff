@@ -17,7 +17,7 @@ import {
 } from '@shared/components';
 import { EnterBlurDirective, HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { of, Subject } from 'rxjs';
+import { Observable, of, Subject } from 'rxjs';
 
 import { tourAnchorSelector } from '../../../../core/guided-tour';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -964,7 +964,7 @@ describe('AgentDefinitionsPageComponent leaving unsaved agent edits', () => {
     }
 
     it.each(LEAVE_FOR_ANOTHER_PLACE)(
-        'asks what to do when the edit fails to save, sending nothing behind the dialog, on $way',
+        'asks what to do when the edit fails to save, giving the reason there only, sending nothing behind the dialog, on $way',
         async ({ start }) => {
             const { overlay } = await leaveAndFailToSave(start);
 
@@ -973,6 +973,7 @@ describe('AgentDefinitionsPageComponent leaving unsaved agent edits', () => {
                 message: 'Name is taken',
                 buttons: ['Discard & Leave', 'Keep Editing'],
             });
+            expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
             TestBed.inject(HttpTestingController).expectNone({ method: 'PATCH', url: `${AGENTS_URL}${AGENT.id}/` });
         }
     );
@@ -1017,13 +1018,14 @@ describe('AgentDefinitionsPageComponent leaving unsaved agent edits', () => {
         expect(fixture.componentInstance.canDeactivate()).toBe(true);
     });
 
-    it('keeps an edit whose save on blur failed, without asking, and saves it when the user leaves', async () => {
+    it('keeps an edit whose save on blur failed, giving the reason in a toast rather than asking, and saves it when the user leaves', async () => {
         const { fixture, overlay } = renderEdited(false, true);
         descriptionInput(fixture).blur();
         expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`).flush({ detail: 'Name is taken' }, SAVE_FAILED);
         await settle(fixture);
 
         expect(dialogText(overlay).title).toBe('');
+        expect(TestBed.inject(ToastService).error).toHaveBeenCalledExactlyOnceWith('Name is taken');
         expect(descriptionInput(fixture).value).toBe('Reads CVs');
 
         clickAgent(fixture, OTHER_AGENT);
@@ -1033,6 +1035,19 @@ describe('AgentDefinitionsPageComponent leaving unsaved agent edits', () => {
         await settle(fixture);
 
         expect(shows(fixture, OTHER_AGENT)).toBe(true);
+    });
+
+    it('gives the reason in a toast when the route leave that waited for the save was called off before it failed', async () => {
+        const { fixture } = renderEdited(false, true);
+        const leave = (fixture.componentInstance.canDeactivate() as Observable<boolean>).subscribe();
+        const save = expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`);
+
+        // The router drops the guard of a navigation it cancels.
+        leave.unsubscribe();
+        save.flush({ detail: 'Name is taken' }, SAVE_FAILED);
+        await settle(fixture);
+
+        expect(TestBed.inject(ToastService).error).toHaveBeenCalledExactlyOnceWith('Name is taken');
     });
 
     /** Links that open an agent from a view other than the editor; `open` reaches the view, `follow` takes the link. */
@@ -1192,19 +1207,47 @@ describe('AgentDefinitionsPageComponent leaving unsaved agent edits', () => {
         expect(shows(fixture, OTHER_AGENT)).toBe(true);
     });
 
-    it('creates a draft once when the user types while it is being created, then clicks away', async () => {
-        const { fixture } = renderNamedDraft();
-        nameInput(fixture).blur();
+    /** A named draft created on leaving its name, then "About this Agent" typed over while the create is under way. */
+    async function renderTypingWhileCreating(): Promise<ReturnType<typeof renderEdited> & { create: TestRequest }> {
+        const rendered = renderNamedDraft();
+        nameInput(rendered.fixture).blur();
         const create = expectAgentRequest('POST', AGENTS_URL);
+        await settle(rendered.fixture);
+        descriptionInput(rendered.fixture).focus();
+        type(rendered.fixture, descriptionInput(rendered.fixture), 'Reads CVs and cover letters');
+        return { ...rendered, create };
+    }
+
+    const CREATED_AGENT_URL = `${AGENTS_URL}9/`;
+
+    it('keeps what was typed while the draft was being created, and saves it to the created agent', async () => {
+        const { fixture, create } = await renderTypingWhileCreating();
+
+        create.flush({ ...AGENT, id: 9, name: DRAFT_NAME, description: 'Reads CVs' });
         await settle(fixture);
-        descriptionInput(fixture).focus();
-        type(fixture, descriptionInput(fixture), 'Reads CVs and cover letters');
+
+        expect(descriptionInput(fixture).value).toBe('Reads CVs and cover letters');
+        expect(expectAgentRequest('PATCH', CREATED_AGENT_URL).request.body).toMatchObject({
+            name: DRAFT_NAME,
+            description: 'Reads CVs and cover letters',
+        });
+    });
+
+    it('creates a draft once when the user types while it is being created, then clicks away, and goes once that is saved', async () => {
+        const { fixture, create } = await renderTypingWhileCreating();
 
         clickAgent(fixture, OTHER_AGENT);
         create.flush({ ...AGENT, id: 9, name: DRAFT_NAME, description: 'Reads CVs' });
         await settle(fixture);
 
         TestBed.inject(HttpTestingController).expectNone({ method: 'POST', url: AGENTS_URL });
+        const save = expectAgentRequest('PATCH', CREATED_AGENT_URL);
+        expect(save.request.body).toMatchObject({ description: 'Reads CVs and cover letters' });
+        expect(shows(fixture, OTHER_AGENT)).toBe(false);
+
+        save.flush({ ...AGENT, id: 9, name: DRAFT_NAME, description: 'Reads CVs and cover letters' });
+        await settle(fixture);
+
         expect(shows(fixture, OTHER_AGENT)).toBe(true);
     });
 

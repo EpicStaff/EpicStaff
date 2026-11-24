@@ -37,6 +37,7 @@ import { defaultIfEmpty, finalize, map, switchMap, take, takeUntil, tap } from '
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageItem } from '../../../files/models/storage.models';
@@ -120,6 +121,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     private readonly router: Router = inject(Router);
     private readonly permissions: PermissionsService = inject(PermissionsService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
+    private readonly toast: ToastService = inject(ToastService);
     private readonly destroyRef = inject(DestroyRef);
 
     protected readonly ResourceCode = ResourceCode;
@@ -182,6 +184,8 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     private readonly editorDirty = signal<boolean>(false);
     /** The result of the agent save under way; null once it has landed. */
     private readonly agentSave = signal<Observable<AgentSaveResult> | null>(null);
+    /** The agent save a leave waits on: the leave's dialog gives the reason it failed, so no toast does. */
+    private saveAwaitedByLeave: Observable<AgentSaveResult> | null = null;
     /** Fires as a leave starts, so that one still waiting gives way to it. */
     private readonly leaveStarted = new Subject<void>();
 
@@ -430,8 +434,9 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         }
         this.editorDirty.set(false);
         this.agentSave.set(saved);
-        saved.subscribe(() => {
+        saved.subscribe((result) => {
             if (this.agentSave() === saved) this.agentSave.set(null);
+            if (!result.saved && saved !== this.saveAwaitedByLeave) this.toast.error(result.error);
         });
     }
 
@@ -837,7 +842,12 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     private saveAgentEdits(): Observable<boolean> {
         const saveUnderWay = this.agentSave();
         if (saveUnderWay) {
+            this.saveAwaitedByLeave = saveUnderWay;
             return saveUnderWay.pipe(
+                // After the result, or when the leave stops waiting first: then a failure is toasted after all.
+                finalize(() => {
+                    if (this.saveAwaitedByLeave === saveUnderWay) this.saveAwaitedByLeave = null;
+                }),
                 switchMap((result) =>
                     result.saved ? this.saveEditsTypedMeanwhile() : this.confirmDiscardFailedEdits(result.error)
                 )

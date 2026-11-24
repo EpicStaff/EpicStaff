@@ -57,7 +57,10 @@ export interface SurfaceView {
     places: AgentSurfacePlace[];
 }
 
-/** How an agent save ended; `error` is the reason shown to the user. */
+/**
+ * How an agent save ended; `error` is the reason to show the user. The store does not show it: only the caller knows
+ * whether a toast should, or a dialog of its own.
+ */
 export type AgentSaveResult = { saved: true } | { saved: false; error: string };
 
 export interface SelectedAgentDoc {
@@ -1160,11 +1163,7 @@ export class AgentsPageStore {
     saveNewAgent(body: CreateAgentDefinitionRequest, openFirstInstruction = false): Observable<AgentSaveResult> {
         let trimmed = (body.name ?? '').trim();
         if (!trimmed) {
-            if (!openFirstInstruction) {
-                const error = 'Agent name is required';
-                this.toast.error(error);
-                return of({ saved: false, error });
-            }
+            if (!openFirstInstruction) return of({ saved: false, error: 'Agent name is required' });
             trimmed = computeUniqueName(
                 'Untitled Agent',
                 this.agents().map((a) => a.name)
@@ -1196,7 +1195,7 @@ export class AgentsPageStore {
         );
     }
 
-    /** Sends the request at once; the result replays to whoever waits on it later. */
+    /** Sends the request at once; the result replays to whoever waits on it later, who reports a failure. */
     private runAgentSave(
         request: Observable<AgentDefinition>,
         onSaved: (agent: AgentDefinition) => void,
@@ -1213,7 +1212,6 @@ export class AgentsPageStore {
                 const error = this.extractError(err, failure);
                 this.saving.set(false);
                 this.agentSaveErrorTick.update((n) => n + 1);
-                this.toast.error(error);
                 return of<AgentSaveResult>({ saved: false, error });
             }),
             shareReplay(1)
