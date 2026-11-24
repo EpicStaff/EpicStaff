@@ -285,17 +285,24 @@ implementation. Resolution order:
 
 Then membership is asserted (`assert_membership`, public — key creation reuses it): a
 non-superadmin must have an `OrganizationUser` row in that org **and the org must be
-active**. For a USER key this checks the key's owner, so an owner removed from the key's org,
-or an inactive org, gives `403`. Errors:
+active**. For a USER key this checks the key's owner; authentication already rejects
+(`401`) a key whose owner left its org or whose org is inactive, so the `403` is reached only
+if that changes during the request. Errors:
 
 | Condition | Exception | HTTP |
 |---|---|---|
 | Header/kwarg missing or non-integer | `OrgContextRequiredError` (`org_context_required`) | 400 |
-| Not a member / org inactive (non-superadmin) | `OrgMembershipRequiredError` (`org_membership_required`) | 403 |
-| Org inactive (superadmin) | `OrgMembershipRequiredError` (`org_membership_required`) | 403 |
+| Not a member (non-superadmin) | `OrgMembershipRequiredError` (`org_membership_required`) | 403 |
+| Org deactivated (member or superadmin) | `OrgDeactivatedError` (`organization_deactivated`) | 403 |
 | Org does not exist (superadmin) | `OrganizationNotFoundError` (`organization_not_found`) | 404 |
 
 Superadmin skips the membership check (may target any existing, active org).
+`OrgDeactivatedError` subclasses `OrgMembershipRequiredError`, so code that catches the
+parent to answer 404 or "no permissions" treats an inactive org the same way. The choice
+between the two for a non-superadmin is `membership_refusal` in `rbac/access/org_context.py`,
+shared with `PermissionResolver`: a membership row without an active org means the org is
+inactive; no row at all means not a member. A pinned principal whose pinned org is inactive
+also gets `OrgDeactivatedError`.
 The resolved id is cached per-request as `request._rbac_active_org_id` — both
 `OrgScopedResolverMixin.get_active_org_id()` and the serializer fields share that cache,
 so resolution runs at most once per request.
@@ -715,7 +722,7 @@ Serializer rules for org-scoped models:
 `utils/exception_handler.custom_exception_handler` renders domain exceptions from
 `rbac/exceptions.py` as
 `{"status_code": ..., "code": "...", "message": "..."}`. Reuse existing codes
-(`org_context_required`, `org_membership_required`, `permission_denied`,
+(`org_context_required`, `org_membership_required`, `organization_deactivated`, `permission_denied`,
 `built_in_role_immutable`, `built_in_model_immutable`, `last_org_admin`,
 `last_superadmin`, …) and add new exceptions
 to that module — never raw `Response({"error": ...})`.

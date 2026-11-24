@@ -23,7 +23,7 @@ This guide walks through everything the FE needs to wire up to make the new perm
 3. Cache `active_permissions` in a service (signal-based recommended) and expose a `can()` helper for UI gating.
 4. Build the org switcher dropdown in the profile menu.
 5. Build the Role Information modal (renders the catalog × role matrix).
-6. Handle mid-session 403 `org_membership_required` (the org was deactivated or the user was removed) by clearing state and prompting org re-pick.
+6. Handle mid-session 403 `org_membership_required` (the user was removed) by clearing state and prompting org re-pick, and 403 `organization_deactivated` (the org was deactivated) by switching to another available org.
 7. Render the "no orgs yet" empty state for new users with zero memberships.
 
 ---
@@ -82,7 +82,7 @@ Recommend tackling these in sequence; each one unblocks the next.
 - [ ] **4.** `PermissionsService` caches `active_permissions` from the second `/api/profile/` call. Exposes `can(resourceType, action) → boolean`.
 - [ ] **5.** Wire `*ngIf="permissions.can('flows', 'create')"` (or a `[hasPermission]` structural directive) on every UI element that creates/edits/deletes resources.
 - [ ] **6.** Org switcher dropdown component in the profile menu. On change, update `activeOrgId`, refetch profile, replace cached permissions, redirect to workspace home (or refresh the current route's data).
-- [ ] **7.** Global HTTP error interceptor: on `403 org_membership_required`, clear `activeOrgId`, redirect to org-picker; on `403 permission_denied`, show "you don't have access to this action" toast.
+- [ ] **7.** Global HTTP error interceptor: on `403 org_membership_required`, clear `activeOrgId`, redirect to org-picker; on `403 organization_deactivated`, reload the profile and the org list, switch to another available org and show one toast: "Organization <name> has been deactivated. You have been switched to <other>." When no org remains, the second sentence is left out and the user lands on the unassigned page; on `403 permission_denied`, show "you don't have access to this action" toast.
 - [ ] **8.** Role Information modal: fetch `GET /api/permissions/catalog/` once at app boot (cache forever), fetch `GET /api/admin/roles/{id}/` when modal opens, render the matrix.
 - [ ] **9.** Optional now / required later: superadmin "all orgs" view in the admin panel uses target-context endpoints (URL kwarg) instead of the active-org header.
 
@@ -330,7 +330,7 @@ async switchOrg(newOrgId: number): Promise<void> {
 
 **Single-org case**: `memberships.length === 1` → render the org name as a static label, not a dropdown.
 
-**Inactive org currently active** (deactivated by superadmin mid-session): the next gated request returns `403 org_membership_required`. Handle it in the error interceptor (Section 7) — clear `activeOrgId`, redirect to org-picker.
+**Inactive org currently active** (deactivated by superadmin mid-session): the next gated request returns `403 organization_deactivated`. Handle it in the error interceptor (Section 7) — reload the profile and the org list, switch to another available org and show one toast: "Organization <name> has been deactivated. You have been switched to <other>." When no org remains, the second sentence is left out and the user lands on the unassigned page.
 
 ---
 
@@ -370,7 +370,8 @@ The new error envelope codes you need to handle:
 | Code | Status | When | UI response |
 |---|---|---|---|
 | `org_context_required` | 400 | `X-Organization-Id` missing or non-integer on a header-required endpoint | Should not happen — your interceptor sets it. If it does, you have a bug (calling a gated endpoint before bootstrap completes). Log + crash to surface fast. |
-| `org_membership_required` | 403 | Active org is one the user is no longer a member of (deactivated org, or admin removed them) | Clear `activeOrgId`, force `bootstrap()` to re-pick from current memberships. Toast: "Your access to this workspace was revoked." |
+| `org_membership_required` | 403 | Active org is one the user is no longer a member of (admin removed them) | Clear `activeOrgId`, force `bootstrap()` to re-pick from current memberships. Toast: "Your access to this workspace was revoked." |
+| `organization_deactivated` | 403 | The organization the request names (the active org in `X-Organization-Id`, or an `org_id` in the body) was deactivated; the user is still a member of it (or is superadmin). A non-member gets `org_membership_required` instead | Reload the profile and the org list, switch to another available org. One toast: "Organization <name> has been deactivated. You have been switched to <other>." Without the second sentence, and to the unassigned page, when no org remains. |
 | `permission_denied` | 403 | User lacks the permission for the action they attempted | Toast: "You don't have permission to do that." Plus your UI should have hidden/disabled the action — this 403 indicates a UI-gating bug you should track. |
 | `trigger_nodes_require_use_permission` | 403 | A caller without `flows:use` creates or changes a trigger node (Webhook / Telegram / Schedule): a bulk save (`POST graphs/{id}/save/`) that creates or updates one, or the trigger node endpoints; or updates a webhook trigger (`PUT` / `PATCH webhook-triggers/{id}/`) that a live webhook or Telegram trigger node is attached to. Deleting a trigger node needs only `flows:update`. Nothing is saved. | Treated like any other 403: `forbiddenInterceptor` refreshes permissions, since `flows:use` may have just been revoked. The editor already keeps such users from creating or changing trigger nodes, so this should only follow a mid-session permission change. |
 | `flow_with_trigger_nodes_requires_use_permission` | 403 | A caller without `flows:use` copies (`POST graphs/{id}/copy/`), imports (`POST graphs/import/`, including `replace_existing`), partially imports (`POST graphs/{id}/partial-import/`), restores a version of (`POST graph-versions/{id}/restore/`) or creates a new flow from a version of (`POST graph-versions/{id}/create-graph/`) a flow whose source contains trigger nodes. Nothing is created or restored. | A business rule, not stale permissions: the code is in `forbiddenInterceptor`'s business-rule list, so no permission refresh and no toast. `UsePermissionRefusalService` shows an OK-only warning dialog with its own text per operation ("This flow contains trigger nodes (Webhook, Telegram, Schedule).", with "Copying it requires the Use permission on flows." as the caution) and the operation ends silently (no success or error toast, no navigation). Unpacking a subflow in the editor follows the same rule without a backend round trip: for a user without `flows:use`, a subflow with trigger nodes is refused with the same OK-only dialog before anything is asked or changed. |
@@ -397,6 +398,8 @@ export const errorInterceptor: HttpInterceptorFn = (req, next) => {
         permissions.setActivePermissions(null);
         toast.warn('Your access to this workspace was revoked.');
         router.navigate(['/select-workspace']);
+      } else if (err.status === 403 && code === 'organization_deactivated') {
+        // Reload the profile, switch to another available org, one toast naming both.
       } else if (err.status === 403 && code === 'permission_denied') {
         toast.warn("You don't have permission to do that.");
       } else if (err.status === 400 && code === 'org_context_required') {
@@ -487,7 +490,7 @@ A typical session, start to finish:
 6. **Permissions service caches the matrix.** UI gating signals fire — `can('flows', 'create')` returns true (Member can create flows).
 7. **Router navigates to `/workspace`.** Workspace lists flows. The `GET /api/flows/` call (when that endpoint becomes org-scoped) will attach `X-Organization-Id: 5` automatically and return Beta's flows.
 8. **User clicks org switcher, selects Acme.** `switchOrg(acmeId)` updates `activeOrgId`, refetches profile, replaces cached permissions (now Org Admin → can do more). Router refreshes the workspace route.
-9. **An admin (in another tab) deactivates Acme.** Next gated request returns `403 org_membership_required`. Error interceptor clears `activeOrgId`, redirects to `/select-workspace` with a toast.
+9. **An admin (in another tab) deactivates Acme.** Next gated request returns `403 organization_deactivated`. The app reloads the profile, switches to Beta and shows "Organization Acme has been deactivated. You have been switched to Beta."
 10. **User picks Beta again.** Cycle repeats.
 
 ---
