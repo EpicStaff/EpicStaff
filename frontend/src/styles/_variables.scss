@@ -649,6 +649,10 @@
     --color-trigger-schedule: var(--orange-500);
     --color-trigger-webhook: var(--green-500);
     --color-trigger-telegram: var(--sky-500);
+    --color-session-end: var(--purple-500);
+    --color-session-error: var(--red-500);
+    --color-session-stop: var(--gray-600);
+    --color-session-expired: var(--color-text-tertiary);
 
     // ------------------------------------------------------------------
     // SEMANTIC — tooltip (styles/_tooltip.scss). Dark in both themes: literals, not the palette primitives the
