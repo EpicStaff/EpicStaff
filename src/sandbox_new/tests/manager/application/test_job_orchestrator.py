@@ -103,7 +103,8 @@ def build_orchestrator(
 ) -> JobOrchestrator:
     intake_gate = IntakeGate(
         registry,
-        lambda: True,
+        # As many guaranteed slots as the cap admits: a worker slot is always free.
+        lambda: MAX_ACCEPTED,
         max_accepted=MAX_ACCEPTED,
         max_held=MAX_HELD,
         queue_timeout=QUEUE_TIMEOUT,

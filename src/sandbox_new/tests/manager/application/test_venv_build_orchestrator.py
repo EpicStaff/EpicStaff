@@ -319,6 +319,34 @@ async def test_a_venv_of_ordinary_packages_is_given_no_wheelhouse(
     await VenvBuildOrchestrator(uow, uv_provider, file_storage).build(stored)
 
     assert uv_provider.wheelhouses == [None]
+    assert uv_provider.offline_flags == [False]
+    assert file_storage.objects == {}
+
+
+async def test_a_system_venv_is_built_offline_from_the_images_wheelhouse(
+    uow, uv_provider, venvs_dir, file_storage, tmp_path, monkeypatch
+):
+    """The manager builds the system venvs at startup, which must succeed with no
+    internet: their wheels ship in the image, and the index is never asked."""
+    from manager import settings
+
+    system_wheelhouse = tmp_path / "system_wheelhouse"
+    system_wheelhouse.mkdir()
+    (system_wheelhouse / "pdfplumber-0.11.10-py3-none-any.whl").write_bytes(b"PK")
+    monkeypatch.setattr(settings, "SYSTEM_WHEELHOUSE_DIR", system_wheelhouse)
+    stored = uow.venv_repo.seed(
+        make_venv(
+            name="file_extractor",
+            system_key="file_extractor",
+            libs=[make_library(name="pdfplumber", specification="==0.11.10")],
+        )
+    )[0]
+
+    await VenvBuildOrchestrator(uow, uv_provider, file_storage).build(stored)
+
+    assert uow.venv_repo.rows[stored.id].status is VenvStatus.COMPLETED
+    assert uv_provider.offline_flags == [True]
+    assert uv_provider.wheelhouses == [system_wheelhouse]
     assert file_storage.objects == {}
 
 
