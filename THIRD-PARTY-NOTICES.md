@@ -12,9 +12,9 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Wed, 11 Nov 2026 08:25:03 GMT -->
-<!-- commit: 042e01bd097a98bb7ce60bdbb4635d0d37845a26 -->
-<!-- package-lock.json sha256: d7c8adf8cadb653b -->
+<!-- generated: Tue, 24 Nov 2026 08:34:25 GMT -->
+<!-- commit: da91bc07aa2cd3860751ceb02164d2a72a9b78c3 -->
+<!-- package-lock.json sha256: 04b687951d435928 -->
 
 ## Frontend license summary
 
@@ -22,7 +22,7 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 
 | License | Packages |
 |---|---|
-| MIT | 51 |
+| MIT | 53 |
 | ISC | 5 |
 | Apache-2.0 | 2 |
 | OFL-1.1 | 1 |
@@ -31,7 +31,7 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | (MIT OR GPL-3.0-or-later) | 1 |
 | (MIT AND Zlib) | 1 |
 | 0BSD | 1 |
-| **Total** | **64** |
+| **Total** | **66** |
 
 ## Package index
 
@@ -52,6 +52,7 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | `@foblex/platform` | 1.0.4 | MIT |
 | `@foblex/utils` | 1.1.1 | MIT |
 | `@fontsource/inter` | 5.2.8 | OFL-1.1 |
+| `@kurkle/color` | 0.3.4 | MIT |
 | `@standard-schema/spec` | 1.1.0 | MIT |
 | `@types/trusted-types` | 2.0.7 | MIT |
 | `@xmldom/xmldom` | 0.9.12 | MIT |
@@ -59,6 +60,7 @@ Production npm dependencies of the Angular frontend. Backend Python packages are
 | `ag-grid-angular` | 36.1.0 | MIT |
 | `ag-grid-community` | 36.1.0 | MIT |
 | `ag-stack` | 36.1.0 | MIT |
+| `chart.js` | 4.5.1 | MIT |
 | `core-util-is` | 1.0.3 | MIT |
 | `d3-binarytree` | 1.0.2 | MIT |
 | `d3-dispatch` | 3.0.2 | ISC |
@@ -1096,6 +1098,28 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 
 </details>
 
+### @kurkle/color@0.3.4
+
+- **License:** MIT
+- **Publisher:** Jukka Kurkela
+- **Repository:** https://github.com/kurkle/color
+
+<details><summary>License text</summary>
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2018-2024 Jukka Kurkela
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+</details>
+
 ### @standard-schema/spec@1.1.0
 
 - **License:** MIT
@@ -1314,6 +1338,27 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+</details>
+
+### chart.js@4.5.1
+
+- **License:** MIT
+- **Repository:** https://github.com/chartjs/Chart.js
+
+<details><summary>License text</summary>
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2014-2024 Chart.js Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 </details>
