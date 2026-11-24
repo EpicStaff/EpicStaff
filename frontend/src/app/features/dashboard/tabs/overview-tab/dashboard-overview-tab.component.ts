@@ -1,15 +1,19 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { FetchErrorStateComponent, LoadingSpinnerComponent } from '@shared/components';
 import { GraphSessionStatus } from '@shared/models';
-import { formatFileSize } from '@shared/utils';
+import { formatFileSize, formatTokens } from '@shared/utils';
 
 import { ActiveTriggersCardComponent } from '../../components/active-triggers-card/active-triggers-card.component';
 import { FirstReportStateComponent } from '../../components/first-report-state/first-report-state.component';
 import { KpiCardComponent } from '../../components/kpi-card/kpi-card.component';
+import { KpiDeltaComponent } from '../../components/kpi-delta/kpi-delta.component';
 import { ResourceCardComponent } from '../../components/resource-card/resource-card.component';
 import { DashboardResourceCard } from '../../models/dashboard-card.model';
 import { DashboardTotals } from '../../models/dashboard-report.model';
+import { DashboardFiltersService } from '../../services/dashboard-filters.service';
 import { DashboardReportService } from '../../services/dashboard-report.service';
+import { DashboardStatsService } from '../../services/dashboard-stats.service';
+import { sumStats } from '../../utils/dashboard-stats.util';
 
 @Component({
     selector: 'app-dashboard-overview-tab',
@@ -22,6 +26,7 @@ import { DashboardReportService } from '../../services/dashboard-report.service'
         FirstReportStateComponent,
         FetchErrorStateComponent,
         LoadingSpinnerComponent,
+        KpiDeltaComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -38,6 +43,27 @@ export class DashboardOverviewTabComponent {
     protected readonly resourceCards = computed(() => {
         const totals = this.report()?.totals;
         return totals ? toResourceCards(totals) : [];
+    });
+
+    private readonly stats = inject(DashboardStatsService).resource;
+    private readonly filters = inject(DashboardFiltersService).filters;
+
+    protected readonly kpis = computed(() => {
+        if (!this.stats.hasValue()) return null;
+        const current = sumStats(this.stats.value().current);
+        const previous = sumStats(this.stats.value().previous);
+        return {
+            current,
+            previous,
+            sessions: current.sessions.toLocaleString('en-US'),
+            tokens: formatTokens(current.tokens),
+            errorRate: current.sessions ? ((current.errors / current.sessions) * 100).toFixed(1) : '0',
+        };
+    });
+
+    protected readonly previousLabel = computed(() => {
+        const { period, unit } = this.filters();
+        return `vs previous ${period} ${unit}${period === 1 ? '' : 's'}`;
     });
 }
 
