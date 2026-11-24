@@ -65,9 +65,6 @@ export const GRAPH_VISUALIZATION_DETAIL_PANEL_WIDTH_OPTIONS = {
 /** Rows per data-table page before the user picks another size; matches the backend default. */
 export const GRAPH_TABLE_DEFAULT_PAGE_SIZE = 10;
 
-/** Page sizes offered for the data tables; the backend caps page_size at 100, so none may exceed it. */
-export const GRAPH_TABLE_PAGE_SIZE_OPTIONS: readonly number[] = [10, 25, 50, 100];
-
 /** Sidebar icon per graph data table, keyed by the table name the backend returns. */
 export const GRAPH_TABLE_ICONS: Record<string, string> = {
     entities: 'graph-entities',

@@ -44,7 +44,7 @@
 .open-in-popover {
     display: flex;
     flex-direction: column;
-    width: 220px;
+    width: 160px;
     max-height: 320px;
     background-color: var(--color-ks-background);
     border: 1px solid var(--graphite-750);
@@ -64,7 +64,6 @@
     &__list {
         list-style: none;
         margin: 0;
-        padding: 8px 0;
         overflow-y: auto;
     }
 

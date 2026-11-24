@@ -12,16 +12,16 @@ import {
 /** Overlay anchoring: start-aligned below the trigger, flipping above when there's no room. */
 const OVERLAY_POSITIONS = [
     {
-        originX: 'start' as const,
+        originX: 'end' as const,
         originY: 'bottom' as const,
-        overlayX: 'start' as const,
+        overlayX: 'end' as const,
         overlayY: 'top' as const,
         offsetY: 4,
     },
     {
-        originX: 'start' as const,
+        originX: 'end' as const,
         originY: 'top' as const,
-        overlayX: 'start' as const,
+        overlayX: 'end' as const,
         overlayY: 'bottom' as const,
         offsetY: -4,
     },

@@ -192,10 +192,15 @@
                     <div class="data-tables__pagination">
                         <div class="data-tables__page-size">
                             <span class="data-tables__page-size-label">Rows per page:</span>
-                            <app-select
-                                class="data-tables__page-size-select"
-                                [items]="pageSizeItems"
-                                [selectedValue]="pageSize()"
+                            <app-input-number
+                                class="data-tables__page-size-input"
+                                ariaLabel="Rows per page"
+                                [value]="pageSize()"
+                                [min]="1"
+                                [max]="100"
+                                [stepSize]="10"
+                                [commitOnBlur]="true"
+                                [alwaysShowSteps]="true"
                                 (changed)="onPageSizeChange($event)"
                             />
                         </div>

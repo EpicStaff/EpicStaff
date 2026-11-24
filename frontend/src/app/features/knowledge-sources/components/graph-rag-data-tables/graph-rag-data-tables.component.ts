@@ -4,10 +4,9 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
     AppSvgIconComponent,
     BlobPreviewComponent,
+    InputNumberComponent,
     LoadingSpinnerComponent,
     SearchComponent,
-    SelectComponent,
-    SelectItem,
 } from '@shared/components';
 import { EMPTY, forkJoin, Subject } from 'rxjs';
 import { catchError, debounceTime, switchMap, tap } from 'rxjs/operators';
@@ -19,7 +18,6 @@ import {
     GRAPH_TABLE_DEFAULT_PAGE_SIZE,
     GRAPH_TABLE_FALLBACK_ICON,
     GRAPH_TABLE_ICONS,
-    GRAPH_TABLE_PAGE_SIZE_OPTIONS,
 } from '../../constants/constants';
 import { isGraphNotIndexedError } from '../../helpers/graph-not-indexed-error.util';
 import { GraphTableData, GraphTableSummaryItem } from '../../models/graph-visualization.model';
@@ -66,9 +64,9 @@ export interface GraphRagPendingOpenIn {
         BlobPreviewComponent,
         GraphRagGridTableComponent,
         GraphRagLinkedToPickerComponent,
+        InputNumberComponent,
         LoadingSpinnerComponent,
         SearchComponent,
-        SelectComponent,
     ],
 })
 export class GraphRagDataTablesComponent implements OnInit {
@@ -163,10 +161,6 @@ export class GraphRagDataTablesComponent implements OnInit {
     });
 
     // 5. Public template-bound
-    readonly pageSizeItems: SelectItem<number>[] = GRAPH_TABLE_PAGE_SIZE_OPTIONS.map((size) => ({
-        name: String(size),
-        value: size,
-    }));
     protected readonly searchMaxLength = GRAPH_SEARCH_MAX_LENGTH;
 
     // 6. Private fields
@@ -205,8 +199,12 @@ export class GraphRagDataTablesComponent implements OnInit {
         this.loadTableData();
     }
 
-    onPageSizeChange(value: unknown): void {
-        this.pageSize.set(value as number);
+    onPageSizeChange(value: number | null): void {
+        // The stepper commits on blur/Enter with the value already clamped to [1, 100], so null should
+        // never reach this handler; guard anyway.
+        if (value === null) return;
+        if (value === this.pageSize()) return;
+        this.pageSize.set(value);
         this.page.set(1);
         this.loadTableData();
     }
