@@ -8,6 +8,8 @@ name: Licence scan
 #
 # It emails only when something is wrong: a package outside the policy, or a
 # scan that could not finish (a broken scan must not read as a clean one).
+# The alert job still runs every day to refresh and test its Gmail credential,
+# so a dead credential turns the run red long before an alert depends on it.
 on:
   schedule:
     - cron: '0 6 * * *'
@@ -91,14 +93,18 @@ jobs:
           retention-days: 7
 
   # A separate job on a fresh runner: the scan above installs and runs every
-  # shipped Python package, and the Gmail key (delegated to send as any domain
-  # user) must never share a runner with that code. Only this job sees the
-  # secrets; the license-alerts environment limits them to main.
+  # shipped Python package, and the Gmail credential must never share a runner
+  # with that code. Only this job sees the secrets; the license-alerts
+  # environment limits them to main.
   alert:
     needs: scan
-    if: failure()
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     environment: license-alerts
+    permissions:
+      contents: read
+      # The issue below is the second channel: it reaches people when Gmail cannot.
+      issues: write
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -116,21 +122,62 @@ jobs:
 
       # Absent when the scan broke before writing anything; the alert says so.
       - name: Fetch the report
+        if: needs.scan.result != 'success'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         continue-on-error: true
         with:
           name: license-report
           path: report
 
-      # Addresses are secrets, not variables: the runner prints a step's env
+      # Recipients are a secret, not a variable: the runner prints a step's env
       # in the public log and masks only secrets.
-      - name: Email the licence alert
+      - name: Check the Gmail credential and email any problem
         run: |
           cat report/license-report.txt report/frontend-notices.log > alert.txt 2>/dev/null || true
           python .github/scripts/send_license_alert.py
         env:
-          LICENSE_ALERT_GMAIL_SERVICE_ACCOUNT_JSON: ${{ secrets.LICENSE_ALERT_GMAIL_SERVICE_ACCOUNT_JSON }}
-          LICENSE_ALERT_SENDER: ${{ secrets.LICENSE_ALERT_SENDER }}
+          LICENSE_ALERT_OAUTH_CLIENT_ID: ${{ secrets.LICENSE_ALERT_OAUTH_CLIENT_ID }}
+          LICENSE_ALERT_OAUTH_CLIENT_SECRET: ${{ secrets.LICENSE_ALERT_OAUTH_CLIENT_SECRET }}
+          LICENSE_ALERT_OAUTH_REFRESH_TOKEN: ${{ secrets.LICENSE_ALERT_OAUTH_REFRESH_TOKEN }}
           LICENSE_ALERT_RECIPIENTS: ${{ secrets.LICENSE_ALERT_RECIPIENTS }}
+          SCAN_RESULT: ${{ needs.scan.result }}
           REPORT_PATH: alert.txt
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      # A dead credential would silently swallow every future alert, so it is
+      # reported through GitHub instead: one open issue while alerting is broken
+      # (no duplicates, no daily comments), closed by the next healthy run. The
+      # repository is public, so the issue says only that alerting is broken.
+      - name: Open an issue when alerting is broken
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title='Licence alerting is broken'
+          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number,title \
+            --jq "map(select(.title == \"$title\")) | .[0].number // empty")
+          if [ -n "$existing" ]; then
+            echo "Issue #$existing is already open."
+            exit 0
+          fi
+          gh issue create --title "$title" --body "The daily licence scan could not run its alert step, so licence problems on \`main\` are currently **not emailed** to anyone.
+
+          Failed run: $RUN_URL
+
+          The run log names the cause. Usually the Gmail credential stopped working (the alert mailbox's password changed or its access was revoked): sign in as the alert mailbox again and replace \`LICENSE_ALERT_OAUTH_REFRESH_TOKEN\` in the \`license-alerts\` environment. This issue closes itself on the next healthy run."
+
+      - name: Close the issue once alerting works again
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title='Licence alerting is broken'
+          gh issue list --state open --search "\"$title\" in:title" --json number,title \
+            --jq "map(select(.title == \"$title\")) | .[].number" |
+            while read -r number; do
+              gh issue close "$number" --comment "Alerting works again: $RUN_URL"
+            done
