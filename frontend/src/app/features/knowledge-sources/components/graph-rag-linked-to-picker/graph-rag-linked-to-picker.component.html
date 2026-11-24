@@ -109,7 +109,12 @@
                                 role="option"
                                 (click)="pick(row)"
                             >
-                                <span class="linked-to-popover__row-label">{{ row.label }}</span>
+                                <span
+                                    class="linked-to-popover__row-label"
+                                    [matTooltip]="row.label"
+                                    matTooltipPosition="above"
+                                    >{{ row.label }}</span
+                                >
                                 <span class="linked-to-popover__row-id">{{ row.id }}</span>
                             </button>
                         </li>

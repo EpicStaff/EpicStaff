@@ -3,6 +3,7 @@ import { CdkConnectedOverlay, CdkOverlayOrigin, Overlay } from '@angular/cdk/ove
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, LoadingSpinnerComponent, SearchComponent } from '@shared/components';
 import { EMPTY, Subject } from 'rxjs';
 import { catchError, debounceTime, groupBy, mergeMap, switchMap, tap } from 'rxjs/operators';
@@ -81,6 +82,7 @@ const EMPTY_STATE: TabState = {
         CdkTrapFocus,
         LoadingSpinnerComponent,
         SearchComponent,
+        MatTooltip,
     ],
 })
 export class GraphRagLinkedToPickerComponent {

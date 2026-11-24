@@ -38,6 +38,7 @@ export class GraphRagTabbedViewComponent {
     });
 
     onTabChange(tab: GraphRagTab): void {
+        this.pendingOpenIn.set(null);
         this.activeTab.set(tab);
     }
 
