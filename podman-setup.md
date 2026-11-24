@@ -132,6 +132,23 @@ The sandbox runs user code, so it gets the same hardening as in `src/docker-comp
 
 ---
 
+### OpenSearch (audit trail)
+
+Needed only when `SESSION_AUDIT_TRAIL_ENABLED` or `USER_AUDIT_TRAIL_ENABLED` is `True` in `.env`; with both `False` the container exits at once.
+
+```bash
+OPENSEARCH_INITIAL_ADMIN_PASSWORD="$OPENSEARCH_PASSWORD" podman run -d   --name opensearch   --network backend-network   --init   --ulimit memlock=-1:-1   --ulimit nofile=65536:65536   -v opensearch_data:/usr/share/opensearch/data   -v "$PWD/auditor/opensearch-entrypoint.sh":/opensearch-entrypoint.sh:ro   --tmpfs /usr/share/opensearch/config/tls:uid=1000,gid=1000,mode=0700   -e SESSION_AUDIT_TRAIL_ENABLED=${SESSION_AUDIT_TRAIL_ENABLED}   -e USER_AUDIT_TRAIL_ENABLED=${USER_AUDIT_TRAIL_ENABLED}   -e discovery.type=single-node   -e bootstrap.memory_lock=true   -e OPENSEARCH_JAVA_OPTS="-Xms1g -Xmx1g"   -e OPENSEARCH_INITIAL_ADMIN_PASSWORD   --health-cmd='test -f /tmp/internal-users-synced && curl -s --cacert /usr/share/opensearch/config/tls/root-ca.pem --variable %OPENSEARCH_INITIAL_ADMIN_PASSWORD --expand-user "admin:{{OPENSEARCH_INITIAL_ADMIN_PASSWORD}}" https://localhost:9200/_cluster/health | grep -qE "\"status\":\"(green|yellow)\""'   --health-interval=10s   --health-timeout=5s   --health-retries=30   --health-start-period=300s   --entrypoint /bin/bash   docker.io/opensearchproject/opensearch:2.19.1@sha256:72fe2fc84be8295906b8efca020b46c58ed45c8da60cd9b8b49e1991e38e89a4   /opensearch-entrypoint.sh
+```
+
+Run this from `EpicStaff/src` so the entrypoint script is found. The heap is set in the command because `source .env` cannot read the unquoted `OPENSEARCH_JAVA_OPTS` line; change the heap in the command, not in `.env`. Keep two flags as they are:
+
+- `--tmpfs ...config/tls...`: the entrypoint writes OpenSearch's TLS keys there, in memory only. Without it the container exits with an error naming that directory.
+- no `-p`: OpenSearch must be reachable only from `backend-network`, never from the host.
+
+The first start on a new `opensearch_data` volume takes several minutes: the entrypoint resets the security configuration and restarts OpenSearch once.
+
+---
+
 ### Frontend
 
 ```bash
