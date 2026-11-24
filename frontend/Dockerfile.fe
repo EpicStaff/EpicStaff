@@ -53,3 +53,7 @@ EXPOSE 80
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
+
+# The frontend's own commit for the About dialog. Last on purpose: only this layer changes per commit.
+ARG EPICSTAFF_GIT_SHA="" EPICSTAFF_COMMIT_DATE=""
+RUN printf '{"git_sha":"%s","commit_date":"%s"}\n' "$EPICSTAFF_GIT_SHA" "$EPICSTAFF_COMMIT_DATE" > /usr/share/nginx/html/version.json
