@@ -193,6 +193,8 @@ export class AgentDetailComponent implements OnInit {
 
     private savedSnapshot = this.emptyValue();
 
+    private autosaveHeld = false;
+
     private seededKey: string | null = null;
 
     private readonly agentNameInput = viewChild<ElementRef<HTMLInputElement>>('agentNameInput');
@@ -254,7 +256,7 @@ export class AgentDetailComponent implements OnInit {
 
         effect(() => {
             this.saveErrorTick();
-            untracked(() => this.revertToSnapshot());
+            untracked(() => this.keepFailedEdits());
         });
 
         // While a storage item or shared surface is being dragged, an agent shown in the
@@ -314,15 +316,38 @@ export class AgentDetailComponent implements OnInit {
     }
 
     autosaveName(): void {
-        if (!this.form.controls.name.value.trim() && this.agent()?.id != null) {
-            this.form.controls.name.setValue(this.savedSnapshot.name);
-            this.toast.info("Agent name can't be empty — kept the previous name");
-        }
+        this.keepSavedNameIfEmptied();
         this.persist(true);
     }
 
     autosave(): void {
         this.persist(false);
+    }
+
+    /** Whether the form can be saved as it is: editable, and named (or keeping the saved name) within the limit. */
+    canSave(): boolean {
+        const name = this.form.controls.name;
+        return !this.readOnly() && !name.hasError('maxlength') && !!(name.value.trim() || this.savedSnapshot.name);
+    }
+
+    /**
+     * Sends the pending edits as leaving the name field would. Unlike a blur it doesn't hold back while the page is
+     * busy: the page calls it once no agent save is under way, and the other saves don't touch these fields.
+     */
+    savePendingEdits(): void {
+        this.keepSavedNameIfEmptied();
+        this.sendSave(true);
+    }
+
+    /** Drops the edits: the form goes back to what the server holds. */
+    discardEdits(): void {
+        this.savedSnapshot = this.serverValue();
+        this.form.reset(this.savedSnapshot);
+    }
+
+    /** Held while a leave dialog is open: it takes the focus, and that blur must not save behind it. */
+    holdAutosave(held: boolean): void {
+        this.autosaveHeld = held;
     }
 
     /** The backend rejects a fallback with no primary or equal to it, so drop it in the same save. */
@@ -334,14 +359,22 @@ export class AgentDetailComponent implements OnInit {
         this.persist(false);
     }
 
+    private keepSavedNameIfEmptied(): void {
+        if (!this.form.controls.name.value.trim() && this.agent()?.id != null) {
+            this.form.controls.name.setValue(this.savedSnapshot.name);
+            this.toast.info("Agent name can't be empty — kept the previous name");
+        }
+    }
+
     private persist(fromNameBlur: boolean): void {
-        if (this.readOnly()) return;
-        if (this.saving()) return;
-        if (this.form.controls.name.hasError('maxlength')) return;
+        if (!this.saving() && !this.autosaveHeld) this.sendSave(fromNameBlur);
+    }
+
+    private sendSave(fromNameBlur: boolean): void {
+        if (!this.canSave()) return;
 
         const v = this.form.getRawValue();
         const effectiveName = v.name.trim() || this.savedSnapshot.name;
-        if (!effectiveName) return;
 
         const a = this.agent();
         const creating = a?.id == null;
@@ -414,17 +447,19 @@ export class AgentDetailComponent implements OnInit {
         );
     }
 
-    private revertToSnapshot(): void {
+    /**
+     * A failed save keeps the edits in the form: measured against what the server holds again, they count as unsaved,
+     * and the next blur or leave retries them. A failed create keeps the draft the same way.
+     */
+    private keepFailedEdits(): void {
+        this.savedSnapshot = this.serverValue();
+        this.dirtyChange.emit(this.hasUnsavedEdits());
+    }
+
+    /** What the server holds for the agent shown; empty for a draft. */
+    private serverValue(): AgentFormValue {
         const a = this.agent();
-        if (!a) {
-            // A failed create keeps the draft so the user can fix the name and retry.
-            this.savedSnapshot = this.emptyValue();
-            this.dirtyChange.emit(this.hasUnsavedEdits());
-            return;
-        }
-        const target = this.valueFromAgent(a);
-        this.savedSnapshot = target;
-        this.form.reset(target);
+        return a ? this.valueFromAgent(a) : this.emptyValue();
     }
 
     openAdditionalSettings(): void {

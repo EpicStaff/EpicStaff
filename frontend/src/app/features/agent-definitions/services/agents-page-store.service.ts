@@ -5,7 +5,7 @@ import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
 import { ExportOptionsDialogService } from '@shared/services';
 import { computeUniqueCopyName, computeUniqueName, movedToRecycleBinMessage } from '@shared/utils';
 import { forkJoin, Observable, of, Subject } from 'rxjs';
-import { catchError, debounceTime, groupBy, mergeMap, switchMap, tap } from 'rxjs/operators';
+import { catchError, debounceTime, groupBy, map, mergeMap, shareReplay, switchMap, tap } from 'rxjs/operators';
 
 import { wasHandledByForbiddenInterceptor } from '../../../core/interceptors/forbidden-interceptor-handled.util';
 import { TransferExportService } from '../../../core/services/transfer-export.service';
@@ -56,6 +56,9 @@ export interface SurfaceView {
     // All places this surface holds under ownerAgent (multi-place). Empty when not agent-owned.
     places: AgentSurfacePlace[];
 }
+
+/** How an agent save ended; `error` is the reason shown to the user. */
+export type AgentSaveResult = { saved: true } | { saved: false; error: string };
 
 export interface SelectedAgentDoc {
     agent: AgentDefinition;
@@ -1154,12 +1157,13 @@ export class AgentsPageStore {
         });
     }
 
-    saveNewAgent(body: CreateAgentDefinitionRequest, openFirstInstruction = false): void {
+    saveNewAgent(body: CreateAgentDefinitionRequest, openFirstInstruction = false): Observable<AgentSaveResult> {
         let trimmed = (body.name ?? '').trim();
         if (!trimmed) {
             if (!openFirstInstruction) {
-                this.toast.error('Agent name is required');
-                return;
+                const error = 'Agent name is required';
+                this.toast.error(error);
+                return of({ saved: false, error });
             }
             trimmed = computeUniqueName(
                 'Untitled Agent',
@@ -1168,9 +1172,9 @@ export class AgentsPageStore {
         }
         const draft = this.selectedNode();
         const group = draft.kind === 'draft-agent' ? (draft.groupId ?? null) : null;
-        this.saving.set(true);
-        this.agentsApi.create({ ...body, name: trimmed, group }).subscribe({
-            next: (created) => {
+        return this.runAgentSave(
+            this.agentsApi.create({ ...body, name: trimmed, group }),
+            (created) => {
                 this.agents.update((list) => [...list, created]);
                 this.agentCreatedFromDraftId.set(created.id);
                 if (openFirstInstruction) {
@@ -1178,30 +1182,44 @@ export class AgentsPageStore {
                 } else {
                     this.selectAgent(created.id);
                 }
-                this.saving.set(false);
                 this.toast.success('Agent created');
             },
-            error: (err) => {
-                this.saving.set(false);
-                this.agentSaveErrorTick.update((n) => n + 1);
-                this.toast.error(this.extractError(err, 'Failed to create agent'));
-            },
-        });
+            'Failed to create agent'
+        );
     }
 
-    updateAgent(id: number, patch: PartialUpdateAgentDefinitionRequest): void {
+    updateAgent(id: number, patch: PartialUpdateAgentDefinitionRequest): Observable<AgentSaveResult> {
+        return this.runAgentSave(
+            this.agentsApi.partialUpdate(id, patch),
+            (updated) => this.replaceAgent(updated),
+            'Failed to save agent'
+        );
+    }
+
+    /** Sends the request at once; the result replays to whoever waits on it later. */
+    private runAgentSave(
+        request: Observable<AgentDefinition>,
+        onSaved: (agent: AgentDefinition) => void,
+        failure: string
+    ): Observable<AgentSaveResult> {
         this.saving.set(true);
-        this.agentsApi.partialUpdate(id, patch).subscribe({
-            next: (updated) => {
-                this.replaceAgent(updated);
+        const outcome = request.pipe(
+            map((agent): AgentSaveResult => {
+                onSaved(agent);
                 this.saving.set(false);
-            },
-            error: (err) => {
+                return { saved: true };
+            }),
+            catchError((err: unknown) => {
+                const error = this.extractError(err, failure);
                 this.saving.set(false);
                 this.agentSaveErrorTick.update((n) => n + 1);
-                this.toast.error(this.extractError(err, 'Failed to save agent'));
-            },
-        });
+                this.toast.error(error);
+                return of<AgentSaveResult>({ saved: false, error });
+            }),
+            shareReplay(1)
+        );
+        outcome.subscribe();
+        return outcome;
     }
 
     updateSurface(id: number, patch: PartialUpdateSurfaceRequest): void {

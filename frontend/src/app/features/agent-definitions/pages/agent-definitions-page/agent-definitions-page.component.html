@@ -59,8 +59,8 @@
                     [initialEditMode]="openDocInEdit"
                     (toggleSidebar)="store.toggleSidebar()"
                     (save)="store.updateInstructionContent(doc.agent.id, doc.instructionIndex, $event)"
-                    (openAgent)="store.selectAgent($event)"
-                    (openAgentInstructions)="store.selectAgentInstructions($event)"
+                    (openAgent)="onOpenAgent($event)"
+                    (openAgentInstructions)="onOpenAgent($event, 'instructions')"
                     (groupChange)="store.moveSelectionToGroup($event)"
                 />
             } @else if (store.selectedSurfaceView()) {
@@ -68,9 +68,9 @@
                     [showSidebar]="store.showSidebar()"
                     [crumbs]="surfaceCrumbs()"
                     (toggleSidebar)="store.toggleSidebar()"
-                    (navAgent)="store.selectAgent($event)"
+                    (navAgent)="onOpenAgent($event)"
                     (groupChange)="store.moveSelectionToGroup($event)"
-                    (navAgentSurfaces)="store.selectAgentSurfaces($event)"
+                    (navAgentSurfaces)="onOpenAgent($event, 'surfaces')"
                 >
                     <button
                         type="button"
@@ -130,7 +130,7 @@
                     [showSidebar]="store.showSidebar()"
                     [crumbs]="agentCrumbs()"
                     (toggleSidebar)="store.toggleSidebar()"
-                    (navAgent)="store.selectAgent($event)"
+                    (navAgent)="onOpenAgent($event)"
                     (groupChange)="store.moveSelectionToGroup($event)"
                 >
                     @if ((store.selectedAgent() || store.selectedSurface()) && canOpenHeaderMenu()) {
@@ -238,7 +238,7 @@
                             (deleteSurfaceFromPanel)="onDeleteSurface($event)"
                             (duplicateSurface)="store.duplicateSurface($event)"
                             (makeAgentSpecificCopy)="onMakeAgentSpecificCopyForSelected($event)"
-                            (openSurfaceSource)="store.openSharedSurfaceSource($event)"
+                            (openSurfaceSource)="onOpenSurfaceSource($event)"
                             (openSurfaceUsage)="onOpenSurfaceUsage($event)"
                             (renameSurface)="store.updateSurface($event.id, { name: $event.name })"
                             (surfaceChange)="store.updateSurface($event.id, $event.patch)"
