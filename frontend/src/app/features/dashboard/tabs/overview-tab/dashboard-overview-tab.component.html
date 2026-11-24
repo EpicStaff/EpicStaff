@@ -55,10 +55,19 @@
         </app-kpi-card>
     </div>
 
-    <app-active-triggers-card
-        [triggers]="report.active_triggers"
-        [waitingSessions]="waitingSessions()"
-    />
+    <div class="overview__row">
+        @if (stats.hasValue()) {
+            <app-sessions-by-status-card
+                [stats]="stats.value().current"
+                [unit]="filters().unit"
+                [liveNow]="liveNow()"
+            />
+        }
+        <app-active-triggers-card
+            [triggers]="report.active_triggers"
+            [waitingSessions]="waitingSessions()"
+        />
+    </div>
     <section>
         <div class="overview__section-head">
             <h2 class="overview__section-title">Resources</h2>

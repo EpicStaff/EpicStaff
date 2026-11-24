@@ -8,6 +8,7 @@ import { FirstReportStateComponent } from '../../components/first-report-state/f
 import { KpiCardComponent } from '../../components/kpi-card/kpi-card.component';
 import { KpiDeltaComponent } from '../../components/kpi-delta/kpi-delta.component';
 import { ResourceCardComponent } from '../../components/resource-card/resource-card.component';
+import { SessionsByStatusCardComponent } from '../../components/sessions-by-status-card/sessions-by-status-card.component';
 import { DashboardResourceCard } from '../../models/dashboard-card.model';
 import { DashboardTotals } from '../../models/dashboard-report.model';
 import { DashboardFiltersService } from '../../services/dashboard-filters.service';
@@ -27,6 +28,7 @@ import { sumStats } from '../../utils/dashboard-stats.util';
         FetchErrorStateComponent,
         LoadingSpinnerComponent,
         KpiDeltaComponent,
+        SessionsByStatusCardComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
@@ -40,13 +42,21 @@ export class DashboardOverviewTabComponent {
         (this.report()?.live_sessions ?? []).filter((session) => session.status === GraphSessionStatus.WAITING_FOR_USER)
     );
 
+    protected readonly liveNow = computed(
+        () =>
+            (this.report()?.live_sessions ?? []).filter(
+                (session) =>
+                    session.status === GraphSessionStatus.RUNNING || session.status === GraphSessionStatus.PENDING
+            ).length
+    );
+
     protected readonly resourceCards = computed(() => {
         const totals = this.report()?.totals;
         return totals ? toResourceCards(totals) : [];
     });
 
-    private readonly stats = inject(DashboardStatsService).resource;
-    private readonly filters = inject(DashboardFiltersService).filters;
+    protected readonly stats = inject(DashboardStatsService).resource;
+    protected readonly filters = inject(DashboardFiltersService).filters;
 
     protected readonly kpis = computed(() => {
         if (!this.stats.hasValue()) return null;

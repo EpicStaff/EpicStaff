@@ -38,3 +38,10 @@
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 16px;
 }
+
+.overview__row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+}

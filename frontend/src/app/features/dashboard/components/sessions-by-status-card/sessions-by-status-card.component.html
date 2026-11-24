@@ -1,0 +1,45 @@
+<div class="sessions-card__head">
+    <span class="sessions-card__title">
+        <i
+            class="ti ti-activity"
+            aria-hidden="true"
+        ></i>
+        Sessions by status
+        <span class="sessions-card__count">{{ total() }}</span>
+    </span>
+    <div class="sessions-card__types">
+        @for (item of chartTypes; track item.type) {
+            <app-tab-button
+                mod="sm"
+                [active]="item.type === chartType()"
+                (action)="chartType.set(item.type)"
+            >
+                {{ item.label }}
+            </app-tab-button>
+        }
+    </div>
+</div>
+
+<app-dashboard-chart
+    ariaLabel="Sessions by status"
+    [type]="chartType()"
+    [labels]="labels()"
+    [series]="series()"
+/>
+
+<div class="sessions-card__legend">
+    @for (item of legend(); track item.label) {
+        <span class="sessions-card__legend-item">
+            <span
+                class="sessions-card__dot"
+                [style.background]="'var(' + item.color + ')'"
+            ></span>
+            {{ item.label }}
+            <strong>{{ item.total }}</strong>
+        </span>
+    }
+    <span class="sessions-card__legend-item sessions-card__live">
+        Live now
+        <strong>{{ liveNow() }}</strong>
+    </span>
+</div>
