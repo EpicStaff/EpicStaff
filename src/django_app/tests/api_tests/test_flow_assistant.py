@@ -829,7 +829,7 @@ async def test_stream_holds_no_database_connection_while_the_llm_replies(
     "case, expected_detail",
     [
         ("no_user_message", "No pending user message found."),
-        ("assistant_without_llm_config", "has no llm_config set"),
+        ("assistant_without_llm_config", "Choose one in the assistant settings"),
     ],
 )
 async def test_stream_error_frame_is_sent_without_a_database_connection(

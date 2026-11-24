@@ -18,7 +18,7 @@ from litellm.llms.anthropic.chat.transformation import AnthropicConfig
 
 from rbac.models import Organization
 from tables.models import Graph
-from ai_models.models import LLMConfig, LLMModel, Provider
+from ai_models.models import DefaultModels, LLMConfig, LLMModel, Provider
 from tables.models.flow_assistant_models import (
     FlowAssistant,
     FlowAssistantConversation,
@@ -231,6 +231,29 @@ def test_system_prompt_for_assistant_without_llm_config_is_the_default_one(graph
     assert '"rows": [{"name": "Alice", "score": 95}' in prompt
 
 
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "own_llm, expected_format",
+    [
+        # No LLM of its own: the org's default agent LLM (Anthropic) decides the format.
+        (None, '"cells": [["Alice", 95], ["Bob", 72]]'),
+        # Its own LLM wins over the org default.
+        (("openai", "gpt-4o"), '"rows": [{"name": "Alice", "score": 95}'),
+    ],
+)
+def test_system_prompt_follows_the_llm_the_assistant_runs_on(org, graph, own_llm, expected_format):
+    DefaultModels.objects.create(
+        org=org, agent_llm_config=_llm_config(org, "anthropic", "claude-opus-4-8")
+    )
+    assistant = FlowAssistant.objects.create(
+        graph=graph, llm_config=_llm_config(org, *own_llm) if own_llm else None
+    )
+
+    prompt = FlowAssistantService().build_system_prompt(assistant)
+
+    assert expected_format in prompt
+
+
 # ── stream_reply (application) ────────────────────────────────────────────────
 
 CELLS_REPLY = json.dumps(
@@ -305,6 +328,19 @@ async def _run_reply(graph, org, llm_config, reply, *, fail_after_reply=False, c
             if not fail_after_reply:
                 raise
     return events, mock_get_client, conversation
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_an_assistant_without_its_own_llm_replies_on_the_org_default(graph, org):
+    default_config = await sync_to_async(_llm_config)(org, "anthropic", "claude-opus-4-8")
+    await sync_to_async(DefaultModels.objects.create)(org=org, agent_llm_config=default_config)
+
+    events, get_client, _ = await _run_reply(graph, org, None, CELLS_REPLY)
+
+    assert events[-1].type == "done"
+    assert get_client.call_args.args[0] == default_config
+    assert get_client.call_args.kwargs["output_schema"] == ANTHROPIC_FLOW_ASSISTANT_OUTPUT_SCHEMA
 
 
 @pytest.mark.asyncio
