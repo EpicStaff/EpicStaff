@@ -168,6 +168,8 @@ class ExecutionSubmitSchema(Schema):
     func_kwargs: dict[str, Any] = Field(default_factory=dict)
     secrets: dict[str, Any] = Field(default_factory=dict, repr=False)
     venv_id: int | None = None
+    # A venv the sandbox owns, such as a built-in node's; never with `venv_id`.
+    system_venv: str | None = Field(default=None, min_length=1, max_length=255)
     use_storage: bool = False
     storage_allowed_paths: list[str] = Field(default_factory=list)
     storage_org_prefix: str | None = None
@@ -175,6 +177,17 @@ class ExecutionSubmitSchema(Schema):
     timeout: float | None = None
     # Asks for the result on crew's private result channel instead of the shared one.
     reply_to_crew_channel: bool = False
+
+    @model_validator(mode="after")
+    def reject_two_venvs(self) -> Self:
+        """Reject a submission naming both a venv and a system venv.
+
+        Raises:
+            ValueError: Both `venv_id` and `system_venv` are set. Rendered as 400.
+        """
+        if self.venv_id is not None and self.system_venv is not None:
+            raise ValueError("Give venv_id or system_venv, not both.")
+        return self
 
     @model_validator(mode="after")
     def require_everything_storage_needs(self) -> Self:

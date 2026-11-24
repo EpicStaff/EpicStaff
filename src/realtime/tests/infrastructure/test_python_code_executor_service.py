@@ -139,6 +139,7 @@ async def test_submitted_body_is_the_intake_contract(executor, sandbox_intake):
         "func_kwargs": {"query": "hello"},
         "secrets": {"API_KEY": "sk-live-123"},
         "venv_id": 17,
+        "system_venv": None,
         "use_storage": False,
         "storage_allowed_paths": [],
         "storage_org_prefix": None,

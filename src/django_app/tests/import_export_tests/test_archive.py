@@ -14,6 +14,7 @@ from tables.import_export.archive import (
     ImportArchive,
     InvalidArchiveError,
     detect_file_kind,
+    readable_size,
 )
 from tables.services.storage_service.archive_unpacking.extraction_guard import (
     ArchiveLimitExceeded,
@@ -249,4 +250,61 @@ def test_reading_export_json_stops_at_its_cap(tmp_path, settings):
             archive.envelope()
 
     # Refused for its size, not because the first 100 bytes are not whole JSON.
-    assert "unpacks to more than 100 bytes" in str(raised.value.detail["detail"])
+    assert raised.value.detail["detail"] == (
+        "The export data in this archive is larger than 100 bytes, so it can't be imported."
+    )
+
+
+@pytest.mark.parametrize(
+    ("setting", "limit", "members", "expected"),
+    [
+        pytest.param(
+            "MAX_KNOWLEDGE_ARCHIVE_ENTRIES",
+            1000,
+            {ENVELOPE_MEMBER: "{}", **{f"knowledge/documents/{i}": "x" for i in range(1000)}},
+            "The archive has more than 1,000 files, so it can't be imported.",
+            id="too many files",
+        ),
+        pytest.param(
+            "MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE",
+            2048,
+            {ENVELOPE_MEMBER: "{}", "big": "x" * 3000},
+            "The archive is larger than 2 KB when unpacked, so it can't be imported.",
+            id="too big when unpacked",
+        ),
+        pytest.param(
+            "MAX_EXPORT_ENVELOPE_SIZE",
+            1024,
+            {ENVELOPE_MEMBER: json.dumps({"padding": "x" * 2000})},
+            "The export data in this archive is larger than 1 KB, so it can't be imported.",
+            id="export.json too big",
+        ),
+    ],
+)
+def test_a_limit_is_explained_in_words(tmp_path, settings, setting, limit, members, expected):
+    setattr(settings, setting, limit)
+
+    with pytest.raises(InvalidArchiveError) as raised:
+        ImportArchive.open(_zip(tmp_path, members))
+
+    assert raised.value.detail["code"] == "invalid_archive"
+    assert raised.value.detail["detail"] == expected
+
+
+@pytest.mark.parametrize(
+    "size_in_bytes, expected",
+    [
+        (1024**3, "1 GB"),
+        (10 * 1024**2, "10 MB"),
+        (1536, "1.5 KB"),
+        (1024, "1 KB"),
+        (1023, "1023 bytes"),
+        (100, "100 bytes"),
+        # Rounded down, so "larger than" stays true: 1.494 KB is not "1.5 KB".
+        (1530, "1.4 KB"),
+        # Just under a unit stays in the smaller one rather than rounding up to "1024 KB".
+        (1024**2 - 1, "1023.9 KB"),
+    ],
+)
+def test_limit_sizes_read_as_people_write_them(size_in_bytes, expected):
+    assert readable_size(size_in_bytes) == expected
