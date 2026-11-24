@@ -58,7 +58,9 @@ class ApiKeyService:
             SessionPasswordChangedError: `session_token` is missing or was
                 minted under a previous password, or `user` no longer exists.
             OrgMembershipRequiredError: `user` is not a member of `org_id`
-                (superadmins excepted), or the org is inactive.
+                (superadmins excepted).
+            OrgDeactivatedError: `user` is a member of `org_id`, or a superadmin,
+                and the org is inactive.
             OrganizationNotFoundError: a superadmin named an org that does not exist.
             ApiKeyLimitExceededError: `user` already has the maximum number
                 of active keys in `org_id`.

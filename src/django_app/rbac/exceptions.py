@@ -255,13 +255,31 @@ class OrgContextRequiredError(CustomAPIExeption):
 
 
 class OrgMembershipRequiredError(CustomAPIExeption):
-    """Raised by OrgContextService when the caller is not a member of
-    the requested org and is not superadmin. Membership against an
-    inactive org also raises this."""
+    """Raised when the caller may not act in the requested org: not a member
+    and not superadmin, or (as the `OrgDeactivatedError` subclass) the org is
+    deactivated."""
 
     status_code = 403
     default_detail = "You are not a member of this organization."
     default_code = "org_membership_required"
+
+
+class OrgDeactivatedError(OrgMembershipRequiredError):
+    """Raised instead of its parent when the caller is a member of the org
+    (or a superadmin, or a principal pinned to it) but the org is deactivated.
+
+    Only callers who already know the org exists get it; a non-member still
+    gets `org_membership_required`. A subclass so every site that turns a
+    refused membership into a 404 or into no permissions treats a deactivated
+    org the same way without naming it.
+
+    Its code differs from the 409 `organization_inactive`, which refuses a run
+    or a plugin grant, not the caller's access to the org.
+    """
+
+    status_code = 403
+    default_detail = "This organization has been deactivated."
+    default_code = "organization_deactivated"
 
 
 class ApiKeyNotFoundError(CustomAPIExeption):
