@@ -5,8 +5,15 @@ const FRAME_ORIGIN = 'https://weather.plugins.example.com';
 
 describe('toPluginFrameOrigin', () => {
     it.each([
-        ['an https origin under the identifier', FRAME_ORIGIN],
+        ['a nested host: the identifier is the whole first label', FRAME_ORIGIN],
+        ['a flat host with a suffix ({id}-app)', 'https://weather-app.example.com'],
+        ['a flat host with a prefix (app-{id})', 'https://app-weather.example.com'],
+        ['a prefix and a suffix (es-{id}-app)', 'https://es-weather-app.example.com'],
+        ['an affix without a hyphen ({id}app)', 'https://weatherapp.example.com'],
         ['an explicit port', 'https://weather.plugins.example.com:8443'],
+        ['a flat host with a port', 'https://weather-app.example.com:8443'],
+        // A containment check, not the template: a longer word that holds the identifier passes too.
+        ['a first label that only contains the identifier', 'https://weatherman.example.com'],
         ['http on a .localhost host (local development)', 'http://weather.plugins.epicstaff.localhost'],
         ['http on a .localhost host with a port', 'http://weather.plugins.epicstaff.localhost:4200'],
     ])('accepts %s', (_label, origin) => {
@@ -20,8 +27,15 @@ describe('toPluginFrameOrigin', () => {
         ['a query', `${FRAME_ORIGIN}?x=1`],
         ['credentials', 'https://user:secret@weather.plugins.example.com'],
         ['another plugin host', 'https://chat.plugins.example.com'],
-        ['a host that only starts with the identifier', 'https://weatherman.plugins.example.com'],
+        ['a first label without the identifier', 'https://chat-app.example.com'],
+        ['a first label that holds only part of the identifier', 'https://weath-app.example.com'],
+        ['the identifier only in a deeper label', 'https://app.weather.example.com'],
+        ['the identifier only in the parent domain', 'https://chat.weather.example.com'],
+        ['a hyphen at the outer edge of the first label', 'https://-weather.example.com'],
+        ['a one-label parent domain', 'https://weather-app.com'],
+        ['a nested host with a one-label parent domain', 'https://weather.com'],
         ['the bare identifier as the host', 'https://weather'],
+        ['an empty label in the parent domain', 'https://weather..example.com'],
         ['upper case, which is not the canonical origin', 'https://Weather.plugins.example.com'],
         ['a javascript: URL', 'javascript:alert(1)'],
         ['a data: URL', 'data:text/html,<script>alert(1)</script>'],

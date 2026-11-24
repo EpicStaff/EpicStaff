@@ -46,6 +46,9 @@ class ExecutionRequest(BaseModel):
     func_kwargs: dict[str, Any] = {}
     secrets: dict[str, Any] = Field(default={}, repr=False)
     venv_id: int | None = None
+    # The venv the sandbox builds for a built-in node (`file_extractor`,
+    # `audio_transcription`); never together with `venv_id`.
+    system_venv: str | None = None
     use_storage: bool = False
     storage_allowed_paths: list[str] = []
     storage_org_prefix: str | None = None

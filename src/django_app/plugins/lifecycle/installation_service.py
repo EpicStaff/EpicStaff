@@ -26,6 +26,7 @@ from plugins.exceptions import (
     PluginPackageNotFoundError,
     UntrustedNotAcknowledgedError,
 )
+from plugins.gateway.host_verifier import PluginHostVerifier
 from plugins.lifecycle.lifecycle_locks import lock_plugin
 from plugins.lifecycle.plugin_actions import assert_plugin_in_service
 from plugins.lifecycle.upgrade_service import ApprovalRequest, PluginUpgradeService
@@ -79,10 +80,12 @@ class PluginInstallationService:
         store: PluginPackageStore | None = None,
         publisher: SpaPublisher | None = None,
         placements: PlacementService | None = None,
+        hosts: PluginHostVerifier | None = None,
     ):
         self._store = store or get_package_store()
         self._publisher = publisher or SpaPublisher()
         self._placements = placements or PlacementService()
+        self._hosts = hosts or PluginHostVerifier()
 
     def upload(self, file: BinaryIO, size: int, uploaded_by) -> PluginPackage:
         """Check an uploaded package and keep it as the plugin's package pending review.
@@ -255,6 +258,8 @@ class PluginInstallationService:
                 not acknowledge it.
             NoPluginNodeError: The package has a backend and no plugin node is registered.
             PluginNodeFullError: The plugin node has no free port or user id left.
+            PluginHostNotServedHereError: The plugin's host does not answer with this
+                deployment's proof (`PluginHostVerifier`): another server holds that name.
             NoPluginDatabaseServerError: The package has a database and no plugin database
                 server is registered.
             PluginNotUpgradableError, PluginVersionNotNewerError,
@@ -271,6 +276,9 @@ class PluginInstallationService:
         with tempfile.TemporaryFile() as local_copy:
             pending = self._pending_package(package_id)
             assert_plugin_in_service(pending.plugin)
+            # Before anything is written: a plugin whose host another server holds would get
+            # its people's login codes sent there (PluginHostVerifier).
+            self._hosts.assert_served_here(pending.plugin.identifier)
             archive = self._reviewed_archive(pending, local_copy)
             _assert_within_platform_maximums(archive.manifest)
             self._record_verdict(package_id, verify_package_signature(archive))

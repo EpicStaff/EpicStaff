@@ -13,8 +13,9 @@ from manager.domain.enums import JobStatus, VenvStatus, WheelStatus
 from manager.domain.types import LibraryString
 
 __all__ = [
-    "DEFAULT_VENV_NAME",
+    "DEFAULT_SYSTEM_KEY",
     "SOURCE_ARCHIVE_SUFFIXES",
+    "SYSTEM_VENV_LIBS",
     "WHEEL_SUFFIX",
     "CustomLibrary",
     "Job",
@@ -25,7 +26,6 @@ __all__ = [
     "Wheel",
 ]
 
-DEFAULT_VENV_NAME = "default"
 WHEEL_SUFFIX = ".whl"
 SOURCE_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz", ".zip")
 DISTRIBUTION_NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
@@ -151,6 +151,28 @@ class Library(ValueObject):
         return Library(**{**self.model_dump(), "version": value, "specification": specification})
 
 
+# The venv code runs in when it names no venv: the shared fallback.
+DEFAULT_SYSTEM_KEY = "default"
+
+# The venvs the sandbox builds and owns itself, by the key producers send as
+# `system_venv`. Exact pins: a built-in node's code is written against these versions,
+# and nobody can change a system venv's libraries through the API.
+SYSTEM_VENV_LIBS: dict[str, list[Library]] = {
+    DEFAULT_SYSTEM_KEY: [],
+    "file_extractor": [
+        Library(name="pdfplumber", specification="==0.11.10"),
+        Library(name="python-docx", specification="==1.2.0"),
+    ],
+    "audio_transcription": [
+        Library(name="faster-whisper", specification="==1.2.1"),
+        Library(name="pydub", specification="==0.25.1"),
+        # faster-whisper up to 1.2.1 calls av.open(metadata_errors=...), a keyword
+        # PyAV 19 removed.
+        Library(name="av", specification="==18.1.1"),
+    ],
+}
+
+
 class Venv(Entity):
     id: int | None = Field(default=None, frozen=True)
     # At most the 255 characters of its column, so a longer name is refused as invalid
@@ -160,11 +182,12 @@ class Venv(Entity):
     hash: str | None = None
     status: VenvStatus = VenvStatus.DECLARED
     error: str | None = None
-    # The shared fallback for code submitted without a venv. Found by this flag, never
-    # by name: a name is something any tenant can type.
-    is_default: bool = Field(default=False, frozen=True)
+    # Set on a venv the sandbox builds and owns itself, and None on one a client declared
+    # for its tools or nodes. Found by this key, never by name: a name is something any
+    # tenant can type.
+    system_key: str | None = Field(default=None, frozen=True)
     # The namespace the venv's custom libraries are looked up in: the gateway passes an
-    # opaque value per tenant, the sandbox only compares it. None for the default venv.
+    # opaque value per tenant, the sandbox only compares it. None for a system venv.
     scope: str | None = Field(default=None, min_length=1, max_length=255)
     # Assigned by the database, never by the domain: unset until the venv is stored.
     created_at: datetime | None = Field(default=None, frozen=True)
