@@ -192,7 +192,7 @@ access each declared; a SuperAdmin sees every organization's on the plugin's **A
 
 | Action | Recorded when | Actor | Organization |
 |---|---|---|---|
-| `api_request` | A service account's call that changed something; with its method, path (never the query string), route, status, the resource it created or named, and `created_count`; `development: true` when it was made with a [development key](#development-keys) | The plugin, and the person it acted for | The service account's |
+| `api_request` | A service account's call that changed something; with its method, path (never the query string; cut at 2048 characters), route, status, the resource it created or named (by the row's id, however the URL spells it: `/api/graphs/007/` names `7`), and `created_count`; `development: true` when it was made with a [development key](#development-keys) | The plugin, and the person it acted for | The service account's |
 | `package_approved` | A SuperAdmin approved a package (`version`, `trust`) | SuperAdmin | none |
 | `grant_created` | A SuperAdmin granted the plugin to an organization | SuperAdmin | the grant's |
 | `install_hook_succeeded`, `install_hook_failed` | The install hook reported (`job_id`, `attempt`, and `error` when it failed) | Platform | the grant's |
