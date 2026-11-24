@@ -42,17 +42,23 @@ def build_gate(
 
 
 def drain_one_per_second(registry: ExecutionRegistry, clock) -> None:
-    """Record 20 real completions one second apart, then a second: a drain rate of 1/s."""
+    """Queue 20 jobs, then finish them one second apart: a drain rate of 20/19 per second.
+
+    The sandbox is busy from the first job to the last completion -- 19 s -- and idle
+    for the second after it, which the drain rate leaves out.
+    """
+    queue(registry, 20, prefix="done")
     for index in range(20):
-        registry.reserve(f"done-{index}")
+        if index:
+            clock.advance(1)
         registry.finish(f"done-{index}", ran=True)
-        clock.advance(1)
+    clock.advance(1)
 
 
-def queue(registry: ExecutionRegistry, count: int) -> None:
+def queue(registry: ExecutionRegistry, count: int, *, prefix: str = "queued") -> None:
     for index in range(count):
-        registry.reserve(f"queued-{index}")
-        registry.mark_queued(f"queued-{index}")
+        registry.reserve(f"{prefix}-{index}")
+        registry.mark_queued(f"{prefix}-{index}")
 
 
 def hold(registry: ExecutionRegistry, count: int) -> None:
@@ -200,13 +206,25 @@ def test_a_drain_that_stalled_refuses_what_it_once_admitted(registry, clock):
     reserve_caller(registry)
     build_gate(registry).admit("caller", will_be_held=False)
 
-    # 20 completions over 80 s: 0.25/s, so the caller and the 5 ahead wait 24 s.
+    # 20 completions over 79 s of work: about 0.25/s, so the caller and the 5 ahead
+    # wait about 24 s.
     clock.advance(60)
 
     with pytest.raises(SandboxOverloadedError) as raised:
         build_gate(registry).admit("caller", will_be_held=False)
 
     assert raised.value.retry_after == 14
+
+
+def test_a_burst_after_a_quiet_hour_is_judged_on_the_rate_before_it(registry, clock):
+    """The hour with nothing to run is not counted as a slow drain: at 20/19 per second
+    the caller and the 9 ahead wait about 9.5 s, inside the queue timeout."""
+    drain_one_per_second(registry, clock)
+    clock.advance(3600)
+    queue(registry, 9)
+    reserve_caller(registry)
+
+    build_gate(registry).admit("caller", will_be_held=False)
 
 
 @pytest.mark.parametrize(
@@ -229,7 +247,7 @@ def test_a_drain_that_stalled_refuses_what_it_once_admitted(registry, clock):
 def test_a_free_worker_slot_admits_a_job_the_prediction_would_refuse(
     registry, clock, reserved_by_others, guaranteed_slots, admitted
 ):
-    # 10 queued + the caller at 1 per second: 11 s, over the queue timeout.
+    # 10 queued + the caller at 20/19 per second: about 10.5 s, over the queue timeout.
     drain_one_per_second(registry, clock)
     queue(registry, 10)
     for index in range(reserved_by_others):
@@ -247,7 +265,7 @@ def test_a_free_worker_slot_admits_a_job_the_prediction_would_refuse(
 def test_a_burst_right_after_a_heartbeat_gets_the_guaranteed_slots_and_no_more(
     registry, clock
 ):
-    """The prediction alone admits 10 of the burst; the 16 guaranteed slots admit 16,
+    """The prediction alone admits 9 of the burst; the 16 guaranteed slots admit 16,
     and the 17th is judged on the prediction again."""
     drain_one_per_second(registry, clock)
     gate = build_gate(registry, guaranteed_slots=16)
