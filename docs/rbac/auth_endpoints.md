@@ -144,7 +144,7 @@ header-required endpoint, the response is `400` with code
 isn't a member of (and is not superadmin), `403` with code
 `org_membership_required`. When it points to a deactivated org the
 caller is a member of, or the caller is superadmin, `403` with code
-`organization_inactive`. Superadmin can set any active `org_id` and
+`organization_deactivated`. Superadmin can set any active `org_id` and
 bypasses the membership check.
 
 `/api/profile/` is the exception — when the header is absent, malformed,

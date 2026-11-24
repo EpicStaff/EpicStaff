@@ -20,7 +20,7 @@ class PermissionResolver:
     own not-found.
 
     A non-superadmin without an active membership gets `membership_refusal`:
-    `OrgInactiveError` when they are a member of the now inactive org,
+    `OrgDeactivatedError` when they are a member of the now inactive org,
     `OrgMembershipRequiredError` otherwise. A superadmin resolves in any org;
     the org's state is checked by `OrgContextService`.
 

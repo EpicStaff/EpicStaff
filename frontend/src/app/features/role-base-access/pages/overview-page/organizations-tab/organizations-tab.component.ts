@@ -189,7 +189,7 @@ export class OrganizationsTabComponent {
     private refreshOnClose(ref: DialogRef<unknown, CreateOrganizationDialogComponent>): void {
         ref.closed.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((result) => {
             if (result) {
-                this.reloadTrigger.update((v) => v + 1);
+                this.reloadTrigger.update((count) => count + 1);
             }
         });
     }
@@ -255,7 +255,7 @@ export class OrganizationsTabComponent {
             .subscribe((deleted) => {
                 if (!deleted) return;
                 this.focusMainAction();
-                this.currentUserRefresh.refreshAfterMembershipChange();
+                this.refreshAfterMembershipChange();
             });
     }
 
@@ -270,7 +270,18 @@ export class OrganizationsTabComponent {
     private onMembershipChanged(successMessage: string): void {
         this.toast.success(successMessage);
         this.focusMainAction();
-        this.currentUserRefresh.refreshAfterMembershipChange();
+        this.refreshAfterMembershipChange();
+    }
+
+    /**
+     * Brings the signed-in user up to date, then reloads the list with the search and status filter it shows, so the
+     * table shows what the server now holds after the action (an org switch on the way also clears this list).
+     */
+    private refreshAfterMembershipChange(): void {
+        this.currentUserRefresh
+            .refreshAfterMembershipChange()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.reloadTrigger.update((count) => count + 1));
     }
 
     private focusMainAction(): void {

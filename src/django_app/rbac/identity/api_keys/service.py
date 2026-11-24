@@ -59,7 +59,7 @@ class ApiKeyService:
                 minted under a previous password, or `user` no longer exists.
             OrgMembershipRequiredError: `user` is not a member of `org_id`
                 (superadmins excepted).
-            OrgInactiveError: `user` is a member of `org_id`, or a superadmin,
+            OrgDeactivatedError: `user` is a member of `org_id`, or a superadmin,
                 and the org is inactive.
             OrganizationNotFoundError: a superadmin named an org that does not exist.
             ApiKeyLimitExceededError: `user` already has the maximum number

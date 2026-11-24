@@ -11,7 +11,7 @@ from rbac.access.org_context import OrgContextService
 from rbac.access.resolver import PermissionResolver
 from rbac.exceptions import (
     OrgContextRequiredError,
-    OrgInactiveError,
+    OrgDeactivatedError,
     OrgMembershipRequiredError,
 )
 from rbac.models import Organization, OrganizationUser, Role
@@ -164,12 +164,12 @@ def test_resolver_no_membership_raises(resolver, member_user, other_org_is_activ
 
 
 @pytest.mark.django_db
-def test_resolver_inactive_org_raises_organization_inactive_for_its_member(
+def test_resolver_inactive_org_raises_organization_deactivated_for_its_member(
     resolver, member_user, org_acme
 ):
     org_acme.is_active = False
     org_acme.save(update_fields=["is_active"])
-    with pytest.raises(OrgInactiveError):
+    with pytest.raises(OrgDeactivatedError):
         resolver.resolve(user=member_user, org_id=org_acme.id)
 
 

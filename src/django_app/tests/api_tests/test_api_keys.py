@@ -329,7 +329,7 @@ class TestSelfServiceApiKeys:
         resp = auth_client.post(PROFILE_KEYS_URL, data={"name": "k", "org_id": default_org.id}, format="json")
 
         assert resp.status_code == status.HTTP_403_FORBIDDEN
-        assert resp.json()["code"] == "organization_inactive"
+        assert resp.json()["code"] == "organization_deactivated"
         assert not ApiKey.objects.filter(created_by=regular_user).exists()
 
     @pytest.mark.parametrize(("org_is_active", "expected_status"), [(True, 201), (False, 403)], ids=["active", "inactive"])

@@ -32,7 +32,7 @@ import {
 } from './testing/current-user-fixtures';
 
 const CURRENT_PAGE = '/agents';
-const INACTIVE_MESSAGE = 'This organization has been deactivated.';
+const DEACTIVATED_MESSAGE = 'This organization has been deactivated.';
 
 /** Stands in for any org-scoped store registered with APP_STORAGE (flows, agents, tools…). */
 @Injectable({ providedIn: 'root' })
@@ -154,10 +154,10 @@ describe('CurrentUserRefreshService', () => {
         it('for an organization named in the request body, the header org being fine, shows the server message once', async () => {
             const errors = send('/api/flows/1/copy/', { organization_id: 3 });
 
-            refuse('/api/flows/1/copy/', 'organization_inactive', INACTIVE_MESSAGE);
+            refuse('/api/flows/1/copy/', 'organization_deactivated', DEACTIVATED_MESSAGE);
             answerUserLoad(http, memberOf(ORGANIZATION_A, ORGANIZATION_B));
 
-            expect(await shownToasts()).toEqual([{ type: 'error', message: INACTIVE_MESSAGE }]);
+            expect(await shownToasts()).toEqual([{ type: 'error', message: DEACTIVATED_MESSAGE }]);
             expect(errors.map((error) => error.status)).toEqual([403]);
             expect(activeOrgId()).toBe(ORGANIZATION_A.id);
             expect(TestBed.inject(OrgScopedStoreFake).data).toBe('flows of Organization A');
@@ -167,7 +167,7 @@ describe('CurrentUserRefreshService', () => {
         it('says no organization is left when the deactivated one was the last', async () => {
             send('/api/flows/');
 
-            refuse('/api/flows/', 'organization_inactive', INACTIVE_MESSAGE);
+            refuse('/api/flows/', 'organization_deactivated', DEACTIVATED_MESSAGE);
             answerUserLoad(http, memberOf());
 
             expect(await shownToasts()).toEqual([
@@ -201,14 +201,14 @@ describe('CurrentUserRefreshService', () => {
         ])('leaves the profile, active org, stores and permissions as they were when %s', async (_case, failReload) => {
             const errors = send('/api/flows/');
 
-            refuse('/api/flows/', 'organization_inactive', INACTIVE_MESSAGE);
+            refuse('/api/flows/', 'organization_deactivated', DEACTIVATED_MESSAGE);
             failReload(http, memberOf(ORGANIZATION_B));
 
             expect(activeOrgId()).toBe(ORGANIZATION_A.id);
             expect(organizationsInMenu()).toEqual(['A', 'B']);
             expect(TestBed.inject(OrgScopedStoreFake).data).toBe('flows of Organization A');
             expect(TestBed.inject(PermissionsService).active()?.org_id).toBe(ORGANIZATION_A.id);
-            expect(await shownToasts()).toEqual([{ type: 'error', message: INACTIVE_MESSAGE }]);
+            expect(await shownToasts()).toEqual([{ type: 'error', message: DEACTIVATED_MESSAGE }]);
             expect(errors.map((error) => error.status)).toEqual([403]);
             expect(await navigations()).toEqual([]);
         });
@@ -229,7 +229,7 @@ describe('CurrentUserRefreshService', () => {
     });
 
     describe('refreshAfterMembershipChange', () => {
-        it('after the active organization was deactivated clears org-scoped stores and switches to another org', async () => {
+        it('after the active organization was deactivated clears org-scoped stores, switches to another org and stays on the page', async () => {
             refreshService().refreshAfterMembershipChange();
 
             answerUserLoad(http, memberOf(ORGANIZATION_B));
@@ -239,7 +239,41 @@ describe('CurrentUserRefreshService', () => {
             expect(TestBed.inject(PermissionsService).active()?.org_id).toBe(ORGANIZATION_B.id);
             expect(organizationsInMenu()).toEqual(['B']);
             expect(await shownToasts()).toEqual([{ type: 'info', message: 'You have been switched to B.' }]);
-            expect(await navigations()).toEqual(['/profile', CURRENT_PAGE]);
+            expect(await navigations()).toEqual([]);
+        });
+
+        it.each<[string, GetMeResponse, string[]]>([
+            ['a member is sent through the guards again', memberOf(), ['/profile', CURRENT_PAGE]],
+            ['a superadmin stays on the page', { ...memberOf(), is_superadmin: true }, []],
+        ])('after the last organization went, %s', async (_case, user, expectedNavigations) => {
+            refreshService().refreshAfterMembershipChange();
+
+            answerUserLoad(http, user);
+
+            expect(activeOrgId()).toBeNull();
+            expect(await shownToasts()).toEqual([
+                { type: 'info', message: 'You no longer belong to any organization.' },
+            ]);
+            expect(await navigations()).toEqual(expectedNavigations);
+        });
+
+        it.each<[string, (backend: HttpTestingController) => void]>([
+            ['succeeded', (backend) => answerUserLoad(backend, memberOf(ORGANIZATION_B))],
+            [
+                'failed',
+                (backend) =>
+                    backend.expectOne(PROFILE_URL).flush({ detail: 'Unavailable.' }, { status: 503, statusText: '' }),
+            ],
+        ])('tells the caller once the reload %s, so the page can reload its own data', (_case, endReload) => {
+            let finished = 0;
+            refreshService()
+                .refreshAfterMembershipChange()
+                .subscribe(() => finished++);
+            expect(finished).toBe(0);
+
+            endReload(http);
+
+            expect(finished).toBe(1);
         });
 
         it('after another organization changed updates the menu and leaves the page and stores alone', async () => {

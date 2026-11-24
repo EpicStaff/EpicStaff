@@ -1,6 +1,6 @@
 import { HttpErrorResponse, HttpRequest } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { catchError, concatWith, defer, EMPTY, ignoreElements, Observable, shareReplay, tap } from 'rxjs';
+import { catchError, concatWith, defer, EMPTY, ignoreElements, Observable, of, shareReplay, tap } from 'rxjs';
 
 import { ORGANIZATION_HEADER } from '../../core/interceptors/active-org.interceptor';
 import { ORG_ID_OVERRIDE } from '../../core/interceptors/org-id-override.context';
@@ -10,11 +10,11 @@ import { ActiveOrgService } from './active-org.service';
 import { CurrentUserReload } from './current-user-reload.model';
 import { ProfileService } from './profile.service';
 
-const ORGANIZATION_INACTIVE_CODE = 'organization_inactive';
+const ORGANIZATION_DEACTIVATED_CODE = 'organization_deactivated';
 const FORBIDDEN_FALLBACK_MESSAGE = 'Forbidden';
 const RELOAD_FAILED_MESSAGE = 'Could not refresh your organizations and permissions. Reload the page to try again.';
 
-/** What started a refresh: a 403 always re-enters the page; a membership change only after an org switch. */
+/** What started a refresh: a 403 re-enters the page; a membership change leaves it to the page that made it. */
 type RefreshCause = 'forbidden' | 'membership-change';
 
 interface RunningRefresh {
@@ -30,7 +30,7 @@ interface ForbiddenBody {
 /**
  * Brings the signed-in user's profile, organizations and permissions up to date when they may have changed under the
  * session, and tells the user what changed for them. Runs one reload at a time and shares it with every caller; the
- * message and the page re-entry belong to the run, so they happen once per reload even when every caller has
+ * message and any page re-entry belong to the run, so they happen once per reload even when every caller has
  * unsubscribed.
  */
 @Injectable({ providedIn: 'root' })
@@ -45,19 +45,29 @@ export class CurrentUserRefreshService {
     /**
      * After an action changed which organizations the user belongs to (an organization deactivated, reactivated or
      * deleted): the account menu follows, and when the active org was the one that went the user is moved to another
-     * one (or left with none), told so, and the page is re-entered for it. Starts after a reload under way, whose
-     * profile may predate the action.
+     * one (or left with none) and told so. Starts after a reload under way, whose profile may predate the action.
+     *
+     * The page stays: these actions are taken on a cross-org page, which keeps its search, filters, focus and any
+     * request still under way, and reloads its own data once the returned observable emits; a page re-entry would
+     * destroy all of that. Only a user left with no organization and no superadmin access is sent through the guards
+     * again, since no page but `/unassigned` is theirs any more.
+     *
+     * Emits once the reload is over, whether it succeeded or failed: an org switch has cleared every org-scoped
+     * cache, the caller's included. The reload runs and reports even when nobody subscribes.
      */
-    refreshAfterMembershipChange(): void {
-        this.start(
+    refreshAfterMembershipChange(): Observable<void> {
+        const outcome$ = this.start(
             'membership-change',
             (outcome) => {
                 if (!outcome.activeOrgChanged) return;
                 this.toast.info(orgSwitchMessage(outcome));
-                this.orgSwitchNavigation.reenterAfterOrgSwitch();
+                if (outcome.switchedTo === null && !outcome.user.is_superadmin) {
+                    this.orgSwitchNavigation.reenterAfterOrgSwitch();
+                }
             },
             () => this.toast.error(RELOAD_FAILED_MESSAGE)
         );
+        return completion(outcome$).pipe(concatWith(of(undefined)));
     }
 
     /**
@@ -84,8 +94,8 @@ export class CurrentUserRefreshService {
         }
 
         const body = forbiddenBody(error);
-        const isOrganizationInactive = body.code === ORGANIZATION_INACTIVE_CODE;
-        if (!isOrganizationInactive) {
+        const isOrganizationDeactivated = body.code === ORGANIZATION_DEACTIVATED_CODE;
+        if (!isOrganizationDeactivated) {
             this.toast.error(body.message ?? FORBIDDEN_FALLBACK_MESSAGE);
         }
         const requestOrgId = organizationIdOfRequest(request);
@@ -93,7 +103,8 @@ export class CurrentUserRefreshService {
             'forbidden',
             (outcome) => {
                 const reportedSwitch =
-                    isOrganizationInactive && this.reportInactiveOrganization(outcome, requestOrgId, body.message);
+                    isOrganizationDeactivated &&
+                    this.reportDeactivatedOrganization(outcome, requestOrgId, body.message);
                 if (outcome.activeOrgChanged) {
                     if (!reportedSwitch) this.toast.info(orgSwitchMessage(outcome));
                     this.orgSwitchNavigation.reenterAfterOrgSwitch();
@@ -101,10 +112,10 @@ export class CurrentUserRefreshService {
                     this.orgSwitchNavigation.reenterCurrentPage();
                 }
             },
-            // The session stays as it was. An inactive org's 403 has not been shown yet; any other one has, and a
+            // The session stays as it was. A deactivated org's 403 has not been shown yet; any other one has, and a
             // second toast for the same 403 would only repeat that access was refused.
             () => {
-                if (isOrganizationInactive) {
+                if (isOrganizationDeactivated) {
                     this.toast.error(body.message ?? FORBIDDEN_FALLBACK_MESSAGE);
                 }
             }
@@ -145,10 +156,10 @@ export class CurrentUserRefreshService {
 
     /**
      * Says the organization was deactivated only when the reload shows the user no longer has the request's org: a
-     * 403 `organization_inactive` may name an org in the request body while the header's org is fine. Returns whether
-     * the message also told the user about an org switch.
+     * 403 `organization_deactivated` may name an org in the request body while the header's org is fine. Returns
+     * whether the message also told the user about an org switch.
      */
-    private reportInactiveOrganization(
+    private reportDeactivatedOrganization(
         outcome: CurrentUserReload,
         requestOrgId: number | null,
         serverMessage: string | undefined

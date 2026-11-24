@@ -145,7 +145,7 @@ def test_permissions_me_in_a_deactivated_org_says_it_is_deactivated(
     )
 
     assert response.status_code == status.HTTP_403_FORBIDDEN
-    assert response.json()["code"] == "organization_inactive"
+    assert response.json()["code"] == "organization_deactivated"
 
 
 @pytest.mark.django_db

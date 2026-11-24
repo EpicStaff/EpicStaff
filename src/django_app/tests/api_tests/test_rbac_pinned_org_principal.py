@@ -310,7 +310,7 @@ def test_inactive_pinned_org_answers_403(plugin_client, principal, acme):
     response = plugin_client(principal).get("/api/graphs/")
 
     assert response.status_code == 403, response.content
-    assert response.json()["code"] == "organization_inactive"
+    assert response.json()["code"] == "organization_deactivated"
 
 
 # ---- Gates ----

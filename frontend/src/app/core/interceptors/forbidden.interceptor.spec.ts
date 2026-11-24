@@ -131,7 +131,7 @@ describe('forbiddenInterceptor', () => {
         const errorLists = [send('/api/flows/'), send('/api/agents/'), send('/api/tools/')];
 
         for (const url of ['/api/flows/', '/api/agents/', '/api/tools/']) {
-            refuse(url, forbidden('organization_inactive', 'This organization has been deactivated.'));
+            refuse(url, forbidden('organization_deactivated', 'This organization has been deactivated.'));
         }
         // One reload for all three: a second profile request here would fail `expectOne`.
         answerUserLoad(http, memberOf(ORGANIZATION_B));
