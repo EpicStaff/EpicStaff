@@ -164,8 +164,11 @@ class CodeResultData(BaseModel):
 
 
 class CodeTaskData(StorageScopedData):
-    # The venv this code runs in; None means the sandbox's default venv.
+    # The venv this code runs in; None, with no `system_venv` either, means the
+    # sandbox's default venv.
     venv_id: int | None = None
+    # Set instead of `venv_id` for built-in code: the sandbox's own venv for it.
+    system_venv: str | None = None
     code: str
     execution_id: str
     entrypoint: str
