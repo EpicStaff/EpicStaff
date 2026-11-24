@@ -5,6 +5,8 @@ from django.db.models import Q
 from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
 
+from tables.validators.secret_name_validator import validate_secret_name
+
 from .base_models import (
     MetadataMixin,
     SoftDeleteMixin,
@@ -45,7 +47,7 @@ class Secret(OrgScopedModel, LastEditTrackedModel, TimestampMixin, MetadataMixin
     soft_delete_keeps_references: ClassVar[bool] = True
     internal_rows: ClassVar[Q] = Q(system=True)
 
-    name = models.CharField(max_length=128)
+    name = models.CharField(max_length=128, validators=[validate_secret_name])
     value = models.CharField(max_length=12000, editable=False)
     tail = models.CharField(max_length=4, blank=True, default="", editable=False)
     system = models.BooleanField(

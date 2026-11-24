@@ -139,14 +139,14 @@ def _secret_declared_by_code(organization) -> Reach:
     graph = Graph.objects.create(name=_unique("Digest"), org=organization)
     StartNode.objects.create(graph=graph, variables={})
     code = PythonCode.objects.create(code="def main(**kwargs):\n    return 1\n", entrypoint="main")
-    secret = secret_row(organization, _unique("Weather · LLM key"))
+    secret = secret_row(organization, _unique("Weather - LLM key"))
     code.secrets.set([secret])
     PythonNode.objects.create(graph=graph, python_code=code, node_name="py")
     return Reach(graph, secret)
 
 
 def _secret_behind_llm_config(organization) -> Reach:
-    secret = secret_row(organization, _unique("Weather · LLM key"))
+    secret = secret_row(organization, _unique("Weather - LLM key"))
     config = llm_config(organization, _unique("Weather summaries"), api_key_secret=secret)
     return Reach(agent_node_flow(organization, _unique("Digest"), agent(organization, _unique("writer"), llm_config=config)), secret)
 
@@ -220,7 +220,7 @@ def _mcp_tool(organization) -> Reach:
 
 
 def _mcp_tool_auth_secret(organization) -> Reach:
-    secret = secret_row(organization, _unique("Weather · MCP token"))
+    secret = secret_row(organization, _unique("Weather - MCP token"))
     tool = McpTool.objects.create(
         org=organization, name=_unique("weather-mcp"), transport="http://mcp", tool_name="forecast", auth_secret=secret
     )
@@ -256,7 +256,7 @@ def _webhook_trigger(organization) -> Reach:
 
 def _telegram_bot_secret(organization) -> Reach:
     graph = flow(organization, _unique("Digest"))
-    secret = secret_row(organization, _unique("Weather · bot token"))
+    secret = secret_row(organization, _unique("Weather - bot token"))
     TelegramTriggerNode.objects.create(graph=graph, node_name="bot", telegram_bot_api_key_secret=secret)
     return Reach(graph, secret)
 

@@ -43,6 +43,7 @@ export class ValidationErrorsComponent {
         },
         pattern: () => 'The value does not match the required pattern.',
         venvName: () => 'Use only letters, digits, spaces, - and _.',
+        secretName: () => 'Only letters, digits, spaces, and _ - . are allowed.',
         customLibraryName: () => 'Use only letters, digits, - . _, starting and ending with a letter or digit.',
         email: () => 'Invalid email address.',
         emailWhitespace: () => 'Email must not contain whitespace.',
