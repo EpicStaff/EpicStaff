@@ -16,6 +16,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import timedelta
 
+from ai_models.models import DefaultModels, LLMConfig
 from asgiref.sync import sync_to_async
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import close_old_connections, transaction
@@ -196,8 +197,26 @@ class FlowAssistantService:
         )
         return build_system_prompt(
             inputs,
-            anthropic_tables=uses_anthropic_structured_output(flow_assistant.llm_config),
+            anthropic_tables=uses_anthropic_structured_output(
+                self.resolve_llm_config(flow_assistant)
+            ),
         )
+
+    @staticmethod
+    def resolve_llm_config(flow_assistant: FlowAssistant) -> LLMConfig | None:
+        """The LLM config the assistant runs on: its own, else its org's default agent LLM.
+
+        Read on every call, so a change to the org default applies without re-saving the
+        assistant. None when neither is set.
+        """
+        if flow_assistant.llm_config is not None:
+            return flow_assistant.llm_config
+        default_models = (
+            DefaultModels.objects.select_related("agent_llm_config__model__llm_provider")
+            .filter(org_id=flow_assistant.graph.org_id)
+            .first()
+        )
+        return default_models.agent_llm_config if default_models else None
 
     def start_conversation(self, flow_assistant: FlowAssistant, user) -> FlowAssistantConversation:
         """Create a new conversation of `user`, seeding the system prompt as the first message.
@@ -300,19 +319,18 @@ class FlowAssistantService:
             ).get(pk=conversation.flow_assistant_id)
         )()
 
-        if flow_assistant.llm_config is None:
-            raise LLMConfigMissingError(
-                f"FlowAssistant for graph {flow_assistant.graph_id} has no llm_config set."
-            )
+        llm_config = await sync_to_async(self.resolve_llm_config)(flow_assistant)
+        if llm_config is None:
+            raise LLMConfigMissingError()
 
         try:
             # sync_to_async: stream_reply is an async generator, and resolving the
             # config's secrets queries the database.
             client = await sync_to_async(get_llm_client)(
-                flow_assistant.llm_config,
+                llm_config,
                 output_schema=(
                     ANTHROPIC_FLOW_ASSISTANT_OUTPUT_SCHEMA
-                    if uses_anthropic_structured_output(flow_assistant.llm_config)
+                    if uses_anthropic_structured_output(llm_config)
                     else FLOW_ASSISTANT_OUTPUT_SCHEMA
                 ),
                 # A person's: the stream is opened with an SSE ticket, which no plugin
