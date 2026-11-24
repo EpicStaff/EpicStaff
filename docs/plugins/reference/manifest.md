@@ -126,7 +126,7 @@ A manifest with every section filled in:
 | Field | Type | Required | Rules |
 |---|---|---|---|
 | `manifest_version` | `1` | yes | Only `1`. |
-| `id` | string | yes | `^[a-z][a-z0-9-]{0,30}[a-z0-9]$` (2–32 characters). Reserved: `www`, `api`, `admin`, `plugins`, `epicstaff`, `static`, `postgres`, `public`, `packages`, and anything starting with `pg`. The plugin's address is `<id>.<plugin base domain>`, so the id never changes between versions. |
+| `id` | string | yes | `^[a-z][a-z0-9-]{0,30}[a-z0-9]$` (2–32 characters). Reserved: `www`, `api`, `admin`, `plugins`, `epicstaff`, `static`, `postgres`, `public`, `packages`, and anything starting with `pg`. The plugin's address is built from it and the deployment's `PLUGINS_HOST_TEMPLATE` (`{id}-app.example.com` gives `weather-app.example.com`), so the id never changes between versions. |
 | `version` | string | yes | [SemVer 2.0](https://semver.org/) with ASCII digits, at most 64 characters: `1.2.3`, `1.0.0-beta.1`, `1.0.0+build.5`. For an installed plugin, it must be newer than the latest approved version, in SemVer order: build metadata does not count, so `1.0.0+build.6` is not newer than `1.0.0+build.5`. Otherwise the upload is refused with 409 `plugin_version_not_newer`; there are no downgrades. `epicstaff_plugin.versions` compares versions the same way. |
 | `name` | string | yes | 1–64 characters. Shown in the Apps list and in the app switcher. |
 | `description` | string | yes | 1–500 characters. |
@@ -513,3 +513,4 @@ The SuperAdmin's review shows these next to the package:
 | `runs_code_in_sandbox` | `access` gives `flows` `create`, `update` or `use`, or `tools` `create` or `update`. The message reads "Through {flows \| tools \| flows and tools}, the plugin can have code of its choosing run in EpicStaff's sandbox, which has its own network access. The plugin's outbound hosts do not apply to that code." |
 | `flows_use_missing` | `access` gives `flows` `create` or `update` but not `use`: the plugin cannot run a flow itself or write schedule, webhook or Telegram trigger nodes, but a flow it writes still runs, with its code, when someone in the organization runs it |
 | `wildcard_outbound_host` | An outbound host starts with `*.`; one warning per such host |
+| `host_not_served_here` | The plugin's host does not prove that this EpicStaff serves it (only with a template that has a prefix or suffix; see [the host check](../operator/enable-plugins.md#the-host-check)). Approving is refused until it does |

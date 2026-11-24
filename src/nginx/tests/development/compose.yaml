@@ -51,7 +51,7 @@ x-nginx-environment: &nginx-environment
   PLUGINS_ENABLED: "true"
   PLUGINS_DEV_MODE: "true"
   # The .localhost names development mode needs.
-  PLUGINS_BASE_DOMAIN: plugins.epicstaff.localhost
+  PLUGINS_HOST_TEMPLATE: "{id}.plugins.epicstaff.localhost"
   DJANGO_FRONTEND_BASE_URL: http://epicstaff.localhost
   PLUGINS_MAX_PACKAGE_MB: "300"
   PLUGINS_MAX_REQUEST_BODY_MB: "1"

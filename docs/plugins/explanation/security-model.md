@@ -80,10 +80,15 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
 
 ## In the browser
 
-- **Each plugin has an origin of its own**, `<id>.<plugins base domain>`, and only EpicStaff may frame its page
-  ([Frame protocol](../reference/frame-protocol.md#the-frame)).
-- **A plugin's page cannot use EpicStaff's API.** EpicStaff refuses any request whose origin is a plugin host, except
-  the sign-in's authorize navigation and code exchange ([Token exchange](../reference/token-exchange.md#what-a-plugin-page-cannot-do)).
+- **Each plugin has an origin of its own**, its host from `PLUGINS_HOST_TEMPLATE` (such as `weather-app.example.com`),
+  and only EpicStaff may frame its page ([Frame protocol](../reference/frame-protocol.md#the-frame)).
+- **A plugin's page cannot use EpicStaff's API.** EpicStaff refuses any request whose origin is a plugin host (any
+  host that matches the template), except the sign-in's authorize navigation and code exchange
+  ([Token exchange](../reference/token-exchange.md#what-a-plugin-page-cannot-do)).
+- **A login code goes only to a host this EpicStaff serves.** With a template that has a prefix or a suffix, the
+  plugins share the organization's DNS zone, so a record for one plugin's name could point at another server. Before
+  it frames a plugin, issues a login code for it or approves its package, EpicStaff has the host answer a challenge
+  that only this deployment can ([The host check](../operator/enable-plugins.md#the-host-check)).
 - **The plugin login token stays in the page.** The JS SDK keeps it in memory only and sends it only to the plugin's
   own `/api/`. It lives 15 minutes, works nowhere but the plugin's gateway, and never reaches the plugin's backend,
   which gets a gateway context instead ([Using the token](../reference/token-exchange.md#using-the-token),
@@ -142,9 +147,9 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
 ## Development mode
 
 - **Only on your own machine.** With plugin development mode on, django_app refuses to start unless
-  `DJANGO_DEBUG=true`, EpicStaff's host is `localhost` or a `.localhost` name, the plugin base domain is a
-  `.localhost` name, and the stack runs with `src/docker-compose.plugins-dev.yaml`; epicstaff-nginx refuses the same
-  way (exit 64). What keeps the mode local is that file's binding of EpicStaff's ports to `127.0.0.1`. The
+  `DJANGO_DEBUG=true`, EpicStaff's host is `localhost` or a `.localhost` name, the parent of
+  `PLUGINS_HOST_TEMPLATE` is a `.localhost` name, and the stack runs with `src/docker-compose.plugins-dev.yaml`;
+  epicstaff-nginx refuses the same way (exit 64). What keeps the mode local is that file's binding of EpicStaff's ports to `127.0.0.1`. The
   `.localhost` names only stop browsers on other machines: a client that reaches a port can set the `Host` header by
   hand ([Plugin development mode](../operator/enable-plugins.md#plugin-development-mode)).
 - **What it opens:** EpicStaff's development API listener, published only on that machine's `127.0.0.1`. It refuses

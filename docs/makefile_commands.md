@@ -282,13 +282,15 @@ server itself, or pick the size under advanced settings.
 
 With an existing `src/.env`, `--setup` offers to change features (it rewrites only
 `CHAT_ENABLED`, `SESSION_AUDIT_TRAIL_ENABLED`, `USER_AUDIT_TRAIL_ENABLED`, `PLUGINS_ENABLED` and `COMPOSE_PROFILES`; turning
-plugins on also fills unset plugin secrets, asks for `PLUGINS_BASE_DOMAIN` unless it is
-valid, and locally moves EpicStaff to `http://epicstaff.localhost`, the host plugins need), tune performance and limits
+plugins on also fills unset plugin secrets, asks for the plugin addresses (`PLUGINS_HOST_TEMPLATE`,
+pre-filled with `{id}-app.<parent of EpicStaff's host>`) unless it is valid, and locally moves EpicStaff to `http://epicstaff.localhost`, the host plugins need), tune performance and limits
 (server size, the longest a code node may run, the log level of every service), add missing settings, or start
 over while keeping the existing credentials. It needs a terminal: in Docker, run it with
 `docker run -it`. After pulling new variables, `make env-update` (or
 `python scripts/envtool.py --update`, `DEV=1` / `--dev` for development defaults) appends
-only the variables your `src/.env` lacks and never changes existing lines.
+only the variables your `src/.env` lacks and never changes existing lines, with one exception: an old
+`PLUGINS_BASE_DOMAIN=<domain>` becomes `PLUGINS_HOST_TEMPLATE={id}.<domain>`, so plugin addresses stay
+the same.
 
 Without Python, copy the tracked template instead: `cp src/.env.example src/.env`.
 `src/.env.example` is the **production** template: every variable without a default is
