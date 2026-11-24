@@ -643,6 +643,12 @@ services:
     restart: on-failure
 
   frontend:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=16m
+    # nginx runs as a non-root user but still listens on 80 (FRONTEND_PORT).
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/frontend:${IMAGE_TAG:?}
@@ -860,6 +866,9 @@ services:
     logging: *bounded-logs
 
   agent:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     image: ghcr.io/epicstaff/agent:${IMAGE_TAG:?}
     container_name: ${INSTANCE_PREFIX?}agent
     build:
@@ -940,6 +949,9 @@ services:
       start_period: 30s
 
   auditor:
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:?}
