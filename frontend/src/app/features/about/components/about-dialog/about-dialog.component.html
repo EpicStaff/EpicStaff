@@ -1,0 +1,121 @@
+<div
+    class="dialog"
+    (appEnterSubmit)="copy()"
+>
+    <div class="dialog__header">
+        <h2
+            class="dialog__title text-h4"
+            [id]="titleId"
+        >
+            About EpicStaff
+        </h2>
+        <app-icon-button
+            class="dialog__close"
+            icon="x"
+            size="2rem"
+            ariaLabel="Close"
+            tooltip="Close"
+            (click)="close()"
+        />
+    </div>
+
+    <div class="dialog__body">
+        <div class="build">
+            <span class="build__label text-h4">{{ shortLabel() }}</span>
+            @if (kind(); as kind) {
+                <span
+                    class="build__kind badge text-body-small"
+                    [class]="kindModifier()"
+                    >{{ kind }}</span
+                >
+            }
+        </div>
+
+        <dl class="details">
+            <dt class="details__label text-body-medium">Branch</dt>
+            <dd class="details__value text-body">{{ branch() }}</dd>
+
+            <dt class="details__label text-body-medium">Frontend commit</dt>
+            <dd class="details__value text-body">
+                <ng-container
+                    [ngTemplateOutlet]="commit"
+                    [ngTemplateOutletContext]="{ $implicit: frontendCommit() }"
+                />
+            </dd>
+
+            <dt class="details__label text-body-medium">Backend commit</dt>
+            <dd
+                class="details__value text-body"
+                [class.details__value--warning]="isMismatch()"
+            >
+                <ng-container
+                    [ngTemplateOutlet]="commit"
+                    [ngTemplateOutletContext]="{ $implicit: backendCommit() }"
+                />
+            </dd>
+
+            <dt class="details__label text-body-medium">Import/export format</dt>
+            <dd class="details__value text-body">{{ importVersion() }}</dd>
+        </dl>
+
+        @if (isMismatch()) {
+            <app-hint-message
+                class="mismatch"
+                tone="warning"
+                role="status"
+            >
+                The frontend and the backend come from different builds.
+            </app-hint-message>
+        }
+
+        <section
+            class="features"
+            aria-labelledby="about-dialog-features"
+        >
+            <h3
+                id="about-dialog-features"
+                class="features__heading text-body-large"
+            >
+                Features
+            </h3>
+            <ul class="features__list">
+                @for (feature of features(); track feature.label) {
+                    <li class="feature">
+                        <span class="feature__label text-body">{{ feature.label }}</span>
+                        <span
+                            class="feature__state badge text-body-small"
+                            [class.badge--on]="feature.enabled"
+                            [class.badge--off]="!feature.enabled"
+                            >{{ feature.enabled ? 'On' : 'Off' }}</span
+                        >
+                    </li>
+                }
+            </ul>
+        </section>
+    </div>
+
+    <div class="dialog__actions">
+        <span class="dialog__note text-body-small">Copy includes your browser and page.</span>
+        <app-button
+            type="primary"
+            (click)="copy()"
+        >
+            Copy
+        </app-button>
+    </div>
+</div>
+
+<!-- A commit: the short sha, then its day in muted text; `unknown` when the commit is not known. -->
+<ng-template
+    #commit
+    let-commit
+>
+    @if (commit) {
+        {{ commit.sha }}
+        @if (commit.day) {
+            <span class="details__muted">· {{ commit.day }}</span>
+        }
+    } @else {
+        {{ unknown }}
+    }
+</ng-template>
