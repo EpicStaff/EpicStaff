@@ -102,7 +102,8 @@ class SpaPublisher:
         return os.readlink(current) if current.is_symlink() else None
 
     def remove_current(self, identifier: str) -> None:
-        """Serve no version any more, for a plugin whose new version has no SPA."""
+        """Serve no version any more: the plugin's new version has no SPA, or it is out of
+        service. Its version directories stay."""
         (self._plugin_directory(identifier) / CURRENT_LINK).unlink(missing_ok=True)
 
     def prune_versions(self, identifier: str, keep: set[str]) -> None:

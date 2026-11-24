@@ -25,6 +25,8 @@ from plugins.models import (
     PluginPlacement,
     PluginState,
 )
+from plugins.packages.spa_publisher import SpaPublisher
+from tables.services.session_manager_service import SessionManagerService
 
 from tests.plugins_tests.conftest import mark_running, upload_file
 from tests.plugins_tests.package_builder import backend_manifest, build_package
@@ -96,8 +98,6 @@ def _report_removal(node_client, placement, state, generation=None, last_error=N
 def test_deleting_a_running_or_uninstalled_plugin_purges_every_grant(
     grants, superadmin_client, uninstalled_first, log_messages, django_capture_on_commit_callbacks, monkeypatch
 ):
-    from tables.services.session_manager_service import SessionManagerService
-
     monkeypatch.setattr(SessionManagerService().redis_service, "publish_stop_session", lambda session_id: 1)
     if uninstalled_first:
         superadmin_client.post("/api/admin/plugins/weather/uninstall/")
@@ -123,6 +123,19 @@ def test_deleting_a_running_or_uninstalled_plugin_purges_every_grant(
     plugin = Plugin.objects.get(identifier="weather")
     assert plugin.purge_started_at is not None and plugin.uninstall_requested_at is not None
     assert any(message.startswith("plugins.plugin.purge_started") for message in log_messages)
+
+
+def test_a_running_plugin_s_page_is_no_longer_served_once_its_deletion_commits(
+    grants, superadmin_client, weather, spa_root, django_capture_on_commit_callbacks, monkeypatch
+):
+    monkeypatch.setattr(SessionManagerService().redis_service, "publish_stop_session", lambda session_id: 1)
+    publisher = SpaPublisher(spa_root)
+    assert publisher.current_version("weather") == weather.current_package.version
+
+    with django_capture_on_commit_callbacks(execute=True):
+        assert _delete(superadmin_client).status_code == 202
+
+    assert publisher.current_version("weather") is None
 
 
 @pytest.mark.parametrize("phrase", ["purge-Weather", "purge-weather ", "", None])

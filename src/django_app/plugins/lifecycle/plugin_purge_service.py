@@ -33,6 +33,7 @@ from plugins.lifecycle.lifecycle_locks import lock_existing_plugin, lock_grants_
 from plugins.lifecycle.org_removed_hooks import OrgRemovedHookService
 from plugins.lifecycle.plugin_actions import PluginLifecycleAction, assert_plugin_action
 from plugins.lifecycle.purge_phrases import assert_purge_phrase, plugin_purge_phrase
+from plugins.lifecycle.spa_serving import withdraw_spa_on_commit
 from plugins.lifecycle.upgrade_service import PluginUpgradeService
 from plugins.models import (
     GrantState,
@@ -78,8 +79,8 @@ class PluginPurgeService:
         """Make `plugin` (locked by the caller) `purging`, and begin deleting every grant's data.
 
         An open upgrade is abandoned first (`PluginUpgradeService.abandon`). A plugin that was
-        not uninstalled gets its uninstall dates set to now: nothing of it is kept. `actor`
-        None is the platform.
+        not uninstalled gets its uninstall dates set to now: nothing of it is kept. Its
+        frontend is no longer served after commit. `actor` None is the platform.
         """
         PluginUpgradeService().abandon(plugin)
         now = timezone.now()
@@ -97,6 +98,7 @@ class PluginPurgeService:
                 "updated_at",
             ]
         )
+        withdraw_spa_on_commit(plugin.identifier)
         grant_purge = GrantPurgeService()
         for grant in lock_grants_of(plugin):
             if grant.state != GrantState.PURGING:
