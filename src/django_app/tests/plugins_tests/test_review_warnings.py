@@ -26,6 +26,10 @@ def _runs_code(subjects: str) -> dict:
 THROUGH_FLOWS = _runs_code("flows")
 THROUGH_TOOLS = _runs_code("tools")
 THROUGH_FLOWS_AND_TOOLS = _runs_code("flows and tools")
+THROUGH_VENVS = _runs_code("venvs")
+THROUGH_CUSTOM_LIBRARIES = _runs_code("custom libraries")
+THROUGH_VENVS_AND_CUSTOM_LIBRARIES = _runs_code("venvs and custom libraries")
+THROUGH_ALL = _runs_code("flows, tools, venvs and custom libraries")
 FLOWS_USE_MISSING = {
     "code": "flows_use_missing",
     "message": (
@@ -42,6 +46,16 @@ def _flows(*actions: str) -> list[dict]:
 
 def _tools(*actions: str) -> list[dict]:
     return [{"resource_type": "tools", "actions": ["read", *actions], "reason": "Adds the forecast tool."}]
+
+
+def _venvs(*actions: str) -> list[dict]:
+    return [{"resource_type": "venvs", "actions": ["read", *actions], "reason": "Builds the forecast venv."}]
+
+
+def _custom_libraries(*actions: str) -> list[dict]:
+    return [
+        {"resource_type": "custom_libraries", "actions": ["read", *actions], "reason": "Uploads the forecast library."}
+    ]
 
 
 def _review(client, access: list[dict], **changes) -> dict:
@@ -68,6 +82,28 @@ def test_writing_tools_alone_warns_that_their_code_runs_in_the_sandbox(superadmi
     assert _warnings(_review(superadmin_client, _tools(action))) == [THROUGH_TOOLS]
 
 
+@pytest.mark.parametrize("action", ["create", "update"])
+def test_writing_venvs_alone_warns_that_their_libraries_run_in_the_sandbox(superadmin_client, action):
+    assert _warnings(_review(superadmin_client, _venvs(action))) == [THROUGH_VENVS]
+
+
+@pytest.mark.parametrize("action", ["create", "update"])
+def test_writing_custom_libraries_alone_warns_that_they_run_in_the_sandbox(superadmin_client, action):
+    assert _warnings(_review(superadmin_client, _custom_libraries(action))) == [THROUGH_CUSTOM_LIBRARIES]
+
+
+def test_venvs_and_custom_libraries_together_give_one_warning_naming_both(superadmin_client):
+    access = [*_venvs("create"), *_custom_libraries("create")]
+
+    assert _warnings(_review(superadmin_client, access)) == [THROUGH_VENVS_AND_CUSTOM_LIBRARIES]
+
+
+def test_every_resource_that_runs_code_is_named_in_one_warning(superadmin_client):
+    access = [*_flows("create", "use"), *_tools("create"), *_venvs("update"), *_custom_libraries("update")]
+
+    assert _warnings(_review(superadmin_client, access)) == [THROUGH_ALL]
+
+
 def test_flows_and_tools_together_give_one_warning_naming_both(superadmin_client):
     access = [*_flows("create", "update", "use"), *_tools("create", "update")]
 
@@ -88,9 +124,11 @@ def test_using_flows_warns_only_about_the_sandbox(superadmin_client):
         _flows(),
         _tools("delete", "export"),
         [{"resource_type": "files", "actions": ["read", "create"], "reason": "Stores the readme."}],
+        _venvs("delete"),
+        _custom_libraries("delete"),
         [],
     ],
-    ids=["flows_read", "tools_without_writes", "files_only", "no_access"],
+    ids=["flows_read", "tools_without_writes", "files_only", "venvs_read_delete", "custom_libraries_read_delete", "no_access"],
 )
 def test_access_that_runs_no_code_gives_no_sandbox_warning(superadmin_client, access):
     assert _warnings(_review(superadmin_client, access)) == []

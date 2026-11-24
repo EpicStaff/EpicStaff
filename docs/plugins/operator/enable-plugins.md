@@ -647,7 +647,7 @@ A plugin backend reaches the internet only through `plugins_egress`, a Squid pro
 gives each backend its proxy URL in `HTTPS_PROXY` (and `https_proxy`, `HTTP_PROXY`, `http_proxy`).
 The proxy allows a plugin an HTTPS tunnel (`CONNECT`) to port 443 of the hosts its package declares
 in `outbound_hosts`, which the review shows before approval, and nothing else. This binds the
-backend's process. Code a plugin gets run through flows or tools runs in EpicStaff's sandbox, which has its own
+backend's process. Code a plugin gets run through flows, tools, venvs or custom libraries runs in EpicStaff's sandbox, which has its own
 network access, and the review warns about it (`runs_code_in_sandbox`). Writing a backend
 for it is in [Call the internet from your backend](../how-to/outbound-hosts.md).
 

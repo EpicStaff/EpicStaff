@@ -43,8 +43,8 @@ export type PluginGrantState =
 export type PluginSignatureStatus = 'valid' | 'absent' | 'unknown_key';
 
 /**
- * The review warnings, in the order the server sends them. `runs_code_in_sandbox`: through flows or tools, the plugin can
- * have code run in EpicStaff's sandbox, whose network its outbound hosts do not bound.
+ * The review warnings, in the order the server sends them. `runs_code_in_sandbox`: through flows, tools, venvs or custom
+ * libraries, the plugin can have code run in EpicStaff's sandbox, whose network its outbound hosts do not bound.
  */
 export type PluginReviewWarningCode =
     | 'untrusted_package'

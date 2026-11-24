@@ -20,12 +20,18 @@ HOST_NOT_SERVED_HERE = "host_not_served_here"
 # The access through which a plugin gets Python of its choosing run in EpicStaff's sandbox, whose
 # network is its own, so the plugin's outbound hosts do not bound that code. Flows: a flow's nodes
 # hold code, testing a node runs it (flows update), and running a flow runs all of it. Tools: a
-# Python tool's code runs whenever an agent calls the tool. No other declarable resource stores
-# code that the sandbox or an agent runs; a resource that comes to do so belongs here.
+# Python tool's code runs whenever an agent calls the tool. Venvs: the sandbox installs the
+# libraries a venv names, and they run with every piece of code that runs in the venv, the
+# organization's own included. Custom libraries: an uploaded package, a new version of one of
+# the organization's libraries too, is installed into every venv that names the library. No
+# other declarable resource stores code that the sandbox or an agent runs; a resource that comes
+# to do so belongs here.
 ACTIONS_THAT_RUN_CODE: Mapping[str, frozenset[str]] = MappingProxyType(
     {
         ResourceType.FLOWS.value: frozenset({"create", "update", "use"}),
         ResourceType.TOOLS.value: frozenset({"create", "update"}),
+        ResourceType.VENVS.value: frozenset({"create", "update"}),
+        ResourceType.CUSTOM_LIBRARIES.value: frozenset({"create", "update"}),
     }
 )
 
