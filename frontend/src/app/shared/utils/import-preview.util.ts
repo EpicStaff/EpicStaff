@@ -13,10 +13,22 @@ export interface ImportFileEntity {
 
 export type ImportFileData = Record<string, ImportFileEntity[]>;
 
+/**
+ * The file field an entity type is named by, where it is not `name`. Mirrors the field a backend import/export
+ * strategy's `get_preview_data` returns as `name` when that name is a single file field, so the review lists such an
+ * entity under the name the import result will. Names composed from several fields are not mirrored.
+ */
 const ENTITY_NAME_KEY: Record<string, string> = {
     Agent: 'role',
+    ElevenLabsRealtimeConfig: 'custom_name',
+    EmbeddingConfig: 'custom_name',
+    GeminiRealtimeConfig: 'custom_name',
     LLMConfig: 'custom_name',
+    OpenAIRealtimeConfig: 'custom_name',
     RealtimeConfig: 'custom_name',
+    RealtimeTranscriptionConfig: 'custom_name',
+    SourceCollection: 'collection_name',
+    SystemOneConfig: 'custom_name',
     WebhookTrigger: 'path',
 };
 

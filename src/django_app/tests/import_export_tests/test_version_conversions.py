@@ -1111,3 +1111,143 @@ class TestV5ToV6:
         assert converted[EntityType.EMBEDDING_CONFIG][0]["parameters"] == {
             "task_type": "retrieval_query"
         }
+
+
+# ──────────────────────────────────────────
+# Node files (partial exports) and entries already in a newer shape
+# ──────────────────────────────────────────
+
+
+class TestNodeFileConversion:
+    """A node file lists its nodes at the top level, untagged, and may carry no version.
+
+    Without a version it runs through every conversion, so each one converts the nodes
+    of a node file as it does a flow's, and leaves what is already newer as it is.
+    """
+
+    def test_python_node_stream_config_is_removed_from_a_node_file(self):
+        data = v2_to_v3({EntityType.PYTHON_NODE: [{"id": 1, "stream_config": {"enabled": True}}]})
+
+        assert data[EntityType.PYTHON_NODE] == [{"id": 1}]
+
+    def test_classification_prompt_id_is_remapped_in_a_node_file(self):
+        data = v2_to_v3(
+            {
+                EntityType.CLASSIFICATION_DECISION_TABLE_NODE: [
+                    {
+                        "id": 1,
+                        "prompt_configs": [{"prompt_key": "triage", "prompt_text": "..."}],
+                        "condition_groups": [{"group_name": "a", "prompt_id": "triage"}],
+                    }
+                ]
+            }
+        )
+
+        [node] = data[EntityType.CLASSIFICATION_DECISION_TABLE_NODE]
+        assert node["condition_groups"] == [{"group_name": "a", "prompt": "triage"}]
+
+    def test_badge_moves_into_node_number_in_a_node_file(self):
+        data = v3_to_v4(
+            {EntityType.AGENT_NODE: [{"id": 1, "node_name": "Agent #4", "metadata": {"nodeNumber": 4}}]}
+        )
+
+        assert data[EntityType.AGENT_NODE] == [
+            {"id": 1, "node_name": "Agent", "node_number": 4, "metadata": {}}
+        ]
+
+    def test_libraries_of_a_node_file_become_an_environment(self):
+        data = v4_to_v5(
+            {
+                EntityType.PYTHON_NODE: [
+                    {
+                        "id": 1,
+                        "node_name": "fetch",
+                        "python_code": {"code": "...", "libraries": "httpx>=0.28"},
+                    }
+                ],
+                EntityType.CLASSIFICATION_DECISION_TABLE_NODE: [
+                    {
+                        "id": 2,
+                        "node_name": "route",
+                        "pre_python_code": {"code": "...", "libraries": "httpx>=0.28"},
+                        "post_python_code": {"code": "...", "libraries": ""},
+                    }
+                ],
+            }
+        )
+
+        [venv] = data[EntityType.VENV]
+        assert venv["libs"] == [{"name": "httpx", "specification": ">=0.28"}]
+        [python_node] = data[EntityType.PYTHON_NODE]
+        [table] = data[EntityType.CLASSIFICATION_DECISION_TABLE_NODE]
+        assert python_node["python_code"] == {"code": "...", "venv": venv["id"]}
+        assert table["pre_python_code"] == {"code": "...", "venv": venv["id"]}
+        assert table["post_python_code"] == {"code": "..."}
+
+    def test_an_unversioned_release_1_3_node_file_reaches_the_current_shape(self):
+        node_file = {
+            EntityType.PYTHON_NODE: [
+                {
+                    "id": 1,
+                    "node_name": "Fetch #2",
+                    "metadata": {"nodeNumber": 2},
+                    "python_code": {"code": "...", "libraries": "httpx"},
+                }
+            ],
+            EntityType.PYTHON_CODE_TOOL: [
+                {
+                    "id": 5,
+                    "name": "lookup",
+                    "args_schema": {"type": "object", "properties": {"q": {"type": "string"}}},
+                    "python_code_tool_config_fields": [],
+                    "python_code": {"code": "...", "libraries": ""},
+                }
+            ],
+        }
+
+        converted = VersionConverter.convert(node_file)
+
+        assert converted["version"] == IMPORT_VERSION
+        [python_node] = converted[EntityType.PYTHON_NODE]
+        assert (python_node["node_name"], python_node["node_number"]) == ("Fetch", 2)
+        [venv] = converted[EntityType.VENV]
+        assert python_node["python_code"]["venv"] == venv["id"]
+        [tool] = converted[EntityType.PYTHON_CODE_TOOL]
+        assert [variable["name"] for variable in tool["variables"]] == ["q"]
+        assert "args_schema" not in tool
+
+    def test_a_tool_already_in_the_v2_shape_keeps_its_variables(self):
+        variables = [{"name": "q", "type": "string", "input_type": "agent_input"}]
+        tool = {"id": 5, "name": "lookup", "variables": variables}
+
+        data = v1_to_v2({EntityType.PYTHON_CODE_TOOL: [copy.deepcopy(tool)]})
+
+        assert data[EntityType.PYTHON_CODE_TOOL] == [tool]
+
+    def test_code_already_naming_an_environment_is_left_as_it_is(self):
+        node_file = {
+            EntityType.VENV: [{"id": 3, "name": "fetch-venv", "libs": []}],
+            EntityType.PYTHON_NODE: [{"id": 1, "python_code": {"code": "...", "venv": 3}}],
+        }
+
+        assert v4_to_v5(copy.deepcopy(node_file)) == node_file
+
+    def test_a_config_already_in_the_v6_shape_keeps_its_parameters_and_connection(self):
+        node_file = {
+            EntityType.LLM_MODEL: [_v5_llm_model()],
+            EntityType.LLM_CONFIG: [
+                _v5_llm_config(
+                    parameters={"temperature": 0.7}, connection={"base_url": GATEWAY}
+                )
+            ],
+            EntityType.EMBEDDING_CONFIG: [
+                {
+                    "id": 30,
+                    "model": 3,
+                    "parameters": {"task_type": "retrieval_query"},
+                    "connection": {},
+                }
+            ],
+        }
+
+        assert v5_to_v6(copy.deepcopy(node_file)) == node_file

@@ -1,6 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass, field
 
+from tables.import_export.constants import IMPORT_VERSION
 from tables.import_export.enums import EntityType
 from tables.import_export.export_exclusions import ExcludedEntity, ExcludedEntityRecorder
 from tables.import_export.permissions import ExportAccessPolicy
@@ -128,8 +129,9 @@ class GraphPartialExportService:
             if edges:
                 collected["edge_list"] = {e.id: e for e in edges}
 
-        # Pass 4: serialize everything
-        result.data = self._serialize(collected, org_id)
+        # Pass 4: serialize everything; the version lets the import convert the file
+        # when a later release changes the format, as it does a full export.
+        result.data = {**self._serialize(collected, org_id), "version": IMPORT_VERSION}
         return result
 
     def _collect(

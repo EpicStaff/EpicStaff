@@ -8,28 +8,10 @@ export const ENTITY_TYPE_ORDER = [
     'Agent',
     'LLMModel',
     'LLMConfig',
+    'SourceCollection',
     'RealtimeModel',
     'RealtimeConfig',
 ];
-
-export const ENTITY_TYPE_LABELS: Record<string, string> = {
-    Agent: 'Agent',
-    EmbeddingConfig: 'Embedding Config',
-    EmbeddingModel: 'Embedding Model',
-    EmbeddingModelTag: 'Embedding Model Tag',
-    Flow: 'Flow',
-    LLMConfig: 'LLM Config',
-    LLMModel: 'LLM Model',
-    LLMModelTag: 'LLM Model Tag',
-    MCPTool: 'MCP Tool',
-    Project: 'Project',
-    PythonCodeTool: 'Python Code Tool',
-    RealtimeConfig: 'Realtime Config',
-    RealtimeModel: 'Realtime Model',
-    RealtimeTranscriptionConfig: 'Realtime Transcription Config',
-    RealtimeTranscriptionModel: 'Realtime Transcription Model',
-    Tool: 'Tool',
-};
 
 export const ENTITY_DISPLAY_FIELDS: Record<string, { field: string; label: string }[]> = {
     Flow: [
