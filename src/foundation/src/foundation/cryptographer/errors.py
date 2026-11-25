@@ -7,6 +7,7 @@ __all__ = [
     "RotateDataError",
 ]
 
+
 class CryptographerError(Exception):
     pass
 

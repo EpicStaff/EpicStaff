@@ -48,7 +48,7 @@ def grant(weather, grant_to, acme):
 @pytest.fixture
 def digest_setup(grant, acme):
     """Olga's Acme, as the acceptance walk prepares it."""
-    key = secret_row(acme, "Weather · LLM key")
+    key = secret_row(acme, "Weather - LLM key")
     summaries = llm_config(acme, "Weather summaries", api_key_secret=key)
     readme = StorageFile.objects.create(org=acme, path="weather/README.md", name="README.md", parent_path="weather/")
     forecast = flow(acme, "Weather forecast")
@@ -181,7 +181,7 @@ def test_a_list_holds_at_most_a_hundred_items_and_its_total(grant, acme, superad
 
 
 def _queries_of_a_preview(grant, acme, flow_count):
-    secret = secret_row(acme, f"Weather · key {flow_count}")
+    secret = secret_row(acme, f"Weather - key {flow_count}")
     own(secret, grant)
     voice_config = OpenAIRealtimeConfig.objects.create(org=acme, custom_name=f"Weather voice {flow_count}")
     own(voice_config, grant)

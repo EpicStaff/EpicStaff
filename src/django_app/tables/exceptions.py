@@ -794,11 +794,12 @@ class NaiveRagIndexNotReadyException(RagIndexNotReadyException):
 
 
 class LLMConfigMissingError(CustomAPIExeption):
-    """Raised when FlowAssistant.llm_config is None."""
+    """Raised when the Flow Assistant has no LLM config and its org has no default agent LLM."""
 
     status_code = 400
     default_detail = (
-        "No LLM config is set for this flow assistant. Please configure one in the settings panel."
+        "No LLM is set for the Flow Assistant. Choose one in the assistant settings, "
+        "or set a default agent LLM in Settings → AI Models."
     )
     default_code = "flow_assistant_llm_config_missing"
 

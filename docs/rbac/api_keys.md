@@ -162,10 +162,14 @@ Errors:
     ]
   }
   ```
-- `403 org_membership_required` — the caller is not a member of `org_id`,
-  or the organization is inactive (also for a superadmin):
+- `403 org_membership_required` — the caller is not a member of `org_id`:
   ```json
-  { "status_code": 403, "code": "org_membership_required", "message": "OrgMembershipRequiredError: You are not a member of this organization." }
+  { "status_code": 403, "code": "org_membership_required", "message": "You are not a member of this organization." }
+  ```
+- `403 organization_deactivated` — the caller is a member of `org_id` (or a
+  superadmin) and the organization is inactive:
+  ```json
+  { "status_code": 403, "code": "organization_deactivated", "message": "This organization has been deactivated." }
   ```
 - `404 organization_not_found` — a superadmin named an organization that
   does not exist. (A non-superadmin gets the `403` above instead, so the
@@ -594,7 +598,8 @@ keys:
 | `organization_not_found` | 404 | Self-service create by a superadmin with an `org_id` that does not exist; an admin read by id of an organization outside the `USER` key's organization |
 | `authentication_failed` | 401 | Any request authenticating with a raw key that doesn't match a non-revoked key (`"Invalid API key"`), matches an expired one (`"API key has expired"`), matches a key whose owner's account is deactivated (`"API key owner is inactive"`), or matches a `USER` key whose organization is inactive or whose non-superadmin owner is no longer a member there (`"API key is no longer valid for its organization"`) |
 | `permission_denied` | 403 | `DenyApiKeyAuth` (API key used against a key-management endpoint, reset-user or admin password reset), `RestrictApiKeyToUserKeyReads` (an API-key write, or any `SYSTEM`-key request, on `/api/admin/*`), the `api_keys` door gate, a forbidden `?org_ids=` entry on the management list, or a revoke/delete on a key the caller can **see** (holds `api_keys` `READ` in the key's organization) but not retire |
-| `org_membership_required` | 403 | Self-service create with an `org_id` the caller is not a member of, or an inactive one; a JWT caller whose `X-Organization-Id` names an org they are not a member of. A `USER` key in that situation gets `401 authentication_failed` instead (see above). The admin API-key surface never raises this |
+| `org_membership_required` | 403 | Self-service create with an `org_id` the caller is not a member of; a JWT caller whose `X-Organization-Id` names an org they are not a member of. A `USER` key in that situation gets `401 authentication_failed` instead (see above). The admin API-key surface never raises this |
+| `organization_deactivated` | 403 | Self-service create with an inactive `org_id` the caller is a member of (or by a superadmin); a JWT caller whose `X-Organization-Id` names such an org. A `USER` key whose org is inactive gets `401 authentication_failed` instead (see above) |
 | `org_context_required` | 400 | JWT caller: `X-Organization-Id` missing or not an integer on a header-required endpoint (never for a `USER` key). On the admin API-key list, a non-integer `?org_ids=` value |
 | `not_authenticated` | 401 | No credential supplied at all |
 

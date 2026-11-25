@@ -91,7 +91,7 @@ def _owned(model, pk):
     ("url", "body", "model"),
     [
         ("/api/graphs/", {"name": "Weather forecast"}, Graph),
-        ("/api/secrets/", {"name": "Weather · LLM key", "value": "sk-1"}, Secret),
+        ("/api/secrets/", {"name": "Weather - LLM key", "value": "sk-1"}, Secret),
         ("/api/llm-configs/", {"custom_name": "Weather summaries"}, LLMConfig),
         ("/api/key-value-tables/", {"name": "weather_cache"}, KeyValueTable),
     ],

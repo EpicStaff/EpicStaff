@@ -8,7 +8,6 @@ import uuid
 import pytest
 from django.utils import timezone
 
-from rbac.models import OrganizationUser
 from tables.models import FlowAssistant, FlowAssistantConversation, Graph
 from tables.models.graph_models import GraphSessionMessage
 from tables.models.session_models import Session
@@ -47,9 +46,8 @@ def session_with_messages(acme):
 def graph_with_conversations(acme, member_only):
     graph = Graph.objects.create(name="Paged conversations", org=acme)
     assistant = FlowAssistant.objects.create(graph=graph)
-    organization_user = OrganizationUser.objects.get(user=member_only, org=acme)
     FlowAssistantConversation.objects.bulk_create(
-        FlowAssistantConversation(flow_assistant=assistant, organization_user=organization_user)
+        FlowAssistantConversation(flow_assistant=assistant, user=member_only)
         for _ in range(ROW_COUNT)
     )
     return graph

@@ -109,7 +109,7 @@ def test_importing_a_flow_with_a_trigger_needs_flows_use(weather_client_without_
 
 
 def test_a_secret_is_created_and_its_value_never_returned(weather_client, acme):
-    response = weather_client.post("/api/secrets/", {"name": "Weather · LLM key", "value": "sk-weather-123"}, format="json")
+    response = weather_client.post("/api/secrets/", {"name": "Weather - LLM key", "value": "sk-weather-123"}, format="json")
 
     assert response.status_code == 201, response.content
     assert "value" not in response.json()

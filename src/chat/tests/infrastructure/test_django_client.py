@@ -53,10 +53,19 @@ async def test_start_run_404_is_flow_not_found(client, django):
         await client.start_run(org_id=1, graph_id=9, variables={}, token_budget=1, callback_url="u", callback_secret="s" * 43)
 
 
-async def test_start_run_other_error_is_flow_start_error(client, django):
-    django.run_session_response = (400, {"error": "no entry point"})
-    with pytest.raises(FlowStartError, match="no entry point"):
+async def test_start_run_other_error_is_flow_start_error_carrying_the_status_but_not_the_body(client, django):
+    django.run_session_response = (400, {"error": "Session aborted: code reads secret STRIPE_KEY"})
+    with pytest.raises(FlowStartError) as raised:
         await client.start_run(org_id=1, graph_id=5, variables={}, token_budget=1, callback_url="u", callback_secret="s" * 43)
+    assert (raised.value.status_code, str(raised.value)) == (400, "HTTP 400")
+
+
+async def test_a_malformed_body_is_named_by_the_parse_error_type_without_quoting_the_body(client, django):
+    django.graphs[5] = CHAT_FLOW
+    django.run_session_response = (201, {"session_id": "visitor-text-4111"})
+    with pytest.raises(UpstreamUnavailableError) as raised:
+        await client.start_run(org_id=1, graph_id=5, variables={}, token_budget=1, callback_url="u", callback_secret="s" * 43)
+    assert str(raised.value) == "Malformed body from /api/run-session/: ValueError"
 
 
 async def test_stop_run_ignores_unknown_session(client, django):

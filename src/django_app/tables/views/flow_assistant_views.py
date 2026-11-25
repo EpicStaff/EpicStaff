@@ -6,14 +6,14 @@ Views for the Flow Assistant feature.
 Non-streaming endpoints: DRF APIView.
 Streaming endpoint: SSEMixin (Django View) with ticket auth.
 
-Every DRF view refuses plugin credentials: conversations belong to a person's
-membership, and the stream's ticket is issued only by these views.
+Every DRF view refuses plugin credentials: conversations belong to a person,
+and the stream's ticket is issued only by these views.
 """
 
 import contextlib
 
 from asgiref.sync import async_to_sync, sync_to_async
-from django.db.models import Count
+from django.db.models import Count, F
 from django.http import Http404
 from django.utils import timezone
 from rbac.access.asserts import assert_org_permission
@@ -46,7 +46,6 @@ from tables.services.flow_assistant import (
 )
 from tables.services.flow_assistant.conversation_access import get_streamable_conversation
 from tables.services.flow_assistant.helpers import request_cancel
-from tables.services.flow_assistant.organization_resolution import resolve_organization_user
 from tables.services.flow_assistant.stream_serializer import serialize_stream_event
 from tables.services.llm_clients import (
     TOOL_USE_FAILED_CODE,
@@ -70,15 +69,10 @@ def _get_graph_in_org_or_404(graph_id: int, org_id: int):
         raise Http404(f"Graph {graph_id} not found.") from e
 
 
-def _get_conversation_or_404(
-    graph_id: int,
-    conversation_id: int,
-    organization_user=None,
-):
-    """Return FlowAssistantConversation, raising 404 / 403 as appropriate.
+def _get_conversation_or_404(graph_id: int, conversation_id: int, user):
+    """Return the conversation of `user`, raising 404 / 403 as appropriate.
 
-    When organization_user is supplied the conversation must belong to that
-    membership and must not be soft-deleted.
+    A soft-deleted conversation is not found; another user's conversation is refused.
     """
     try:
         conv = (
@@ -95,11 +89,10 @@ def _get_conversation_or_404(
     except FlowAssistantConversation.DoesNotExist as e:
         raise Http404(f"Conversation {conversation_id} not found.") from e
 
-    if organization_user is not None:
-        if conv.organization_user_id != organization_user.pk:
-            raise PermissionDenied("You do not have permission to access this conversation.")
-        if conv.deleted_at is not None:
-            raise Http404(f"Conversation {conversation_id} not found.")
+    if conv.user_id != user.pk:
+        raise PermissionDenied("You do not have permission to access this conversation.")
+    if conv.deleted_at is not None:
+        raise Http404(f"Conversation {conversation_id} not found.")
 
     return conv
 
@@ -172,19 +165,19 @@ class FlowAssistantConversationsView(APIView):
     permission_classes = [IsAuthenticated, DenyPluginCredential]
 
     def get(self, request, graph_id: int):
-        organization_user = resolve_organization_user(request)
+        org_id = resolve_active_org_id(request)
         assert_org_permission(
             user=request.user,
-            org_id=organization_user.org_id,
+            org_id=org_id,
             resource_type=ResourceType.FLOWS,
             action=Permission.READ,
         )
-        _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
+        _get_graph_in_org_or_404(graph_id=graph_id, org_id=org_id)
 
         queryset = (
             FlowAssistantConversation.objects.filter(
                 flow_assistant__graph_id=graph_id,
-                organization_user=organization_user,
+                user=request.user,
                 deleted_at__isnull=True,
             )
             .annotate(message_count=Count("message_rows"))
@@ -198,19 +191,19 @@ class FlowAssistantConversationsView(APIView):
 
     @not_a_user_change
     def post(self, request, graph_id: int):
-        organization_user = resolve_organization_user(request)
+        org_id = resolve_active_org_id(request)
         assert_org_permission(
             user=request.user,
-            org_id=organization_user.org_id,
+            org_id=org_id,
             resource_type=ResourceType.FLOWS,
             action=Permission.READ,
         )
-        _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
+        _get_graph_in_org_or_404(graph_id=graph_id, org_id=org_id)
         StartConversationSerializer(data=request.data).is_valid(raise_exception=True)
 
         service = FlowAssistantService()
         assistant = service.get_or_create(graph_id)
-        conversation = service.start_conversation(assistant, organization_user)
+        conversation = service.start_conversation(assistant, request.user)
         return Response(
             {"conversation_id": conversation.pk},
             status=status.HTTP_201_CREATED,
@@ -229,29 +222,29 @@ class FlowAssistantConversationView(APIView):
     permission_classes = [IsAuthenticated, DenyPluginCredential]
 
     def get(self, request, graph_id: int, conversation_id: int):
-        organization_user = resolve_organization_user(request)
+        org_id = resolve_active_org_id(request)
         assert_org_permission(
             user=request.user,
-            org_id=organization_user.org_id,
+            org_id=org_id,
             resource_type=ResourceType.FLOWS,
             action=Permission.READ,
         )
-        _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
-        conversation = _get_conversation_or_404(graph_id, conversation_id, organization_user)
+        _get_graph_in_org_or_404(graph_id=graph_id, org_id=org_id)
+        conversation = _get_conversation_or_404(graph_id, conversation_id, request.user)
         serializer = FlowAssistantConversationSerializer(conversation)
         return Response(serializer.data)
 
     @not_a_user_change
     def delete(self, request, graph_id: int, conversation_id: int):
-        organization_user = resolve_organization_user(request)
+        org_id = resolve_active_org_id(request)
         assert_org_permission(
             user=request.user,
-            org_id=organization_user.org_id,
+            org_id=org_id,
             resource_type=ResourceType.FLOWS,
             action=Permission.READ,
         )
-        _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
-        conversation = _get_conversation_or_404(graph_id, conversation_id, organization_user)
+        _get_graph_in_org_or_404(graph_id=graph_id, org_id=org_id)
+        conversation = _get_conversation_or_404(graph_id, conversation_id, request.user)
         conversation.deleted_at = timezone.now()
         conversation.save(update_fields=["deleted_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -267,15 +260,15 @@ class FlowAssistantSendMessageView(APIView):
 
     @not_a_user_change
     def post(self, request, graph_id: int, conversation_id: int):
-        organization_user = resolve_organization_user(request)
+        org_id = resolve_active_org_id(request)
         assert_org_permission(
             user=request.user,
-            org_id=organization_user.org_id,
+            org_id=org_id,
             resource_type=ResourceType.FLOWS,
             action=Permission.READ,
         )
-        _get_graph_in_org_or_404(graph_id=graph_id, org_id=organization_user.org_id)
-        conversation = _get_conversation_or_404(graph_id, conversation_id, organization_user)
+        _get_graph_in_org_or_404(graph_id=graph_id, org_id=org_id)
+        conversation = _get_conversation_or_404(graph_id, conversation_id, request.user)
 
         serializer = SendMessageSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -283,7 +276,7 @@ class FlowAssistantSendMessageView(APIView):
 
         service = FlowAssistantService()
         # Refused before the message is stored, so a refused turn leaves nothing to answer.
-        service.assert_reply_admitted(conversation.flow_assistant, organization_user.org_id)
+        service.assert_reply_admitted(conversation.flow_assistant, org_id)
         service.append_user_message(conversation, message)
         service.apply_title_if_missing(conversation, message)
 
@@ -417,8 +410,8 @@ class FlowAssistantAuditView(APIView):
     Superadmin-only paginated audit log of all conversations.
 
     Query params (all optional):
-      organization_id       int   — filter by org
-      organization_user_id  int   — filter by OrganizationUser pk
+      organization_id       int   — filter by the org of the conversation's flow
+      user_id               int   — filter by the conversation's owner
       from                  str   — ISO 8601 lower bound on started_at
       to                    str   — ISO 8601 upper bound on started_at
       include_deleted       bool  — include soft-deleted rows (default false)
@@ -432,24 +425,25 @@ class FlowAssistantAuditView(APIView):
         from django.utils.dateparse import parse_datetime
 
         queryset = (
-            FlowAssistantConversation.objects.select_related(
-                "organization_user__user",
-                "organization_user__org",
-                "flow_assistant",
+            FlowAssistantConversation.objects.select_related("user")
+            .annotate(
+                message_count=Count("message_rows"),
+                # Only these two are read; joining the whole Graph would load its canvas JSON.
+                organization_id=F("flow_assistant__graph__org_id"),
+                organization_name=F("flow_assistant__graph__org__name"),
             )
-            .annotate(message_count=Count("message_rows"))
             .order_by("-last_message_at")
         )
 
         org_id = request.query_params.get("organization_id")
         if org_id is not None:
             with contextlib.suppress(ValueError):
-                queryset = queryset.filter(organization_user__org_id=int(org_id))
+                queryset = queryset.filter(flow_assistant__graph__org_id=int(org_id))
 
-        org_user_id = request.query_params.get("organization_user_id")
-        if org_user_id is not None:
+        user_id = request.query_params.get("user_id")
+        if user_id is not None:
             with contextlib.suppress(ValueError):
-                queryset = queryset.filter(organization_user_id=int(org_user_id))
+                queryset = queryset.filter(user_id=int(user_id))
 
         from_param = request.query_params.get("from")
         if from_param:
@@ -489,17 +483,18 @@ class FlowAssistantCancelView(APIView):
 
     @not_a_user_change
     def post(self, request, graph_id: int, conversation_id: int):
-        organization_user = resolve_organization_user(request)
+        org_id = resolve_active_org_id(request)
         assert_org_permission(
             user=request.user,
-            org_id=organization_user.org_id,
+            org_id=org_id,
             resource_type=ResourceType.FLOWS,
             action=Permission.READ,
         )
         conv = FlowAssistantConversation.objects.filter(
             pk=conversation_id,
-            organization_user=organization_user,
+            user=request.user,
             flow_assistant__graph_id=graph_id,
+            flow_assistant__graph__org_id=org_id,
             deleted_at__isnull=True,
         ).first()
         if conv is None:

@@ -1,10 +1,10 @@
 """What the manager knows about the worker as a counterpart: who called, and when.
 
 One place for every fact that is about the WORKER rather than about executions: which
-run (boot id) is the live one, when each run was last heard from, and how many of its
-long-polls are parked waiting for work. The execution registry stays about executions;
-the worker-loss sweeper combines the two ("which boots hold assignments" from the
-registry, "which of them went silent" from here).
+run (boot id) is the live one, when each run was last heard from, and how many
+executions it always runs at once (its guaranteed slots). The execution registry stays
+about executions; the worker-loss sweeper combines the two ("which boots hold
+assignments" from the registry, "which of them went silent" from here).
 
 Liveness is judged from contact alone, never from how long a job runs -- job duration
 is unknown by design (a legitimate run may take hours). A worker run proves it is alive
@@ -23,7 +23,7 @@ SUPERSEDED_BOOT_MEMORY_SECONDS = 60.0
 
 
 class WorkerContact:
-    """Track the worker's boot ids, their last contact, and the parked long-polls.
+    """Track the worker's boot ids, their last contact, and its guaranteed slots.
 
     Every method is synchronous, like the execution registry's, so callers that check
     and record without awaiting in between cannot race one another.
@@ -42,10 +42,8 @@ class WorkerContact:
         # runs while one zombie is still in flight.
         self._current_boot_id: str | None = None
         self._superseded_boot_ids: dict[str, float] = {}
-        # Long-polls currently parked on the job queue under the live boot id. With the
-        # worker taking a run-gate slot before it pulls, a waiting poller IS a free
-        # slot, which makes this the intake's free-slot probe.
-        self._waiting_pollers = 0
+        # None until the first heartbeat: the intake then has no free slot to count on.
+        self._guaranteed_slots: int | None = None
 
     def record_seen(self, boot_id: str) -> None:
         """Note that this worker run just made contact; its assigned jobs are alive."""
@@ -95,14 +93,14 @@ class WorkerContact:
         """
         return self._clock() - self._last_worker_contact > silence_threshold
 
-    def add_waiting_poller(self) -> None:
-        """One more long-poll is parked on the job queue under the live boot id."""
-        self._waiting_pollers += 1
-
-    def remove_waiting_poller(self) -> None:
-        self._waiting_pollers = max(0, self._waiting_pollers - 1)
+    def record_guaranteed_slots(self, count: int) -> None:
+        """Note the executions the worker reported it always runs at once."""
+        self._guaranteed_slots = count
 
     @property
-    def waiting_pollers(self) -> int:
-        """Long-polls waiting for a job right now; each one is a free worker slot."""
-        return self._waiting_pollers
+    def guaranteed_slots(self) -> int | None:
+        """The worker's last reported guaranteed slots; None before its first heartbeat.
+
+        A total, not what is free: the intake subtracts the executions in flight.
+        """
+        return self._guaranteed_slots

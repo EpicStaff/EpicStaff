@@ -212,11 +212,11 @@ def _create_conversation_without_user_message(org, role, django_user_model):
     user = django_user_model.objects.create_user(
         email="flow-assistant-channels@example.com", password="StrongPass123!"
     )
-    organization_user = OrganizationUser.objects.create(user=user, org=org, role=role)
+    OrganizationUser.objects.create(user=user, org=org, role=role)
     graph = Graph.objects.create(name="flow-assistant-channels", org=org)
     assistant = FlowAssistant.objects.create(graph=graph)
     conversation = FlowAssistantConversation.objects.create(
-        flow_assistant=assistant, organization_user=organization_user
+        flow_assistant=assistant, user=user
     )
     return user, graph.id, conversation.id
 

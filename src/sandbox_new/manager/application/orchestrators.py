@@ -353,8 +353,15 @@ class VenvBuildOrchestrator:
         # The wheelhouse lives only for this build, and is deliberately not cached: a
         # cache would be another place a deleted wheel could still be installed from.
         with tempfile.TemporaryDirectory() as workspace:
-            wheelhouse = await self._fill_wheelhouse(custom_wheels, Path(workspace))
-            await self.uv_provider.apply(staging_path, *libs, wheelhouse=wheelhouse)
+            if venv.system_key is not None:
+                # Built at startup, which must succeed without the internet: the image
+                # carries every wheel a system venv needs.
+                await self.uv_provider.apply(
+                    staging_path, *libs, wheelhouse=settings.SYSTEM_WHEELHOUSE_DIR, offline=True
+                )
+            else:
+                wheelhouse = await self._fill_wheelhouse(custom_wheels, Path(workspace))
+                await self.uv_provider.apply(staging_path, *libs, wheelhouse=wheelhouse)
             # Held, not applied yet: stamping the libraries is what the user sees as the
             # outcome of the build, so it must not survive a step below that fails.
             resolved_versions = self.uv_provider.read_resolved_versions(staging_path)

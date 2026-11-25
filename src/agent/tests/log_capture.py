@@ -9,8 +9,10 @@ from loguru import logger
 
 
 @contextmanager
-def capture_logs_at(level: str):
+def capture_logs_at(level: str, *, with_level: bool = False):
     """Capture log messages with `level` as the only active sink's floor.
+
+    With `with_level`, each message is prefixed by its level name and a space.
 
     Every other sink is removed for the duration, so loguru's lazy formatting is
     skipped for anything below `level` — which is what makes a "nothing is logged"
@@ -21,7 +23,8 @@ def capture_logs_at(level: str):
     """
     messages: list[str] = []
     logger.remove()
-    sink_id = logger.add(messages.append, level=level, format="{message}")
+    message_format = "{level} {message}" if with_level else "{message}"
+    sink_id = logger.add(messages.append, level=level, format=message_format)
     try:
         yield messages
     finally:
