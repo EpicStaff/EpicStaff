@@ -546,6 +546,10 @@ class ProcessNaiveRagDocumentChunkingView(OrgScopedServiceViewSetMixin, APIView)
         serializer.is_valid(raise_exception=True)
 
         validated = serializer.validated_data
+        try:
+            NaiveRagService.validate_additional_params(validated["additional_params"])
+        except InvalidChunkParametersException as e:
+            return Response({"errors": e.errors}, status=status.HTTP_400_BAD_REQUEST)
         chunking_config = ChunkingConfig(
             chunk_strategy=validated["chunk_strategy"],
             chunk_size=validated["chunk_size"],
