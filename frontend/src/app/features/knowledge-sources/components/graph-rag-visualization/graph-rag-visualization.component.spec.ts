@@ -275,7 +275,16 @@ describe('GraphRagVisualizationComponent', () => {
 
             enterDisplayedEntities('5000');
 
-            expectVisualizationRequest({ max_entities: '5000' }).flush(buildVisualizationData(200, 5000));
+            // 5000 exceeds GRAPH_VISUALIZATION_MAX_ENTITIES_PER_REQUEST (1000), so the service splits
+            // the fetch into GRAPH_VISUALIZATION_MAX_PARALLEL_PAGES (5) parallel page requests.
+            const pageCount = 5;
+            for (let page = 0; page < pageCount; page++) {
+                expectVisualizationRequest({
+                    max_entities: '1000',
+                    page: page.toString(),
+                    page_count: pageCount.toString(),
+                }).flush(buildVisualizationData(200, 5000));
+            }
         });
 
         it('never requests fewer than one entity', () => {
