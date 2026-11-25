@@ -154,9 +154,6 @@ class FakeGhcr:
     def branch_slugs(self, repository):
         return set()
 
-    def packages(self, repository):
-        return ["django_app"]
-
     def versions(self, package):
         return [version(1), kept_latest()]
 
@@ -169,7 +166,12 @@ class FakeGhcr:
 
 class MainTest(unittest.TestCase):
     def run_main(self, **env):
-        environ = {"GITHUB_TOKEN": "token", "GITHUB_REPOSITORY": "EpicStaff/EpicStaff", **env}
+        environ = {
+            "GITHUB_TOKEN": "token",
+            "GITHUB_REPOSITORY": "EpicStaff/EpicStaff",
+            "PACKAGES": "django_app",
+            **env,
+        }
         with (
             mock.patch.object(cleanup, "Ghcr", FakeGhcr),
             mock.patch.dict(os.environ, environ, clear=True),
@@ -184,6 +186,11 @@ class MainTest(unittest.TestCase):
     def test_dry_run_false_deletes(self):
         self.assertEqual(self.run_main(DRY_RUN="false"), 0)
         self.assertEqual(FakeGhcr.deleted, [1])
+
+    def test_an_empty_package_list_fails(self):
+        with self.assertRaises(SystemExit):
+            self.run_main(PACKAGES="", DRY_RUN="false")
+        self.assertEqual(FakeGhcr.deleted, [])
 
 
 if __name__ == "__main__":

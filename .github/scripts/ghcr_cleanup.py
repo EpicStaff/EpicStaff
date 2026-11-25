@@ -161,15 +161,6 @@ class Ghcr:
             yield from response.json()
             url, params = response.links.get("next", {}).get("url"), None
 
-    def packages(self, repository: str) -> list[str]:
-        return sorted(
-            package["name"]
-            for package in self._pages(
-                f"{GH}/orgs/{self.org}/packages", {"package_type": "container"}
-            )
-            if (package.get("repository") or {}).get("full_name") == repository
-        )
-
     def branch_slugs(self, repository: str) -> set[str]:
         return {
             slugify(branch["name"]) for branch in self._pages(f"{GH}/repos/{repository}/branches")
@@ -223,6 +214,10 @@ def main() -> int:
     repository = os.environ["GITHUB_REPOSITORY"]
     org = repository.split("/")[0]
     dry_run = Env().bool("DRY_RUN", True)
+    # The workflow lists the images the build pushes: GITHUB_TOKEN may not list org packages.
+    packages = sorted(package for package in Env().list("PACKAGES") if package)
+    if not packages:
+        raise SystemExit("PACKAGES is empty: no image to clean up.")
     ghcr = Ghcr(token, org)
     branch_slugs = ghcr.branch_slugs(repository)
     now = datetime.now(UTC)
@@ -233,7 +228,7 @@ def main() -> int:
         "| Package | Versions | Delete |",
         "|---|---|---|",
     ]
-    for package in ghcr.packages(repository):
+    for package in packages:
         versions = ghcr.versions(package)
         doomed = plan_deletions(
             versions, children_of=ghcr.children_of(package), branch_slugs=branch_slugs, now=now
