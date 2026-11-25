@@ -17,6 +17,7 @@ from functools import partial
 from django.db import transaction
 from django.db.models import Count, Q
 from django.utils import timezone
+from foundation.transport.http.errors import ClientError
 from rbac.validation.hard_delete import HardDeleteValidationService
 from src.shared.models.plugin_nodes import RemovalReport
 from utils.logger import logger
@@ -50,7 +51,7 @@ from plugins.models import (
     PluginState,
 )
 from plugins.models.hook_job import OPEN_HOOK_JOB_STATES
-from plugins.ownership.owned_resource_purger import OwnedResourcePurger
+from plugins.ownership.owned_resource_purger import HandOverPlan, OwnedResourcePurger
 from plugins.packages.package_store import get_package_store
 from plugins.packages.spa_publisher import SpaPublisher
 
@@ -116,8 +117,11 @@ class PluginPurgeService:
         `time.monotonic()` deadline. Once no grant is left, the platform skips the
         organization removed jobs that failed for good: the plugin's database is about to be
         dropped, and the data they would delete with it. Jobs still waiting or running are
-        waited for. Once none is open and no owned row is left, removal is requested from the
-        node, or a plugin without a placement is finalized at once.
+        waited for. Once none is open, an organization whose only owned rows left are venvs
+        and custom libraries it still uses gets them (`plan_hand_over`, then `hand_over`); only
+        the `plugins.purge.handed_over` log line names them. Once no owned row is left,
+        removal is requested from the node, or a plugin without a placement is finalized at
+        once.
         """
         purger = OwnedResourcePurger()
         organizations = (
@@ -137,6 +141,15 @@ class PluginPurgeService:
                 grant=None,
                 until=until,
             )
+        # Both checked again under the lock; here they spare asking the sandbox for nothing.
+        # With a job still open the lock is still taken: it skips the jobs that failed for good.
+        if PluginGrant.objects.filter(plugin=plugin).exists():
+            return False
+        plans = (
+            []
+            if _open_org_removed_jobs(plugin).exists()
+            else self._plan_hand_overs(purger, plugin.identifier, list(organizations), until)
+        )
         with transaction.atomic():
             locked = lock_plugin(plugin.identifier, skip_locked=True)
             if locked is None or locked.state != PluginState.PURGING:
@@ -147,6 +160,10 @@ class PluginPurgeService:
             OrgRemovedHookService().skip_failed(locked, now)
             if _open_org_removed_jobs(locked).exists():
                 return False
+            for plan in plans:
+                # No grant event is left to list them in, and this may be ticks before
+                # `plugin_purged`: only the log names them.
+                purger.hand_over(plan)
             if PluginOwnedResource.objects.filter(plugin_identifier=locked.identifier).exists():
                 return False
             placement = (
@@ -171,6 +188,37 @@ class PluginPurgeService:
                 )
             )
         return True
+
+    @staticmethod
+    def _plan_hand_overs(
+        purger: OwnedResourcePurger, identifier: str, organization_ids: list[int], until: float
+    ) -> list[HandOverPlan]:
+        """Plan each organization's hand-over, asking the sandbox before the plugin is locked;
+        `hand_over` checks the database side again under the lock.
+
+        Stops once the `time.monotonic()` deadline `until` has passed. An organization the
+        sandbox could not be asked about gets no plan, with a warning: its rows wait for a
+        later call, and the other organizations go on.
+        """
+        plans = []
+        for organization_id in organization_ids:
+            if time.monotonic() >= until:
+                break
+            try:
+                plan = purger.plan_hand_over(
+                    organization_id=organization_id, plugin_identifier=identifier, grant=None
+                )
+            except ClientError as error:
+                logger.warning(
+                    "plugins.purge.hand_over_unplanned plugin={plugin} org={org} error={error}",
+                    plugin=identifier,
+                    org=organization_id,
+                    error=type(error).__name__,
+                )
+                continue
+            if plan is not None:
+                plans.append(plan)
+        return plans
 
     def retry_removal(self, identifier: str, actor) -> Plugin:
         """Ask the node to try a failed removal again: a new generation of the removal.

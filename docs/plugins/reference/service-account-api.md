@@ -200,7 +200,7 @@ access each declared; a SuperAdmin sees every organization's on the plugin's **A
 | `grant_suspended` | A SuperAdmin suspended the plugin in the organization, or uninstalled it (`previous_state`, `purge_after`, `cause`: `grant` or `uninstall`) | SuperAdmin | the grant's |
 | `grant_resumed` | A SuperAdmin resumed it, or reinstalled the plugin (`state`: `active`; `install_failed` when its install hook never succeeded; `upgrading` when the plugin's version changed meanwhile; `cause`: the suspension's) | SuperAdmin | the grant's |
 | `grant_purge_started` | Deleting the plugin's data in the organization began (`reason`: `requested`, `grace_period_over` or `plugin_deleted`; `previous_state`; `owned_resources`, how many resources it owned) | SuperAdmin or Platform | the grant's |
-| `grant_purged` | The plugin's data in the organization is deleted, and the grant with it | Platform | the grant's |
+| `grant_purged` | The plugin's data in the organization is deleted, and the grant with it (`handed_over_venvs`, `handed_over_custom_libraries`: what the organization still used and now owns, each `<name> (id <n>)`) | Platform | the grant's |
 | `org_removed_hook_succeeded`, `org_removed_hook_failed` | The organization removed hook reported success, or failed for good after its retries (`job_id`, `attempt`, and `error` when it failed); a failed attempt that is retried records nothing | Platform | the job's |
 | `org_removed_hook_retried` | A SuperAdmin retried a data removal (`job_id`) | SuperAdmin | the job's |
 | `org_removed_hook_skipped` | A SuperAdmin skipped a data removal, or the platform did while deleting the plugin (`job_id`, `state_before`) | SuperAdmin or Platform | the job's |

@@ -134,19 +134,31 @@ organization, and the grant shows "Deleting data". Two things then happen side b
   the bin. A version the plugin uploaded to one of the organization's own custom libraries is not
   the plugin's and stays, and the organization's venvs that install that library keep installing
   it ([accepted risks](accepted-risks.md#custom-library-versions-and-links-a-plugin-does-not-own)).
+  Venvs and custom libraries a plugin created before they became its own are matched to it at
+  the upgrade, except the few that cannot be told apart from the organization's
+  ([upgrading](../operator/enable-plugins.md#upgrading-to-this-version)).
 
 The organization's own rows lose what they used, exactly as when a person deletes the item: an
 agent loses the plugin's LLM config, a node loses its tool or file, and a default-model setting
 that pointed at one of the plugin's configurations is emptied. The organization's flows
 themselves stay. A resource that a row of another organization links to is not deleted, because
 that delete would change the other organization's data: the grant shows the error, and EpicStaff
-tries again every hour until the link is removed by hand. The same goes for a venv the
-organization's own code still runs in, and a custom library one of its venvs still names: as when
-a person deletes them, they are refused until that code or venv stops using them. A flow with a
-running session waits until the session ends.
+tries again every hour until the link is removed by hand. A flow with a running session waits
+until the session ends.
 
-The grant row goes once both are done: nothing the plugin created is left, and its organization
-removed hook succeeded or was skipped. Its service account, keys and custom roles' actions go
+A venv the plugin created that the code of some tool or node still runs in, and a custom library
+it created that some venv of the organization still names, wait instead: the plugin's own tools
+and flows are deleted first, their code with them. Code that no tool or node has any more does not
+keep a venv: it is deleted with the venv. What still uses them once everything else is gone is the
+organization's, so when the grant goes they are handed over to the organization instead of
+deleted. They stay exactly as they are and become the organization's own: its code keeps running,
+and a handed-over venv keeps installing the libraries the plugin chose for it. The `grant_purged`
+event in the plugin's activity names them in its detail, `handed_over_venvs` and
+`handed_over_custom_libraries`, each as `<name> (id <n>)`. Check them, and delete what the
+organization does not want to keep.
+
+The grant row goes once both are done: nothing the plugin created is left but what is handed over,
+and its organization removed hook succeeded or was skipped. Its service account, keys and custom roles' actions go
 with it. Until then, runs that use anything the plugin still owns there are refused, as while
 suspended. The plugin can then be granted to the organization again, as a new grant.
 
@@ -195,6 +207,13 @@ already deleting. It asks for the phrase `purge-<plugin id>`. EpicStaff then:
    taken.** A database that another installation created is never deleted;
 3. once the node reports it done, deletes the plugin's records, frontend files and packages. Its
    port and user id are given to another plugin only after that.
+
+Rows the plugin owns in an organization whose grant is already gone are deleted in step 1 too,
+and a venv or custom library among them that the organization still uses is handed over to it,
+as when a grant goes. No activity event names those: the `grant_purged` event is the grant's,
+and the hand-over can happen ticks before `plugin_purged`. Only Django's log does, one line per
+resource, `plugins.purge.handed_over plugin=<id> org=<organization id>
+model=proxies.SandboxVenvBinding|proxies.SandboxCustomLibraryBinding pk=<id>`; look for it there.
 
 The plugin page shows the progress (organizations left, data removals waiting or failed, the
 plugin node). The plugin's activity is kept, and stays readable for SuperAdmins. The same

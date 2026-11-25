@@ -39,6 +39,7 @@ from plugins.models.activity import (
 )
 
 if TYPE_CHECKING:
+    from plugins.ownership.owned_resource_purger import HandedOver
     from plugins.ownership.request_scope import PluginRequestScope
 
 RUNTIME_API_PATH_PREFIX = "/api/plugin-runtime/"
@@ -169,8 +170,21 @@ class ActivityRecorder:
             },
         )
 
-    def grant_purged(self, identifier: str, organization_id: int) -> None:
-        _actor_event(None, identifier, organization_id, ActivityAction.GRANT_PURGED, {})
+    def grant_purged(
+        self, identifier: str, organization_id: int, handed_over: "HandedOver"
+    ) -> None:
+        """Record that a grant's data is deleted, with the venvs and custom libraries of the
+        plugin that the organization still used and now owns, each as `"<name> (id <n>)"`."""
+        _actor_event(
+            None,
+            identifier,
+            organization_id,
+            ActivityAction.GRANT_PURGED,
+            {
+                "handed_over_venvs": list(handed_over.venvs),
+                "handed_over_custom_libraries": list(handed_over.custom_libraries),
+            },
+        )
 
     def plugin_uninstalled(self, actor, identifier: str, purge_after, organizations: int) -> None:
         """Record an uninstall; `organizations` is how many grants it suspended."""

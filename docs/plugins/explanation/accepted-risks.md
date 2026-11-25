@@ -173,9 +173,27 @@ remove the ones it uploaded.
 A venv names the custom libraries it installs by name, inside the sandbox, not by a link
 EpicStaff can follow. So when one of the organization's venvs installs a library the plugin
 created, a run of code in that venv is not seen to use the plugin's library: a suspension does
-not refuse it. Deleting the plugin's data then tries to delete the library, and the sandbox
-refuses while a venv still names it: the grant shows the error until the venv stops naming the
-library.
+not refuse it.
+
+Deleting the plugin's data does not delete a venv the plugin created that the organization's
+code runs in, nor a custom library it created that one of the organization's venvs names: it
+hands them over to the organization, and the grant's `grant_purged` activity event lists them
+([lifecycle](lifecycle.md#when-the-grace-period-ends)). The plugin chose what such a venv
+installs, and the organization keeps running its code with exactly those libraries, the plugin's
+own custom library among them. Check what was handed over: the libraries of each venv, and the
+versions of each library. What is handed over while the plugin itself is deleted, from an
+organization whose grant was already gone, has no event: only the `plugins.purge.handed_over`
+line in Django's log names it ([deleting a plugin](lifecycle.md#deleting-a-plugin)).
+
+## A hanging sandbox holds up an organization's storage writes during a purge
+
+Deleting a plugin's data deletes each venv and custom library it owns in the sandbox and its
+record in EpicStaff in one transaction, which holds the organization's lock, so a failure
+between the two is put right by a later pass. While the sandbox hangs, that transaction waits
+for the sandbox client's timeout (`SANDBOX_CLIENT_TIMEOUT`, 30 seconds by default) on each call,
+up to two calls per venv or library. Until it gives up, file uploads, restores and other storage
+writes in that organization wait too. A pass checks its deadline before each row, so it runs
+at most one venv or library past it; each hourly pass does the same while the sandbox hangs.
 
 ## Backups hold every organization's data
 
