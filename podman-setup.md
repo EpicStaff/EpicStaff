@@ -152,8 +152,11 @@ The first start on a new `opensearch_data` volume takes several minutes: the ent
 ### Frontend
 
 ```bash
-podman run -d   --name frontend   --network frontend-network   -p 4200:80   -e API_URL=http://localhost:8000/api/   -e REALTIME_API_URL=http://localhost:8050/realtime/   frontend
+podman run -d   --name frontend   --network frontend-network   -p 4200:80   --read-only   --tmpfs /tmp:size=16m   --security-opt no-new-privileges   --cap-drop ALL   --sysctl net.ipv4.ip_unprivileged_port_start=0   -e API_URL=http://localhost:8000/api/   -e REALTIME_API_URL=http://localhost:8050/realtime/   frontend
 ```
+
+nginx runs as the image's unprivileged `nginx` user and writes only to `/tmp`, so the root filesystem can be read-only. The `--sysctl` lets that user listen on port 80 inside the container.
+
 ---
 
 ## For Windows users

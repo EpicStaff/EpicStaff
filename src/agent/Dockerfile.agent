@@ -51,10 +51,9 @@ FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5
 # Copy built app from builder
 COPY --from=builder /app /app
 
-# Create non-root user for runtime
+# Non-root runtime user. Code and venv stay root-owned (read-only for the runtime user).
 RUN groupadd --system --gid 1000 app \
- && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app \
- && chown -R app:app /app
+ && useradd  --system --uid 1000 --gid app --create-home --shell /usr/sbin/nologin app
 
 # Add virtualenv to PATH.
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to

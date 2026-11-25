@@ -21,6 +21,7 @@ from tables.import_export.version_conversions.base import file_version
 from tables.import_export.version_conversions.exceptions import UnsupportedImportVersionError
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
 from tables.validators.run_refusal_validator import assert_no_run_refusals_in_export
+from tables.validators.top_level_node_list_validator import assert_no_top_level_node_lists
 from user_audit.actor import Actor
 
 _ZIP_HEAD_SIZE = 4
@@ -233,22 +234,23 @@ def _read_archive_envelope(file):
 def check_job_archive(path: str, *, main_entity, user, org_id: int) -> None:
     """Refuse an archive an import job would refuse up front, before the job is created.
 
-    Applies every archive cap, the version and main-entity checks, the flows:USE
-    check for trigger nodes and the check for flows crew would refuse to run, so a
-    caller learns of these at once instead of from a failed job. The import job runs
-    them all again on the stored archive.
+    Applies every archive cap, the version and main-entity checks, the refusal of
+    node lists outside a flow, the flows:USE check for trigger nodes and the check
+    for flows crew would refuse to run, so a caller learns of these at once instead
+    of from a failed job. The import job runs them all again on the stored archive.
 
     Raises:
         InvalidArchiveError: The archive is unsafe or unreadable.
         ValidationError: Its main entity is not `main_entity`, its version is not a
-            whole number, it is older than archives (`use_sync_import`), or it holds
-            a flow crew would refuse to run.
+            whole number, it is older than archives (`use_sync_import`), it holds a
+            node list outside a flow, or it holds a flow crew would refuse to run.
         FlowWithTriggerNodesRequiresUsePermissionError: It holds a trigger node and
             `user` lacks USE on flows in `org_id`.
     """
     with ImportArchive.open(path) as archive:
         data = _read_job_envelope(archive, main_entity)
     # The same checks ImportService.import_data runs before it writes anything.
+    assert_no_top_level_node_lists(data)
     if TriggerNodeInspector.has_any_in_export(data):
         trigger_node_access.assert_user_may_recreate(user, org_id)
     assert_no_run_refusals_in_export(data)

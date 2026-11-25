@@ -10,7 +10,7 @@ from rbac.models.enums import Permission
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied, ValidationError
 
-from tables.import_export.constants import DEPENDENCY_ORDER, NODE_MAPPING_KEY
+from tables.import_export.constants import DEPENDENCY_ORDER, NODE_ENTITY_TYPES, NODE_MAPPING_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.permissions import ENTITY_RESOURCE_MAP
@@ -24,23 +24,7 @@ from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_acc
 # Node entity types that belong to a graph — handled via recreate_graph_children.
 # Start/end nodes are intentionally excluded: they are structural and every
 # graph already has them, so they are not part of partial export/import.
-_NODE_ENTITY_TYPES = {
-    EntityType.CREW_NODE,
-    EntityType.PYTHON_NODE,
-    EntityType.AUDIO_TRANSCRIPTION_NODE,
-    EntityType.FILE_EXTRACTOR_NODE,
-    EntityType.KEY_VALUE_NODE,
-    EntityType.TELEGRAM_TRIGGER_NODE,
-    EntityType.WEBHOOK_TRIGGER_NODE,
-    EntityType.DECISION_TABLE_NODE,
-    EntityType.CLASSIFICATION_DECISION_TABLE_NODE,
-    EntityType.SUBGRAPH_NODE,
-    EntityType.NOTE_NODE,
-    EntityType.SCHEDULE_TRIGGER_NODE,
-    EntityType.KNOWLEDGE_NODE,
-    EntityType.AGENT_NODE,
-    EntityType.TASK_NODE,
-}
+_NODE_ENTITY_TYPES = NODE_ENTITY_TYPES - {EntityType.START_NODE, EntityType.END_NODE}
 
 
 @dataclass(frozen=True)
