@@ -61,9 +61,9 @@ def client_member(db, django_user_model, org_a):
 
 @pytest.fixture
 def client_org_admin(db, django_user_model, org_a):
-    # VOICE is read-only for Member/Viewer (seeded bitmask=2) — the
-    # `conversation_recording_create_*` org-scoping tests below need CREATE,
-    # so they exercise an Org Admin (bitmask=15) rather than `client_member`.
+    # Org Admin holds CREATE on VOICE (bitmask=15), which Member/Viewer lack
+    # (bitmask=2): the recording-create test uses it to show that even that
+    # role is refused, since only the realtime service's SYSTEM key creates.
     return _client(_org_admin(django_user_model, org_a, "voice-admin@example.com"), org_a)
 
 
