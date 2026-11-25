@@ -42,19 +42,15 @@ class _FakeTunnel:
 
 class _ConnectBlockedUntilKilled:
     """ngrok.connect stand-in that blocks like pyngrok's startup read until the process
-    is killed; with `fail_first`, the first start fails at once and the retry blocks."""
+    is killed."""
 
-    def __init__(self, environment, fail_first=False):
+    def __init__(self, environment):
         self.started = threading.Event()
         self.killed = threading.Event()
-        self._fail_next = fail_first
         environment.ngrok.connect.side_effect = self.connect
         environment.process.kill_process.side_effect = lambda *args: self.killed.set()
 
     def connect(self, *args, **kwargs):
-        if self._fail_next:
-            self._fail_next = False
-            raise RuntimeError("ngrok failed to start")
         self.started.set()
         assert self.killed.wait(timeout=5), "ngrok process was never killed"
         raise RuntimeError("ngrok process was killed")
@@ -187,25 +183,6 @@ async def test_lifespan_shutdown_disconnects_every_tunnel_and_removes_working_di
     assert list(ngrok_environment.temp_root.iterdir()) == []
 
 
-async def test_lifespan_shutdown_kills_a_start_blocked_mid_reconnect(
-    ngrok_environment, lifespan_dependencies, monkeypatch
-):
-    monkeypatch.setattr(settings, "WEBHOOK_TUNNEL_RECONNECT_TIMEOUT", 0)
-    blocked_connect = _ConnectBlockedUntilKilled(ngrok_environment, fail_first=True)
-    registry = TunnelRegistry(sealing_cryptographer())
-    # The first start fails, so the tunnel is registered and its monitor retries.
-    await registry.register(NgrokConfigData(name="hook", org_id=1, auth_token=seal("test-token")))
-    assert await asyncio.to_thread(blocked_connect.started.wait, 5)
-
-    try:
-        # Well inside the 8s shutdown budget: killing the process ends the blocked start.
-        await _run_lifespan(registry, timeout=2)
-    finally:
-        blocked_connect.killed.set()
-
-    assert list(ngrok_environment.temp_root.iterdir()) == []
-
-
 async def test_lifespan_shutdown_is_bounded_when_the_listener_is_stuck_in_register(
     ngrok_environment, lifespan_dependencies, monkeypatch
 ):
@@ -224,16 +201,16 @@ async def test_lifespan_shutdown_is_bounded_when_the_listener_is_stuck_in_regist
     config = NgrokConfigData(name="hook", org_id=1, auth_token=seal("test-token"))
     listener_finished = asyncio.Event()
 
-    async def listener_stuck_in_register(redis_service, tunnel_registry):
+    async def listener_stuck_in_register(_listener):
         try:
-            await tunnel_registry.register(config)
+            await registry.register(config)
         finally:
             listener_finished.set()
 
     async def wait_for_blocked_start():
         assert await asyncio.to_thread(connect_started.wait, 5)
 
-    with patch("app.main.listen_redis", new=listener_stuck_in_register):
+    with patch("app.main.TunnelConfigListener.run", new=listener_stuck_in_register):
         try:
             await _run_lifespan(registry, timeout=3, while_running=wait_for_blocked_start)
         finally:

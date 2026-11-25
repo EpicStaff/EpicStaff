@@ -25,6 +25,9 @@ class AbstractTunnelProvider(abc.ABC):
         """
         Entry point to start the tunnel service.
         Implementation should set self._is_running to True.
+
+        Returns only once the tunnel is up and its URL published; otherwise raises, and
+        the caller must still disconnect() the tunnel to release what the attempt left.
         """
         raise NotImplementedError
 

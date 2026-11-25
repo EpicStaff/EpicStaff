@@ -25,7 +25,6 @@ def get_provider(
             auth_token=config.auth_token,
             domain=config.domain,
             region=config.region,
-            reconnect_timeout=settings.WEBHOOK_TUNNEL_RECONNECT_TIMEOUT,
             cryptographer=cryptographer,
         )
     elif isinstance(config, LocalhostConfigData):
