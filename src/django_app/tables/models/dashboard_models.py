@@ -67,6 +67,7 @@ class DashboardActiveTrigger(models.Model):
     graph_id = models.BigIntegerField()
     graph_name = models.CharField(max_length=255)
     next_run_at = models.DateTimeField(null=True, blank=True)
+    last_event_at = models.DateTimeField(null=True, blank=True)
 
 
 class DashboardLiveSession(models.Model):

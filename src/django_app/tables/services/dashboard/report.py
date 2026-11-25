@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from agents.models import AgentDefinition
 from django.db import connection, transaction
-from django.db.models import Count, Exists, OuterRef, Q, Sum
+from django.db.models import Count, Exists, OuterRef, Q, Subquery, Sum
 from django.utils import timezone
 from loguru import logger
 from rbac.models import Organization, OrganizationUser, Role
@@ -27,6 +27,7 @@ from tables.models import (
     PythonCodeTool,
     ScheduleTriggerNode,
     Session,
+    SessionTrigger,
     SourceCollection,
     StorageFile,
     TelegramTriggerNode,
@@ -104,7 +105,17 @@ def collect_active_triggers(org_id: int) -> list[DashboardActiveTrigger]:
     )
     triggers = []
     for trigger_type, nodes in sources:
-        nodes = nodes.filter(graph__org_id=org_id, graph__active=True).select_related("graph")
+        last_event_at = Subquery(
+            SessionTrigger.objects.filter(**{f"{trigger_type}_trigger_node": OuterRef("pk")})
+            .filter(~Q(extra__contains={SessionTrigger.TEST_RUN_EXTRA_KEY: True}))
+            .order_by("-session__created_at")
+            .values("session__created_at")[:1]
+        )
+        nodes = (
+            nodes.filter(graph__org_id=org_id, graph__active=True)
+            .select_related("graph")
+            .annotate(last_event_at=last_event_at)
+        )
         triggers.extend(
             DashboardActiveTrigger(
                 org_id=org_id,
@@ -114,6 +125,7 @@ def collect_active_triggers(org_id: int) -> list[DashboardActiveTrigger]:
                 graph_id=node.graph_id,
                 graph_name=node.graph.name,
                 next_run_at=getattr(node, "next_run_date_time", None),
+                last_event_at=node.last_event_at,
             )
             for node in nodes
         )

@@ -35,7 +35,15 @@ TOTAL_FIELDS = (
 class DashboardActiveTriggerSerializer(serializers.ModelSerializer):
     class Meta:
         model = DashboardActiveTrigger
-        fields = ("trigger_type", "node_id", "node_name", "graph_id", "graph_name", "next_run_at")
+        fields = (
+            "trigger_type",
+            "node_id",
+            "node_name",
+            "graph_id",
+            "graph_name",
+            "next_run_at",
+            "last_event_at",
+        )
 
 
 class DashboardLiveSessionSerializer(serializers.ModelSerializer):

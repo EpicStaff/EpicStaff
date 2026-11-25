@@ -16,6 +16,7 @@ from tables.models import (
     Graph,
     ScheduleTriggerNode,
     Session,
+    SessionTrigger,
     SourceCollection,
 )
 from tables.models.knowledge_models import NaiveRag
@@ -105,6 +106,33 @@ def test_active_triggers_skip_disabled_schedules_and_binned_flows(org, flow):
         "Orders",
         next_run,
     )
+
+
+def test_active_trigger_last_event_is_newest_real_session(org, flow):
+    node = ScheduleTriggerNode.objects.create(graph=flow, node_name="Hourly", is_active=True)
+    other = ScheduleTriggerNode.objects.create(graph=flow, node_name="Other", is_active=True)
+    now = timezone.now()
+
+    def run(trigger_node, created_at, extra=None):
+        session = _session(flow, Session.SessionStatus.END)
+        Session.objects.filter(pk=session.pk).update(created_at=created_at)
+        SessionTrigger.objects.create(
+            session=session,
+            trigger_type=SessionTrigger.TriggerType.SCHEDULE,
+            schedule_trigger_node=trigger_node,
+            extra=extra or {},
+        )
+
+    run(node, now - timedelta(days=1))
+    run(node, now, extra={SessionTrigger.TEST_RUN_EXTRA_KEY: True})
+    run(other, now)
+
+    build_report(org.id)
+
+    last_events = dict(
+        DashboardActiveTrigger.objects.filter(org=org).values_list("node_name", "last_event_at")
+    )
+    assert last_events == {"Hourly": now - timedelta(days=1), "Other": now}
 
 
 def test_live_sessions_are_unfinished_root_sessions(org, flow):
