@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from epicstaff_plugin.contracts.runtime import LISTEN_FD_ENVIRONMENT_VARIABLE
+from loguru import logger
 from pydantic import ValidationError
 
 from es_plugins.agent.launcher_client import LauncherClient, LauncherError
@@ -22,6 +23,7 @@ from es_plugins.launcher.directory_setup import DirectorySetup
 from es_plugins.launcher.__main__ import agent_environment
 from es_plugins.launcher.kill_by_uid import kill_uid, run_as_user
 from es_plugins.launcher.privileged_launcher import (
+    ACCEPT_BACKOFF_SECONDS,
     PLUGIN_OOM_SCORE_ADJ,
     PLUGIN_RESOURCE_LIMITS,
     LauncherOperations,
@@ -471,6 +473,78 @@ async def test_an_unexpected_error_answers_a_failure_and_the_launcher_keeps_serv
         running.stop()
 
     assert layout.plugin_home("weather").is_dir()
+
+
+def ask_exit_status(server: LauncherServer, connection: socket.socket) -> dict:
+    connection.send(protocol.encode_request(protocol.ExitStatus(pid=4242)))
+    server.serve_once(timeout=1)
+    return json.loads(connection.recv(protocol.MAX_MESSAGE_BYTES))
+
+
+@pytest.mark.linux
+def test_an_agent_that_hangs_up_before_its_answer_leaves_the_launcher_serving(
+    layout, own_uid_operations
+):
+    server = LauncherServer(layout.launcher_socket, own_uid_operations, agent_uid=os.getuid())
+    server.listen(group=os.getgid())
+    gone = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    later = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    try:
+        gone.connect(str(layout.launcher_socket))
+        server.serve_once(timeout=1)
+        # As a cancelled call does: the request is sent, then the connection dropped unanswered.
+        gone.send(protocol.encode_request(protocol.ExitStatus(pid=4242)))
+        gone.close()
+        server.serve_once(timeout=1)
+
+        later.connect(str(layout.launcher_socket))
+        server.serve_once(timeout=1)
+        assert ask_exit_status(server, later) == {"ok": True, "result": {"status": None}}
+    finally:
+        later.close()
+        server.close()
+
+
+@pytest.mark.linux
+def test_a_connection_the_launcher_cannot_accept_leaves_it_serving(layout, own_uid_operations):
+    server = LauncherServer(layout.launcher_socket, own_uid_operations, agent_uid=os.getuid())
+    server.listen(group=os.getgid())
+    waiting = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    waiting.connect(str(layout.launcher_socket))
+    limits = resource.getrlimit(resource.RLIMIT_NOFILE)
+    filler = []
+    try:
+        # Every descriptor taken: accept() fails with EMFILE, as when the launcher runs out.
+        highest = max(int(name) for name in os.listdir("/proc/self/fd"))
+        resource.setrlimit(resource.RLIMIT_NOFILE, (highest + 1, limits[1]))
+        with pytest.raises(OSError):
+            while True:
+                filler.append(os.dup(0))
+        warnings = []
+        sink = logger.add(warnings.append, format="{message}", level="WARNING")
+        started = time.monotonic()
+        try:
+            for _ in range(5):
+                server.serve_once(timeout=0.2)
+        finally:
+            logger.remove(sink)
+        # It backs off instead of spinning on the connection it cannot take, and says so once.
+        assert time.monotonic() - started >= 0.8
+        assert len(warnings) == 1
+        for descriptor in filler:
+            os.close(descriptor)
+        filler.clear()
+        resource.setrlimit(resource.RLIMIT_NOFILE, limits)
+
+        time.sleep(ACCEPT_BACKOFF_SECONDS)
+        server.serve_once(timeout=1)
+        assert ask_exit_status(server, waiting) == {"ok": True, "result": {"status": None}}
+    finally:
+        for descriptor in filler:
+            os.close(descriptor)
+        resource.setrlimit(resource.RLIMIT_NOFILE, limits)
+        waiting.close()
+        server.close()
 
 
 # Leaves fd 0 free, so the error pipe the spawn opens would land on fds 0 and 3 if nothing
