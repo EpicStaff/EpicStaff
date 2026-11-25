@@ -32,7 +32,8 @@ from plugins.models import (
     PluginServiceAccountKey,
     PluginState,
 )
-from tables.models import Session
+from proxies.sandbox.models import SandboxVenvBinding
+from tables.models import PythonCode, PythonCodeTool, Session
 from tables.services.session_manager_service import SessionManagerService
 
 from tests.plugins_tests.suspension_helpers import flow, own, secret_row
@@ -173,6 +174,49 @@ def test_the_grant_and_everything_hanging_off_it_go_once_both_tracks_are_done(
     assert job.grant_id is None
     assert PluginActivityEvent.objects.filter(action=ActivityAction.GRANT_PURGED, organization_id=acme.pk).count() == 1
     assert any(message.startswith("plugins.grant.purged") for message in log_messages)
+
+
+class _SandboxVenvs:
+    """The sandbox's venvs as the purge reads them: each named after its id, none with
+    custom libraries."""
+
+    def __call__(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def list(self, *, ids, **kwargs):
+        return {"count": len(ids), "result": [{"id": int(id_), "name": f"venv-{id_}", "libs": []} for id_ in ids]}
+
+
+def test_a_venv_the_organization_s_code_runs_in_is_handed_over_and_listed_when_the_grant_goes(
+    suspended, clock, acme, monkeypatch, log_messages
+):
+    monkeypatch.setattr("proxies.sandbox.services.VenvService.client_class", _SandboxVenvs())
+    venv = SandboxVenvBinding.objects.create(org=acme, resource_id="41")
+    own(venv, suspended)
+    tool_code = PythonCode.objects.create(code="def main():\n    return 1\n", venv=venv)
+    PythonCodeTool.objects.create(org=acme, name="Team forecast", description="d", python_code=tool_code)
+
+    waiting = _run(clock, days=30)
+    PluginHookJob.objects.filter(kind=HookJobKind.ORG_REMOVED).update(state=HookJobState.SUCCEEDED)
+    done = _run(clock, days=30, minutes=1)
+
+    assert (waiting.resources_failed, waiting.grants_purged) == (0, 0)
+    assert done.grants_purged == 1
+    assert not PluginGrant.objects.exists()
+    assert SandboxVenvBinding.objects.filter(pk=venv.pk).exists()
+    assert not PluginOwnedResource.objects.exists()
+    event = PluginActivityEvent.objects.get(action=ActivityAction.GRANT_PURGED, organization_id=acme.pk)
+    assert event.detail == {"handed_over_venvs": [f"venv-41 (id {venv.pk})"], "handed_over_custom_libraries": []}
+    assert any(
+        message.startswith("plugins.purge.handed_over") and f"model=proxies.SandboxVenvBinding pk={venv.pk}" in message
+        for message in log_messages
+    )
 
 
 def test_resuming_a_second_before_the_deadline_keeps_everything(suspended, clock, superadmin):

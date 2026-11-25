@@ -657,6 +657,7 @@ class ConverterService(metaclass=SingletonMeta):
         return McpToolData(
             transport=mcp_tool.transport,
             tool_name=mcp_tool.tool_name,
+            name=mcp_tool.name,
             timeout=mcp_tool.timeout,
             auth_secret_id=mcp_tool.auth_secret_id,
             init_timeout=mcp_tool.init_timeout,

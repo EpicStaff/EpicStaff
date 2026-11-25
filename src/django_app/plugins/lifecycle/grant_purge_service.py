@@ -13,7 +13,9 @@ from enum import StrEnum
 
 from django.db import transaction
 from django.utils import timezone
+from foundation.transport.http.errors import ClientError
 from rbac.validation.hard_delete import HardDeleteValidationService
+from utils.logger import logger
 
 from plugins.activity.recorder import ActivityRecorder
 from plugins.audit import log_grant_purge_started, log_grant_purged
@@ -31,7 +33,6 @@ from plugins.ownership.existing_owned import owned_resource_counts_by_grant
 from plugins.ownership.owned_resource_purger import (
     OwnedResourcePurger,
     PurgePassResult,
-    purge_targets,
 )
 
 DELETED_BEFORE_HOOK_FINISHED = "Deleted before the hook finished."
@@ -150,14 +151,34 @@ class GrantPurgeService:
     def finish_if_done(self, grant: PluginGrant) -> bool:
         """Delete a purging grant whose two tracks are both done; True when it did.
 
-        Done means no ownership row of it (nor of its organization and plugin without a
-        grant) is left, and the organization's latest organization removed job, if any,
-        succeeded or was skipped. While the plugin itself is being deleted, a job that failed
-        for good counts as done too: the plugin's database goes next, and the job is skipped
-        once no grant is left. Locks the plugin, then the grant, each skipped when another
-        process holds it.
+        Done means the organization's latest organization removed job, if any, succeeded or
+        was skipped, and no ownership row of the grant (nor of its organization and plugin
+        without a grant) is left but those of venvs and custom libraries the organization
+        still uses. Those are handed over to it in the same transaction, and the
+        `grant_purged` event lists them. While the plugin itself is being deleted, a job that
+        failed for good counts as done too: the plugin's database goes next, and the job is
+        skipped once no grant is left. Asks the sandbox before any lock is taken, only when
+        nothing but venvs and custom libraries is left; then locks the plugin, then the grant,
+        each skipped when another process holds it. When the sandbox cannot be asked, a
+        warning is logged and the grant stays `purging`, with nothing deleted, until a later
+        call.
         """
         identifier = grant.plugin.identifier
+        purger = OwnedResourcePurger()
+        try:
+            plan = purger.plan_hand_over(
+                organization_id=grant.org_id, plugin_identifier=identifier, grant=grant
+            )
+        except ClientError as error:
+            logger.warning(
+                "plugins.purge.hand_over_unplanned plugin={plugin} org={org} error={error}",
+                plugin=identifier,
+                org=grant.org_id,
+                error=type(error).__name__,
+            )
+            return False
+        if plan is None:
+            return False
         with transaction.atomic():
             plugin = lock_plugin(identifier, skip_locked=True)
             if plugin is None:
@@ -169,18 +190,19 @@ class GrantPurgeService:
             )
             if locked is None:
                 return False
-            if purge_targets(locked.org_id, identifier, locked).exists():
-                return False
             job = latest_org_removed_job(plugin.pk, locked.org_id)
             settled = SETTLED_ORG_REMOVED_STATES + (
                 (HookJobState.FAILED,) if plugin.state == PluginState.PURGING else ()
             )
             if job is not None and job.state not in settled:
                 return False
+            handed_over = purger.hand_over(plan)
+            if handed_over is None:
+                return False
             grant_id = locked.pk
             organization_id = locked.org_id
             locked.delete()
-            ActivityRecorder().grant_purged(identifier, organization_id)
+            ActivityRecorder().grant_purged(identifier, organization_id, handed_over)
             transaction.on_commit(
                 lambda: log_grant_purged(
                     identifier=identifier, grant_id=grant_id, org_id=organization_id

@@ -33,6 +33,8 @@ OWNED_RESOURCE_LABELS = {
     "ai_models.EmbeddingModel": "Embedding models",
     "tables.RealtimeModel": "Voice models",
     "tables.RealtimeTranscriptionModel": "Transcription models",
+    "proxies.SandboxVenvBinding": "Venvs",
+    "proxies.SandboxCustomLibraryBinding": "Custom libraries",
 }
 
 

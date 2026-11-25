@@ -98,7 +98,11 @@ contains() { case "$1" in *"$2"*) return 0 ;; esac; return 1; }
 echo "# build, pack the probe plugins, start the node"
 compose build --quiet
 compose run --rm packer
-compose up -d control plugins_db es_plugins tools > /dev/null 2>&1
+if ! compose up -d control plugins_db es_plugins tools > "$work/up.log" 2>&1; then
+  fail "the lab's containers did not start"
+  cat "$work/up.log"
+  exit 1
+fi
 if wait_for 300 running 1 && wait_for 60 running 2; then
   pass "both probe plugins are installed from their packages and run healthy"
 else

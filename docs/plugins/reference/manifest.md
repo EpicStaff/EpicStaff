@@ -510,7 +510,7 @@ The SuperAdmin's review shows these next to the package:
 | Code | When |
 |---|---|
 | `untrusted_package` | The package is not signed by a key the deployment trusts |
-| `runs_code_in_sandbox` | `access` gives `flows` `create`, `update` or `use`, or `tools` `create` or `update`. The message reads "Through {flows \| tools \| flows and tools}, the plugin can have code of its choosing run in EpicStaff's sandbox, which has its own network access. The plugin's outbound hosts do not apply to that code." |
+| `runs_code_in_sandbox` | `access` gives `flows` `create`, `update` or `use`, or `create` or `update` on `tools`, `venvs` or `custom_libraries`. The message reads "Through {resources}, the plugin can have code of its choosing run in EpicStaff's sandbox, which has its own network access. The plugin's outbound hosts do not apply to that code.", where {resources} names those of flows, tools, venvs and custom libraries, in that order (`flows, venvs and custom libraries`) |
 | `flows_use_missing` | `access` gives `flows` `create` or `update` but not `use`: the plugin cannot run a flow itself or write schedule, webhook or Telegram trigger nodes, but a flow it writes still runs, with its code, when someone in the organization runs it |
 | `wildcard_outbound_host` | An outbound host starts with `*.`; one warning per such host |
 | `host_not_served_here` | The plugin's host does not prove that this EpicStaff serves it (only with a template that has a prefix or suffix; see [the host check](../operator/enable-plugins.md#the-host-check)). Approving is refused until it does |

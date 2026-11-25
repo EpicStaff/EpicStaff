@@ -74,6 +74,30 @@ def test_a_write_to_an_existing_row_names_it_from_the_url(client, acme):
     assert (event.target_id, event.target_label, event.detail) == (str(graph.pk), "Existing", {"created_count": 0})
 
 
+@pytest.mark.parametrize("leading_zeros", [1, 69])
+def test_a_write_to_a_row_its_url_pads_with_zeros_is_recorded_with_the_row_s_id(client, acme, leading_zeros):
+    graph = Graph.objects.create(name="Padded", org=acme)
+
+    body = {"description": "Updated", "save_version": graph.save_version}
+    path = f"/api/graphs/{'0' * leading_zeros}{graph.pk}/"
+    assert client.patch(path, body, format="json").status_code == 200
+
+    [event] = _api_requests()
+    assert (event.target_id, event.target_label, event.request_path) == (str(graph.pk), "Padded", path)
+
+
+def test_a_write_whose_path_is_longer_than_its_column_is_recorded_with_the_path_cut(client, acme):
+    graph = Graph.objects.create(name="Long path", org=acme)
+    path_column = PluginActivityEvent._meta.get_field("request_path").max_length
+
+    body = {"description": "Updated", "save_version": graph.save_version}
+    path = f"/api/graphs/{'0' * path_column}{graph.pk}/"
+    assert client.patch(path, body, format="json").status_code == 200
+
+    [event] = _api_requests()
+    assert (event.target_id, event.request_path) == (str(graph.pk), path[:path_column])
+
+
 def test_reads_failures_and_runtime_calls_are_not_recorded(client, member_only):
     client.get("/api/graphs/")
     client.post("/api/graphs/", {}, format="json")
@@ -95,7 +119,9 @@ def test_a_person_s_write_is_not_recorded(org_admin_client):
     assert _api_requests() == []
 
 
-def test_a_failure_to_record_never_changes_the_response(client, monkeypatch):
+def test_a_failure_to_record_never_changes_the_response_and_logs_the_lost_request(
+    client, acme, monkeypatch, log_messages
+):
     def fail(*args, **kwargs):
         raise RuntimeError("database gone")
 
@@ -105,6 +131,10 @@ def test_a_failure_to_record_never_changes_the_response(client, monkeypatch):
 
     assert response.status_code == 201
     assert Graph.objects.filter(name="Still created").exists()
+    assert (
+        f"Plugin activity lost: POST /api/graphs/ by plugin weather in organization {acme.pk}"
+        " succeeded but could not be recorded"
+    ) in log_messages
 
 
 # ---- lifecycle events ----
@@ -451,6 +481,15 @@ def test_a_row_named_by_the_url_is_labelled_only_from_the_principal_s_organizati
 
     assert (own_event.target_id, own_event.target_label) == (str(own_graph.pk), "Acme's flow")
     assert (other_event.target_id, other_event.target_label) == (str(other_graph.pk), None)
+
+
+def test_an_id_its_model_cannot_hold_that_is_longer_than_its_column_is_recorded_without_it(principal):
+    target_id_column = PluginActivityEvent._meta.get_field("target_id").max_length
+    path = f"/api/graphs/{'x' * (target_id_column + 1)}/"
+
+    event = _record_patch(principal, path)
+
+    assert (event.request_path, event.target_id) == (path, None)
 
 
 def test_a_row_without_a_name_is_labelled_with_its_custom_name(principal, acme):

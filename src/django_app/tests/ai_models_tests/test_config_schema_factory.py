@@ -1,3 +1,5 @@
+import time
+
 import pytest
 from ai_models.domain.schemas import ConfigSchemaFactory
 from ai_models.domain.specs import ModelKind
@@ -81,7 +83,6 @@ def test_connection_schema_marks_secret_fields_and_requires_required_ones(factor
     assert schema["required"] == ["aws_region_name"]
     secret = schema["properties"]["aws_access_key_id"]
     assert secret["x-widget"] == "secret"
-    assert secret["pattern"] == r"^epicstaff_secret\(\s*[^)]+?\s*\)$"
     assert schema["properties"]["aws_region_name"]["x-widget"] == "text"
 
 
@@ -101,6 +102,61 @@ def test_connection_schema_marks_secret_fields_and_requires_required_ones(factor
 )
 def test_connection_schema_validates_values(factory, connection, accepted):
     assert _valid(factory.connection_schema("bedrock"), connection) is accepted
+
+
+@pytest.mark.parametrize(
+    ("access_key_id", "accepted"),
+    [
+        ("epicstaff_secret(aws-key)", True),
+        ("epicstaff_secret(  aws-key  )", True),
+        ("epicstaff_secret(my aws key)", True),
+        ("epicstaff_secret(\n aws-key \t)", True),
+        ("epicstaff_secret(aws-key", False),
+        ("epicstaff_secret()", False),
+        ("epicstaff_secret(   )", False),
+        ("epicstaff_secret(one) epicstaff_secret(two)", False),
+        ("epicstaff_secret(epicstaff_secret(aws-key)", False),
+        ("prefix epicstaff_secret(aws-key)", False),
+        ("epicstaff_secret(aws-key) suffix", False),
+    ],
+    ids=[
+        "plain",
+        "padded",
+        "inner-space",
+        "padded-newline-tab",
+        "unclosed",
+        "empty",
+        "blank",
+        "two-markers",
+        "unclosed-before-closed",
+        "text-before",
+        "text-after",
+    ],
+)
+def test_secret_field_accepts_exactly_one_marker(factory, access_key_id, accepted):
+    connection = {"aws_access_key_id": access_key_id, "aws_region_name": "eu-west-1"}
+
+    assert _valid(factory.connection_schema("bedrock"), connection) is accepted
+
+
+@pytest.mark.parametrize(
+    "access_key_id",
+    [
+        "epicstaff_secret(a" + " " * 50_000,
+        "epicstaff_secret(" + " " * 50_000,
+        "epicstaff_secret(" + ("a" + " " * 20_000) * 5,
+    ],
+    ids=["name-then-spaces", "spaces-only", "words-between-long-spaces"],
+)
+def test_secret_field_rejects_a_long_unclosed_marker_quickly(factory, access_key_id):
+    schema = factory.connection_schema("bedrock")
+    connection = {"aws_access_key_id": access_key_id, "aws_region_name": "eu-west-1"}
+
+    started = time.perf_counter()
+    accepted = _valid(schema, connection)
+
+    assert time.perf_counter() - started < 1.0
+    assert accepted is False
 
 
 def test_optional_connection_field_may_be_left_out(factory):

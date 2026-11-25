@@ -31,6 +31,10 @@ class McpToolData(BaseModel):
     """URL of the remote MCP server (SSE). Required."""
     tool_name: str
 
+    name: str | None = None
+    """The tool's name in EpicStaff, unique where `tool_name` (the server's) may not be.
+    The agent shows it to the model when another tool already has `tool_name`."""
+
     timeout: float | None = 30
     """Request timeout in seconds. Recommended to set."""
 

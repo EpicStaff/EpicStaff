@@ -24,6 +24,7 @@ from tables.models.knowledge_models import (
     GraphRagDocument,
     NaiveRag,
 )
+from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
 
 
 class IndexingService:
@@ -38,13 +39,18 @@ class IndexingService:
 
     @staticmethod
     @transaction.atomic
-    def validate_and_prepare_indexing(rag_id: int, rag_type: str) -> dict[str, Any]:
+    def validate_and_prepare_indexing(rag_id: int, rag_type: str, org_id: int) -> dict[str, Any]:
         """
         Validates RAG configuration and prepares data for indexing.
 
+        Indexing calls the embedder, and a GraphRAG's LLM, as a run would, so it is admitted
+        like one before the caller resolves any of their keys.
+
         Args:
-            rag_id: The primary key of the specific RAG implementation
+            rag_id: The primary key of the specific RAG implementation. The caller has
+                already checked that it belongs to `org_id`.
             rag_type: The type of RAG ("naive" or "graph")
+            org_id: The organization the indexing runs in.
 
         Returns:
             Dict containing:
@@ -52,13 +58,25 @@ class IndexingService:
                 - rag_type: str
                 - collection_id: int
                 - base_rag_type_id: int
+                - embedder_id: int, the EmbeddingConfig the indexing calls
+                - llm_id: int | None, the LLMConfig a GraphRAG indexing calls
+                - the API key secret ids and extra headers of both
+
+        Raises:
+            RunAdmissionRefusedError: The embedder or the LLM may not be called now.
         """
         if rag_type == "naive":
-            return IndexingService._prepare_naive_rag_indexing(rag_id)
+            indexing_data = IndexingService._prepare_naive_rag_indexing(rag_id)
         elif rag_type == "graph":
-            return IndexingService._prepare_graph_rag_indexing(rag_id)
+            indexing_data = IndexingService._prepare_graph_rag_indexing(rag_id)
         else:
             raise RagException(f"Unknown rag_type: {rag_type}")
+        assert_run_admitted(
+            RunSubject(RunKind.EMBEDDING_CONFIG, indexing_data["embedder_id"], org_id)
+        )
+        if indexing_data["llm_id"] is not None:
+            assert_run_admitted(RunSubject(RunKind.LLM_CONFIG, indexing_data["llm_id"], org_id))
+        return indexing_data
 
     @staticmethod
     def _prepare_naive_rag_indexing(naive_rag_id: int) -> dict[str, Any]:
@@ -119,6 +137,8 @@ class IndexingService:
             "rag_type": "naive",
             "collection_id": collection.collection_id,
             "base_rag_type_id": base_rag_type.rag_type_id,
+            "embedder_id": naive_rag.embedder_id,
+            "llm_id": None,
             "embedder_api_key_secret_id": naive_rag.embedder.api_key_secret_id,
             "llm_api_key_secret_id": None,
             "embedder_extra_headers": naive_rag.embedder.extra_headers,
@@ -205,6 +225,8 @@ class IndexingService:
             "rag_type": "graph",
             "collection_id": collection.collection_id,
             "base_rag_type_id": base_rag_type.rag_type_id,
+            "embedder_id": graph_rag.embedder_id,
+            "llm_id": graph_rag.llm_id,
             "embedder_api_key_secret_id": graph_rag.embedder.api_key_secret_id,
             "llm_api_key_secret_id": graph_rag.llm.api_key_secret_id,
             "embedder_extra_headers": graph_rag.embedder.extra_headers,

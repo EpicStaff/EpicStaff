@@ -9,8 +9,10 @@ import re
 
 from foundation.cryptographer import AbstractCryptographer
 
-# Wire contract with django_app's tables/services/secrets/secret_resolver.py (the producer): keep byte-identical.
-SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
+# Wire contract with django_app's utils/secret_marker.py (the producer): keep byte-identical.
+SECRET_MARKER_RE = re.compile(
+    r"epicstaff_secret\(\s*((?!epicstaff_secret\()[^)\s](?:(?:(?!epicstaff_secret\()[^)])*[^)\s])?)\s*\)"
+)
 
 
 def decrypt_header_markers(

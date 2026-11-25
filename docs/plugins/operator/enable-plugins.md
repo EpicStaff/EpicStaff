@@ -236,6 +236,7 @@ without one. `make env-update` adds the ones your file lacks, with their default
 | `PLUGINS_DB_ADMIN_PASSWORD` | `none` | `openssl rand -hex 32`. The password of `plugins_admin`, the plugin node's login on `plugins_db`, which creates every plugin's database and roles. `plugins_db` sets it at its first start and es_plugins logs in with it, so both must have the same value. It can read every plugin's data: keep it like a root password. |
 | `PLUGINS_DB_BACKUP_PASSWORD` | `none` | `openssl rand -hex 32`. The password of `plugins_backup`, the login the plugin node backs plugin databases up with before an upgrade (see [Backups](#backups)). `plugins_db` sets it at its first start and es_plugins logs in with it, so both must have the same value. It can read every plugin's data: keep it like a root password. |
 | `PLUGINS_DB_MAX_CONNECTIONS` | `200` | `plugins_db`'s connection limit: at least the number of plugin backends times `PLUGINS_MAX_DB_CONNECTIONS`, plus 10. 5 of these are kept for the plugin node (see [Plugin databases](#plugin-databases)). |
+| `PLUGINS_DB_MEMORY`, `PLUGINS_DB_CPUS` | `2g`, `0` | Memory and CPUs (`0` is no cap) of `plugins_db`, every plugin database together. The setup wizard fits the memory to the host. A query that needs more memory makes Postgres recover and drops every plugin's connections (see [Accepted risks](../explanation/accepted-risks.md#one-plugin-can-restart-the-shared-database-server)). |
 
 The three passwords must each be at least 32 characters, and `none` is refused, whenever the
 `plugins` profile runs. `plugins_db` reads them only when it initializes an empty volume: changing
@@ -647,7 +648,7 @@ A plugin backend reaches the internet only through `plugins_egress`, a Squid pro
 gives each backend its proxy URL in `HTTPS_PROXY` (and `https_proxy`, `HTTP_PROXY`, `http_proxy`).
 The proxy allows a plugin an HTTPS tunnel (`CONNECT`) to port 443 of the hosts its package declares
 in `outbound_hosts`, which the review shows before approval, and nothing else. This binds the
-backend's process. Code a plugin gets run through flows or tools runs in EpicStaff's sandbox, which has its own
+backend's process. Code a plugin gets run through flows, tools, venvs or custom libraries runs in EpicStaff's sandbox, which has its own
 network access, and the review warns about it (`runs_code_in_sandbox`). Writing a backend
 for it is in [Call the internet from your backend](../how-to/outbound-hosts.md).
 
@@ -1272,6 +1273,26 @@ which no longer knows the old names. With Cloudflare, two redirect rules with st
 a grace period.
 
 ## Upgrading to this version
+
+**From a version where venvs and custom libraries were not a plugin's own, with plugins on.**
+Venvs and custom libraries a plugin creates are now its own: suspending it refuses runs of code
+in them, and deleting its data deletes them. Those it created before this version are matched to
+it by a migration that runs with the upgrade, nothing to do by hand. A venv or library has no
+field naming its creator plugin, so the migration matches each one to the plugin's activity event
+for the request that created it: the venv or library created without an author in the same
+organization, less than 2 seconds before the event, and after the previous such event of any
+plugin in that organization. A create request writes its event a few milliseconds after the venv
+or library, with no network call in between, so 2 seconds leaves room for a stalled database.
+When two were created in that time (two plugins at once, or the system API key while the plugin
+was creating one), it cannot tell which was the plugin's and leaves both as the organization's;
+Django's log at the upgrade says how many it left (`… create event(s) matched more than one
+binding`). One a plugin created through an import is never matched either. Such a venv or
+library stays after the plugin's data is deleted: delete it by hand if the organization does not
+use it. One wrong match is left: when the venv or library the plugin created has been deleted
+since, and the organization created one without an author (through the system API key, or by a
+person deleted since) in those 2 seconds, that one is matched to the plugin. Deleting the
+plugin's data then deletes it, unless code of the organization runs in it (a venv) or one of its
+venvs names it (a custom library): then it is handed over to the organization instead.
 
 **From v1.5.0.** `PLUGINS_HOST_TEMPLATE` replaces `PLUGINS_BASE_DOMAIN`, and `docker compose`
 requires it: without it, compose stops with `required variable PLUGINS_HOST_TEMPLATE is missing a

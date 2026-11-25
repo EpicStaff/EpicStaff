@@ -2,6 +2,8 @@ from django.conf import settings
 from django.db import models
 
 MAX_TARGET_LABEL_LENGTH = 200
+MAX_TARGET_ID_LENGTH = 64
+MAX_REQUEST_PATH_LENGTH = 2048
 
 
 class ActivityAction(models.TextChoices):
@@ -86,11 +88,11 @@ class PluginActivityEvent(models.Model):
     on_behalf_of_label = models.CharField(max_length=255, null=True, blank=True)
     action = models.CharField(max_length=32, choices=ActivityAction.choices)
     request_method = models.CharField(max_length=16, null=True, blank=True)
-    request_path = models.CharField(max_length=2048, null=True, blank=True)
+    request_path = models.CharField(max_length=MAX_REQUEST_PATH_LENGTH, null=True, blank=True)
     request_route = models.CharField(max_length=512, null=True, blank=True)
     response_status = models.PositiveSmallIntegerField(null=True, blank=True)
     target_resource_type = models.CharField(max_length=64, null=True, blank=True)
-    target_id = models.CharField(max_length=64, null=True, blank=True)
+    target_id = models.CharField(max_length=MAX_TARGET_ID_LENGTH, null=True, blank=True)
     target_label = models.CharField(max_length=MAX_TARGET_LABEL_LENGTH, null=True, blank=True)
     detail = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

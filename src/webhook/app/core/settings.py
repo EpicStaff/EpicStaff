@@ -43,7 +43,6 @@ class Settings:
     WEBHOOK_MESSAGE_CHANNEL: str = env.str("WEBHOOK_MESSAGE_CHANNEL", "webhooks")
 
     # --- Tunnel behaviour ---
-    WEBHOOK_TUNNEL_RECONNECT_TIMEOUT: int = env.int("WEBHOOK_TUNNEL_RECONNECT_TIMEOUT", 10)
     TUNNEL_URLS_HASH_KEY: str = env.str("TUNNEL_URLS_HASH_KEY", "tunnel_urls")
 
     # --- Upstream targets ---

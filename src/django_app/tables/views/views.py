@@ -951,7 +951,7 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
             Permission.UPDATE,
         )
 
-        indexing_data = IndexingService.validate_and_prepare_indexing(rag_id, rag_type)
+        indexing_data = IndexingService.validate_and_prepare_indexing(rag_id, rag_type, org_id)
         principal = pinned_principal_of_user(request.user)
         marker_fields = (
             "embedder_extra_headers",

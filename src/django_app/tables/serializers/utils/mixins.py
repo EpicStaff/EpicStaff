@@ -1,3 +1,4 @@
+from django.db import transaction
 from rest_framework import serializers
 from tables.models.base_models import BaseGlobalNode
 from tables.models.webhook_models import WebhookTrigger
@@ -100,8 +101,12 @@ class TagHandlingMixin:
 class NestedPythonCodeMixin:
     def _create_with_python_code(self, model_class, validated_data):
         python_code_data = validated_data.pop("python_code")
-        python_code = create_python_code(python_code_data=python_code_data)
-        return model_class.objects.create(python_code=python_code, **validated_data)
+        # One transaction: code without its owner must never be visible. The plugin purge
+        # deletes code no tool or node owns, and would delete this code before its node
+        # is inserted.
+        with transaction.atomic():
+            python_code = create_python_code(python_code_data=python_code_data)
+            return model_class.objects.create(python_code=python_code, **validated_data)
 
     def _update_python_code(self, instance, validated_data):
         python_code_data = validated_data.pop("python_code", None)

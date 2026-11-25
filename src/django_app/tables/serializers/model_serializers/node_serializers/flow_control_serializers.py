@@ -308,6 +308,7 @@ class ClassificationDecisionTableNodeSerializer(
             assert_node_ref_in_graph(node_id=node_id, graph=graph, field=field)
         return attrs
 
+    @transaction.atomic
     def create(self, validated_data):
         condition_groups_data = validated_data.pop("condition_groups", None)
         sections_data = validated_data.pop("sections", None)

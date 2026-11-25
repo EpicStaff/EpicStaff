@@ -359,7 +359,8 @@ server {
 
     # The SPA's files, and its index.html for any other path (client-side routes). The fallback is
     # an internal redirect to the location above, so every index.html response gets no-cache; a
-    # plugin that is not published answers 404 there.
+    # plugin that is not published answers 404 there, as does an uninstalled plugin or one being
+    # deleted: django_app removes its "current" link (plugins/lifecycle/spa_serving.py).
     location / {
         include /etc/nginx/conf.d/plugins-security-headers.snippet;
         root /srv/plugin-spa/$plugin_identifier/current;
