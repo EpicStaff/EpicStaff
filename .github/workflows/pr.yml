@@ -371,7 +371,8 @@ jobs:
   # on a failure are in the docstring of check_env_conventions.py. Also runs the
   # envtool tests: SchemaCoverageTest fails when a variable without a prod
   # default is one the setup wizard does not fill. Needs only PyYAML, so no venv;
-  # runs on every PR because it is cheap.
+  # runs on every PR because it is cheap. Also checks that every file the compose file
+  # bind-mounts ships in the release bundle (test_build_release_bundle.py).
   check-env-conventions:
     runs-on: ubuntu-24.04
     steps:
@@ -393,6 +394,11 @@ jobs:
         run: |
           python -m pip install --quiet --require-hashes -r .github/requirements/requests.txt
           python3 .github/scripts/test_ghcr_cleanup.py
+
+      - name: Test the release bundle builder
+        run: |
+          python -m pip install --quiet --require-hashes -r .github/requirements/ruamel-yaml.txt -r .github/requirements/pyyaml.txt
+          python3 .github/scripts/test_build_release_bundle.py
 
       - name: Environment variable conventions
         run: python3 .github/scripts/check_env_conventions.py
