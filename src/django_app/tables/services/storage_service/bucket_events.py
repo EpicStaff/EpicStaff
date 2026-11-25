@@ -6,7 +6,9 @@ The store tells django about every object created or removed in the bucket (a we
 notification target, see the `storage` service in docker-compose). Each record names a key,
 and nothing else in it is believed: the key's object is read again from the store and its
 row made to match (`StorageReconciler.reconcile_file`). Applying a record twice, late, or a
-forged one changes nothing a re-read would not.
+forged one changes nothing a re-read would not. Only a removal record drops a row: a
+creation record whose object is already gone leaves the row to whoever removed it, so a late
+one cannot drop the row of a file the app is moving.
 
 Records written by django's own storage account are skipped: the app indexes its own writes
 in the same request, and the event can reach django between the app's store write and its
@@ -26,13 +28,14 @@ from django.conf import settings
 from django.db import transaction
 from rbac.models import Organization
 from tables.services.storage_service import get_storage_backend
-from tables.services.storage_service.path_utils import is_canonical_path, is_trash_path
+from tables.services.storage_service.path_utils import is_indexable_path, is_trash_path
 from tables.services.storage_service.quota import is_over_quota
 from tables.services.storage_service.reconciler import StorageReconciler
 from tables.validators.file_upload_validator import FileValidator
 from utils.logger import logger
 
-_ORG_KEY = re.compile(r"^org_(\d+)/(.+)$")
+# DOTALL and fullmatch: a key may hold a newline, and must never be cut short at one.
+_ORG_KEY = re.compile(r"org_(\d+)/(.+)", re.DOTALL)
 _CREATED_EVENT_PREFIX = "s3:ObjectCreated:"
 
 
@@ -62,7 +65,7 @@ def changes_from_notification(payload: dict) -> list[BucketObjectChange]:
         if principal == settings.STORAGE_ACCESS_KEY:
             continue
         key = unquote_plus((s3.get("object") or {}).get("key") or "")
-        match = _ORG_KEY.match(key)
+        match = _ORG_KEY.fullmatch(key)
         if match is None:
             continue
         path = match.group(2)
@@ -92,15 +95,15 @@ def delete_executable_object(change: BucketObjectChange) -> None:
     get_storage_backend(organization_prefix="").delete_keys([change.key])
 
 
-def delete_non_canonical_object(change: BucketObjectChange) -> None:
-    """Delete an object run code wrote under a path the index cannot name.
+def delete_unindexable_object(change: BucketObjectChange) -> None:
+    """Delete an object run code wrote under a path no row can hold (`is_indexable_path`).
 
-    A re-read would look up the normalized path, another key, so the object would get no row
-    and its bytes would stay outside the quota while the run goes on. The exact key notified
-    is deleted, never the normalized one.
+    A re-read would look up the normalized path, another key, or fail to write a row too
+    long for the index, so the object's bytes would stay outside the quota while the run goes
+    on. The exact key notified is deleted, never the normalized one.
     """
     logger.warning(
-        "Deleting object {!r} written to storage in org {}: not a canonical path",
+        "Deleting object {!r} written to storage in org {}: no index row can hold its path",
         change.path,
         change.org_id,
     )
@@ -135,10 +138,11 @@ class BucketEventService:
 
     def _apply_one(self, change: BucketObjectChange) -> bool:
         """Apply one change; False when its organization no longer exists."""
-        if not is_canonical_path(change.path):
-            # Never re-read: the lookup would name the normalized path, another object.
+        if not is_indexable_path(change.org_id, change.path):
+            # Never re-read: the lookup would name the normalized path, another object, or
+            # write a row the index cannot hold, failing this notification on every resend.
             if change.created:
-                delete_non_canonical_object(change)
+                delete_unindexable_object(change)
             return True
         if change.created and self._file_validator.is_executable_filename(change.path):
             delete_executable_object(change)
@@ -155,7 +159,9 @@ class BucketEventService:
                 )
                 return False
             try:
-                self._reconciler.reconcile_file(change.org_id, change.path)
+                self._reconciler.reconcile_file(
+                    change.org_id, change.path, sweep_stale_rows=not change.created
+                )
             except ValueError as error:
                 # A key the store holds but the index cannot (an invalid name).
                 logger.warning(

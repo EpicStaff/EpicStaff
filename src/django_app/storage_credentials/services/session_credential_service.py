@@ -539,9 +539,9 @@ class SessionCredentialService:
         """Revoke every temporary storage account of an organization's live runs.
 
         For an organization over its storage quota: its runs write past the quota check, so
-        they lose storage access now instead of when they end. What they wrote so far is
-        reconciled into the file index first, as at the end of a run. Their own end-of-run
-        revocation then finds no account left and does nothing. Best-effort, like
+        they lose storage access now instead of when they end. What they wrote is then
+        reconciled into the file index, as at the end of a run; they can write nothing after
+        it. Their own end-of-run revocation finds no account left and does nothing. Best-effort, like
         `revoke_for_session`: an account the backend fails to revoke keeps its row, for the
         run's own revocation or the manager's cleanup job to retry.
         """
@@ -632,15 +632,8 @@ class SessionCredentialService:
                 continue
             accounts_by_org.setdefault(account.owner_org_id, []).append(account)
 
-        # What the run wrote is synced into the file index once, over every folder any of
-        # its accounts could write to: the accounts differ in the shared folders they got.
-        granted_folders = self._union_of_granted_folders(accounts)
-        synced = False
         for org_id, org_accounts in accounts_by_org.items():
             try:
-                if not synced:
-                    self._sync_run_storage(org_accounts[0], org_id, owner_label, granted_folders)
-                    synced = True
                 org_creds = org_credential_store.get(org_id=org_id)
                 revoked_keys = set(
                     asyncio.run(
@@ -671,6 +664,16 @@ class SessionCredentialService:
                 logger.warning(
                     "Failed to revoke temporary storage credentials for {}: {}", owner_label, error
                 )
+
+        # What the run wrote is synced into the file index once, over every folder any of
+        # its accounts could write to: the accounts differ in the shared folders they got.
+        # After the revocation, so the run is cut off first (an organization over its quota
+        # must not wait for its tree to be listed) and nothing it writes is missed.
+        if accounts_by_org:
+            org_id, org_accounts = next(iter(accounts_by_org.items()))
+            self._sync_run_storage(
+                org_accounts[0], org_id, owner_label, self._union_of_granted_folders(accounts)
+            )
 
     @staticmethod
     def _run_own_folders(account: TemporaryStorageAccount) -> list[str]:
@@ -787,7 +790,7 @@ class SessionCredentialService:
         owner_label: str,
         granted_folders: list[str] | None = None,
     ) -> None:
-        """Before an account is revoked: index what its run wrote.
+        """Once an account is revoked: index what its run wrote.
 
         The reconcile only adds (see `_reconcile_granted_folders`). Best-effort, like the revocation.
 

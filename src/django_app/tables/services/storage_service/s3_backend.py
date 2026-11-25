@@ -366,6 +366,7 @@ class S3StorageBackend(AbstractStorageBackend):
             if keys := [obj["Key"] for obj in page.get("Contents", [])]:
                 self.delete_keys(keys)
 
+    @_outage_as_storage_unreachable()
     def abort_incomplete_uploads(self, prefix: str) -> int:
         """Abort every multipart upload not yet completed under `prefix`; return how many.
 
