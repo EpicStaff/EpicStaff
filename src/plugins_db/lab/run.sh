@@ -229,9 +229,10 @@ check "template1: closed to PUBLIC, plugins_admin and plugins_backup" \
 echo "# the server"
 settings=$(superuser_query "SELECT current_setting('hba_file') || ' ' || current_setting('password_encryption') || ' '
   || current_setting('max_connections') || ' ' || current_setting('reserved_connections') || ' '
-  || current_setting('authentication_timeout') || ' ' || current_setting('temp_file_limit')")
-check "hba_file, password_encryption, max_connections, reserved_connections, authentication_timeout, temp_file_limit" \
-  equals "$settings" '/etc/postgresql/pg_hba.conf scram-sha-256 100 5 10s 1GB'
+  || current_setting('authentication_timeout') || ' ' || current_setting('temp_file_limit') || ' '
+  || current_setting('client_connection_check_interval')")
+check "hba_file, password_encryption, max_connections, reserved_connections, authentication_timeout, temp_file_limit, client_connection_check_interval" \
+  equals "$settings" '/etc/postgresql/pg_hba.conf scram-sha-256 100 5 10s 1GB 5s'
 check "the server runs with no-new-privileges" \
   contains "$(docker inspect -f '{{.HostConfig.SecurityOpt}}' "$server")" 'no-new-privileges:true'
 

@@ -43,6 +43,7 @@ from es_plugins.database.backup_store import BackupStore
 from es_plugins.database.connections import DatabaseConnector
 from es_plugins.database.drop_sequence import DatabaseDropper
 from es_plugins.database.limits_watchdog import DatabaseLimitsWatchdog
+from es_plugins.database.plugin_sessions import PluginDatabaseSessions
 from es_plugins.database.postgres_client import PostgresClient
 from es_plugins.database.provisioner import DatabaseProvisioner
 from es_plugins.database.restore_service import RestoreService
@@ -274,6 +275,7 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
         hook_caller=hook_caller,
         provisioner=provisioner,
         dropper=DatabaseDropper(database_connector),
+        database_sessions=PluginDatabaseSessions(database_connector),
         egress=egress,
         backup_store=backup_store,
         backups=backups,

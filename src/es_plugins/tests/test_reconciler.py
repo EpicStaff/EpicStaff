@@ -41,6 +41,7 @@ from tests.helpers import (
     FakeDjango,
     FakeLauncher,
     RecordingBackups,
+    RecordingDatabaseSessions,
     RecordingDropper,
     RecordingProvisioner,
     RecordingRestores,
@@ -164,6 +165,7 @@ async def node(tmp_path, layout, package_bytes):
         hook_caller=hook_caller,
         provisioner=provisioner,
         dropper=dropper,
+        database_sessions=RecordingDatabaseSessions(launcher.operations),
         egress=egress,
         backup_store=backup_store,
         backups=backups,
@@ -801,6 +803,31 @@ def _unreportable(monkeypatch, file_name):
         return real_report(backup)
 
     monkeypatch.setattr(StoredBackup, "report", report)
+
+
+async def test_the_database_sessions_of_a_plugin_are_ended_after_each_kill_of_its_processes(database_node):
+    reconciler, django, launcher, desired, with_database = database_node
+    await reconciler.apply(with_database())
+    await wait_until(lambda: running(reconciler))
+    database_name = reconciler.controllers()[0].database.desired.database_name
+
+    await reconciler.apply(with_database(desired_state="stopped"))
+    await wait_until(lambda: reconciler.reports()[0].observed_state == "stopped")
+
+    steps = [operation for operation in launcher.operations if operation[0] in ("kill_uid", "end_database_sessions")]
+    assert steps == [("kill_uid", UID), ("end_database_sessions", database_name)]
+
+
+async def test_a_plugin_without_a_database_has_no_sessions_to_end(node):
+    reconciler, django, launcher, venv_builder, desired = node
+    await reconciler.apply(desired())
+    await wait_until(lambda: running(reconciler))
+
+    await reconciler.apply(desired(desired_state="stopped"))
+    await wait_until(lambda: reconciler.reports()[0].observed_state == "stopped")
+
+    assert ("kill_uid", UID) in launcher.operations
+    assert not [operation for operation in launcher.operations if operation[0] == "end_database_sessions"]
 
 
 async def test_a_backup_that_cannot_be_reported_is_set_aside_and_the_inventory_stays_whole(database_node, monkeypatch):

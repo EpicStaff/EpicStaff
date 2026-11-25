@@ -38,7 +38,10 @@ AGENT_VARIABLES = (
     "PYTHONPATH",
     "VIRTUAL_ENV",
 )
-AGENT_STOP_TIMEOUT_SECONDS = 8.0
+# The agent stops every plugin at once, each within the supervisor's stop window (SIGTERM, its
+# grace period, SIGKILL, the plugin's database sessions ended), then sends its last report.
+# es_plugins' stop_grace_period in docker-compose.yaml leaves the launcher room after it.
+AGENT_STOP_TIMEOUT_SECONDS = 15.0
 EXIT_CONFIGURATION_ERROR = 64
 _MIB = 1024 * 1024
 

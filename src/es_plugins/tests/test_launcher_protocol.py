@@ -52,6 +52,14 @@ def spawn_request(**overrides):
     return protocol.decode_request(json.dumps(request).encode())
 
 
+def test_the_launcher_waits_for_the_agent_longer_than_a_plugin_may_take_to_stop():
+    from es_plugins.launcher.__main__ import AGENT_STOP_TIMEOUT_SECONDS
+    from es_plugins.supervisor.process_supervisor import STOP_WINDOW_SECONDS
+
+    # The agent stops every plugin at once, then sends its last report: room for both.
+    assert AGENT_STOP_TIMEOUT_SECONDS >= STOP_WINDOW_SECONDS + 5
+
+
 def test_the_agent_gets_both_database_passwords_and_nothing_else_of_the_launchers(layout, monkeypatch):
     monkeypatch.setenv("PLUGINS_DB_ADMIN_PASSWORD", "d" * 64)
     monkeypatch.setenv("PLUGINS_NODE_KEY", "n" * 64)

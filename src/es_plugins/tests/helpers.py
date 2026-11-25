@@ -709,6 +709,16 @@ class RecordingDropper:
         return DroppedDatabase(databases=1, roles=3)
 
 
+class RecordingDatabaseSessions:
+    """The node's `PluginDatabaseSessions` without a server: records each database it is asked about."""
+
+    def __init__(self, events: list):
+        self._events = events
+
+    async def end_after_kill(self, database):
+        self._events.append(("end_database_sessions", database.desired.database_name))
+
+
 class RecordingBackups:
     """The node's `BackupService` without a server: writes a small backup into the real store.
 

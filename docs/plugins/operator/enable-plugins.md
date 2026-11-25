@@ -615,6 +615,10 @@ own `postgres` and `template1`. What a plugin sees of its database is in
   each server process are capped at 1 GB (`temp_file_limit`), so one plugin's large sorts cannot
   fill it alone. The Runtime tab shows each plugin's database size; watch the `plugins_pgdata`
   volume, and put it on a file system of its own for a hard limit.
+- **Stopped plugins' statements end.** PostgreSQL would run a statement on after the plugin
+  process that sent it was killed. Whenever the node kills a plugin's processes (a stop, a restart,
+  a cap it went over) it ends that plugin's sessions on `plugins_db`, and the server checks every
+  5 s whether a running statement's client is still there (`client_connection_check_interval`).
 - **No statement text in the log.** Failing statements are never logged with their text:
   `plugins_admin` runs with `log_min_error_statement=panic`.
 
