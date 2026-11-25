@@ -33,6 +33,7 @@ export interface DashboardActiveTrigger {
     graph_id: number;
     graph_name: string;
     next_run_at: string | null;
+    last_event_at: string | null;
 }
 
 export interface DashboardLiveSession {

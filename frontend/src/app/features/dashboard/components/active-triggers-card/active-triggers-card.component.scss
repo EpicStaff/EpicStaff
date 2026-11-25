@@ -26,7 +26,6 @@
 }
 
 .active-triggers-card__table-wrap {
-    max-height: 320px;
     overflow: auto;
     border: 1px solid var(--color-table-border);
     border-radius: 10px;
@@ -81,29 +80,7 @@
 }
 
 .active-triggers-card__trigger {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-
-    .ti {
-        font-size: 16px;
-    }
-
-    &--schedule .ti {
-        color: var(--color-trigger-schedule);
-    }
-
-    &--webhook .ti {
-        color: var(--color-trigger-webhook);
-    }
-
-    &--telegram .ti {
-        color: var(--color-trigger-telegram);
-    }
-
-    &--waiting .ti {
-        color: var(--color-status-waiting);
-    }
+    @include dashboard-card.trigger-label;
 }
 
 .active-triggers-card__muted {
@@ -111,22 +88,7 @@
 }
 
 .active-triggers-card__status {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    color: var(--success-color);
-
-    &::before {
-        content: '';
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: currentColor;
-    }
-
-    &--waiting {
-        color: var(--color-status-waiting);
-    }
+    @include dashboard-card.status-dot;
 }
 
 .active-triggers-card__empty {

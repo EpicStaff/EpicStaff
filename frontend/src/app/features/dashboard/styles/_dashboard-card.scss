@@ -29,3 +29,63 @@
     line-height: 1;
     color: var(--color-text-primary);
 }
+
+@mixin view-all {
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent-color);
+    text-decoration: none;
+    cursor: pointer;
+
+    &:hover {
+        text-decoration: underline;
+    }
+}
+
+@mixin trigger-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+
+    .ti {
+        font-size: 16px;
+    }
+
+    &--schedule .ti {
+        color: var(--color-trigger-schedule);
+    }
+
+    &--webhook .ti {
+        color: var(--color-trigger-webhook);
+    }
+
+    &--telegram .ti {
+        color: var(--color-trigger-telegram);
+    }
+
+    &--waiting .ti {
+        color: var(--color-status-waiting);
+    }
+}
+
+@mixin status-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--success-color);
+
+    &::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: currentColor;
+    }
+
+    &--waiting {
+        color: var(--color-status-waiting);
+    }
+}

@@ -52,3 +52,13 @@
 .sessions-card__live {
     margin-left: auto;
 }
+
+.sessions-card__controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.sessions-card__view-all {
+    @include dashboard-card.view-all;
+}

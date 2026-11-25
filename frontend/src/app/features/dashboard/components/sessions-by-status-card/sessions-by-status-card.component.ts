@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 
 import { TabButtonComponent } from '../../../../shared/components/tab-button/tab-button.component';
 import { DASHBOARD_SESSION_STATUSES } from '../../constants/dashboard-session-statuses';
@@ -9,7 +10,7 @@ import { DashboardChartComponent } from '../dashboard-chart/dashboard-chart.comp
 
 @Component({
     selector: 'app-sessions-by-status-card',
-    imports: [DashboardChartComponent, TabButtonComponent],
+    imports: [DashboardChartComponent, TabButtonComponent, RouterLink],
     templateUrl: './sessions-by-status-card.component.html',
     styleUrls: ['./sessions-by-status-card.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

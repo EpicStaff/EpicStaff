@@ -17,12 +17,32 @@
                 <tr>
                     <th>Trigger</th>
                     <th>Flow</th>
-                    <th>When</th>
+                    <th>Next run / last event</th>
                     <th>Status</th>
                 </tr>
             </thead>
             <tbody>
-                @for (trigger of triggers(); track trigger.trigger_type + trigger.node_id) {
+                @for (session of previewWaitingSessions(); track session.session_id) {
+                    <tr>
+                        <td>
+                            <span class="active-triggers-card__trigger active-triggers-card__trigger--waiting">
+                                <i
+                                    class="ti ti-hourglass"
+                                    aria-hidden="true"
+                                ></i>
+                                Session #{{ session.session_id }}
+                            </span>
+                        </td>
+                        <td>{{ session.graph_name }}</td>
+                        <td class="active-triggers-card__muted">Started {{ getRelativeTime(session.created_at) }}</td>
+                        <td>
+                            <span class="active-triggers-card__status active-triggers-card__status--waiting">
+                                Waiting for user
+                            </span>
+                        </td>
+                    </tr>
+                }
+                @for (trigger of previewTriggers(); track trigger.trigger_type + trigger.node_id) {
                     @let type = triggerTypes[trigger.trigger_type];
                     <tr>
                         <td>
@@ -44,29 +64,11 @@
                             @if (trigger.next_run_at) {
                                 {{ trigger.next_run_at | date: 'MMM d, HH:mm' }}
                             } @else {
-                                {{ type.note }}
+                                {{ getRelativeTime(trigger.last_event_at) }}
                             }
                         </td>
-                        <td><span class="active-triggers-card__status">Active</span></td>
-                    </tr>
-                }
-                @for (session of waitingSessions(); track session.session_id) {
-                    <tr>
                         <td>
-                            <span class="active-triggers-card__trigger active-triggers-card__trigger--waiting">
-                                <i
-                                    class="ti ti-hourglass"
-                                    aria-hidden="true"
-                                ></i>
-                                Session #{{ session.session_id }}
-                            </span>
-                        </td>
-                        <td>{{ session.graph_name }}</td>
-                        <td class="active-triggers-card__muted">Started {{ getRelativeTime(session.created_at) }}</td>
-                        <td>
-                            <span class="active-triggers-card__status active-triggers-card__status--waiting">
-                                Waiting for user
-                            </span>
+                            <span class="active-triggers-card__status">{{ type.status }}</span>
                         </td>
                     </tr>
                 }

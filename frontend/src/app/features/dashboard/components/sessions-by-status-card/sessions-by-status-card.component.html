@@ -7,16 +7,24 @@
         Sessions by status
         <span class="sessions-card__count">{{ total() }}</span>
     </span>
-    <div class="sessions-card__types">
-        @for (item of chartTypes; track item.type) {
-            <app-tab-button
-                mod="sm"
-                [active]="item.type === chartType()"
-                (action)="chartType.set(item.type)"
-            >
-                {{ item.label }}
-            </app-tab-button>
-        }
+    <div class="sessions-card__controls">
+        <div class="sessions-card__types">
+            @for (item of chartTypes; track item.type) {
+                <app-tab-button
+                    mod="sm"
+                    [active]="item.type === chartType()"
+                    (action)="chartType.set(item.type)"
+                >
+                    {{ item.label }}
+                </app-tab-button>
+            }
+        </div>
+        <a
+            class="sessions-card__view-all"
+            routerLink="/sessions"
+        >
+            View all
+        </a>
     </div>
 </div>
 
