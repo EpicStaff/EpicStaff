@@ -650,6 +650,11 @@ A cross-org move counts against the destination organization's storage quota. Ov
 {"from": "Source path does not exist: ..."}
 ```
 
+**Error (into itself):** `400 Bad Request` — the destination is the source or one of its subfolders.
+```json
+{"detail": "Cannot move an entry into itself or one of its subfolders."}
+```
+
 **Error:** `413` — a cross-org move that does not fit the destination organization's storage quota.
 
 ---
