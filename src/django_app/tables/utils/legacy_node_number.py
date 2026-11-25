@@ -1,6 +1,3 @@
-import re
-
-_TRAILING_BADGE = re.compile(r"\s*#\s*(\d+)\s*$")
 # Same bound as the backfill migration: far above any real badge, so a name such as
 # "Order #20240101123456" keeps its digits, and node_number_seq stays far from int32 overflow.
 MAX_BADGE_NUMBER = 1_000_000
@@ -14,6 +11,22 @@ def badge_number_or_none(number: object) -> int | None:
     return None
 
 
+def _split_trailing_badge(node_name: str) -> tuple[str, str] | None:
+    """Split "Label #N" into the label and the digits of N, or None without a "#N" suffix.
+
+    The suffix is the last "#", the whitespace around it and the digits after it;
+    the label is the text before the suffix, unchanged (leading whitespace kept).
+    Split at the last "#" rather than searched with a regex: a search starting with
+    optional whitespace retries at every position of a long whitespace run, which
+    is quadratic, and an imported file can carry such a name.
+    """
+    head, hash_sign, tail = node_name.rpartition("#")
+    digits = tail.strip()
+    if not hash_sign or not digits.isdecimal():
+        return None
+    return head.rstrip(), digits
+
+
 def split_legacy_node_name(node_name: str, metadata_number: object) -> tuple[str, int | None]:
     """Split a pre-column node name such as "Python-Node #3" into its label and badge number.
 
@@ -23,13 +36,13 @@ def split_legacy_node_name(node_name: str, metadata_number: object) -> tuple[str
     1..MAX_BADGE_NUMBER counts as no number.
     """
     number = badge_number_or_none(metadata_number)
-    match = _TRAILING_BADGE.search(node_name or "")
-    if match is None:
+    badge = _split_trailing_badge(node_name or "")
+    if badge is None:
         return node_name, number
-    suffix_number = badge_number_or_none(int(match.group(1)))
+    label, digits = badge
+    suffix_number = badge_number_or_none(int(digits))
     if number is None:
         number = suffix_number
-    label = node_name[: match.start()]
     if number is None or suffix_number != number or not label.strip():
         return node_name, number
     return label, number

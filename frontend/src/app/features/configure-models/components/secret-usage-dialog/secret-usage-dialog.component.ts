@@ -19,11 +19,11 @@ import {
     AppIconComponent,
     AppSvgIconComponent,
     ButtonComponent,
-    EmbeddingModelConfigDialogComponent,
     FlowNodeListComponent,
     HelpTooltipComponent,
-    LlmModelConfigDialogComponent,
     LoadingSpinnerComponent,
+    ModelConfigDialogComponent,
+    ModelConfigDialogData,
     TranscriptionModelConfigDialogComponent,
     VoiceModelConfigDialogComponent,
 } from '@shared/components';
@@ -204,47 +204,62 @@ export class SecretUsageDialogComponent implements OnInit {
                     this.notFound(item.name);
                     return;
                 }
-                this.dialog.open(target.dialog, {
-                    height: '90vh',
-                    width: '600px',
-                    autoFocus: false,
-                    data: { configId: match.id },
-                });
+                target.open(match.id);
             });
     }
 
     private llmConfigTarget(
         type: SecretUsageResourceType
-    ): { configs: () => Observable<{ id: number; custom_name: string }[]>; dialog: ComponentType<unknown> } | null {
+    ): { configs: () => Observable<{ id: number; custom_name: string }[]>; open: (configId: number) => void } | null {
         switch (type) {
             case 'llm_config':
                 return {
                     configs: () => this.llmConfigStorageService.getAllConfigs(),
-                    dialog: LlmModelConfigDialogComponent,
+                    open: (configId) => this.openModelConfig({ kind: 'llm', configId }),
                 };
             case 'embedding_config':
                 return {
                     configs: () => this.embeddingConfigStorageService.getAllConfigs(),
-                    dialog: EmbeddingModelConfigDialogComponent,
+                    open: (configId) => this.openModelConfig({ kind: 'embedding', configId }),
                 };
             case 'realtime_config':
                 return {
                     configs: () => this.realtimeConfigStorageService.getAllConfigs(),
-                    dialog: VoiceModelConfigDialogComponent,
+                    open: (configId) => this.openConfigDialog(VoiceModelConfigDialogComponent, configId),
                 };
             case 'realtime_transcription_config':
                 return {
                     configs: () => this.transcriptionConfigStorageService.getAllConfigs(),
-                    dialog: TranscriptionModelConfigDialogComponent,
+                    open: (configId) => this.openConfigDialog(TranscriptionModelConfigDialogComponent, configId),
                 };
             case 'system_one_config':
                 return {
                     configs: () => this.systemOneConfigStorageService.getAllConfigs(),
-                    dialog: SystemOneConfigDialogComponent,
+                    open: (configId) => this.openSystemOneConfig(configId),
                 };
             default:
                 return null;
         }
+    }
+
+    /** The shared LLM and embedding dialog sizes itself. */
+    private openModelConfig(data: ModelConfigDialogData): void {
+        this.dialog.open(ModelConfigDialogComponent, { autoFocus: false, data });
+    }
+
+    /** The System One dialog sizes itself. */
+    private openSystemOneConfig(configId: number): void {
+        this.dialog.open(SystemOneConfigDialogComponent, { autoFocus: false, data: { configId } });
+    }
+
+    private openConfigDialog(component: ComponentType<unknown>, configId: number): void {
+        this.dialog.open(component, {
+            height: '800px',
+            maxHeight: '90vh',
+            width: '560px',
+            autoFocus: false,
+            data: { configId },
+        });
     }
 
     private navigateToTool(item: SecretUsageResourceItem): void {

@@ -16,7 +16,7 @@ def test_converter_carries_config_name(llm_config):
 
 
 def test_config_name_never_reaches_litellm():
-    config = LLMConfigData(model="gpt-4o", temperature=0.2, custom_name="Key A")
+    config = LLMConfigData(model="gpt-4o", parameters={"temperature": 0.2}, custom_name="Key A")
     kwargs = config.to_litellm_kwargs(provider="openai")
     assert kwargs == {"temperature": 0.2}
 

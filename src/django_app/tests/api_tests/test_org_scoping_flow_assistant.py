@@ -27,7 +27,7 @@ from tables.models.flow_assistant_models import (
     FlowAssistantConversation,
     FlowAssistantMessage,
 )
-from tables.models.llm_models import LLMConfig, LLMModel, Provider
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.services.llm_clients.base import DoneEvent, TokenEvent
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
@@ -169,7 +169,7 @@ def _pending_conversation(user, org) -> FlowAssistantConversation:
         graph=_graph(org), llm_config=LLMConfig.objects.create(custom_name=f"stream-cfg-{org.id}", model=model, org=org)
     )
     conversation = FlowAssistantConversation.objects.create(
-        flow_assistant=assistant, organization_user=OrganizationUser.objects.get(user=user, org=org)
+        flow_assistant=assistant, user=user
     )
     FlowAssistantMessage.objects.create(conversation=conversation, message_index=0, role="user", content="what does this flow do?")
     return conversation
@@ -261,11 +261,17 @@ def test_conversation_the_user_may_no_longer_stream_answers_like_a_missing_one(
     llm_client.assert_not_called()
 
 
+@pytest.fixture(params=["two_org_user", "superadmin_user"])
+def stream_owner(request):
+    """A member of org_a, or a superadmin who is not: acting there is enough to own a conversation."""
+    return request.getfixturevalue(request.param)
+
+
 @pytest.mark.asyncio
 @pytest.mark.django_db(transaction=True)
-async def test_stream_in_an_org_with_flows_read_streams_the_reply(two_org_user, org_a, llm_client):
-    conversation = await sync_to_async(_pending_conversation)(two_org_user, org_a)
-    ticket, _ = await sync_to_async(sse_ticket_service.issue)(two_org_user)
+async def test_stream_in_an_org_with_flows_read_streams_the_reply(stream_owner, org_a, llm_client):
+    conversation = await sync_to_async(_pending_conversation)(stream_owner, org_a)
+    ticket, _ = await sync_to_async(sse_ticket_service.issue)(stream_owner)
 
     response = await AsyncClient().get(_stream_url(conversation.pk, conversation.flow_assistant.graph_id), {"ticket": ticket})
     frames = [frame async for frame in response.streaming_content]
@@ -273,3 +279,68 @@ async def test_stream_in_an_org_with_flows_read_streams_the_reply(two_org_user, 
     assert response.status_code == 200
     assert response["Content-Type"] == "text/event-stream"
     assert b"event: done\n" in frames
+
+
+# ── Acting in an org without a membership (superadmin) ───────────────────────
+
+
+def _acting_in(user, org):
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(org.id))
+    return client
+
+
+def test_superadmin_who_is_not_a_member_uses_the_assistant(superadmin_user, org_a):
+    graph = _graph(org_a)
+    client = _acting_in(superadmin_user, org_a)
+    conversations_url = f"/api/flow-assistants/{graph.id}/conversations/"
+
+    started = client.post(conversations_url, {}, format="json")
+    assert started.status_code == 201, started.data
+    conversation_id = started.data["conversation_id"]
+
+    listed = client.get(conversations_url)
+    assert listed.status_code == 200, listed.data
+    assert [row["id"] for row in listed.data["results"]] == [conversation_id]
+
+    read = client.get(f"{conversations_url}{conversation_id}/")
+    assert read.status_code == 200, read.data
+    assert read.data["user"] == superadmin_user.id
+
+    sent = client.post(f"{conversations_url}{conversation_id}/messages/", {"message": "hi"}, format="json")
+    assert sent.status_code == 200, sent.data
+    assert f"/conversations/{conversation_id}/stream/?ticket=" in sent.data["stream_url"]
+    assert FlowAssistantMessage.objects.filter(conversation_id=conversation_id, role="user", content="hi").exists()
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [("get", "conversations/"), ("post", "conversations/")],
+)
+def test_a_non_member_is_refused_like_on_every_org_scoped_endpoint(
+    django_user_model, org_a, org_b, member_role, method, path
+):
+    outsider = _member(
+        django_user_model.objects.create_user(email="outsider@example.com", password="StrongPass123!"),
+        org_b,
+        member_role,
+    )
+    graph = _graph(org_a)
+
+    response = getattr(_acting_in(outsider, org_a), method)(f"/api/flow-assistants/{graph.id}/{path}", {}, format="json")
+
+    assert response.status_code == 403, response.data
+    assert response.data["code"] == "org_membership_required"
+    assert not FlowAssistantConversation.objects.filter(flow_assistant__graph=graph).exists()
+
+
+@pytest.mark.parametrize("caller", ["other_member_a", "superadmin_user"])
+def test_another_users_conversation_in_the_same_org_is_refused(request, two_org_user, org_a, caller):
+    conversation = _pending_conversation(two_org_user, org_a)
+    url = f"/api/flow-assistants/{conversation.flow_assistant.graph_id}/conversations/{conversation.pk}/"
+
+    response = _acting_in(request.getfixturevalue(caller), org_a).get(url)
+
+    assert response.status_code == 403, response.data
+    assert "messages" not in response.data

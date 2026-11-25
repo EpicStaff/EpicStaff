@@ -23,6 +23,7 @@ import {
 import { HIDE_SIDENAV_ON_PHONE } from './core/services/app-navigation-drawer.service';
 import { chatEnabledGuard } from './features/chat/guards/chat-enabled.guard';
 import { FILES_TAB } from './features/files/constants/files-tabs';
+import { storageTabGuard } from './features/files/guards/storage-tab.guard';
 import { availablePluginGuard } from './features/plugins/guards/available-plugin.guard';
 import { pluginsEnabledGuard } from './features/plugins/guards/plugins-enabled.guard';
 import { pluginPageMatcher } from './features/plugins/pages/plugin-host-page/plugin-page.matcher';
@@ -264,19 +265,19 @@ export const routes: Routes = [
                             // during a storage → knowledge drag. These routes own the URL and the guards.
                             {
                                 path: FILES_TAB.KnowledgeSources,
-                                canActivate: [permissionGuard],
+                                canActivate: [storageTabGuard],
                                 data: { permission: [ResourceCode.KnowledgeSources, ActionCode.Read] },
                                 children: [],
                             },
                             {
                                 path: FILES_TAB.Storage,
-                                canActivate: [permissionGuard],
+                                canActivate: [storageTabGuard],
                                 data: { permission: [ResourceCode.Files, ActionCode.Read] },
                                 children: [],
                             },
                             {
                                 path: FILES_TAB.KeyValueTables,
-                                canActivate: [permissionGuard],
+                                canActivate: [storageTabGuard],
                                 data: { permission: [ResourceCode.KeyValueTables, ActionCode.Read] },
                                 children: [],
                             },
@@ -371,19 +372,10 @@ export const routes: Routes = [
                                 data: { permission: [ResourceCode.LlmConfigs, ActionCode.Create] },
                             },
                             {
-                                path: 'default-llms',
+                                path: 'ai-models',
                                 loadComponent: () =>
-                                    import('./features/configure-models/components/default-llms-section/default-llms-section.component').then(
-                                        (m) => m.DefaultLlmsSectionComponent
-                                    ),
-                                canActivate: [permissionGuard],
-                                data: { permission: [ResourceCode.LlmConfigs, ActionCode.Read] },
-                            },
-                            {
-                                path: 'llm-library',
-                                loadComponent: () =>
-                                    import('./features/configure-models/components/llm-library-section/llm-library-section.component').then(
-                                        (m) => m.LlmLibrarySectionComponent
+                                    import('./features/configure-models/pages/ai-models-page/ai-models-page.component').then(
+                                        (m) => m.AiModelsPageComponent
                                     ),
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.LlmConfigs, ActionCode.Read] },

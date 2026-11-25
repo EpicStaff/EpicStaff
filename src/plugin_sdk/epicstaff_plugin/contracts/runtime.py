@@ -144,7 +144,7 @@ class RuntimeFile(BaseModel):
     """EpicStaff's public origin, the `iss` of every gateway context."""
 
     public_url: HttpUrl
-    """The plugin's own public address, `<scheme>://<identifier>.<plugin base domain>`."""
+    """The plugin's own public address, `<scheme>://<its host from PLUGINS_HOST_TEMPLATE>`."""
 
     epicstaff_public_url: HttpUrl
     """EpicStaff's address as people's browsers reach it."""

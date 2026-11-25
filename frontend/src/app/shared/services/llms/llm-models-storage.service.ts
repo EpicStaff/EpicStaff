@@ -64,17 +64,6 @@ export class LlmModelsStorageService implements StorageService {
         );
     }
 
-    getModelById(id: number): Observable<LLMModel> {
-        const cached = this.models().find((m) => m.id === id);
-        if (cached) {
-            return of(cached);
-        }
-        return this.llmModelsService.getLLMModelById(id).pipe(
-            tap((model) => this.upsertModelInCache(model)),
-            catchError((err) => throwError(() => err))
-        );
-    }
-
     createModel(data: CreateLlmModelRequest): Observable<LLMModel> {
         return this.llmModelsService.createModel(data).pipe(
             tap((model) => this.upsertModelInCache(model)),

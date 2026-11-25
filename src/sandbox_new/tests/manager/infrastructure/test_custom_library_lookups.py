@@ -53,7 +53,7 @@ async def test_libraries_are_fetched_for_a_whole_venv_at_once(libraries):
         CustomLibrary(name="unrelated"),
     )
 
-    found = await libraries.list_by_names(["acme-core", "acme-tools"])
+    found = await libraries.list_by_names(None, ["acme-core", "acme-tools"])
 
     assert {library.name for library in found} == {"acme-core", "acme-tools"}
 
@@ -63,7 +63,7 @@ async def test_a_name_nobody_stored_is_simply_absent_from_the_result(libraries):
     that are missing. Raising here would lose the other libraries of the same venv."""
     libraries.seed(CustomLibrary(name="acme-core"))
 
-    found = await libraries.list_by_names(["acme-core", "never-uploaded"])
+    found = await libraries.list_by_names(None, ["acme-core", "never-uploaded"])
 
     assert [library.name for library in found] == ["acme-core"]
 
@@ -73,7 +73,7 @@ async def test_asking_for_no_library_returns_none_rather_than_every_one(librarie
     the whole table."""
     libraries.seed(CustomLibrary(name="acme-core"))
 
-    assert await libraries.list_by_names([]) == []
+    assert await libraries.list_by_names(None, []) == []
 
 
 async def test_a_removed_library_is_not_offered_by_name(libraries):
@@ -83,7 +83,7 @@ async def test_a_removed_library_is_not_offered_by_name(libraries):
     stored.mark_as_deleted()
     await libraries.update(stored)
 
-    assert await libraries.list_by_names(["acme-core"]) == []
+    assert await libraries.list_by_names(None, ["acme-core"]) == []
 
 
 async def test_wheels_are_fetched_for_every_library_of_a_venv_at_once(wheels):
@@ -127,7 +127,7 @@ async def test_the_venvs_using_a_library_are_the_ones_that_marked_it_custom(venv
         make_venv(name="unrelated", libs=[make_library(name="requests")]),
     )
 
-    found = await venvs.list_using_custom_library("acme-core")
+    found = await venvs.list_using_custom_library(None, "acme-core")
 
     assert [venv.name for venv in found] == ["uses it"]
 
@@ -135,7 +135,7 @@ async def test_the_venvs_using_a_library_are_the_ones_that_marked_it_custom(venv
 async def test_a_library_nothing_uses_has_no_venvs(venvs):
     venvs.seed(make_venv(name="data", libs=[make_library(name="requests")]))
 
-    assert await venvs.list_using_custom_library("acme-core") == []
+    assert await venvs.list_using_custom_library(None, "acme-core") == []
 
 
 async def test_a_venv_is_found_whatever_state_its_build_is_in(venvs):
@@ -150,6 +150,39 @@ async def test_a_venv_is_found_whatever_state_its_build_is_in(venvs):
         )
     )
 
-    assert [venv.name for venv in await venvs.list_using_custom_library("acme-core")] == [
+    assert [venv.name for venv in await venvs.list_using_custom_library(None, "acme-core")] == [
         "failed one"
     ]
+
+
+async def test_libraries_are_looked_up_only_in_the_scope_asked_for(libraries):
+    libraries.seed(
+        CustomLibrary(name="acme-core", scope="org-1"),
+        CustomLibrary(name="acme-core", scope="org-2"),
+        CustomLibrary(name="acme-core"),
+    )
+
+    found = await libraries.list_by_names("org-1", ["acme-core"])
+
+    assert [library.scope for library in found] == ["org-1"]
+    assert (await libraries.retrieve_by_name("org-2", "acme-core")).scope == "org-2"
+    assert (await libraries.retrieve_by_name(None, "acme-core")).scope is None
+
+
+async def test_the_venvs_using_a_library_are_those_of_its_scope(venvs):
+    venvs.seed(
+        make_venv(
+            name="org one",
+            scope="org-1",
+            libs=[make_library(name="acme-core", is_custom=True)],
+        ),
+        make_venv(
+            name="org two",
+            scope="org-2",
+            libs=[make_library(name="acme-core", is_custom=True)],
+        ),
+    )
+
+    found = await venvs.list_using_custom_library("org-1", "acme-core")
+
+    assert [venv.name for venv in found] == ["org one"]

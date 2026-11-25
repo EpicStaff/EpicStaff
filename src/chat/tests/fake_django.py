@@ -21,6 +21,7 @@ class FakeDjango:
         self.lose_run_session_response = False
         # An EpicStaff release from before introspection carried the user's display name.
         self.introspect_omits_display_name = False
+        self.introspect_status: int | None = 200  # None: EpicStaff unreachable; another status: it fails
         self.user_actions: list[dict] = []         # bodies EpicStaff recorded in its user-action audit trail
         self.user_action_status: int | None = 204  # None: EpicStaff unreachable; another status: it refuses the record
 
@@ -76,7 +77,7 @@ class FakeDjango:
                     return httpx.Response(401, json={"detail": "Given token not valid for any token type"})
                 answer = self.permissions.get((token, self._org(request)))
                 if answer is None or (answer != "*" and "read" not in answer.get("flows", [])):
-                    return httpx.Response(403, json={"status_code": 403, "code": "forbidden", "message": "You do not have permission to retrieve flows."})
+                    return httpx.Response(403, json={"status_code": 403, "code": "permission_denied", "message": "You do not have permission to read flows."})
             graph = self.graphs.get(int(match.group(1)))
             if graph is None or graph["org_id"] != self._org(request):
                 return httpx.Response(404, json={"code": "not_found"})
@@ -86,6 +87,10 @@ class FakeDjango:
                 "end_node_list": [{"output_map": graph["output_map"]}] if graph.get("output_map") is not None else [],
             })
         if method == "POST" and path == "/api/auth/introspect/":
+            if self.introspect_status is None:
+                raise httpx.ConnectError("EpicStaff is unreachable", request=request)
+            if self.introspect_status != 200:
+                return httpx.Response(self.introspect_status)
             token = json.loads(request.content)["token"]
             answer = dict(self.users.get(token, {"active": False}))
             if self.introspect_omits_display_name:

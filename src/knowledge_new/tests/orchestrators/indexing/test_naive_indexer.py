@@ -265,7 +265,8 @@ async def test_cancelled_run_marks_rag_cancelled_and_restores_the_document(
         ),
     )
 
-    await _index(repo, 7)
+    with pytest.raises(asyncio.CancelledError):
+        await _index(repo, 7)
 
     assert repo.rag_status_log == expected_rag_log
     assert repo.doc_status_log == expected_doc_log
@@ -423,6 +424,24 @@ async def test_embedding_extra_headers_reach_the_embedding_provider(embedding_ap
     assert embedding_api.await_args.kwargs["extra_headers"] == {"X-Gateway-Key": "resolved-value"}
 
 
+async def test_request_settings_and_connection_reach_the_embedding_provider(
+    embedding_api, monkeypatch
+):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
+
+    await _index(
+        repo,
+        7,
+        embedding_connection={"api_base": "http://gateway/v1"},
+        embedding_parameters={"dimensions": 256},
+    )
+
+    request = embedding_api.await_args.kwargs
+    assert request["api_base"] == "http://gateway/v1"
+    assert request["dimensions"] == 256
+
+
 async def test_sealed_header_markers_reach_the_embedding_provider_decrypted(
     embedding_api, monkeypatch
 ):
@@ -525,7 +544,8 @@ async def test_cancelled_run_records_tokens_consumed_so_far(embedding_api):
     embedding_api.side_effect = [_provider_response(prompt_tokens=10), asyncio.CancelledError()]
     repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
 
-    await _index(repo, 7)
+    with pytest.raises(asyncio.CancelledError):
+        await _index(repo, 7)
 
     (run,) = repo.usage_runs
     assert run.embedding_tokens == 10

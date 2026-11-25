@@ -7,21 +7,31 @@ from epicstaff_plugin.contracts.manifest import WILDCARD_HOST_PREFIX, PluginMani
 from rbac.access.catalog import ACTION_METADATA, RESOURCE_TYPE_METADATA
 from rbac.models.enums import ResourceType
 
+from plugins.exceptions import PluginHostNotServedHereError
+from plugins.gateway.host_verifier import PluginHostVerifier
 from plugins.models import Trust
+from plugins.origins import PluginOrigins
 
 UNTRUSTED_PACKAGE = "untrusted_package"
 RUNS_CODE_IN_SANDBOX = "runs_code_in_sandbox"
 FLOWS_USE_MISSING = "flows_use_missing"
 WILDCARD_OUTBOUND_HOST = "wildcard_outbound_host"
+HOST_NOT_SERVED_HERE = "host_not_served_here"
 # The access through which a plugin gets Python of its choosing run in EpicStaff's sandbox, whose
 # network is its own, so the plugin's outbound hosts do not bound that code. Flows: a flow's nodes
 # hold code, testing a node runs it (flows update), and running a flow runs all of it. Tools: a
-# Python tool's code runs whenever an agent calls the tool. No other declarable resource stores
-# code that the sandbox or an agent runs; a resource that comes to do so belongs here.
+# Python tool's code runs whenever an agent calls the tool. Venvs: the sandbox installs the
+# libraries a venv names, and they run with every piece of code that runs in the venv, the
+# organization's own included. Custom libraries: an uploaded package, a new version of one of
+# the organization's libraries too, is installed into every venv that names the library. No
+# other declarable resource stores code that the sandbox or an agent runs; a resource that comes
+# to do so belongs here.
 ACTIONS_THAT_RUN_CODE: Mapping[str, frozenset[str]] = MappingProxyType(
     {
         ResourceType.FLOWS.value: frozenset({"create", "update", "use"}),
         ResourceType.TOOLS.value: frozenset({"create", "update"}),
+        ResourceType.VENVS.value: frozenset({"create", "update"}),
+        ResourceType.CUSTOM_LIBRARIES.value: frozenset({"create", "update"}),
     }
 )
 
@@ -95,6 +105,21 @@ def review_warnings(manifest: PluginManifest, trust: str) -> list[dict[str, str]
         if outbound.host.startswith(WILDCARD_HOST_PREFIX)
     )
     return warnings
+
+
+def host_warnings(identifier: str, hosts: PluginHostVerifier) -> list[dict[str, str]]:
+    """The warning that the plugin's host is served by another server, which also stops the
+    approval (`PluginHostVerifier`); none when it proves it is served here."""
+    if hosts.is_served_here(identifier):
+        return []
+    return [
+        {
+            "code": HOST_NOT_SERVED_HERE,
+            "message": str(
+                PluginHostNotServedHereError(PluginOrigins().plugin_host(identifier)).detail
+            ),
+        }
+    ]
 
 
 def _spoken_list(items: list[str]) -> str:

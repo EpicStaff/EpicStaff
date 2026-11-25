@@ -1,7 +1,12 @@
 #!/bin/sh
 set -e
 
-CONFIG_PATH="/usr/share/nginx/html/config.json"
+# The image runs as a non-root user with a read-only root filesystem, so the generated config
+# goes to the /tmp tmpfs. nginx.conf serves /config.json from MOUNTED_CONFIG_PATH when an
+# operator mounts one, else from here.
+MOUNTED_CONFIG_PATH="/usr/share/nginx/html/config.json"
+CONFIG_DIR="/tmp/frontend-config"
+CONFIG_PATH="$CONFIG_DIR/config.json"
 
 # >>> env_bool
 # Strict boolean environment flag, accepting exactly the values Env.bool accepts
@@ -29,11 +34,17 @@ env_bool() {
 }
 # <<< env_bool
 
-# If a config file is already mounted, keep it and avoid overwriting.
-if [ -f "$CONFIG_PATH" ] && [ -s "$CONFIG_PATH" ]; then
-  echo "Existing config.json found; skipping generation."
+if [ -e "$MOUNTED_CONFIG_PATH" ]; then
+  # nginx serves any file at this path, so an empty one would reach the browser as an empty
+  # config and the app would silently run on its build-time defaults.
+  if [ ! -s "$MOUNTED_CONFIG_PATH" ]; then
+    echo "ERROR: the mounted $MOUNTED_CONFIG_PATH is empty. Mount a complete config.json or remove the mount." >&2
+    exit 64
+  fi
+  echo "Mounted config.json found; serving it instead of generating one."
 else
   echo "Generating config.json..."
+  mkdir -p "$CONFIG_DIR"
   # Read by the same rule as nginx (src/nginx/docker-entrypoint.d/15-normalize-chat-enabled.envsh),
   # so the UI offers the chat pages exactly when nginx routes /chat/.
   if env_bool CHAT_ENABLED false; then
@@ -62,7 +73,7 @@ else
   else
     plugins_enabled=false
   fi
-  cat <<EOF > $CONFIG_PATH
+  cat <<EOF > "$CONFIG_PATH"
 {
   "apiUrl": "${API_URL}",
   "realtimeApiUrl": "${REALTIME_API_URL}",
@@ -75,7 +86,7 @@ else
 }
 EOF
   echo "Config generated:"
-  cat $CONFIG_PATH
+  cat "$CONFIG_PATH"
 fi
 
 exec "$@"

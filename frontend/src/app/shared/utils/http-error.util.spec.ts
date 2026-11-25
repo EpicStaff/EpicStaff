@@ -153,6 +153,44 @@ describe('extractHttpErrorMessage', () => {
         );
     });
 
+    describe('a response with no message of its own', () => {
+        const networkDrop = new HttpErrorResponse({
+            status: 0,
+            statusText: 'Unknown Error',
+            url: 'http://api.test/venvs/',
+            error: new ProgressEvent('error'),
+        });
+        const emptyServerError = new HttpErrorResponse({
+            status: 500,
+            statusText: 'Server Error',
+            url: 'http://api.test/venvs/',
+            error: null,
+        });
+
+        it.each([
+            { case: 'a network drop', error: networkDrop },
+            { case: 'a server error with no body', error: emptyServerError },
+            { case: 'a body with nothing to read', error: errorResponse(400, { status_code: 400 }) },
+        ])("gives the caller's fallback for $case", ({ error }) => {
+            expect(extractHttpErrorMessage(error, 'Indexing failed')).toBe('Indexing failed');
+        });
+
+        it.each([
+            {
+                case: 'a network drop',
+                error: networkDrop,
+                expected: 'Http failure response for http://api.test/venvs/: 0 Unknown Error',
+            },
+            {
+                case: 'a server error with no body',
+                error: emptyServerError,
+                expected: 'Http failure response for http://api.test/venvs/: 500 Server Error',
+            },
+        ])("gives the error's own message for $case when the caller has no fallback", ({ error, expected }) => {
+            expect(extractHttpErrorMessage(error)).toBe(expected);
+        });
+    });
+
     it('still shows a plain-text body', () => {
         expect(extractHttpErrorMessage(errorResponse(400, 'Name is taken'))).toBe('Name is taken');
     });

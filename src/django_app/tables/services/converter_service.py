@@ -1,5 +1,15 @@
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
+from ai_models.models import EmbeddingConfig, LLMConfig
+from ai_models.repository import CatalogRepository
+from ai_models.services.config_parameters import (
+    embedding_config_parameters,
+    llm_config_parameters,
+)
+from ai_models.services.connection_arguments import (
+    embedding_config_connection,
+    llm_config_connection,
+)
 from django.core.exceptions import ValidationError
 from django.db.models import Prefetch
 from loguru import logger
@@ -50,7 +60,6 @@ from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.exceptions import ConfigProviderMissingError
 from tables.models import PythonCode, PythonCodeTool, Secret
-from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
@@ -70,7 +79,7 @@ from tables.models.graph_models import (
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
-from tables.models.llm_models import LLMConfig, SystemOneConfig
+from tables.models.llm_models import SystemOneConfig
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import (
@@ -99,17 +108,22 @@ from utils.singleton_meta import SingletonMeta
 
 
 class NodeRagCredentials(NamedTuple):
-    """Secret ids and raw extra headers of a knowledge node's RAG embedder and LLM.
+    """Secret ids, raw extra headers and connections of a knowledge node's RAG embedder and LLM.
 
-    Headers keep their `epicstaff_secret(<name>)` markers; SecretResolver fills them
-    on the published copy only. The LLM parts are None for naive RAGs, which have no
-    LLM, and everything is None for a node without a RAG.
+    Headers and connections keep their `epicstaff_secret(<name>)` markers; SecretResolver
+    fills them on the published copy only. Connections are keyed by LiteLLM argument. The
+    LLM parts are None for naive RAGs, which have no LLM, and everything is None for a node
+    without a RAG.
     """
 
     embedder_api_key_secret_id: int | None = None
     llm_api_key_secret_id: int | None = None
     embedder_extra_headers: dict[str, str] | None = None
     llm_extra_headers: dict[str, str] | None = None
+    embedder_connection: dict[str, str] | None = None
+    embedder_parameters: dict[str, Any] | None = None
+    llm_connection: dict[str, str] | None = None
+    llm_parameters: dict[str, Any] | None = None
 
 
 def secret_names_prefetch(lookup: str) -> Prefetch:
@@ -195,6 +209,10 @@ class ConverterService(metaclass=SingletonMeta):
             llm_api_key_secret_id=rag_credentials.llm_api_key_secret_id,
             embedder_extra_headers=rag_credentials.embedder_extra_headers,
             llm_extra_headers=rag_credentials.llm_extra_headers,
+            embedder_connection=rag_credentials.embedder_connection,
+            embedder_parameters=rag_credentials.embedder_parameters,
+            llm_connection=rag_credentials.llm_connection,
+            llm_parameters=rag_credentials.llm_parameters,
         )
 
     @staticmethod
@@ -216,6 +234,10 @@ class ConverterService(metaclass=SingletonMeta):
             llm_api_key_secret_id=llm.api_key_secret_id if llm else None,
             embedder_extra_headers=embedder.extra_headers if embedder else None,
             llm_extra_headers=llm.extra_headers if llm else None,
+            embedder_connection=embedding_config_connection(embedder) if embedder else None,
+            embedder_parameters=embedding_config_parameters(embedder) if embedder else None,
+            llm_connection=llm_config_connection(llm) if llm else None,
+            llm_parameters=llm_config_parameters(llm) if llm else None,
         )
 
     def _resolve_allowed_paths_for_graph(self, graph_id: int) -> list[str]:
@@ -363,10 +385,14 @@ class ConverterService(metaclass=SingletonMeta):
 
         # The LLM config is where the user sets temperature; the agent's
         # default_temperature only covers an LLM config that leaves it unset.
-        if ad.llm_config is not None and ad.llm_config.temperature is not None:
-            temperature = ad.llm_config.temperature
-        else:
-            temperature = ad.default_temperature
+        # Read through the catalog like every run path, so a config whose settings the
+        # model no longer accepts refuses the session.
+        llm_temperature = (
+            llm_config_parameters(ad.llm_config).get("temperature")
+            if ad.llm_config is not None
+            else None
+        )
+        temperature = ad.default_temperature if llm_temperature is None else llm_temperature
 
         rt_agent_chat_data = RealtimeAgentChatData(
             role=ad.name,
@@ -382,6 +408,10 @@ class ConverterService(metaclass=SingletonMeta):
             rag_llm_api_key_secret_id=surface_resolution.rag_llm_api_key_secret_id,
             rag_embedder_extra_headers=surface_resolution.rag_embedder_extra_headers,
             rag_llm_extra_headers=surface_resolution.rag_llm_extra_headers,
+            rag_embedder_connection=surface_resolution.rag_embedder_connection,
+            rag_embedder_parameters=surface_resolution.rag_embedder_parameters,
+            rag_llm_connection=surface_resolution.rag_llm_connection,
+            rag_llm_parameters=surface_resolution.rag_llm_parameters,
             llm=self.convert_llm_config_to_pydantic(ad.llm_config),
             memory=False,
             tools=surface_resolution.tools,
@@ -452,10 +482,12 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
         org_id: int | None = None,
         storage_grant: StorageGrant | None = None,
+        system_venv: str | None = None,
     ):
         return PythonCodeData(
             storage_grant=storage_grant,
             venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
+            system_venv=system_venv,
             code=python_code.code,
             entrypoint=python_code.entrypoint,
             global_kwargs=python_code.global_kwargs,
@@ -524,6 +556,7 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            system_venv=python_code_tool.system_venv,
         )
         # A PythonCodeTool is org-owned, not graph-owned, so the session-start graph
         # walk cannot reach it. Gate it here, where the tool is already in hand and
@@ -595,6 +628,7 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            system_venv=python_code_tool.system_venv,
         )
         # A configured tool reaches the session through this method only, so gating
         # convert_python_code_tool_to_pydantic alone would leave it ungated.
@@ -618,6 +652,7 @@ class ConverterService(metaclass=SingletonMeta):
         return McpToolData(
             transport=mcp_tool.transport,
             tool_name=mcp_tool.tool_name,
+            name=mcp_tool.name,
             timeout=mcp_tool.timeout,
             auth_secret_id=mcp_tool.auth_secret_id,
             init_timeout=mcp_tool.init_timeout,
@@ -632,6 +667,7 @@ class ConverterService(metaclass=SingletonMeta):
         Raises:
             ConfigProviderMissingError: The config's model has no provider, because
                 the provider was deleted.
+            ConfigNeedsReviewError: A stored setting is one the model does not accept.
         """
         if not config or not config.model:
             return None
@@ -662,29 +698,27 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def convert_llm_config_data(self, config: LLMConfig) -> LLMConfigData:
-        """Convert an LLMConfig that has a model into its provider-independent LLMConfigData.
+        """Convert an LLMConfig that has a model into its LLMConfigData.
 
-        Reads only the config and its model, never `model.llm_provider`, so a model
-        whose provider was deleted (NULL) converts without raising. Issues no query
-        when the caller selected `model`.
+        Sends the stored settings that are set, as they are. A model whose provider was
+        deleted (NULL) converts without raising, with no settings and only the connection
+        keys sent before the catalog existed. Issues no query when the caller selected
+        `model__llm_provider`.
+
+        Raises:
+            ConfigNeedsReviewError: A stored setting is one the model does not accept: a
+                catalog update lowered its limit, dropped the choice or dropped the setting.
         """
+        provider = config.model.llm_provider
+        provider_name = provider.name if provider else ""
         return LLMConfigData(
             model=config.model.name,
             custom_name=config.custom_name,
             timeout=config.timeout,
-            temperature=config.temperature,
-            top_p=config.top_p,
-            stop=config.stop,
-            max_tokens=config.max_tokens,
-            presence_penalty=config.presence_penalty,
-            frequency_penalty=config.frequency_penalty,
-            logit_bias=config.logit_bias,
-            seed=config.seed,
-            reasoning_effort=config.reasoning_effort,
-            base_url=config.model.base_url,
-            api_version=config.model.api_version,
+            parameters=llm_config_parameters(config),
+            connection=llm_config_connection(config),
+            main_secret_argument=_main_secret_argument(provider_name),
             api_key_secret_id=config.api_key_secret_id,
-            deployment_id=config.model.deployment_id,
             extra_headers=config.extra_headers,
             input_cost_per_token=config.input_cost_per_token,
             output_cost_per_token=config.output_cost_per_token,
@@ -701,6 +735,7 @@ class ConverterService(metaclass=SingletonMeta):
         Raises:
             ConfigProviderMissingError: The config has no model, or its model has no
                 provider, because the model or provider was deleted.
+            ConfigNeedsReviewError: A stored setting is one the model does not accept.
         """
         if not embedding_config:
             return None
@@ -708,11 +743,14 @@ class ConverterService(metaclass=SingletonMeta):
         if embedding_config.model is None or embedding_config.model.embedding_provider is None:
             raise ConfigProviderMissingError("Embedding", embedding_config.custom_name)
 
+        provider_name = embedding_config.model.embedding_provider.name
         return EmbedderData(
-            provider=embedding_config.model.embedding_provider.name,
+            provider=provider_name,
             config=EmbedderConfigData(
                 model=embedding_config.model.name,
-                base_url=embedding_config.model.base_url,
+                parameters=embedding_config_parameters(embedding_config),
+                connection=embedding_config_connection(embedding_config),
+                main_secret_argument=_main_secret_argument(provider_name),
                 api_key_secret_id=embedding_config.api_key_secret_id,
                 extra_headers=embedding_config.extra_headers,
             ),
@@ -1150,3 +1188,8 @@ class ConverterService(metaclass=SingletonMeta):
             domain=localhost_webhook_config.domain,
             auth=auth,
         )
+
+
+def _main_secret_argument(provider_name: str) -> str:
+    provider = CatalogRepository.default().provider(provider_name)
+    return provider.main_secret_argument if provider else "api_key"

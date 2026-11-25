@@ -8,8 +8,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from agents.models import AgentDefinition
-from tables.models.default_models import DefaultModels
-from tables.models.llm_models import LLMConfig
+from ai_models.models import DefaultModels, LLMConfig
 from tables.models.python_models import PythonCode, PythonCodeResult, PythonCodeTool
 from tables.models.realtime_models import (
     ConversationRecording,

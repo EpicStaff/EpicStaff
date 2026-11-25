@@ -56,6 +56,7 @@ class PluginBackendAdminView(APIView):
     # for plugins can ever authenticate here.
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
 
 class PluginSettingsView(PluginBackendAdminView):

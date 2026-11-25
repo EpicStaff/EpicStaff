@@ -1,11 +1,10 @@
 """Consumes dispatched jobs, taking an admission-gate slot before each pull.
 
-The worker's primary (driving) adapter. The slot comes first: the pull itself is the
-capacity signal -- the manager counts a waiting long-poll as a free slot -- so a job
-handed to this worker always has a slot waiting and is never parked here against its
-queue deadline. Every job ends with a result: one that expired in the queue, could not
-be decoded, or whose run blew up is failed through the orchestrator rather than
-dropped, and failing it reuses the already-held slot for the next pull. One bad job or
+The worker's primary (driving) adapter. The slot comes first, so a job handed to this
+worker always has a slot waiting and is never parked here against its queue deadline.
+Every job ends with a result: one that expired in the queue, could not be decoded, or
+whose run blew up is failed through the orchestrator rather than dropped, and failing
+it reuses the already-held slot for the next pull. One bad job or
 message never ends the loop.
 
 Messages here are logged with the execution id and the exception type only: an

@@ -26,8 +26,10 @@ class FakeUVProvider(AbstractUVProvider):
         self.init_venv_calls: list[Path] = []
         self.apply_calls: list[tuple[Path, tuple[LibraryString, ...]]] = []
         self.wheelhouses: list[Path | None] = []
+        self.offline_flags: list[bool] = []
         self.wheelhouse_contents: list[list[str]] = []
-        self.install_local_calls: list[tuple[Path, tuple[Path, ...]]] = []
+        self.install_local_calls: list[tuple[Path, tuple[str, ...]]] = []
+        self.install_local_wheelhouses: list[Path] = []
         self.build_wheel_calls: list[tuple[Path, Path]] = []
         self.fail_init: Exception | None = None
         self.fail_apply: Exception | None = None
@@ -44,10 +46,15 @@ class FakeUVProvider(AbstractUVProvider):
         self.get_python_binary(venv_path).write_text("#!/bin/sh\n")
 
     async def apply(
-        self, venv_path: Path, *libs: LibraryString, wheelhouse: Path | None = None
+        self,
+        venv_path: Path,
+        *libs: LibraryString,
+        wheelhouse: Path | None = None,
+        offline: bool = False,
     ) -> None:
         self.apply_calls.append((venv_path, libs))
         self.wheelhouses.append(wheelhouse)
+        self.offline_flags.append(offline)
         # Read now, not handed back as a path: the wheelhouse is a temporary directory
         # that is gone by the time a test looks, so what was in it is recorded here.
         self.wheelhouse_contents.append(
@@ -60,8 +67,9 @@ class FakeUVProvider(AbstractUVProvider):
     def read_resolved_versions(self, venv_path: Path) -> dict[str, str]:
         return dict(self.resolved_versions)
 
-    async def install_local(self, venv_path: Path, *packages: Path) -> None:
+    async def install_local(self, venv_path: Path, *packages: str, wheelhouse: Path) -> None:
         self.install_local_calls.append((venv_path, packages))
+        self.install_local_wheelhouses.append(wheelhouse)
         if self.fail_install_local is not None:
             raise self.fail_install_local
 

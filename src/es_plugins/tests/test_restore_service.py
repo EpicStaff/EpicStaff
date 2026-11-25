@@ -10,10 +10,11 @@ from src.shared.models.plugin_nodes import DesiredRestore
 
 from es_plugins.database.backup_service import BackupRequest
 from es_plugins.database.backup_store import metadata_name
-from es_plugins.database.connections import DatabaseConnector
+from es_plugins.database.connections import DatabaseConnector, DatabaseUnreachableError
 from es_plugins.database.installation_lookup import installation_marker
 from es_plugins.database.migration_runner import Migration
 from es_plugins.database.provisioner import DatabaseProvisioner
+from es_plugins.database import restore_service as restore_service_module
 from es_plugins.database.restore_service import RestoreError
 from tests.plugin_databases import (
     ConnectionSpy,
@@ -22,6 +23,7 @@ from tests.plugin_databases import (
     catalog_snapshot,
     connect_as,
     fetch_all,
+    login_refusal,
     new_app_password,
     owner_session,
     postgres_client_root,
@@ -164,6 +166,69 @@ async def test_a_restore_brings_back_the_data_ledger_and_settings_and_the_app_ca
         assert await fetch_all(app, "SHOW search_path") == [("app, public",)]
     finally:
         await app.close()
+
+
+async def test_another_plugin_cannot_log_in_while_the_recreated_database_waits_for_its_connect_grants(
+    plugin, plugin_databases, monkeypatch
+):
+    desired, password, backup, restores, _ = plugin
+    other = plugin_databases()
+    other_password = new_app_password()
+    await DatabaseProvisioner(DatabaseConnector(admin_password())).ensure("other", other, other_password, [])
+    refusals = []
+    real_grant_connect = restore_service_module.grant_connect
+
+    async def try_to_log_in_first(admin, target):
+        refusals.append(await login_refusal(other.app_role, other_password, target.database_name))
+        await real_grant_connect(admin, target)
+
+    monkeypatch.setattr(restore_service_module, "grant_connect", try_to_log_in_first)
+
+    await run_restore(restores, desired, password, restore_of(backup))
+
+    # Before the owner's login check, then in the recreate; refused each time, the second because
+    # the new database is still closed.
+    assert len(refusals) == 2 and "permission denied for database" in refusals[0]
+    assert f'database "{desired.database_name}" is not currently accepting connections' in refusals[1]
+    assert await place_count(desired, password) == 30
+
+
+async def test_a_restore_retried_after_the_node_lost_it_in_recreate_lets_no_other_plugin_in(
+    plugin, plugin_databases, monkeypatch
+):
+    desired, password, backup, restores, _ = plugin
+    other = plugin_databases()
+    other_password = new_app_password()
+    await DatabaseProvisioner(DatabaseConnector(admin_password())).ensure("other", other, other_password, [])
+    real_create_closed_database = restore_service_module.create_closed_database
+
+    async def node_lost_after_create(admin, target):
+        await real_create_closed_database(admin, target)
+        raise DatabaseUnreachableError("the node lost its session")
+
+    monkeypatch.setattr(restore_service_module, "create_closed_database", node_lost_after_create)
+    with pytest.raises(RestoreError) as interrupted:
+        await run_restore(restores, desired, password, restore_of(backup))
+    assert interrupted.value.temporary
+    monkeypatch.undo()
+    # The window of the retry: from putting the database's attributes back until it is dropped.
+    refusals = []
+    real_reset = restore_service_module.reset_database_attributes
+
+    async def try_to_log_in_after_the_reset(admin, database_name, owner_role):
+        changed = await real_reset(admin, database_name, owner_role)
+        refusals.append(await login_refusal(other.app_role, other_password, database_name))
+        return changed
+
+    monkeypatch.setattr(restore_service_module, "reset_database_attributes", try_to_log_in_after_the_reset)
+
+    await run_restore(restores, desired, password, restore_of(backup))
+
+    assert len(refusals) == 1 and refusals[0] is not None
+    assert await place_count(desired, password) == 30
+    assert "permission denied for database" in await login_refusal(
+        other.app_role, other_password, desired.database_name
+    )
 
 
 async def test_plugin_code_in_the_dump_runs_as_the_owner_and_cannot_leave_it(plugin):

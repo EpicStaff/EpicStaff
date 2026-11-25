@@ -1,3 +1,5 @@
+import { CdkMenu, CdkMenuItem, CdkMenuTrigger } from '@angular/cdk/menu';
+import { ConnectedPosition } from '@angular/cdk/overlay';
 import {
     Component,
     computed,
@@ -11,11 +13,18 @@ import {
     untracked,
     viewChild,
 } from '@angular/core';
-import { BulkSelectDropdownComponent, ButtonComponent, SearchComponent, SelectComponent } from '@shared/components';
+import { MatTooltip } from '@angular/material/tooltip';
+import {
+    AppSvgIconComponent,
+    BulkSelectDropdownComponent,
+    ButtonComponent,
+    SearchComponent,
+    SelectComponent,
+} from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 
-import { LLM_LIBRARY_CAPABILITIES } from '../../constants/llm-library-capabilities.constant';
+import { AI_MODELS_ADD_OPTIONS, LLM_LIBRARY_CAPABILITIES } from '../../constants/llm-library-capabilities.constant';
 import { isLibrarySectionKey, LibrarySectionKey } from '../../models/llm-library.model';
 
 /**
@@ -54,7 +63,7 @@ const ESTIMATED_CONTROL_WIDTHS: Record<ToolbarControlLook, number> = {
     'select-icon': 40,
     selected: 177,
     'selected-icon': 131,
-    add: 180,
+    add: 123,
     'add-icon': 40,
     delete: 120,
     'delete-icon': 40,
@@ -83,8 +92,8 @@ const ALL_ICONS: ToolbarIcons = { capabilities: true, select: true, action: true
 const ACTION_ICON: ToolbarIcons = { capabilities: false, select: false, action: true };
 
 /**
- * The LLM Library's sticky header: the title and its toolbar (search, Capabilities filter, Select, and Add
- * Configuration or, with a selection, Delete). It lays the toolbar out from its own measured width; the page owns
+ * The AI Models page's sticky header: the title and its toolbar (search, Capabilities filter, Select, and Add Model
+ * with its menu of config kinds or, with a selection, Delete). It lays the toolbar out from its own measured width; the page owns
  * the search, the filter, select mode and the selection, and acts on what this reports.
  *
  * The Capabilities filter's value is the header's own (the select is uncontrolled): the page only hears of a change
@@ -92,7 +101,18 @@ const ACTION_ICON: ToolbarIcons = { capabilities: false, select: false, action: 
  */
 @Component({
     selector: 'app-llm-library-header',
-    imports: [SearchComponent, SelectComponent, BulkSelectDropdownComponent, ButtonComponent, HasPermissionDirective],
+    imports: [
+        SearchComponent,
+        SelectComponent,
+        BulkSelectDropdownComponent,
+        ButtonComponent,
+        AppSvgIconComponent,
+        MatTooltip,
+        HasPermissionDirective,
+        CdkMenuTrigger,
+        CdkMenu,
+        CdkMenuItem,
+    ],
     templateUrl: './llm-library-header.component.html',
     styleUrls: ['./llm-library-header.component.scss'],
     host: {
@@ -120,17 +140,18 @@ export class LlmLibraryHeaderComponent {
     readonly selectAllToggled = output<void>();
     /** "Clear Selection": the selection empties, select mode stays. */
     readonly selectionCleared = output<void>();
-    readonly addClicked = output<void>();
+    /** A kind was chosen in the Add Model menu, by the section it belongs to. */
+    readonly addClicked = output<LibrarySectionKey>();
     readonly deleteClicked = output<void>();
 
     private readonly header = viewChild<ElementRef<HTMLElement>>('header');
     private readonly capabilitiesControl = viewChild<ElementRef<HTMLElement>>('capabilitiesControl');
     private readonly selectControl = viewChild(BulkSelectDropdownComponent, { read: ElementRef });
     private readonly bulkSelect = viewChild(BulkSelectDropdownComponent);
-    private readonly actionControl = viewChild<ButtonComponent, ElementRef<HTMLElement>>('actionControl', {
+    private readonly actionControl = viewChild<unknown, ElementRef<HTMLElement>>('actionControl', {
         read: ElementRef,
     });
-    private readonly addButton = viewChild('addButton', { read: ButtonComponent });
+    private readonly addButton = viewChild<ElementRef<HTMLButtonElement>>('addButton');
 
     /** Delete replaces Add Configuration, and Select shows its count, only while something is selected. */
     protected readonly hasSelection = computed(() => this.selectedCount() > 0);
@@ -185,6 +206,12 @@ export class LlmLibraryHeaderComponent {
     });
 
     protected readonly capabilities = LLM_LIBRARY_CAPABILITIES;
+    protected readonly addOptions = AI_MODELS_ADD_OPTIONS;
+    // Below Add Model, right edges aligned; flips above when there is no room.
+    protected readonly addMenuPositions: ConnectedPosition[] = [
+        { originX: 'end', originY: 'bottom', overlayX: 'end', overlayY: 'top', offsetY: 4 },
+        { originX: 'end', originY: 'top', overlayX: 'end', overlayY: 'bottom', offsetY: -4 },
+    ];
     protected readonly titleMinWidth = TITLE_MIN_WIDTH;
     protected readonly searchMinWidth = SEARCH_MIN_WIDTH;
     protected readonly capabilitiesLabelledWidth = CAPABILITIES_LABELLED_WIDTH;
@@ -200,9 +227,9 @@ export class LlmLibraryHeaderComponent {
         this.destroyRef.onDestroy(() => this.resizeObserver?.disconnect());
     }
 
-    /** Focuses Add Configuration, e.g. once the deleted card (or Delete, gone with the selection) took the focus. */
+    /** Focuses Add Model, e.g. once the deleted card (or Delete, gone with the selection) took the focus. */
     public focusAddButton(): void {
-        this.addButton()?.focus();
+        this.addButton()?.nativeElement.focus();
     }
 
     /** Focuses Select, where it is on the page. */

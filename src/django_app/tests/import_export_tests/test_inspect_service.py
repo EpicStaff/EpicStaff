@@ -408,3 +408,222 @@ class TestInspectServiceEdgeCases:
         }
         result = InspectService().inspect(data)
         assert result == {"review_items": []}
+
+
+def _flow_with_nodes(*nodes) -> dict:
+    return {
+        "Flow": [{"id": 1, "name": "flow", "nodes": list(nodes)}],
+        "main_entity": "Flow",
+        "version": 6,
+    }
+
+
+class TestInspectServiceDecisionTableExpressions:
+    def test_decision_table_expressions_are_listed_in_order(self):
+        node = {
+            "id": 11,
+            "node_name": "Router",
+            "node_type": "DecisionTableNode",
+            "condition_groups": [
+                {
+                    "group_name": "big",
+                    "expression": "variables['a'] > 1",
+                    "manipulation": "variables['b'] = 2",
+                    "conditions": [
+                        {"condition_name": "first", "condition": "variables['x'] == 1"},
+                        {"condition_name": "second", "condition": "variables['y'] == 2"},
+                    ],
+                },
+            ],
+        }
+
+        [item] = InspectService().inspect(_flow_with_nodes(node))["review_items"]
+
+        assert item["node_id"] == 11
+        assert item["expressions"] == [
+            {"label": 'Group "big": expression', "code": "variables['a'] > 1"},
+            {"label": 'Group "big": manipulation', "code": "variables['b'] = 2"},
+            {"label": 'Group "big", condition "first"', "code": "variables['x'] == 1"},
+            {"label": 'Group "big", condition "second"', "code": "variables['y'] == 2"},
+        ]
+
+    def test_classification_table_lists_code_and_expressions_in_one_item(self):
+        pre_python_code = {"code": "def pre(): return {}", "entrypoint": "pre"}
+        node = {
+            "id": 12,
+            "node_name": "Classify",
+            "node_type": "ClassificationDecisionTableNode",
+            "pre_python_code": pre_python_code,
+            "condition_groups": [
+                {
+                    "group_name": "first",
+                    "expression": "score > 5",
+                    "manipulation": "variables.seen = True",
+                    "field_expressions": {"status": "== 'open'", "level": "> 2"},
+                    "field_manipulations": {"result": "'high'"},
+                },
+                {"group_name": "second", "field_expressions": {"kind": "'bug'"}},
+            ],
+        }
+
+        [item] = InspectService().inspect(_flow_with_nodes(node))["review_items"]
+
+        assert item["pre_python_code"] == pre_python_code
+        assert item["expressions"] == [
+            {"label": 'Group "first": expression', "code": "score > 5"},
+            {"label": 'Group "first": manipulation', "code": "variables.seen = True"},
+            {"label": 'Group "first": field expression', "code": "status == 'open'"},
+            {"label": 'Group "first": field expression', "code": "level > 2"},
+            {"label": 'Group "first": field manipulation', "code": "result = 'high'"},
+            {"label": 'Group "second": field expression', "code": "kind 'bug'"},
+        ]
+
+    @pytest.mark.parametrize(
+        ("fields_key", "value", "expected_code"),
+        [
+            ("field_expressions", "== 1", 'x\nimport os\nos.system("id")\ny == 1'),
+            ("field_manipulations", "1", 'x\nimport os\nos.system("id")\ny = 1'),
+        ],
+    )
+    def test_a_multi_line_field_name_is_shown_verbatim_in_the_code(
+        self, fields_key, value, expected_code
+    ):
+        field_name = 'x\nimport os\nos.system("id")\ny'
+        node = {
+            "id": 19,
+            "node_type": "ClassificationDecisionTableNode",
+            "condition_groups": [{"group_name": "g", fields_key: {field_name: value}}],
+        }
+
+        [item] = InspectService().inspect(_flow_with_nodes(node))["review_items"]
+
+        [expression] = item["expressions"]
+        assert expression["code"] == expected_code
+
+    @pytest.mark.parametrize("empty_value", [None, "", "   \n\t"])
+    def test_empty_values_give_no_entries_and_no_item(self, empty_value):
+        node = {
+            "id": 13,
+            "node_type": "ClassificationDecisionTableNode",
+            "condition_groups": [
+                {
+                    "group_name": "g",
+                    "expression": empty_value,
+                    "manipulation": empty_value,
+                    "conditions": [{"condition_name": "c", "condition": empty_value}],
+                    "field_expressions": {"f": empty_value},
+                    "field_manipulations": {"m": empty_value},
+                }
+            ],
+        }
+
+        assert InspectService().inspect(_flow_with_nodes(node))["review_items"] == []
+
+    def test_empty_values_are_skipped_next_to_real_ones(self):
+        node = {
+            "id": 14,
+            "node_type": "DecisionTableNode",
+            "condition_groups": [
+                {"group_name": "g", "expression": " ", "manipulation": "x = 1", "conditions": []}
+            ],
+        }
+
+        [item] = InspectService().inspect(_flow_with_nodes(node))["review_items"]
+
+        assert item["expressions"] == [{"label": 'Group "g": manipulation', "code": "x = 1"}]
+
+    def test_non_string_values_and_names_are_shown_as_text(self):
+        node = {
+            "id": 15,
+            "node_type": "DecisionTableNode",
+            "condition_groups": [
+                {
+                    "group_name": 7,
+                    "expression": 0,
+                    "conditions": [{"condition_name": 3, "condition": 42}],
+                },
+                {"expression": "True", "conditions": [{"condition": "False"}]},
+            ],
+        }
+
+        [item] = InspectService().inspect(_flow_with_nodes(node))["review_items"]
+
+        assert item["expressions"] == [
+            {"label": 'Group "7": expression', "code": "0"},
+            {"label": 'Group "7", condition "3"', "code": "42"},
+            {"label": 'Group "": expression', "code": "True"},
+            {"label": 'Group "", condition ""', "code": "False"},
+        ]
+
+    @pytest.mark.parametrize(
+        "condition_groups",
+        [
+            "variables['a'] > 1",
+            5,
+            [["not", "a", "group"]],
+            [{"group_name": "g", "conditions": "x == 1"}],
+            [{"group_name": "g", "conditions": ["x == 1", None]}],
+            [{"group_name": "g", "field_expressions": ["x == 1"]}],
+            [{"group_name": "g", "field_manipulations": "x = 1"}],
+        ],
+    )
+    def test_malformed_condition_groups_give_no_item_and_do_not_raise(self, condition_groups):
+        node = {"id": 16, "node_type": "DecisionTableNode", "condition_groups": condition_groups}
+
+        assert InspectService().inspect(_flow_with_nodes(node))["review_items"] == []
+
+    def test_a_malformed_group_does_not_hide_a_valid_one(self):
+        node = {
+            "id": 17,
+            "node_type": "DecisionTableNode",
+            "condition_groups": ["junk", {"group_name": "g", "expression": "a"}],
+        }
+
+        [item] = InspectService().inspect(_flow_with_nodes(node))["review_items"]
+
+        assert item["expressions"] == [{"label": 'Group "g": expression', "code": "a"}]
+
+    @pytest.mark.parametrize("node_type", ["DecisionTabelNode", "PythonNode", None, "missing"])
+    def test_condition_groups_are_listed_whatever_the_node_type(self, node_type):
+        node = {"id": 18, "condition_groups": [{"group_name": "g", "expression": "a"}]}
+        if node_type != "missing":
+            node["node_type"] = node_type
+
+        [item] = InspectService().inspect(_flow_with_nodes(node))["review_items"]
+
+        assert item["node_id"] == 18
+        assert item["expressions"] == [{"label": 'Group "g": expression', "code": "a"}]
+
+
+class TestInspectServiceMalformedEntries:
+    @pytest.mark.parametrize(
+        "data",
+        [
+            pytest.param({"Flow": ["not a flow"]}, id="flow-entry-is-a-string"),
+            pytest.param({"Flow": [None]}, id="flow-entry-is-null"),
+            pytest.param({"Flow": [{"name": "f", "nodes": None}]}, id="nodes-is-null"),
+            pytest.param({"Flow": [{"name": "f", "nodes": "PythonNode"}]}, id="nodes-is-a-string"),
+            pytest.param({"Flow": [{"name": "f", "nodes": {"id": 1}}]}, id="nodes-is-a-dict"),
+            pytest.param({"Flow": [{"name": "f", "nodes": ["node", 5]}]}, id="node-is-not-a-dict"),
+            pytest.param({"PythonCodeTool": ["tool", None]}, id="python-tool-is-not-a-dict"),
+            pytest.param({"MCPTool": [["tool"]]}, id="mcp-tool-is-not-a-dict"),
+        ],
+    )
+    def test_a_malformed_entry_gives_no_item_and_does_not_raise(self, data):
+        assert InspectService().inspect(data) == {"review_items": []}
+
+    def test_a_malformed_entry_does_not_hide_a_valid_one(self):
+        code = {"code": "def main(): ...", "entrypoint": "main"}
+        data = {
+            "Flow": [
+                "junk",
+                {"name": "f", "nodes": ["junk", {"id": 3, "python_code": code}]},
+            ],
+            "PythonCodeTool": [None, {"id": 4, "name": "tool", "python_code": code}],
+        }
+
+        items = InspectService().inspect(data)["review_items"]
+
+        flow_item, tool_item = items
+        assert flow_item["node_id"] == 3
+        assert tool_item["name"] == "tool"

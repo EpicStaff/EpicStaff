@@ -47,26 +47,32 @@ export class EntityGroupComponent {
         return this.store.hasReviewNodes(item.name) || this.hasExpandableFields(item);
     }
 
-    public isRowClickable(item: ImportResultItem): boolean {
-        return this.isRowExpandable(item) || this.store.hasPythonCode(item.name) || this.store.isMcpTool(item.name);
+    public hasFlowReviewNodes(item: ImportResultItem): boolean {
+        return this.entityType() === 'Flow' && this.store.hasReviewNodes(item.name);
+    }
+
+    public isRowClickable(item: ImportResultItem, position: number): boolean {
+        return (
+            this.isRowExpandable(item) ||
+            this.store.hasPythonCode(this.entityType(), position) ||
+            this.store.isMcpTool(this.entityType(), position)
+        );
     }
 
     /** Enter and Space activate a focused row as they do a button (not when they come from the badge in it). */
-    public onRowKeydown(event: KeyboardEvent, item: ImportResultItem, status: ItemStatus): void {
-        if (!this.isRowClickable(item) || event.target !== event.currentTarget) return;
+    public onRowKeydown(event: KeyboardEvent, item: ImportResultItem, status: ItemStatus, position: number): void {
+        if (!this.isRowClickable(item, position) || event.target !== event.currentTarget) return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
-        this.onRowClick(item, status);
+        this.onRowClick(item, status, position);
     }
 
-    public onRowClick(item: ImportResultItem, status: ItemStatus): void {
+    public onRowClick(item: ImportResultItem, status: ItemStatus, position: number): void {
         if (this.isRowExpandable(item)) {
             this.toggleItem(status, item.id);
             return;
         }
-        if (this.store.hasPythonCode(item.name) || this.store.isMcpTool(item.name)) {
-            this.store.goToToolCode(item.name);
-        }
+        this.store.goToToolCode(this.entityType(), position);
     }
 
     private itemKey(status: ItemStatus, id: number | string): string {

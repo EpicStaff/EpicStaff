@@ -3,9 +3,12 @@
 A service account's request is recorded once its response is ready, when it changed
 something (a method other than GET, HEAD and OPTIONS) and succeeded (status below 400),
 except the `/api/plugin-runtime/` calls, which only read. One made with a development key has
-`detail.development` true. Recording it never changes the
-response: a failure is logged and the response goes out as it is. Lifecycle events are
-written by the services that change the plugin, in their transaction.
+`detail.development` true. The object it names is recorded by its id in the one form its
+model writes it, so however the URL spells the id the event fits its columns; a path longer
+than its column is cut. Recording it never changes the response: a failure is logged as an
+error naming the plugin, organization, method and path of the request it lost, and the
+response goes out as it is. Lifecycle events are written by the services that change the
+plugin, in their transaction.
 
 `detail` holds only scalars and lists of strings, so every reader can show it as it is.
 
@@ -29,9 +32,14 @@ from plugins.models import (
     PluginGrant,
     PluginHookJob,
 )
-from plugins.models.activity import MAX_TARGET_LABEL_LENGTH
+from plugins.models.activity import (
+    MAX_REQUEST_PATH_LENGTH,
+    MAX_TARGET_ID_LENGTH,
+    MAX_TARGET_LABEL_LENGTH,
+)
 
 if TYPE_CHECKING:
+    from plugins.ownership.owned_resource_purger import HandedOver
     from plugins.ownership.request_scope import PluginRequestScope
 
 RUNTIME_API_PATH_PREFIX = "/api/plugin-runtime/"
@@ -72,7 +80,9 @@ class ActivityRecorder:
                 target=target,
             )
         except Exception:
-            logger.exception("Could not record a plugin service account's request as activity")
+            _log_lost_request(
+                scope, getattr(request, "method", None), getattr(request, "path", None)
+            )
 
     def record_stream_request(
         self,
@@ -98,7 +108,7 @@ class ActivityRecorder:
                 target=_target_from_created(scope),
             )
         except Exception:
-            logger.exception("Could not record a plugin service account's upload as activity")
+            _log_lost_request(scope, method, path)
 
     def package_approved(self, actor, *, identifier: str, version: str, trust: str) -> None:
         _superadmin_event(
@@ -160,8 +170,21 @@ class ActivityRecorder:
             },
         )
 
-    def grant_purged(self, identifier: str, organization_id: int) -> None:
-        _actor_event(None, identifier, organization_id, ActivityAction.GRANT_PURGED, {})
+    def grant_purged(
+        self, identifier: str, organization_id: int, handed_over: "HandedOver"
+    ) -> None:
+        """Record that a grant's data is deleted, with the venvs and custom libraries of the
+        plugin that the organization still used and now owns, each as `"<name> (id <n>)"`."""
+        _actor_event(
+            None,
+            identifier,
+            organization_id,
+            ActivityAction.GRANT_PURGED,
+            {
+                "handed_over_venvs": list(handed_over.venvs),
+                "handed_over_custom_libraries": list(handed_over.custom_libraries),
+            },
+        )
 
     def plugin_uninstalled(self, actor, identifier: str, purge_after, organizations: int) -> None:
         """Record an uninstall; `organizations` is how many grants it suspended."""
@@ -480,11 +503,11 @@ class ActivityRecorder:
             on_behalf_of_label=person.email if person is not None else None,
             action=ActivityAction.API_REQUEST,
             request_method=method,
-            request_path=path,
+            request_path=path[:MAX_REQUEST_PATH_LENGTH],
             request_route=url_path_pattern(route) if route is not None else None,
             response_status=status,
             target_resource_type=resource_type,
-            target_id=target_id,
+            target_id=_fitting_target_id(target_id),
             target_label=(target_label or None) and target_label[:MAX_TARGET_LABEL_LENGTH],
             detail=detail,
         )
@@ -495,6 +518,30 @@ def _is_recorded(method: str, path: str, status: int) -> bool:
         method not in SAFE_METHODS
         and status < FIRST_FAILURE_STATUS
         and not path.startswith(RUNTIME_API_PATH_PREFIX)
+    )
+
+
+def _fitting_target_id(target_id: str | None) -> str | None:
+    """The id, or None when it is longer than its column: a cut id would name another row."""
+    if target_id is None or len(target_id) > MAX_TARGET_ID_LENGTH:
+        return None
+    return target_id
+
+
+def _log_lost_request(scope: "PluginRequestScope", method: str, path: str) -> None:
+    """Log, with its traceback, a successful write that left no activity event.
+
+    Runs inside the `except` of a failed recording, so it reads nothing that can raise:
+    recording must never change the response.
+    """
+    principal = getattr(scope, "principal", None)
+    logger.exception(
+        "Plugin activity lost: {} {} by plugin {} in organization {} succeeded but could not"
+        " be recorded",
+        method,
+        str(path)[:MAX_REQUEST_PATH_LENGTH],
+        getattr(principal, "plugin_identifier", None),
+        getattr(principal, "pinned_org_id", None),
     )
 
 

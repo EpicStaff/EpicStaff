@@ -23,6 +23,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "rbac",
     "tables",
+    "ai_models",
     "agents",
     "plugins",
     "proxies",
@@ -103,7 +104,7 @@ SESSION_CALLBACK_ALLOWED_HOSTS = parse_callback_hosts(
 CHAT_ENABLED = env.bool("CHAT_ENABLED")
 
 # Off: litellm's model map is the one bundled with the pinned litellm release, and the web
-# server makes no request to GitHub (tables/utils/litellm_model_info.py).
+# server makes no request to GitHub (ai_models/utils/litellm_model_info.py).
 LITELLM_MODEL_COST_REFRESH_ENABLED = env.bool("LITELLM_MODEL_COST_REFRESH_ENABLED")
 
 SSE_TICKET_TTL = 30

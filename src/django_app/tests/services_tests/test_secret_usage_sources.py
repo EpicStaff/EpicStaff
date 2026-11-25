@@ -12,15 +12,9 @@ the dataclass works while the configured one stayed broken.
 
 import pytest
 
-from tables.models import (
-    EmbeddingConfig,
-    LLMConfig,
-    McpTool,
-    RealtimeConfig,
-    RealtimeTranscriptionConfig,
-)
+from tables.models import McpTool, RealtimeConfig, RealtimeTranscriptionConfig
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel
 from tables.models import PythonCode, PythonCodeTool
-from tables.models.embedding_models import EmbeddingModel
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     Graph,
@@ -28,11 +22,7 @@ from tables.models.graph_models import (
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
-from tables.models.llm_models import (
-    LLMModel,
-    RealtimeModel,
-    RealtimeTranscriptionModel,
-)
+from tables.models.llm_models import RealtimeModel, RealtimeTranscriptionModel
 from rbac.models import Organization
 from tables.models.webhook_models import (
     NgrokWebhookConfig,

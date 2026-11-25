@@ -127,9 +127,10 @@ def test_a_plugin_with_a_backend_names_epicstaff_s_login_urls(anonymous_client, 
 
 
 def test_the_login_urls_are_on_epicstaff_s_origin_with_its_port(anonymous_client, backend_plugin, settings):
-    settings.FRONTEND_BASE_URL = "https://epicstaff.example.com:8443"
-    settings.PLUGINS_BASE_DOMAIN = "plugins.example.com"
+    # Installed first, under the local hosts: only EpicStaff's own origin matters here.
     mark_running(backend_plugin())
+    settings.FRONTEND_BASE_URL = "https://epicstaff.example.com:8443"
+    settings.PLUGINS_HOST_TEMPLATE = "{id}.plugins.example.com"
 
     login = anonymous_client.get("/api/plugin-public/weather/config/").json()["login"]
 

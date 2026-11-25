@@ -1,10 +1,11 @@
 """A plugin's service account may reference only the secrets it created itself.
 
-A row that references a secret also says where its value goes (an LLM config's `base_url`,
-an MCP tool's URL, a Python tool's code). If a plugin could reference any of the
+A row that references a secret also says where its value goes (an LLM config's
+`connection`, an MCP tool's URL, a Python tool's code). If a plugin could reference any of the
 organization's secrets, it could aim one at a server of its own and read the value.
 """
 
+import itertools
 from contextlib import contextmanager
 from unittest.mock import patch
 
@@ -26,13 +27,15 @@ from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.exceptions import CodeWithSecretsRequiresSecretsUsePermissionError
 from tables.graph_versioning.services import GraphVersioningService
-from tables.models import EmbeddingConfig, Graph, LLMConfig, Secret
+from tables.models import Graph, Secret
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
 from tables.models.graph_models import PythonNode, StartNode, TelegramTriggerNode
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.models.webhook_models import WebhookTrigger, WebhookTriggerAuth, WebhookTriggerAuthKind
 from tables.services.secrets import SecretUseDeniedError, secret_service, secret_use_checks
 from tables.services.secrets.request_actor import actor_from_request
+from tables.services.secrets.secret_resolver import _MARKER_FIELD_SUFFIXES
 from tables.services.secrets.secret_use_service import secret_use_service
 
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
@@ -54,8 +57,8 @@ ACCESS = [
 # The guarded (serializer, field) pairs found today; a floor, so the walk below can never
 # lose serializers silently.
 MINIMUM_GUARDED_FIELDS = 18
-# The same floor for header fields whose `epicstaff_secret(<name>)` markers name secrets.
-MINIMUM_GUARDED_MARKER_FIELDS = 2
+# The same floor for config fields whose `epicstaff_secret(<name>)` markers name secrets.
+MINIMUM_GUARDED_MARKER_FIELDS = 4
 
 
 @pytest.fixture
@@ -101,7 +104,7 @@ def test_a_plugin_references_a_secret_it_created(client, own_secret):
     )
     assert created.status_code == 201, created.content
 
-    updated = client.patch(f"/api/llm-configs/{created.json()['id']}/", {"base_url": "https://llm.example.com"}, format="json")
+    updated = client.patch(f"/api/llm-configs/{created.json()['id']}/", {"custom_name": "Weather digests"}, format="json")
 
     assert updated.status_code == 200, updated.content
     assert LLMConfig.objects.get(pk=created.json()["id"]).api_key_secret == own_secret
@@ -113,7 +116,7 @@ def test_a_config_linked_to_its_own_binned_secret_can_still_be_edited(client, ow
     ).json()["id"]
     own_secret.delete()
 
-    response = client.patch(f"/api/llm-configs/{config_id}/", {"temperature": 0.2}, format="json")
+    response = client.patch(f"/api/llm-configs/{config_id}/", {"custom_name": "Renamed"}, format="json")
 
     assert response.status_code == 200, response.content
 
@@ -139,7 +142,7 @@ def test_a_secret_owned_under_no_grant_of_this_plugin_is_refused(client, acme):
 def test_referencing_an_org_secret_on_create_is_refused(client, org_secret):
     response = client.post(
         "/api/llm-configs/",
-        {"custom_name": "Exfiltrate", "base_url": "https://attacker.example", "api_key_secret_id": org_secret.pk},
+        {"custom_name": "Exfiltrate", "api_key_secret_id": org_secret.pk},
         format="json",
     )
 
@@ -148,22 +151,28 @@ def test_referencing_an_org_secret_on_create_is_refused(client, org_secret):
 
 
 @pytest.fixture
-def org_llm_config(acme, org_secret):
-    return LLMConfig.objects.create(custom_name="Acme production", org=acme, api_key_secret=org_secret)
+def org_llm_config(acme, org_secret, gpt_4o_llm):
+    return LLMConfig.objects.create(custom_name="Acme production", model=gpt_4o_llm, org=acme, api_key_secret=org_secret)
 
 
 def test_changing_only_the_base_url_of_an_org_config_with_an_org_secret_is_refused(client, org_llm_config):
-    response = client.patch(f"/api/llm-configs/{org_llm_config.pk}/", {"base_url": "https://attacker.example"}, format="json")
+    attacker = {"connection": {"base_url": "https://attacker.example"}}
 
-    _refused(response, "api_key_secret_id")
+    repointed = client.patch(f"/api/llm-configs/{org_llm_config.pk}/", attacker, format="json")
+    renamed = client.patch(f"/api/llm-configs/{org_llm_config.pk}/", {"custom_name": "Renamed"}, format="json")
+
+    # The endpoint guard answers first; the org secret alone refuses any write too.
+    assert repointed.status_code == 400, repointed.content
+    assert "connection.base_url: This credential cannot set where" in repointed.json()["message"]
+    _refused(renamed, "api_key_secret_id")
     org_llm_config.refresh_from_db()
-    assert org_llm_config.base_url is None
+    assert (org_llm_config.custom_name, org_llm_config.connection) == ("Acme production", {})
 
 
 def test_resending_the_org_secret_unchanged_is_refused_too(client, org_llm_config, org_secret):
     response = client.put(
         f"/api/llm-configs/{org_llm_config.pk}/",
-        {"custom_name": "Acme production", "base_url": "https://attacker.example", "api_key_secret_id": org_secret.pk},
+        {"custom_name": "Acme production", "api_key_secret_id": org_secret.pk},
         format="json",
     )
 
@@ -235,6 +244,20 @@ def _marker_headers(secret_name):
     return {"Authorization": f"Bearer epicstaff_secret({secret_name})", "X-Trace": "plain"}
 
 
+def _marker_data(check, field_name, secret_name):
+    """Write data for `check` holding a marker in `field_name`, one of the resolver's marker fields."""
+    if field_name == "connection":
+        # A secret field of a provider that declares it, so no endpoint the plugin may not set.
+        bedrock = Provider(name="bedrock")
+        model = (
+            EmbeddingModel(name="any", embedding_provider=bedrock)
+            if check is secret_use_checks.check_embedding_config_write
+            else LLMModel(name="any", llm_provider=bedrock)
+        )
+        return {"model": model, "connection": {"aws_access_key_id": f"epicstaff_secret({secret_name})"}}
+    return {field_name: _marker_headers(secret_name)}
+
+
 @pytest.mark.parametrize("endpoint, model", CONFIG_ENDPOINTS)
 def test_a_header_marker_of_an_org_secret_is_refused(client, org_secret, endpoint, model):
     response = client.post(
@@ -293,7 +316,7 @@ def test_a_marker_of_its_own_binned_secret_still_lets_it_edit_the_config(client,
     ).json()["id"]
     own_secret.delete()
 
-    response = client.patch(f"/api/llm-configs/{config_id}/", {"temperature": 0.2}, format="json")
+    response = client.patch(f"/api/llm-configs/{config_id}/", {"custom_name": "Renamed"}, format="json")
 
     assert response.status_code == 200, response.content
 
@@ -402,8 +425,8 @@ GUARDED_MARKER_CHECKS = [secret_use_checks.check_llm_config_write, secret_use_ch
 # The guarded (check, field) pairs found today; a floor, so the table can never lose entries
 # silently.
 MINIMUM_GUARDED_FIELDS = 18
-# The same floor for header fields whose `epicstaff_secret(<name>)` markers name secrets.
-MINIMUM_GUARDED_MARKER_FIELDS = 2
+# The same floor for config fields whose `epicstaff_secret(<name>)` markers name secrets.
+MINIMUM_GUARDED_MARKER_FIELDS = 4
 
 
 def _plugin_request(acme_key, acme):
@@ -454,16 +477,16 @@ def test_every_guarded_field_refuses_an_org_secret_and_takes_the_plugin_s_own(ac
     assert len(checked) >= MINIMUM_GUARDED_FIELDS, checked
 
 
-def test_every_guarded_header_field_refuses_an_org_secret_s_marker_and_takes_the_plugin_s_own(
+def test_every_guarded_marker_field_refuses_an_org_secret_s_marker_and_takes_the_plugin_s_own(
     acme_key, acme, org_secret, own_secret
 ):
     actor = _plugin_actor(acme_key, acme)
     checked, failures = [], []
-    for check in GUARDED_MARKER_CHECKS:
-        checked.append(f"{check.__name__}.extra_headers")
+    for check, field_name in itertools.product(GUARDED_MARKER_CHECKS, _MARKER_FIELD_SUFFIXES):
+        checked.append(f"{check.__name__}.{field_name}")
 
         def write(secret_name):
-            check(actor, None, {"extra_headers": _marker_headers(secret_name)})
+            check(actor, None, _marker_data(check, field_name, secret_name))
 
         try:
             write(own_secret.name)
@@ -472,7 +495,7 @@ def test_every_guarded_header_field_refuses_an_org_secret_s_marker_and_takes_the
         with pytest.raises(SecretUseDeniedError) as refused:
             write(ORG_SECRET_NAME)
         if (
-            refused.value.field_path != ("extra_headers",)
+            refused.value.field_path != (field_name,)
             or REFUSED not in refused.value.message
             or ORG_SECRET_NAME in str(refused.value.field_errors())
         ):
@@ -496,7 +519,9 @@ def test_a_person_with_the_same_rights_still_references_org_secrets(acme, org_se
     client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.pk))
 
     created = client.post("/api/llm-configs/", {"custom_name": "Person's", "api_key_secret_id": org_secret.pk}, format="json")
-    updated = client.patch(f"/api/llm-configs/{org_llm_config.pk}/", {"base_url": "https://llm.acme.example"}, format="json")
+    updated = client.patch(
+        f"/api/llm-configs/{org_llm_config.pk}/", {"connection": {"base_url": "https://llm.acme.example"}}, format="json"
+    )
 
     assert (created.status_code, updated.status_code) == (201, 200), (created.content, updated.content)
 
@@ -504,7 +529,9 @@ def test_a_person_with_the_same_rights_still_references_org_secrets(acme, org_se
 def test_a_plugin_in_another_organization_gets_not_found(plugin, service_account_key, acme, beta, org_llm_config):
     beta_client = service_account_client(service_account_key(plugin, beta), beta)
 
-    response = beta_client.patch(f"/api/llm-configs/{org_llm_config.pk}/", {"base_url": "https://attacker.example"}, format="json")
+    response = beta_client.patch(
+        f"/api/llm-configs/{org_llm_config.pk}/", {"connection": {"base_url": "https://attacker.example"}}, format="json"
+    )
 
     assert response.status_code == 404
     assert PluginGrant.objects.filter(org=beta).exists()

@@ -107,6 +107,27 @@ def test_temporary_policy_refuses_a_scope_it_cannot_confine(shared, own):
         _policy(shared=shared, own=own)
 
 
+@pytest.mark.parametrize("side", ["shared", "own"])
+@pytest.mark.parametrize(
+    ("folder", "org_relative_path"),
+    [("org_1/*/", "*/"), ("org_1/report?.csv", "report?.csv"), ("org_1/${aws:username}/", "${aws:username}/")],
+)
+def test_temporary_policy_refuses_paths_iam_would_read_as_wildcards_or_variables(side, folder, org_relative_path):
+    with pytest.raises(CredentialScopeValidationError) as error:
+        _policy(**{side: {folder}})
+
+    message = str(error.value)
+    assert f"Rename '{org_relative_path}'" in message
+    assert "org_1/" not in message
+
+
+def test_temporary_policy_accepts_a_bare_dollar_sign():
+    policy = _policy(shared={"org_1/price$.csv"})
+
+    (statement,) = _object_statements(policy)
+    assert statement["Resource"] == ["arn:aws:s3:::bucket/org_1/price$.csv"]
+
+
 @pytest.mark.parametrize(
     ("actions", "object_actions", "readable"),
     [

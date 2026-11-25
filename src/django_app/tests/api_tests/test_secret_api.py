@@ -322,3 +322,53 @@ def test_leading_and_trailing_whitespace_is_trimmed(client_a):
     assert resp.status_code == 201
     secret = Secret.objects.get(id=resp.data["id"])
     assert secret_encryption.decrypt(encryptedtext=secret.value) == "sk-live-abc123"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    "name",
+    [
+        "KEY{exec(input())}",
+        "KEY+1",
+        'x") or __import__("os',
+        "KEY'",
+        "KEY\\",
+        "KEY<",
+        "scope:KEY",
+        "team/KEY",
+        "KEY\nimport os",
+        "KEY\tTAB",
+    ],
+    ids=[
+        "fstring-expression",
+        "plus",
+        "double-quote",
+        "single-quote",
+        "backslash",
+        "lt",
+        "colon",
+        "slash",
+        "newline",
+        "tab",
+    ],
+)
+def test_create_with_disallowed_character_in_name_returns_400(client_a, org_a, name):
+    resp = client_a.post("/api/secrets/", {"name": name, "value": "sk-live-abc123"}, format="json")
+
+    assert resp.status_code == 400
+    assert resp.data["message"].startswith("name: Secret name may contain only letters")
+    assert not Secret.all_objects.filter(org=org_a).exists()
+
+
+@pytest.mark.django_db
+def test_create_with_spaces_underscores_dashes_dots_and_non_ascii_letters_in_name_succeeds(
+    client_a, org_a
+):
+    resp = client_a.post(
+        "/api/secrets/",
+        {"name": "My API-key_2 Ключ.v1", "value": "sk-live-abc123"},
+        format="json",
+    )
+
+    assert resp.status_code == 201
+    assert Secret.objects.get(id=resp.data["id"]).name == "My API-key_2 Ключ.v1"

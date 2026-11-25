@@ -5,6 +5,17 @@ services:
       dockerfile: Dockerfile.fe
     ports:
       - "4200:80"
+    # Same hardening as in src/docker-compose.yaml: nginx runs as a non-root user, writes only /tmp,
+    # and the sysctl lets it listen on 80.
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=16m
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
     networks:
       - frontend-network
     environment:

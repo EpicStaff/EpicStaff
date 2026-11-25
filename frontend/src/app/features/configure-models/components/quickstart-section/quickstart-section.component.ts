@@ -25,6 +25,7 @@ import { extractHttpErrorMessage, getProviderIconPath, isClientError } from '@sh
 import { EMPTY, filter, finalize, forkJoin, of } from 'rxjs';
 import { catchError, map, switchMap, tap } from 'rxjs/operators';
 
+import { AI_MODELS_DEFAULTS_FRAGMENT, SETTINGS_AI_MODELS_URL } from '../../../../core/guards/settings.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { QUICK_START_TOUR_ANCHORS, QuickStartResultStatus } from '../../../quick-start-tour/quick-start-tour-anchors';
@@ -255,7 +256,7 @@ export class QuickstartSectionComponent implements OnInit {
     }
 
     public onReviewDefaults(): void {
-        this.router.navigate(['/settings/default-llms']);
+        this.router.navigate([SETTINGS_AI_MODELS_URL], { fragment: AI_MODELS_DEFAULTS_FRAGMENT });
     }
 
     public onUpdateDefaults(): void {

@@ -5,8 +5,8 @@
     [class.header--stacked]="isStacked()"
 >
     <div class="header-left">
-        <h3 class="title">LLM Library</h3>
-        <p class="subtitle">Configure large language models for text generation and AI assistants.</p>
+        <h3 class="title">AI Models</h3>
+        <p class="subtitle">Models your agents, crews and tools use, and which model each role uses by default.</p>
     </div>
 
     <div
@@ -71,18 +71,46 @@
                 Delete
             </app-button>
         } @else {
-            <app-button
+            <!-- A native button: the menu trigger must be the focusable element itself. -->
+            <button
                 #addButton
                 #actionControl
                 *appHasPermission="[ResourceCode.LlmConfigs, ActionCode.Create]"
-                appearance="toolbar"
-                leftIcon="plus"
-                iconSize="16px"
-                [iconOnly]="toolbarIcons().action"
-                (click)="addClicked.emit()"
+                type="button"
+                class="add-button text-body-medium"
+                matTooltip="Add Model"
+                [class.add-button--icon-only]="toolbarIcons().action"
+                [attr.aria-label]="toolbarIcons().action ? 'Add Model' : null"
+                [matTooltipDisabled]="!toolbarIcons().action"
+                [cdkMenuTriggerFor]="addMenu"
+                [cdkMenuPosition]="addMenuPositions"
             >
-                Add Configuration
-            </app-button>
+                <app-svg-icon
+                    icon="plus"
+                    size="16px"
+                    aria-hidden="true"
+                />
+                @if (!toolbarIcons().action) {
+                    <span>Add Model</span>
+                }
+            </button>
         }
+        <ng-template #addMenu>
+            <div
+                cdkMenu
+                class="add-menu"
+            >
+                @for (option of addOptions; track option.key) {
+                    <button
+                        cdkMenuItem
+                        type="button"
+                        class="add-menu__item"
+                        (cdkMenuItemTriggered)="addClicked.emit(option.key)"
+                    >
+                        {{ option.label }}
+                    </button>
+                }
+            </div>
+        </ng-template>
     </div>
 </header>

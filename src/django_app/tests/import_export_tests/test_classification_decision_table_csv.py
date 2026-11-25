@@ -100,3 +100,36 @@ def test_system_one_rule_without_a_config_says_so(default_org, cdt_condition_gro
     rule = _system_one_rule(cdt_node, group, None)
 
     assert rule[5:7] == ["is_engineering", "System One: (no config)"]
+
+
+@pytest.mark.django_db
+def test_ai_models_block_shows_settings_from_parameters_and_never_the_connection(
+    default_org, cdt_condition_group_factory, llm_config
+):
+    llm_config.parameters = {"temperature": 0.2, "max_tokens": 900}
+    llm_config.connection = {"base_url": "https://gateway.example", "deployment_id": "prod"}
+    llm_config.save()
+    _, cdt_node, _, _ = cdt_condition_group_factory(default_org)
+    cdt_node.default_llm_config = llm_config
+    cdt_node.save()
+
+    output = export_condition_groups_csv(cdt_node).getvalue()
+    rows = list(csv.reader(output.splitlines()))
+
+    assert ["MyGPT-4o", "gpt-4o", "0.2", "900"] in rows
+    assert "gateway.example" not in output
+
+
+@pytest.mark.django_db
+def test_ai_models_block_leaves_a_setting_the_config_does_not_hold_empty(
+    default_org, cdt_condition_group_factory, llm_config
+):
+    llm_config.parameters = {}
+    llm_config.save()
+    _, cdt_node, _, _ = cdt_condition_group_factory(default_org)
+    cdt_node.default_llm_config = llm_config
+    cdt_node.save()
+
+    rows = list(csv.reader(export_condition_groups_csv(cdt_node).getvalue().splitlines()))
+
+    assert ["MyGPT-4o", "gpt-4o", "", ""] in rows

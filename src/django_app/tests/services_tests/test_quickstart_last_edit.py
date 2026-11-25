@@ -4,10 +4,11 @@ from django.utils import timezone
 
 from rbac.identity.api_keys.principals import SystemServicePrincipal
 from rbac.models import ResourceLastEdit
-from tables.models import Provider
+from ai_models.models import Provider
 from tables.models.llm_models import SystemOneConfig
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
 from tables.services.quickstart_service import QuickstartService
+from tests.ai_models_tests.builtin_models import seed_builtin_models
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 
@@ -46,7 +47,7 @@ def test_quickstart_records_acting_user_on_created_configs(openai_provider, acme
 
 @pytest.mark.django_db
 def test_quickstart_records_acting_user_on_gemini_realtime_config(acme, admin_acme):
-    Provider.objects.create(name="gemini")
+    seed_builtin_models()
 
     result = QuickstartService().quickstart(
         provider="gemini", api_key="sk-test", org_id=acme.id, user=admin_acme

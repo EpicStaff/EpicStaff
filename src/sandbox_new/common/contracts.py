@@ -22,14 +22,20 @@ __all__ = [
 
 
 class WorkerHeartbeatMessage(Schema):
-    """The worker's periodic sign of life, with the execution ids it actually holds.
+    """The worker's periodic sign of life: the execution ids it holds and its guaranteed slots.
 
-    The manager reconciles its assignments against this list: an assignment the worker
-    does not report lost its pull response on the way and must be failed, since the
-    still-beating run will never go silent.
+    The manager reconciles its assignments against `execution_ids`: an assignment the
+    worker does not report lost its pull response on the way and must be failed, since
+    the still-beating run will never go silent.
+
+    `guaranteed_slots` is the total number of executions the worker always runs at once,
+    whatever its load -- not the number free right now. The manager subtracts its own
+    count of executions in flight, which it keeps current, so a burst is admitted at
+    once up to this total without waiting for the next beat.
     """
 
     execution_ids: list[str] = Field(default_factory=list)
+    guaranteed_slots: int = Field(ge=0)
 
 
 class StorageCredentialsMessage(Schema):

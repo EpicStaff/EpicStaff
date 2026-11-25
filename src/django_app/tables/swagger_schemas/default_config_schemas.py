@@ -1,9 +1,7 @@
+from ai_models.serializers.default_config_serializers import DefaultModelsSerializer
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiExample, OpenApiResponse
 
-from tables.serializers.default_config_serializers import (
-    DefaultModelsSerializer,
-)
 from tables.serializers.quickstart_serializers import QuickstartSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 

@@ -6,6 +6,10 @@ from foundation.transport.http import errors
 
 from utils.exception_handler import custom_exception_handler
 
+# What a 5xx body can hold: the upstream service's own internals.
+UPSTREAM_INTERNALS = 'psycopg.OperationalError: connection to "sandbox_db" (10.0.0.7) failed'
+UPSTREAM_FAILURE_MESSAGE = "An upstream service failed to handle the request."
+
 
 def _status_error(error_type, status_code, body):
     """Build the error exactly as `foundation.transport.http.Client` raises it."""
@@ -93,8 +97,9 @@ def test_an_upstream_status_outside_the_standard_table_is_still_the_callers():
         (errors.ClientGatewayTimeoutError, 504),
     ],
 )
-def test_upstream_server_failures_render_as_502_with_the_upstream_body(error_type, status_code):
-    exc = _status_error(error_type, status_code, "Sandbox said no.")
+@pytest.mark.parametrize("body", [UPSTREAM_INTERNALS, ""], ids=["upstream-body", "empty-body"])
+def test_upstream_server_failures_render_as_502_without_the_upstream_body(error_type, status_code, body):
+    exc = _status_error(error_type, status_code, body)
 
     response = custom_exception_handler(exc, {})
 
@@ -102,8 +107,19 @@ def test_upstream_server_failures_render_as_502_with_the_upstream_body(error_typ
     assert response.data == {
         "status_code": 502,
         "code": "upstream_service_error",
-        "message": "Sandbox said no.",
+        "message": UPSTREAM_FAILURE_MESSAGE,
     }
+
+
+def test_upstream_server_failure_envelope_is_not_unwrapped_into_the_message():
+    body = json.dumps(
+        {"type": "server_error", "errors": [{"code": "unknown", "detail": UPSTREAM_INTERNALS}]}
+    )
+    exc = _status_error(errors.ClientServerError, 500, body)
+
+    response = custom_exception_handler(exc, {})
+
+    assert response.data["message"] == UPSTREAM_FAILURE_MESSAGE
 
 
 def test_upstream_error_envelope_is_unwrapped_into_its_message():
@@ -171,39 +187,30 @@ def test_unreachable_dependency_without_a_message_falls_back_to_the_default():
     assert response.data["message"] == "A server error occurred."
 
 
-def test_timeout_without_a_response_renders_as_502():
-    response = custom_exception_handler(errors.ClientTimeoutError(), {})
+@pytest.mark.parametrize("message", ["", "Read timed out."])
+def test_timeout_renders_as_502_with_the_fixed_message(message):
+    response = custom_exception_handler(errors.ClientTimeoutError(message), {})
 
     assert response.status_code == 502
     assert response.data == {
         "status_code": 502,
         "code": "upstream_service_error",
-        "message": "A server error occurred.",
+        "message": UPSTREAM_FAILURE_MESSAGE,
     }
 
 
-def test_timeout_message_reaches_the_envelope():
-    response = custom_exception_handler(errors.ClientTimeoutError("Read timed out."), {})
-
-    assert response.status_code == 502
-    assert response.data["message"] == "Read timed out."
-
-
 @pytest.mark.parametrize(
-    "error_type,status_code,expected_status,expected_message",
+    "error_type,status_code,expected_message",
     [
-        (errors.ClientNotFoundError, 404, 404, "Not found."),
-        (errors.ClientValidationError, 400, 400, "Invalid input."),
-        (errors.ClientRateLimitError, 429, 429, "Request was throttled."),
-        (errors.ClientServerError, 500, 502, "A server error occurred."),
+        (errors.ClientNotFoundError, 404, "Not found."),
+        (errors.ClientValidationError, 400, "Invalid input."),
+        (errors.ClientRateLimitError, 429, "Request was throttled."),
     ],
 )
-def test_empty_upstream_body_falls_back_to_the_default_message(
-    error_type, status_code, expected_status, expected_message
-):
+def test_empty_upstream_body_falls_back_to_the_default_message(error_type, status_code, expected_message):
     exc = _status_error(error_type, status_code, "")
 
     response = custom_exception_handler(exc, {})
 
-    assert response.status_code == expected_status
+    assert response.status_code == status_code
     assert response.data["message"] == expected_message

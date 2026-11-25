@@ -44,10 +44,23 @@ from utils.request_target import (
 )
 
 from user_audit.actor import actor_from_request
-from user_audit.context import UserActionContext, current_context, user_action_context
+from user_audit.context import (
+    RowBeforeDelete,
+    UserActionContext,
+    current_context,
+    user_action_context,
+)
 from user_audit.read_only import handler_reads_only
 from user_audit.recorder import record_user_action
-from user_audit.targets import TargetDescription, fields_to_describe, target_type
+from user_audit.targets import (
+    TargetDescription,
+    describe,
+    fields_to_describe,
+    fields_to_describe_with_parent,
+    parent_path,
+    target_parent,
+    target_type,
+)
 
 # A request answered with a status at or above this changed nothing worth recording.
 FIRST_FAILURE_STATUS = 400
@@ -133,12 +146,13 @@ class UserActionMiddleware:
         return response
 
     def process_view(self, request, view_func, view_args, view_kwargs):
-        """Load the row a DELETE names before the view deletes it, for the fallback to name.
+        """Load and describe the row a DELETE names before the view deletes it, for the
+        fallback to name.
 
-        One query per DELETE that carries credentials while the switch is on, none
-        otherwise. It runs before authentication, so it reads in no org: the org is checked
-        inside the view, and the fallback uses the row only when the org it then checked
-        owned it.
+        One query per DELETE that carries credentials while the switch is on, which also
+        reads the row's parent; none otherwise. It runs before
+        authentication, so it reads in no org: the org is checked inside the view, and the
+        fallback uses the row only when the org it then checked owned it.
         """
         context = current_context()
         if (
@@ -245,7 +259,7 @@ def _record_unhandled_change(
         route_text = f"{request.method} {url_path_pattern(route)}" if route is not None else None
         org_id = getattr(request, "_rbac_active_org_id", None)
         if org_id is not None:
-            target, target_description = _fallback_target(
+            target, target_description, parent = _fallback_target(
                 view_class, match, org_id, created_data, context.row_before_delete
             )
             record_user_action(
@@ -253,6 +267,7 @@ def _record_unhandled_change(
                 org_id=org_id,
                 target=target,
                 target_description=target_description,
+                parent=parent,
                 route=route_text,
                 actor=actor,
             )
@@ -261,36 +276,48 @@ def _record_unhandled_change(
 
 
 def _fallback_target(
-    view_class, match, org_id: int, created_data, row_before_delete: Model | None = None
-) -> tuple[Model | None, TargetDescription | None]:
+    view_class,
+    match,
+    org_id: int,
+    created_data,
+    row_before_delete: RowBeforeDelete | None = None,
+) -> tuple[Model | None, TargetDescription | None, Model | None]:
     """The changed row, loaded only when `org_id` owns it (see `org_row`), so it is named
-    and given its parent like a hook's target; a row the request deleted is the copy
-    `row_before_delete` loaded before. Failing that, the bare type and id the URL names; a
-    create's response id that does not resolve names nothing."""
+    and given its parent like a hook's target; a row the request deleted is named, with its
+    parent, as `row_before_delete` described it before. Failing that, the bare type and id
+    the URL names; a create's response id that does not resolve names nothing.
+
+    Returns:
+        The target row, or its description when it is gone, and the parent of a gone row.
+    """
     model = model_of(view_class)
     if model is None:
-        return None, None
+        return None, None, None
     url_id = id_from_url(match)
     value = url_id if url_id is not None else id_from_response(model, created_data)
     if value is None:
-        return None, None
-    row = org_row(
-        view_class, value, org_id, fields=fields_to_describe(model)
-    ) or _deleted_row_of_org(row_before_delete, model, url_id, org_id)
+        return None, None, None
+    row = org_row(view_class, value, org_id, fields=fields_to_describe(model))
     if row is not None:
-        return row, None
+        return row, None, None
+    deleted = _deleted_row_of_org(row_before_delete, model, url_id, org_id)
+    if deleted is not None:
+        return None, deleted.description, deleted.parent
     if url_id is None:
-        return None, None
-    return None, TargetDescription(type=target_type(model), id=str(url_id), name=None)
+        return None, None, None
+    return None, TargetDescription(type=target_type(model), id=str(url_id), name=None), None
 
 
-def _row_before_delete(view_func, match) -> Model | None:
-    """The row the URL of a DELETE names, whatever org owns it, with that org's id; None
-    while the switch is off, for a custom action (a purge records itself), for a URL that
-    names no row or an id its model cannot hold, and for a view whose rows reach no org.
+def _row_before_delete(view_func, match) -> RowBeforeDelete | None:
+    """The row the URL of a DELETE names, whatever org owns it, with that org's id, described
+    with its parent as a record names them; None while the switch is off, for a custom
+    action (a purge records itself), for a URL that names no row or an id its model cannot
+    hold, and for a view whose rows reach no org.
 
-    Loads only what naming it takes (`fields_to_describe`). Runs before the view, outside
-    any transaction (`ATOMIC_REQUESTS` is off), so a failed read leaves nothing to roll back.
+    Loads, in one query, only what naming the row and its parent takes
+    (`fields_to_describe_with_parent`), while every relation in between still exists. Runs
+    before the view, outside any transaction (`ATOMIC_REQUESTS` is off), so a failed read
+    leaves nothing to roll back.
     """
     try:
         if not settings.USER_AUDIT_TRAIL_ENABLED:
@@ -305,12 +332,17 @@ def _row_before_delete(view_func, match) -> Model | None:
         org_path = org_path_of(view_class, model)
         if org_path is None:
             return None
-        return (
-            model._base_manager.filter(pk=url_id)
-            .only(*fields_to_describe(model))
+        queryset = model._base_manager.filter(pk=url_id)
+        if (path := parent_path(model)) is not None:
+            queryset = queryset.select_related(path)
+        row = (
+            queryset.only(*fields_to_describe_with_parent(model))
             .annotate(**{ORG_BEFORE_DELETE_ATTRIBUTE: F(org_path)})
             .first()
         )
+        if row is None:
+            return None
+        return RowBeforeDelete(row=row, description=describe(row), parent=target_parent(row))
     except (TypeError, ValueError, ValidationError):
         # An id the model cannot hold ("abc" for an integer key): the view answers 404, and
         # anyone can send one, so it is not worth a log line.
@@ -320,9 +352,14 @@ def _row_before_delete(view_func, match) -> Model | None:
         return None
 
 
-def _deleted_row_of_org(row: Model | None, model: type[Model], url_id, org_id: int) -> Model | None:
-    """`row`, loaded before the request deleted it, when it is the row the URL names and
-    `org_id` owned it; else None."""
-    if row is None or url_id is None or not isinstance(row, model) or str(row.pk) != str(url_id):
+def _deleted_row_of_org(
+    before: RowBeforeDelete | None, model: type[Model], url_id, org_id: int
+) -> RowBeforeDelete | None:
+    """`before`, read before the request deleted its row, when that is the row the URL names
+    and `org_id` owned it; else None."""
+    if before is None or url_id is None:
         return None
-    return row if getattr(row, ORG_BEFORE_DELETE_ATTRIBUTE, None) == org_id else None
+    row = before.row
+    if not isinstance(row, model) or str(row.pk) != str(url_id):
+        return None
+    return before if getattr(row, ORG_BEFORE_DELETE_ATTRIBUTE, None) == org_id else None

@@ -2,6 +2,7 @@
     class="fetch-error-state"
     [class.fetch-error-state--small]="mod() === 'small'"
     role="alert"
+    [attr.aria-busy]="busy() || null"
 >
     <app-svg-icon
         [size]="mod() === 'small' ? '2rem' : '3rem'"
@@ -11,13 +12,26 @@
     <div class="message-wrapper">
         <h3 class="title">{{ title() }}</h3>
         <p class="message">{{ message() }}</p>
+        @if (hint(); as hintText) {
+            <p class="hint text-body-small">{{ hintText }}</p>
+        }
     </div>
 
-    <app-button
-        type="outline-primary"
-        leftIcon="refresh"
-        (click)="retry.emit()"
-    >
-        {{ retryLabel() }}
-    </app-button>
+    <!-- Sized like the button alone: the spinner hangs outside it, so neither the button's width nor its place moves. -->
+    <div class="actions">
+        <app-button
+            type="outline-primary"
+            leftIcon="refresh"
+            [ariaDisabled]="busy()"
+            (click)="retry.emit()"
+        >
+            {{ retryLabel() }}
+        </app-button>
+        @if (busy()) {
+            <app-spinner2
+                class="spinner"
+                [size]="24"
+            />
+        }
+    </div>
 </div>

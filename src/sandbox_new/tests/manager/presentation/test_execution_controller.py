@@ -9,8 +9,13 @@ read; held jobs do not fill it. A job that would be held answers 503 once the he
 is reached. The status endpoint answers for every execution the sandbox still knows, and 404
 for the rest -- that 404 is how a waiting producer learns to stop waiting. A secret the
 sandbox cannot decrypt is refused with 400, the answer naming the secret but not its value.
+An execution id names the worker's workspace directory, so one that is not a plain name
+(a dot, a slash, empty, too long) is refused with 400 before anything is queued.
+An entrypoint that is not a plain Python name, or is a keyword, is refused with 400 the
+same way. Whether the code binds it is checked by the worker, not here.
 """
 
+import pytest
 from litestar import status_codes
 
 from manager.domain.enums import VenvStatus
@@ -64,6 +69,82 @@ def test_submit_with_an_undecryptable_secret_is_rejected_naming_only_the_secret(
     assert registry.status("exec-1") is None
 
 
+@pytest.mark.parametrize(
+    "execution_id",
+    [
+        "3f2a9c1e-7b4d-4e8a-9c0f-1a2b3c4d5e6f",  # uuid4: agent, crew, realtime
+        "19-11-2026_12-30-45-123@ab12",  # django_app's time-based id
+        "a" * 128,
+    ],
+)
+def test_submit_accepts_the_execution_id_formats_producers_send(
+    client, venv_repository, dispatcher, execution_id
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions",
+        json={**SUBMISSION, "execution_id": execution_id, "venv_id": venv.id},
+    )
+
+    assert response.status_code == status_codes.HTTP_202_ACCEPTED
+    assert [job.execution_id for job in dispatcher.dispatched] == [execution_id]
+
+
+@pytest.mark.parametrize(
+    "execution_id", ["", ".", "..", "../x", "/", "/venvs", "a/b", "a.b", "a" * 129]
+)
+def test_submit_rejects_an_execution_id_that_is_not_a_plain_name(
+    client, venv_repository, dispatcher, registry, execution_id
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions",
+        json={**SUBMISSION, "execution_id": execution_id, "venv_id": venv.id},
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert dispatcher.dispatched == []
+    assert registry.status(execution_id) is None
+
+
+INJECTED_ENTRYPOINT = '(lambda f, *_: f)(main, "filler", __import__("os").system("id"))'
+
+
+@pytest.mark.parametrize("entrypoint", ["main", "run", "_handler2"])
+def test_submit_accepts_an_entrypoint_that_is_a_plain_name(
+    client, venv_repository, dispatcher, entrypoint
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions", json={**SUBMISSION, "entrypoint": entrypoint, "venv_id": venv.id}
+    )
+
+    assert response.status_code == status_codes.HTTP_202_ACCEPTED
+    assert [job.entrypoint for job in dispatcher.dispatched] == [entrypoint]
+
+
+@pytest.mark.parametrize(
+    "entrypoint",
+    [INJECTED_ENTRYPOINT, "obj.method", "main()", "main\n", " main", "1main", "", "class", "None"],
+)
+def test_submit_rejects_an_entrypoint_that_is_not_a_plain_name(
+    client, venv_repository, dispatcher, registry, entrypoint
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions", json={**SUBMISSION, "entrypoint": entrypoint, "venv_id": venv.id}
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert "entrypoint must be a Python function name" in response.text
+    assert dispatcher.dispatched == []
+    assert registry.status("exec-1") is None
+
+
 def test_an_accepted_submission_logs_exec_received(client, venv_repository, checkpoints):
     venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
 
@@ -88,7 +169,9 @@ def test_submit_against_a_building_venv_is_accepted_and_held(
 
 
 def test_submit_without_a_venv_id_uses_the_default_venv(client, venv_repository, dispatcher):
-    venv_repository.seed(make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc"))
+    venv_repository.seed(
+        make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc", system_key="default")
+    )
 
     response = client.post("/executions", json=SUBMISSION)
 
@@ -96,8 +179,64 @@ def test_submit_without_a_venv_id_uses_the_default_venv(client, venv_repository,
     assert dispatcher.dispatched[0].venv_hash == "1abc"
 
 
+def test_submit_with_a_system_venv_runs_in_that_venv(client, venv_repository, dispatcher):
+    venv_repository.seed(
+        make_venv(name="default", status=VenvStatus.COMPLETED, hash="9zzz", system_key="default"),
+        make_venv(
+            name="file_extractor",
+            status=VenvStatus.COMPLETED,
+            hash="1abc",
+            system_key="file_extractor",
+        ),
+    )
+
+    response = client.post("/executions", json={**SUBMISSION, "system_venv": "file_extractor"})
+
+    assert response.status_code == status_codes.HTTP_202_ACCEPTED
+    assert dispatcher.dispatched[0].venv_hash == "1abc"
+
+
+def test_submit_with_an_undeclared_system_venv_is_not_found(client, dispatcher):
+    response = client.post(
+        "/executions", json={**SUBMISSION, "system_venv": "audio_transcription"}
+    )
+
+    assert response.status_code == status_codes.HTTP_404_NOT_FOUND
+    assert dispatcher.dispatched == []
+
+
+def test_submit_with_an_unknown_system_venv_is_not_found(client, dispatcher):
+    response = client.post("/executions", json={**SUBMISSION, "system_venv": "pandas"})
+
+    assert response.status_code == status_codes.HTTP_404_NOT_FOUND
+    assert dispatcher.dispatched == []
+
+
+def test_submit_with_an_empty_system_venv_is_rejected(client, dispatcher):
+    response = client.post("/executions", json={**SUBMISSION, "system_venv": ""})
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert dispatcher.dispatched == []
+
+
+def test_submit_with_both_a_venv_id_and_a_system_venv_is_rejected(
+    client, venv_repository, dispatcher
+):
+    venv = venv_repository.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    response = client.post(
+        "/executions",
+        json={**SUBMISSION, "venv_id": venv.id, "system_venv": "file_extractor"},
+    )
+
+    assert response.status_code == status_codes.HTTP_400_BAD_REQUEST
+    assert dispatcher.dispatched == []
+
+
 def test_submit_without_a_session_id_is_accepted(client, venv_repository, dispatcher):
-    venv_repository.seed(make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc"))
+    venv_repository.seed(
+        make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc", system_key="default")
+    )
 
     response = client.post("/executions", json={**SUBMISSION, "session_id": None})
 

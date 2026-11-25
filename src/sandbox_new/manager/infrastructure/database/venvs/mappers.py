@@ -20,6 +20,8 @@ class VenvMapper:
             hash=row.hash,
             status=VenvStatus(row.status),
             error=row.error,
+            system_key=row.system_key,
+            scope=row.scope,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -35,6 +37,7 @@ class CustomLibraryMapper:
         return CustomLibrary(
             id=row.id,
             name=row.name,
+            scope=row.scope,
             is_deleted=row.is_deleted,
             created_at=row.created_at,
             updated_at=row.updated_at,

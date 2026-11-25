@@ -15,7 +15,12 @@ from infrastructure.providers.openai.event_handlers.agent_server_event_handler i
     HIDDEN_ITEM_ID_PREFIX,
 )
 from infrastructure.providers.openai.openai_realtime_agent_client import OpenaiRealtimeAgentClient
-from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
+from tests.conftest import (
+    INJECTED_TOOL_RESULT,
+    PUBLIC_ERROR_REFERENCE,
+    SECRET_SENTINEL,
+    unwrap_tool_result,
+)
 
 
 @pytest.fixture
@@ -54,7 +59,18 @@ async def test_tool_output_is_sent_and_twilio_also_requests_the_next_turn(client
     assert [event["type"] for event in sent] == expected_types
     assert sent[0]["item"]["call_id"] == "call_1"
     if not tool_fails:
-        assert sent[0]["item"]["output"] == "ok"
+        assert unwrap_tool_result(sent[0]["item"]["output"]) == "ok"
+
+
+@pytest.mark.asyncio
+async def test_tool_result_reaches_openai_inside_the_untrusted_data_envelope(client):
+    client.tool_manager_service.execute = AsyncMock(return_value=INJECTED_TOOL_RESULT)
+
+    await client.call_tool("call_1", "search_tool", {"query": "hi"})
+
+    (item_create,) = _sent(client)
+    assert item_create["item"]["type"] == "function_call_output"
+    assert unwrap_tool_result(item_create["item"]["output"]) == INJECTED_TOOL_RESULT
 
 
 @pytest.mark.asyncio
@@ -64,7 +80,7 @@ async def test_tool_failure_reaches_openai_without_the_exception_text(client, ca
     await client.call_tool("call_1", "search_tool", {"query": "hi"})
 
     (item_create,) = _sent(client)
-    output = item_create["item"]["output"]
+    output = unwrap_tool_result(item_create["item"]["output"])
     assert output.startswith("Tool execution failed")
     assert SECRET_SENTINEL not in str(item_create)
     # Support can still find the detail in the logs under the reference the model saw.

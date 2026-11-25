@@ -5,14 +5,14 @@ import pytest
 
 from conftest import TOOLS_ROOT, load_tool_main
 
-# natural_language_to_sql_tool/main.py imports sqlalchemy at module level. Per
-# tool_data.yaml's requirements.txt, sqlalchemy (and langchain/litellm) are
-# installed into this tool's own dedicated venv by the sandbox at execution
-# time, not into any service venv — skip cleanly instead of failing when
+# natural_language_to_sql_tool/main.py imports sqlalchemy at module level.
+# sqlalchemy (and langchain/litellm) are installed into the sandbox's
+# `builtin_tools` venv that every built-in tool runs in, not into any service
+# venv -- skip cleanly instead of failing when
 # running these tests outside that venv.
 pytest.importorskip(
     "sqlalchemy",
-    reason="installed by the sandbox into this tool's own venv, not a service venv",
+    reason="installed by the sandbox into its builtin_tools venv, not a service venv",
 )
 
 CONFIGURED_URI = "postgresql+psycopg2://config:pass@localhost/configured"
@@ -170,7 +170,7 @@ def _require_docker():
 
 @pytest.fixture(scope="module")
 def postgres_uri():
-    pytest.importorskip("psycopg2", reason="installed by the sandbox into this tool's own venv")
+    pytest.importorskip("psycopg2", reason="installed by the sandbox into its builtin_tools venv")
     _require_docker()
     postgres = pytest.importorskip("testcontainers.postgres")
 
@@ -180,7 +180,7 @@ def postgres_uri():
 
 @pytest.fixture(scope="module")
 def mysql_uri():
-    pytest.importorskip("pymysql", reason="installed by the sandbox into this tool's own venv")
+    pytest.importorskip("pymysql", reason="installed by the sandbox into its builtin_tools venv")
     _require_docker()
     mysql = pytest.importorskip("testcontainers.mysql")
 

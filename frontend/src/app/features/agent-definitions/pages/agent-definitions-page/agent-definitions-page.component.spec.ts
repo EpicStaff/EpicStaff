@@ -2,10 +2,12 @@ import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer, OverlayModule } from '@angular/cdk/overlay';
 import { provideHttpClient } from '@angular/common/http';
-import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
 import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, input, signal, WritableSignal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR, ReactiveFormsModule } from '@angular/forms';
+import { MatTooltip } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
 import {
     AppSvgIconComponent,
@@ -15,17 +17,17 @@ import {
 } from '@shared/components';
 import { EnterBlurDirective, HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
-import { of } from 'rxjs';
+import { Observable, of, Subject } from 'rxjs';
 
 import { tourAnchorSelector } from '../../../../core/guided-tour';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
+import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
 import { AgentDefinition } from '../../models/agent-definition.model';
 import { Surface } from '../../models/surface.model';
-import { AgentDefinitionsApiService } from '../../services/agent-definitions-api.service';
 import { AgentGroupsStorageService } from '../../services/agent-groups-storage.service';
 import { AgentsPageStore } from '../../services/agents-page-store.service';
 import { SurfaceCatalogsStore } from '../../services/surface-catalogs-store.service';
@@ -71,8 +73,8 @@ function agentSelectedStore(): Partial<Record<keyof AgentsPageStore, unknown>> {
     return {
         load: () => undefined,
         selectAgent: vi.fn(),
-        updateAgent: vi.fn(),
-        saveNewAgent: vi.fn(),
+        updateAgent: vi.fn(() => of({ saved: true })),
+        saveNewAgent: vi.fn(() => of({ saved: true })),
         loading: signal(false),
         selectedNode: signal({ kind: 'agent', id: AGENT.id }),
         showSidebar: signal(false),
@@ -483,6 +485,97 @@ describe('AgentDefinitionsPageComponent agent row menu "Export"', () => {
     });
 });
 
+describe('AgentDefinitionsPageComponent deleting a surface', () => {
+    const SHARED_SURFACE = {
+        id: 30,
+        name: 'CRM access',
+        group: null,
+        owner_agent: null,
+        python_tools: [],
+        mcp_tools: [],
+        storage_items: [],
+        knowledge: [],
+    } as Partial<Surface> as Surface;
+
+    function renderDeleting(loadSurfaceUsage: () => unknown): {
+        fixture: ComponentFixture<AgentDefinitionsPageComponent>;
+        confirm: ReturnType<typeof vi.fn>;
+        deleteSurface: ReturnType<typeof vi.fn>;
+    } {
+        const { fixture } = render(true);
+        const confirm = vi.fn(() => of(true));
+        const deleteSurface = vi.fn();
+        TestBed.inject(ConfirmationDialogService).confirm = confirm as unknown as ConfirmationDialogService['confirm'];
+        const store = fixture.debugElement.injector.get(AgentsPageStore);
+        (store.surfaces as WritableSignal<Surface[]>).set([SHARED_SURFACE]);
+        Object.assign(store, { loadSurfaceUsage, deleteSurface });
+        return { fixture, confirm, deleteSurface };
+    }
+
+    it('warns with the counts fetched for that surface, hidden ones included', () => {
+        const { fixture, confirm, deleteSurface } = renderDeleting(() =>
+            of({
+                agents: [
+                    { agentId: 1, agentName: 'Researcher', placeLabel: 'Chat' },
+                    { agentId: 1, agentName: 'Researcher', placeLabel: 'Flow' },
+                ],
+                flows: [{ flowId: 7, flowName: 'My flow', nodes: [] }],
+                hiddenAgentCount: 2,
+                hiddenFlowCount: 1,
+            })
+        );
+
+        fixture.componentInstance.onDeleteSurface(SHARED_SURFACE.id);
+
+        expect(confirm.mock.calls[0][0].caution).toContain('3 agents and 2 flows');
+        expect(deleteSurface).toHaveBeenCalledExactlyOnceWith(SHARED_SURFACE.id);
+    });
+
+    it('asks nothing and deletes nothing when the usage could not be loaded', () => {
+        const { fixture, confirm, deleteSurface } = renderDeleting(() => of(null));
+
+        fixture.componentInstance.onDeleteSurface(SHARED_SURFACE.id);
+
+        expect(confirm).not.toHaveBeenCalled();
+        expect(deleteSurface).not.toHaveBeenCalled();
+    });
+
+    it('ignores a repeat click while the usage is still being fetched', () => {
+        const pending = new Subject<null>();
+        const loadSurfaceUsage = vi.fn(() => pending);
+        const { fixture } = renderDeleting(loadSurfaceUsage);
+
+        fixture.componentInstance.onDeleteSurface(SHARED_SURFACE.id);
+        fixture.componentInstance.onDeleteSurface(SHARED_SURFACE.id);
+
+        expect(loadSurfaceUsage).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('AgentDefinitionsPageComponent usage opened from a surface card', () => {
+    it('shows the usage of that surface and lets the store go when the dialog closes', () => {
+        const { fixture } = render(true);
+        const usage = signal(undefined);
+        const openSurfaceUsage = vi.fn(() => usage);
+        const closeSurfaceUsage = vi.fn();
+        Object.assign(fixture.debugElement.injector.get(AgentsPageStore), { openSurfaceUsage, closeSurfaceUsage });
+        const closed = new Subject<number | undefined>();
+        const open = vi
+            .spyOn(TestBed.inject(Dialog), 'open')
+            .mockReturnValue({ closed } as unknown as ReturnType<Dialog['open']>);
+
+        fixture.componentInstance.onOpenSurfaceUsage(42);
+
+        expect(openSurfaceUsage).toHaveBeenCalledExactlyOnceWith(42);
+        expect(open.mock.calls[0][1]?.data).toEqual({ usage });
+        expect(closeSurfaceUsage).not.toHaveBeenCalled();
+
+        closed.next(undefined);
+
+        expect(closeSurfaceUsage).toHaveBeenCalledTimes(1);
+    });
+});
+
 describe('AgentDefinitionsPageComponent saving the agent', () => {
     const payload = {
         id: AGENT.id,
@@ -530,9 +623,18 @@ class LlmModelSelectorStubComponent implements ControlValueAccessor {
     readonly excludedConfigId = input<number | null>(null);
     readonly readonly = input(false);
 
+    private onChange: (configId: number | null) => void = () => undefined;
+
+    /** What picking a model in the real selector does to the form. */
+    pick(configId: number): void {
+        this.onChange(configId);
+    }
+
     writeValue(): void {}
 
-    registerOnChange(): void {}
+    registerOnChange(onChange: (configId: number | null) => void): void {
+        this.onChange = onChange;
+    }
 
     registerOnTouched(): void {}
 }
@@ -540,9 +642,42 @@ class LlmModelSelectorStubComponent implements ControlValueAccessor {
 describe('AgentDefinitionsPageComponent leaving unsaved agent edits', () => {
     type PageFixture = ComponentFixture<AgentDefinitionsPageComponent>;
 
+    const AGENTS_URL = '/api/agent-definitions/';
+    const OTHER_AGENT: AgentDefinition = {
+        ...AGENT,
+        id: 7,
+        name: 'Invoice Reader',
+        instruction_list: [{ name: 'Matching', content: 'Match invoices to orders.' }],
+    };
+    const OTHER_AGENT_SURFACE = {
+        id: 20,
+        name: 'Invoices inbox',
+        group: null,
+        owner_agent: OTHER_AGENT.id,
+    } as Partial<Surface> as Surface;
+    const SHARED_SURFACE = {
+        id: 21,
+        name: 'CRM access',
+        group: null,
+        owner_agent: null,
+    } as Partial<Surface> as Surface;
+    /** `AGENT` as the server holds it, with an instruction to open. */
+    const AGENT_ON_SERVER: AgentDefinition = {
+        ...AGENT,
+        instruction_list: [{ name: 'Screening', content: 'Screen incoming CVs.' }],
+    };
+
+    // jsdom has no Element.scrollTo, which opening an agent calls to scroll its editor up.
+    beforeEach(() => {
+        Element.prototype.scrollTo = () => undefined;
+    });
+    afterEach(() => {
+        Reflect.deleteProperty(Element.prototype, 'scrollTo');
+    });
+
     /**
-     * The page with the real agent editor, on a draft (`drafting`) or on `AGENT`, with an edit not saved yet.
-     * `realStore` runs the draft through the real page store, over a fake API with no agents.
+     * The page with the real agent editor, on a draft (`drafting`) or on `AGENT`, with "About this Agent" typed and not
+     * saved yet. `realStore` runs the real page store over the agents API, with `AGENT` and `OTHER_AGENT` on the server.
      */
     function renderEdited(
         drafting: boolean,
@@ -572,9 +707,15 @@ describe('AgentDefinitionsPageComponent leaving unsaved agent edits', () => {
                     provide: AgentGroupsStorageService,
                     useValue: { labels: signal([]), labelTree: signal([]), loadLabels: () => of([]) },
                 },
-                { provide: ToastService, useValue: { info: vi.fn() } },
-                { provide: AgentDefinitionsApiService, useValue: { getAgentDefinitions: () => of([]) } },
-                { provide: SurfacesApiService, useValue: { getSurfaces: () => of([]) } },
+                { provide: ToastService, useValue: { info: vi.fn(), success: vi.fn(), error: vi.fn() } },
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } },
+                {
+                    provide: SurfacesApiService,
+                    useValue: {
+                        getSurfaces: () => of([OTHER_AGENT_SURFACE, SHARED_SURFACE]),
+                        getUsage: () => of({ agents: [], flows: [], hiddenAgentCount: 0, hiddenFlowCount: 0 }),
+                    },
+                },
                 { provide: ProfileService, useValue: { currentUserSignal: signal({ id: 7 }) } },
             ],
         });
@@ -587,6 +728,7 @@ describe('AgentDefinitionsPageComponent leaving unsaved agent edits', () => {
                     OverlayModule,
                     CdkTrapFocus,
                     HasPermissionDirective,
+                    MatTooltip,
                 ],
                 providers: [
                     realStore ? AgentsPageStore : { provide: AgentsPageStore, useValue: stubStore },
@@ -612,8 +754,16 @@ describe('AgentDefinitionsPageComponent leaving unsaved agent edits', () => {
             },
         });
         const fixture = TestBed.createComponent(AgentDefinitionsPageComponent);
-        if (realStore) fixture.debugElement.injector.get(AgentsPageStore).beginCreateAgent();
         fixture.detectChanges();
+        if (realStore) {
+            TestBed.inject(HttpTestingController)
+                .expectOne((request) => request.method === 'GET' && request.url === AGENTS_URL)
+                .flush({ count: 2, next: null, previous: null, results: [AGENT_ON_SERVER, OTHER_AGENT] });
+            const store = fixture.debugElement.injector.get(AgentsPageStore);
+            if (drafting) store.beginCreateAgent();
+            else store.selectAgent(AGENT.id);
+            fixture.detectChanges();
+        }
         // Typing in "About this Agent" takes the focus off the name field a draft opens on.
         const description = descriptionInput(fixture);
         description.focus();
@@ -670,16 +820,7 @@ describe('AgentDefinitionsPageComponent leaving unsaved agent edits', () => {
 
     /** Leaving the route (`canDeactivate`) or starting another agent (`guardUnsaved`); `left()` says whether it went. */
     const LEAVE_BY = [
-        {
-            way: 'leaving the route',
-            start: (fixture: PageFixture) => {
-                let went: boolean | undefined;
-                const answer = fixture.componentInstance.canDeactivate();
-                if (typeof answer === 'boolean') went = answer;
-                else answer.subscribe((leave) => (went = leave));
-                return { left: (): boolean | undefined => went };
-            },
-        },
+        { way: 'leaving the route', start: (fixture: PageFixture) => ({ left: leaveRoute(fixture) }) },
         {
             way: 'starting another agent',
             start: (fixture: PageFixture) => {
@@ -738,22 +879,451 @@ describe('AgentDefinitionsPageComponent leaving unsaved agent edits', () => {
         expect(nameError(fixture)).toBeNull();
     });
 
-    it('asks about a saved agent without claiming it was never created, and leaves its name alone', async () => {
-        const { fixture, overlay } = renderEdited(false);
+    /** Leaving the route as Alt+← does, the focused field keeping the focus; the result is the guard's answer, if any yet. */
+    function leaveRoute(fixture: PageFixture): () => boolean | undefined {
+        let went: boolean | undefined;
+        const answer = fixture.componentInstance.canDeactivate();
+        if (typeof answer === 'boolean') went = answer;
+        else answer.subscribe((leave) => (went = leave));
+        return () => went;
+    }
 
-        fixture.componentInstance.onAddAgent();
+    /** A mouse click on an explorer row: pressing the button takes the focus off the field before the click lands. */
+    function clickAgent(fixture: PageFixture, agent: AgentDefinition): void {
+        (document.activeElement as HTMLElement | null)?.blur();
+        fixture.componentInstance.onSelectNode({ kind: 'agent', agentId: agent.id, label: agent.name, children: [] });
+    }
+
+    /** Whether the agent editor is open on `agent`. */
+    function shows(fixture: PageFixture, agent: AgentDefinition): boolean {
+        fixture.detectChanges();
+        return host(fixture).querySelector<HTMLInputElement>('input[aria-label="Agent Name"]')?.value === agent.name;
+    }
+
+    /** Leaving with the field focused, which leaves the save to the page, or by a click, which sends it first. */
+    const LEAVE_FOR_ANOTHER_PLACE = [
+        { way: 'leaving the route', start: (fixture: PageFixture) => ({ left: leaveRoute(fixture) }) },
+        {
+            way: 'clicking another agent',
+            start: (fixture: PageFixture) => {
+                clickAgent(fixture, OTHER_AGENT);
+                return { left: () => shows(fixture, OTHER_AGENT) };
+            },
+        },
+    ];
+
+    const DRAFT_NAME = 'Cover Letter Writer';
+
+    /** A draft named `DRAFT_NAME`, its name field still focused: the blur that would create it has not happened. */
+    function renderNamedDraft(): ReturnType<typeof renderEdited> {
+        const rendered = renderEdited(true, true);
+        nameInput(rendered.fixture).focus();
+        type(rendered.fixture, nameInput(rendered.fixture), DRAFT_NAME);
+        return rendered;
+    }
+
+    async function settle(fixture: PageFixture): Promise<void> {
+        fixture.detectChanges();
+        await fixture.whenStable();
+        fixture.detectChanges();
+    }
+
+    function expectAgentRequest(method: 'PATCH' | 'POST', url: string): TestRequest {
+        return TestBed.inject(HttpTestingController).expectOne({ method, url });
+    }
+
+    const SAVE_FAILED = { status: 400, statusText: 'Bad Request' };
+
+    it.each(LEAVE_FOR_ANOTHER_PLACE)(
+        "saves a saved agent's pending edit without asking, and goes once it is saved, on $way",
+        async ({ start }) => {
+            const { fixture, overlay } = renderEdited(false, true);
+
+            const { left } = start(fixture);
+            const save = expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`);
+            await settle(fixture);
+
+            expect(save.request.body).toMatchObject({ name: AGENT.name, description: 'Reads CVs' });
+            expect(dialogText(overlay).title).toBe('');
+            expect(left()).not.toBe(true);
+
+            save.flush({ ...AGENT, description: 'Reads CVs' });
+            await settle(fixture);
+
+            expect(left()).toBe(true);
+        }
+    );
+
+    /** The agent's edit is sent on the leave and the server rejects it: the user is asked, with its reason. */
+    async function leaveAndFailToSave(start: (typeof LEAVE_FOR_ANOTHER_PLACE)[number]['start']) {
+        const rendered = renderEdited(false, true);
+        const { left } = start(rendered.fixture);
+        expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`).flush({ detail: 'Name is taken' }, SAVE_FAILED);
+        await settle(rendered.fixture);
+        return { ...rendered, left };
+    }
+
+    it.each(LEAVE_FOR_ANOTHER_PLACE)(
+        'asks what to do when the edit fails to save, giving the reason there only, sending nothing behind the dialog, on $way',
+        async ({ start }) => {
+            const { overlay } = await leaveAndFailToSave(start);
+
+            expect(dialogText(overlay)).toEqual({
+                title: "Couldn't save your changes",
+                message: 'Name is taken',
+                buttons: ['Discard & Leave', 'Keep Editing'],
+            });
+            expect(TestBed.inject(ToastService).error).not.toHaveBeenCalled();
+            TestBed.inject(HttpTestingController).expectNone({ method: 'PATCH', url: `${AGENTS_URL}${AGENT.id}/` });
+        }
+    );
+
+    it.each(LEAVE_FOR_ANOTHER_PLACE)(
+        'stays with the edit kept on Keep Editing, and saves it on the next leave, on $way',
+        async ({ start }) => {
+            const { fixture, overlay, left } = await leaveAndFailToSave(start);
+
+            await choose(fixture, overlay, 'Keep Editing');
+
+            expect(left()).toBe(false);
+            expect(descriptionInput(fixture).value).toBe('Reads CVs');
+
+            const routeWent = leaveRoute(fixture);
+            const retry = expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`);
+            expect(retry.request.body).toMatchObject({ description: 'Reads CVs' });
+            retry.flush({ ...AGENT, description: 'Reads CVs' });
+            await settle(fixture);
+            expect(routeWent()).toBe(true);
+        }
+    );
+
+    it.each(LEAVE_FOR_ANOTHER_PLACE)(
+        'drops the edit and goes on Discard & Leave, sending nothing more, on $way',
+        async ({ start }) => {
+            const { fixture, overlay, left } = await leaveAndFailToSave(start);
+
+            await choose(fixture, overlay, 'Discard & Leave');
+
+            expect(left()).toBe(true);
+            TestBed.inject(HttpTestingController).expectNone({ method: 'PATCH', url: `${AGENTS_URL}${AGENT.id}/` });
+        }
+    );
+
+    it('puts back what the server holds on Discard & Leave', async () => {
+        const { fixture, overlay } = await leaveAndFailToSave(LEAVE_FOR_ANOTHER_PLACE[0].start);
+
+        await choose(fixture, overlay, 'Discard & Leave');
+
+        expect(descriptionInput(fixture).value).toBe(AGENT.description);
+        expect(fixture.componentInstance.canDeactivate()).toBe(true);
+    });
+
+    it('keeps an edit whose save on blur failed, giving the reason in a toast rather than asking, and saves it when the user leaves', async () => {
+        const { fixture, overlay } = renderEdited(false, true);
+        descriptionInput(fixture).blur();
+        expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`).flush({ detail: 'Name is taken' }, SAVE_FAILED);
+        await settle(fixture);
+
+        expect(dialogText(overlay).title).toBe('');
+        expect(TestBed.inject(ToastService).error).toHaveBeenCalledExactlyOnceWith('Name is taken');
+        expect(descriptionInput(fixture).value).toBe('Reads CVs');
+
+        clickAgent(fixture, OTHER_AGENT);
+        const retry = expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`);
+        expect(retry.request.body).toMatchObject({ description: 'Reads CVs' });
+        retry.flush({ ...AGENT, description: 'Reads CVs' });
+        await settle(fixture);
+
+        expect(shows(fixture, OTHER_AGENT)).toBe(true);
+    });
+
+    it('gives the reason in a toast when the route leave that waited for the save was called off before it failed', async () => {
+        const { fixture } = renderEdited(false, true);
+        const leave = (fixture.componentInstance.canDeactivate() as Observable<boolean>).subscribe();
+        const save = expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`);
+
+        // The router drops the guard of a navigation it cancels.
+        leave.unsubscribe();
+        save.flush({ detail: 'Name is taken' }, SAVE_FAILED);
+        await settle(fixture);
+
+        expect(TestBed.inject(ToastService).error).toHaveBeenCalledExactlyOnceWith('Name is taken');
+    });
+
+    /** Links that open an agent from a view other than the editor; `open` reaches the view, `follow` takes the link. */
+    const AGENT_LINKS = [
+        {
+            link: 'the agent crumb above one of its surfaces',
+            open: (store: AgentsPageStore) => store.selectSurface(OTHER_AGENT_SURFACE.id, OTHER_AGENT.id),
+            follow: (fixture: PageFixture) =>
+                Array.from(host(fixture).querySelectorAll<HTMLButtonElement>('.crumbs__item--link'))
+                    .find((crumb) => crumb.textContent?.trim() === OTHER_AGENT.name)!
+                    .click(),
+        },
+        {
+            link: 'the agent link of an instruction preview',
+            open: (store: AgentsPageStore) => store.selectAgentDoc(OTHER_AGENT.id, 0),
+            follow: (fixture: PageFixture) =>
+                fixture.debugElement
+                    .query(By.css('app-agent-doc-preview'))
+                    .triggerEventHandler('openAgent', OTHER_AGENT.id),
+        },
+    ];
+
+    it.each(AGENT_LINKS)('waits for the agent save under way before following $link', async ({ open, follow }) => {
+        const { fixture, store } = renderEdited(false, true);
+        descriptionInput(fixture).blur();
+        const save = expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`);
+        open(store);
+        await settle(fixture);
+
+        follow(fixture);
+        await settle(fixture);
+        expect(shows(fixture, OTHER_AGENT)).toBe(false);
+
+        save.flush({ ...AGENT, description: 'Reads CVs' });
+        await settle(fixture);
+        expect(shows(fixture, OTHER_AGENT)).toBe(true);
+    });
+
+    /** Links inside the agent editor that open something else; `opened` says whether it is shown. */
+    const EDITOR_LINKS = [
+        {
+            link: 'one of its instructions',
+            follow: (fixture: PageFixture) =>
+                fixture.debugElement
+                    .query(By.css('app-agent-instructions-list'))
+                    .triggerEventHandler('openInstruction', { index: 0, edit: false }),
+            opened: (fixture: PageFixture) => {
+                fixture.detectChanges();
+                return host(fixture).querySelector('app-agent-doc-preview') !== null;
+            },
+        },
+        {
+            link: 'the source of a shared surface',
+            follow: (fixture: PageFixture) =>
+                fixture.debugElement
+                    .query(By.css('app-agent-surfaces-panel'))
+                    .triggerEventHandler('openSource', SHARED_SURFACE.id),
+            opened: (fixture: PageFixture) => {
+                fixture.detectChanges();
+                return host(fixture).querySelector('app-surface-detail') !== null;
+            },
+        },
+    ];
+
+    /** The editor with "About this Agent" saved on blur, the save still under way. */
+    async function renderSaving(): Promise<ReturnType<typeof renderEdited> & { save: TestRequest }> {
+        const rendered = renderEdited(false, true);
+        descriptionInput(rendered.fixture).blur();
+        const save = expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`);
+        await settle(rendered.fixture);
+        return { ...rendered, save };
+    }
+
+    it.each(EDITOR_LINKS)('waits for the agent save under way before opening $link', async ({ follow, opened }) => {
+        const { fixture, save } = await renderSaving();
+
+        follow(fixture);
+        await settle(fixture);
+        expect(opened(fixture)).toBe(false);
+
+        save.flush({ ...AGENT_ON_SERVER, description: 'Reads CVs' });
+        await settle(fixture);
+        expect(opened(fixture)).toBe(true);
+    });
+
+    it.each(EDITOR_LINKS)(
+        'asks what to do when that save fails, instead of opening $link',
+        async ({ follow, opened }) => {
+            const { fixture, overlay, save } = await renderSaving();
+
+            follow(fixture);
+            save.flush({ detail: 'Name is taken' }, SAVE_FAILED);
+            await settle(fixture);
+
+            expect(dialogText(overlay).title).toBe("Couldn't save your changes");
+            expect(opened(fixture)).toBe(false);
+        }
+    );
+
+    it.each(LEAVE_FOR_ANOTHER_PLACE)(
+        'creates a named draft without asking, and goes where the user was going once it exists, on $way',
+        async ({ start }) => {
+            const { fixture, overlay } = renderNamedDraft();
+
+            const { left } = start(fixture);
+            const create = expectAgentRequest('POST', AGENTS_URL);
+            await settle(fixture);
+
+            expect(create.request.body).toMatchObject({ name: DRAFT_NAME, description: 'Reads CVs' });
+            expect(dialogText(overlay).title).toBe('');
+            expect(left()).not.toBe(true);
+
+            create.flush({ ...AGENT, id: 9, name: DRAFT_NAME, description: 'Reads CVs' });
+            await settle(fixture);
+
+            expect(left()).toBe(true);
+        }
+    );
+
+    it.each(LEAVE_FOR_ANOTHER_PLACE)(
+        'keeps a named draft that fails to be created on Keep Editing, on $way',
+        async ({ start }) => {
+            const { fixture, overlay } = renderNamedDraft();
+
+            const { left } = start(fixture);
+            expectAgentRequest('POST', AGENTS_URL).flush({ detail: 'Name is taken' }, SAVE_FAILED);
+            await settle(fixture);
+            expect(dialogText(overlay).title).toBe("Couldn't save your changes");
+            await choose(fixture, overlay, 'Keep Editing');
+
+            expect(left()).toBe(false);
+            expect(nameInput(fixture).value).toBe(DRAFT_NAME);
+            TestBed.inject(HttpTestingController).expectNone({ method: 'POST', url: AGENTS_URL });
+        }
+    );
+
+    it('waits for a save under way, then saves what was typed meanwhile before going', async () => {
+        const { fixture } = renderEdited(false, true);
+        descriptionInput(fixture).blur();
+        const firstSave = expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`);
+        await settle(fixture);
+        descriptionInput(fixture).focus();
+        type(fixture, descriptionInput(fixture), 'Reads CVs and cover letters');
+
+        clickAgent(fixture, OTHER_AGENT);
+        TestBed.inject(HttpTestingController).expectNone({ method: 'PATCH', url: `${AGENTS_URL}${AGENT.id}/` });
+        firstSave.flush({ ...AGENT, description: 'Reads CVs' });
+        await settle(fixture);
+        const secondSave = expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`);
+
+        expect(secondSave.request.body).toMatchObject({ description: 'Reads CVs and cover letters' });
+        expect(shows(fixture, OTHER_AGENT)).toBe(false);
+
+        secondSave.flush({ ...AGENT, description: 'Reads CVs and cover letters' });
+        await settle(fixture);
+
+        expect(shows(fixture, OTHER_AGENT)).toBe(true);
+    });
+
+    /** A named draft created on leaving its name, then "About this Agent" typed over while the create is under way. */
+    async function renderTypingWhileCreating(): Promise<ReturnType<typeof renderEdited> & { create: TestRequest }> {
+        const rendered = renderNamedDraft();
+        nameInput(rendered.fixture).blur();
+        const create = expectAgentRequest('POST', AGENTS_URL);
+        await settle(rendered.fixture);
+        descriptionInput(rendered.fixture).focus();
+        type(rendered.fixture, descriptionInput(rendered.fixture), 'Reads CVs and cover letters');
+        return { ...rendered, create };
+    }
+
+    const CREATED_AGENT_URL = `${AGENTS_URL}9/`;
+
+    it('keeps what was typed while the draft was being created, and saves it to the created agent', async () => {
+        const { fixture, create } = await renderTypingWhileCreating();
+
+        create.flush({ ...AGENT, id: 9, name: DRAFT_NAME, description: 'Reads CVs' });
+        await settle(fixture);
+
+        expect(descriptionInput(fixture).value).toBe('Reads CVs and cover letters');
+        expect(expectAgentRequest('PATCH', CREATED_AGENT_URL).request.body).toMatchObject({
+            name: DRAFT_NAME,
+            description: 'Reads CVs and cover letters',
+        });
+    });
+
+    it('creates a draft once when the user types while it is being created, then clicks away, and goes once that is saved', async () => {
+        const { fixture, create } = await renderTypingWhileCreating();
+
+        clickAgent(fixture, OTHER_AGENT);
+        create.flush({ ...AGENT, id: 9, name: DRAFT_NAME, description: 'Reads CVs' });
+        await settle(fixture);
+
+        TestBed.inject(HttpTestingController).expectNone({ method: 'POST', url: AGENTS_URL });
+        const save = expectAgentRequest('PATCH', CREATED_AGENT_URL);
+        expect(save.request.body).toMatchObject({ description: 'Reads CVs and cover letters' });
+        expect(shows(fixture, OTHER_AGENT)).toBe(false);
+
+        save.flush({ ...AGENT, id: 9, name: DRAFT_NAME, description: 'Reads CVs and cover letters' });
+        await settle(fixture);
+
+        expect(shows(fixture, OTHER_AGENT)).toBe(true);
+    });
+
+    it('answers a route leave still waiting for the save with "stay" once another agent is clicked, and follows the click', async () => {
+        const { fixture } = renderEdited(false, true);
+        const routeWent = leaveRoute(fixture);
+        const save = expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`);
+        await settle(fixture);
+
+        clickAgent(fixture, OTHER_AGENT);
+
+        expect(routeWent()).toBe(false);
+        save.flush({ ...AGENT, description: 'Reads CVs' });
+        await settle(fixture);
+        expect(shows(fixture, OTHER_AGENT)).toBe(true);
+    });
+
+    it('drops a click still waiting for the save once the route is left', async () => {
+        const { fixture } = renderEdited(false, true);
+        clickAgent(fixture, OTHER_AGENT);
+        const save = expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`);
+        await settle(fixture);
+        const routeWent = leaveRoute(fixture);
+
+        save.flush({ ...AGENT, description: 'Reads CVs' });
+        await settle(fixture);
+
+        expect(routeWent()).toBe(true);
+        expect(shows(fixture, AGENT)).toBe(true);
+    });
+
+    it('does not follow a click once the page is gone, when the save it waited for lands', () => {
+        const { fixture, store } = renderEdited(false, true);
+        clickAgent(fixture, OTHER_AGENT);
+        const save = expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`);
+
+        fixture.destroy();
+        save.flush({ ...AGENT, description: 'Reads CVs' });
+
+        expect(store.selectedAgent()?.id).toBe(AGENT.id);
+    });
+
+    it("asks to discard a saved agent's edits that can't be saved, a name over the limit, and sends nothing", async () => {
+        const { fixture, overlay } = renderEdited(false, true);
+        nameInput(fixture).focus();
+        expectAgentRequest('PATCH', `${AGENTS_URL}${AGENT.id}/`).flush({ ...AGENT, description: 'Reads CVs' });
+        await settle(fixture);
+        type(fixture, nameInput(fixture), 'x'.repeat(256));
+
+        const went = leaveRoute(fixture);
         await fixture.whenStable();
 
         expect(dialogText(overlay)).toEqual({
-            title: 'Unsaved Changes',
-            message: 'You have unsaved changes in this agent.',
+            title: 'Changes not saved',
+            message: "These changes can't be saved as they are. Fix the name to save them, or discard them.",
             buttons: ['Discard & Leave', 'Keep Editing'],
         });
+        TestBed.inject(HttpTestingController).expectNone({ method: 'PATCH', url: `${AGENTS_URL}${AGENT.id}/` });
 
-        await choose(fixture, overlay, 'Keep Editing');
+        await choose(fixture, overlay, 'Discard & Leave');
 
+        expect(went()).toBe(true);
+    });
+
+    it('asks to discard a nameless draft with a model picked, and creates nothing when the dialog takes the focus', async () => {
+        const { fixture, overlay } = renderEdited(true, true);
+        const primaryModel = fixture.debugElement.query(By.directive(LlmModelSelectorStubComponent));
+        (primaryModel.componentInstance as LlmModelSelectorStubComponent).pick(1);
+        nameInput(fixture).focus();
+
+        leaveRoute(fixture);
+        await fixture.whenStable();
+
+        expect(dialogText(overlay).title).toBe('Agent not created');
         expect(document.activeElement).not.toBe(nameInput(fixture));
-        expect(nameError(fixture)).toBeNull();
+        TestBed.inject(HttpTestingController).expectNone({ method: 'POST', url: AGENTS_URL });
     });
 
     it('leaves a saved agent without asking once its edit is changed back', () => {

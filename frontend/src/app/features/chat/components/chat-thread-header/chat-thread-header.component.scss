@@ -2,14 +2,14 @@
 @use '../../../../../styles/touch';
 @use '../../styles/wait-chip';
 
-// Where the usage rings drop their numbers: below the desktop row's widest fixed part, about 517px. That is the
-// header's 32px side padding, the avatar (36px and its 8px gap), the identity column's least and its 8px gap, then
-// the filled Resolve (about 89px: 12px, the 8px check, 8px, the label, 16px), both rings with numbers and ⋯
-// (about 353px in all, gaps included). The column's least is its widest uncut line, about 80px
+// Where the usage rings drop their numbers: below the desktop row's widest fixed part, about 521px. That is the
+// header's 32px side padding, the avatar with its badge's room (40px and its 8px gap), the identity column's least
+// and its 8px gap, then the filled Resolve (about 89px: 12px, the 8px check, 8px, the label, 16px), both rings with
+// numbers and ⋯ (about 353px in all, gaps included). The column's least is its widest uncut line, about 80px
 // either way: the name line (the name cut to nothing, 8px, then the wait chip: "12m 16s" with its icon, gap and
 // padding, about 72px) or the path (Bot / Human / at about 60px, two 4px gaps and the 12px copy icon, the id cut to
 // nothing). A longer wait ("23h 59m") makes the name line the wider by a few px; the margin covers it.
-$usage-numbers-min-width: 533px;
+$usage-numbers-min-width: 537px;
 
 :host {
     display: block;
@@ -123,6 +123,15 @@ $usage-numbers-min-width: 533px;
     height: 61px;
     padding: 0 16px;
     border-bottom-color: var(--color-divider-subtle);
+}
+
+// The avatar, with 4px on its right for its section's badge, which places itself on the corner as on the list's rows.
+.thread-header__picture {
+    position: relative;
+    display: flex;
+    flex-shrink: 0;
+    width: 40px;
+    height: 36px;
 }
 
 // The shared avatar at 36px here; 32px everywhere else.

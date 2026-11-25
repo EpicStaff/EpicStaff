@@ -2,13 +2,14 @@
 
 How a credential reaches user code inside the `sandbox` container, and how it is kept out of
 that code's output on the way back. Covers `get_secret()`, environment-based delivery, the
-runtime allow-list, and the output scrubber gated by `SANDBOX_MASK_SECRET`.
+runtime allow-list, and the output scrubber. `SANDBOX_MASK_SECRET` decides only whether user
+secrets are masked; the per-execution storage credentials are masked whatever it says.
 
 For storage, encryption and the resolver see
 [DEV_secrets_backend_guide.md](DEV_secrets_backend_guide.md).
 
 > **Which service.** Compose now runs `sandbox_new`; the old `sandbox` service (`src/sandbox`)
-> is commented out. §4.2 describes `sandbox_new`. The other sections, and the
+> is commented out. §4.1 and §4.3 describe `sandbox_new`. The other sections, and the
 > `tests/chain_tests` rows of §5, were written for `src/sandbox` and have not yet been
 > re-checked against `sandbox_new`, whose file and function names differ.
 
@@ -179,7 +180,35 @@ The result file gets the same treatment, assigned *into* `result_data` rather th
 so if scrubbing ever raised, the swallowing `except` leaves `result_data` as `None` instead
 of returning the raw value.
 
-### 4.1 `secret_scrubber.py`
+### 4.1 `sandbox_new`: `ExecutionOrchestrator` and `secret_scrubber.py`
+
+The code above is `src/sandbox`. In `sandbox_new` the scrub runs once, in
+`ExecutionOrchestrator._build_result` (`worker/application/orchestrator.py`), not in a
+pipeline step, so a step that fails after the child's output is captured cannot skip it.
+The masked set is the union of two sources:
+
+```python
+# User secrets are masked only when MASK_SECRET is on; values the steps
+# registered as always-masked (worker-issued credentials) are masked regardless.
+user_secret_values = list((context.job.secrets or {}).values()) if self._mask_secrets else []
+masked_values = [*user_secret_values, *context.always_masked]
+```
+
+- **User secrets** (`job.secrets`) join only when `MASK_SECRET` is on (§4.3).
+- **Values registered through `ExecutionContext.mask_always()`** are always masked.
+  `ConfigureStorageStep` registers the per-run `STORAGE_ACCESS_KEY` and `STORAGE_SECRET_KEY`
+  in the same place it puts them into the child's env, so a step that hands the child a
+  worker-issued value is the step that marks it for masking. The author never chose to see
+  these, so the flag does not cover them.
+
+`scrub()` takes `values`, not a name → value dict (`src/sandbox`'s `scrub()` and
+`build_masking_values()` still take dicts). The names play no part in masking, and merging two
+dicts by name drops whichever value loses the key collision: a user secret named
+`STORAGE_SECRET_KEY` would have overwritten the storage credential and left it unmasked.
+`values` is a `Collection`, not an `Iterable`, because the orchestrator passes the same
+argument to three `scrub()` calls and a generator would be empty from the second one on.
+
+### 4.2 `secret_scrubber.py`
 
 | Behavior | Why |
 |---|---|
@@ -189,9 +218,9 @@ of returning the raw value.
 | Both the raw value **and** its JSON-escaped form are matched | `result_data` is the return value under `json.dumps`, so a value containing a quote, backslash or non-ASCII character appears there only escaped. |
 | Literals sorted **longest first** | If one value is a substring of another and the shorter is replaced first, the longer value's tail is left sitting beside the mask. |
 | One compiled regex, one pass | The first version called `str.replace` per literal, which rescans and re-copies the whole text for every secret. Every literal goes through `re.escape` — a value like `sk-live.*x` must match as plain text. |
-| `scrub()` is unconditional | The `SANDBOX_MASK_SECRET` check lives at the call site, so the flag is read in exactly one visible place: `masking_enabled()` in `src/sandbox`, and in `sandbox_new` the `if self._mask_secrets:` gate in `ExecutionOrchestrator` (`worker/application/orchestrator.py`). A caller that forgets it over-masks, which is the harmless direction. |
+| `scrub()` is unconditional | The `SANDBOX_MASK_SECRET` check lives at the call site, so the flag is read in exactly one visible place: `masking_enabled()` in `src/sandbox`, and in `sandbox_new` the `self._mask_secrets` check that decides whether user secrets join the masked set in `ExecutionOrchestrator._build_result` (§4.1). A caller that forgets it over-masks, which is the harmless direction. |
 
-### 4.2 `SANDBOX_MASK_SECRET`
+### 4.3 `SANDBOX_MASK_SECRET`
 
 A required variable on the `sandbox_new` service (the `sandbox` service is commented out in
 compose). Compose passes it through with no default, and `:?` aborts on an unset **or empty**
@@ -244,7 +273,7 @@ output that is no longer redacted.
 > `PythonCodeResult` rows and both containers' logs. The per-execution storage credentials
 > stay masked either way.
 
-### 4.3 What masking does not do
+### 4.4 What masking does not do
 
 Scope is **accidental disclosure by an author who is already permitted to read the secret**.
 A determined author can still exfiltrate by encoding the value, chunking it, or sending it

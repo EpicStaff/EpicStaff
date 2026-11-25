@@ -41,11 +41,12 @@ declare module 'd3-force-3d' {
         strength(strength: number | ((link: ForceLink3D<N>, index: number) => number)): unknown;
     };
 
-    export function forceManyBody(): {
-        strength(strength: number): unknown;
-        distanceMin(distance: number): unknown;
-        distanceMax(distance: number): unknown;
-    };
+    interface ForceManyBody3D {
+        strength(strength: number): ForceManyBody3D;
+        distanceMin(distance: number): ForceManyBody3D;
+        distanceMax(distance: number): ForceManyBody3D;
+    }
+    export function forceManyBody(): ForceManyBody3D;
 
     /** Keeps nodes apart: a constant radius, or an accessor called once per node with the node and its index. */
     export function forceCollide<N extends ForceNode3D>(
@@ -56,4 +57,12 @@ declare module 'd3-force-3d' {
     };
 
     export function forceCenter(x?: number, y?: number, z?: number): unknown;
+
+    interface ForceAxis3D {
+        strength(strength: number): ForceAxis3D;
+    }
+    /** Per-axis spring pulling each node toward the target coordinate; strength 0..1, applied each tick. */
+    export function forceX(x?: number): ForceAxis3D;
+    export function forceY(y?: number): ForceAxis3D;
+    export function forceZ(z?: number): ForceAxis3D;
 }

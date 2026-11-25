@@ -13,8 +13,8 @@ import litellm
 import pytest
 
 from src.shared.litellm_model_names import litellm_lookup_name
-from tables.utils import litellm_model_info
-from tables.utils.litellm_model_info import (
+from ai_models.utils import litellm_model_info
+from ai_models.utils.litellm_model_info import (
     NO_REASONING_SUPPORT,
     ReasoningSupport,
     reasoning_support,
@@ -51,7 +51,11 @@ def test_corrupt_snapshot_falls_back_to_the_bundled_map(snapshot_path):
     assert reasoning_support("openai", "gpt-4o").supports_reasoning is False
 
 
-def test_snapshot_entries_are_used(snapshot_path):
+def test_snapshot_never_adds_a_model_or_changes_its_levels(snapshot_path):
+    # The refresh updates prices only; the levels come from the pinned litellm release.
+    litellm.model_cost["openai/epicstaff-reasoner"] = _map_entry(
+        "openai", supports_xhigh_reasoning_effort=True
+    )
     snapshot_path.write_text(
         json.dumps(
             {
@@ -59,32 +63,18 @@ def test_snapshot_entries_are_used(snapshot_path):
                     "litellm_provider": "openai",
                     "mode": "chat",
                     "supports_reasoning": True,
-                }
+                },
+                "openai/epicstaff-reasoner": _map_entry(
+                    "openai", supports_xhigh_reasoning_effort=False, input_cost_per_token=0.5
+                ),
             }
         ),
         encoding="utf-8",
     )
 
-    assert reasoning_support("openai", SNAPSHOT_ONLY_MODEL).supports_reasoning is True
-
-
-def test_newer_snapshot_invalidates_cached_answers(snapshot_path):
     assert reasoning_support("openai", SNAPSHOT_ONLY_MODEL).supports_reasoning is False
-
-    snapshot_path.write_text(
-        json.dumps(
-            {
-                f"openai/{SNAPSHOT_ONLY_MODEL}": {
-                    "litellm_provider": "openai",
-                    "mode": "chat",
-                    "supports_reasoning": True,
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    assert reasoning_support("openai", SNAPSHOT_ONLY_MODEL).supports_reasoning is True
+    assert "xhigh" in _efforts("openai")
+    assert litellm.model_cost["openai/epicstaff-reasoner"]["input_cost_per_token"] == 0.5
 
 
 def test_provider_alias_is_applied(snapshot_path):
@@ -465,57 +455,3 @@ def test_cached_answer_carries_the_levels(snapshot_path, monkeypatch):
 
     assert reasoning_support("openai", "epicstaff-reasoner") == first
     assert first.ordered_efforts() == ["low", "medium", "high", "xhigh"]
-
-
-def test_answer_computed_while_a_newer_snapshot_loads_is_not_cached(snapshot_path, monkeypatch):
-    litellm.model_cost["openai/epicstaff-reasoner"] = _map_entry(
-        "openai", supports_xhigh_reasoning_effort=True
-    )
-    real_get_model_info = litellm.get_model_info
-
-    def get_model_info_racing_a_snapshot_load(model, *args, **kwargs):
-        info = real_get_model_info(model, *args, **kwargs)
-        if model == "openai/epicstaff-reasoner":
-            monkeypatch.setattr(litellm, "get_model_info", real_get_model_info)
-            snapshot_path.write_text(
-                json.dumps(
-                    {
-                        "openai/epicstaff-reasoner": _map_entry(
-                            "openai", supports_xhigh_reasoning_effort=False
-                        )
-                    }
-                ),
-                encoding="utf-8",
-            )
-            # Another request loads the newer snapshot while this lookup is in flight.
-            reasoning_support("ollama", "epicstaff-other")
-        return info
-
-    monkeypatch.setattr(litellm, "get_model_info", get_model_info_racing_a_snapshot_load)
-
-    in_flight_answer = reasoning_support("openai", "epicstaff-reasoner")
-
-    assert "xhigh" in in_flight_answer.efforts
-    assert _efforts("openai") == {"low", "medium", "high"}
-
-
-def test_newer_snapshot_changes_the_levels_litellm_reports(snapshot_path):
-    # get_model_info answers from an LRU cache keyed by model name; without the
-    # invalidation the second call would still see xhigh.
-    litellm.model_cost["openai/epicstaff-reasoner"] = _map_entry(
-        "openai", supports_xhigh_reasoning_effort=True
-    )
-    assert "xhigh" in _efforts("openai")
-
-    snapshot_path.write_text(
-        json.dumps(
-            {
-                "openai/epicstaff-reasoner": _map_entry(
-                    "openai", supports_xhigh_reasoning_effort=False
-                )
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    assert _efforts("openai") == {"low", "medium", "high"}

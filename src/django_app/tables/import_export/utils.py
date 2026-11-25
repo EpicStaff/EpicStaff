@@ -1,5 +1,6 @@
 import re
 from collections import Counter
+from collections.abc import Iterator
 
 from django.conf import settings
 from django.db.models import Case, IntegerField, Q, QuerySet, Value, When
@@ -8,15 +9,30 @@ from rbac.models import Organization
 from rest_framework.exceptions import ValidationError
 
 from tables.import_export.constants import OWNED_SURFACE_ENTRIES_KEY
-from tables.import_export.enums import EntityType
+from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
 from tables.models.label_models import Label
 
 
 def clean_base_name(base_name: str) -> str:
-    """Strips a trailing "#N" (or "# N") suffix from base_name, if present."""
-    match = re.match(r"^(.+?)\s*#\s*\d+$", base_name.strip())
-    return match.group(1) if match else base_name.strip()
+    """Strips a trailing "#N" (or "# N") suffix from base_name, if present.
+
+    Whitespace around the name is dropped, and so is whitespace before the "#"
+    when the suffix is removed; a name that is only a suffix ("#2") is returned
+    as is. Split at the last "#" rather than matched with a regex: a lazy base
+    group followed by optional whitespace backtracks quadratically over a long
+    run of inner spaces, and Python's `re` holds the GIL meanwhile, freezing
+    every thread of the web worker.
+    """
+    name = base_name.strip()
+    head, _hash_sign, number = name.rpartition("#")
+    base = head.rstrip()
+    # A base that spans lines ("A\nB #2") keeps its suffix, as names were always
+    # parsed; newlines next to the "#" are still stripped. Without a "#", base is
+    # "" and the name is kept.
+    if base and "\n" not in base and number.lstrip().isdecimal():
+        return base
+    return name
 
 
 def slug_base(name: str) -> str:
@@ -33,8 +49,8 @@ def ensure_unique_slug(
 ) -> str:
     """`base_name`, or the first free `base_name-N` (N from 2) when it's taken.
 
-    For identifiers that can only hold letters, digits, "-" and "_" (webhook
-    paths), where ensure_unique_identifier's " #N" isn't allowed. The base is
+    For names that can't hold "#" (webhook paths, secret names), where
+    ensure_unique_identifier's " #N" isn't allowed. The base is
     kept whole: "orders-2024" becomes "orders-2024-2", never "orders-2". With
     `max_length`, the base is shortened so the suffix still fits.
     """
@@ -170,6 +186,22 @@ def nest_owned_surface_entries(export_data: dict) -> dict:
     if EntityType.SURFACE in export_data:
         nested_data[EntityType.SURFACE] = list(surface_entries_by_id.values())
     return nested_data
+
+
+def exported_nodes(data: dict) -> Iterator[tuple[str | None, dict]]:
+    """Yield `(node_type, node)` for every node entry of an export file, for in-place edits.
+
+    A full export nests its nodes in each `Flow` entry, each tagged with `node_type`. A
+    partial export (nodes copied out of a flow) has no `Flow`: it lists the nodes at the
+    top level under their node type, untagged. Conversions that rewrite nodes read both,
+    so a partial file is converted like a full one.
+    """
+    for graph in data.get(EntityType.GRAPH, []):
+        for node in graph.get("nodes", []):
+            yield node.get("node_type"), node
+    for node_type in NodeType:
+        for node in data.get(node_type, []):
+            yield node_type, node
 
 
 def resolve_import_organization(org_id: int | None) -> Organization | None:

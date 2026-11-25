@@ -72,6 +72,10 @@ class KnowledgeClient:
                 "llm_api_key": target.llm_api_key,
                 "embedding_extra_headers": target.embedder_extra_headers or {},
                 "llm_extra_headers": target.llm_extra_headers or {},
+                "embedding_connection": target.embedder_connection or {},
+                "embedding_parameters": target.embedder_parameters or {},
+                "llm_connection": target.llm_connection or {},
+                "llm_parameters": target.llm_parameters or {},
             },
             timeout=timeout,
         )

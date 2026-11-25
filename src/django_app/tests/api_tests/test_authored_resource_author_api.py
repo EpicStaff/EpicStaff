@@ -7,8 +7,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from rbac.models import Organization
-from tables.models import Graph, Label, LLMConfig
-from tables.models.embedding_models import EmbeddingConfig
+from tables.models import Graph, Label
+from ai_models.models import EmbeddingConfig, LLMConfig
 from tables.models.graph_models import GraphNote
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
@@ -82,7 +82,7 @@ RESOURCES = [
             custom_name=name, org=org, created_by=author
         ),
         create_body=lambda name: {"custom_name": name},
-        patch_body=lambda row: {"temperature": 0.7},
+        patch_body=lambda row: {"context_window": 32000},
     ),
     AuthoredResource(
         basename="embeddingconfig",

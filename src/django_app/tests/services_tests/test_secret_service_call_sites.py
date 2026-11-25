@@ -9,7 +9,8 @@ LiteLLMClient itself — see litellm_client.py). Nothing here is deferred any mo
 
 import pytest
 
-from tables.models import EmbeddingConfig, LLMConfig, Provider, RealtimeConfig
+from tables.models import RealtimeConfig
+from ai_models.models import EmbeddingConfig, LLMConfig, Provider
 from tables.models.graph_models import Graph, TelegramTriggerNode
 from rbac.models import Organization
 from tables.services.quickstart_service import QuickstartService
@@ -206,7 +207,7 @@ class TestPayloadAndInProcessConsumers:
     converter emits ids into the payload, litellm_client resolves in-process."""
 
     def test_converter_service_can_convert_embedding_config(self, org):
-        from tables.models import EmbeddingModel
+        from ai_models.models import EmbeddingModel
         from tables.services.converter_service import ConverterService
 
         provider, _ = Provider.objects.get_or_create(name="openai")
@@ -231,7 +232,7 @@ class TestPayloadAndInProcessConsumers:
         an async request path — see litellm_client.py docstring); the caller
         resolves this value. This test covers that resolution in isolation.
         """
-        from tables.models import LLMModel
+        from ai_models.models import LLMModel
         from tables.services.secrets import secret_resolver, secret_service
 
         provider, _ = Provider.objects.get_or_create(name="openai")
@@ -255,12 +256,19 @@ class TestPayloadAndInProcessConsumers:
     def test_litellm_client_sends_the_resolved_key_and_nothing_when_there_is_none(self, org, monkeypatch, api_key):
         import asyncio
 
-        from tables.models import LLMModel
+        from ai_models.models import LLMModel
         from tables.services.llm_clients import get_llm_client, litellm_client
+        from tables.services.secrets import secret_service
 
         provider, _ = Provider.objects.get_or_create(name="openai")
         model = LLMModel.objects.create(name="gpt-4o-lite-test", llm_provider=provider)
-        config = LLMConfig.objects.create(custom_name="lite-test", model=model, org=org)
+        secret = (
+            secret_service.create(text=api_key, org=org, name="litellm-key") if api_key else None
+        )
+        config = LLMConfig.objects.create(
+            custom_name="lite-test", model=model, org=org, api_key_secret=secret
+        )
+        client = get_llm_client(config, principal=None)
         sent = {}
 
         class _Sent(Exception):
@@ -274,7 +282,7 @@ class TestPayloadAndInProcessConsumers:
 
         async def call_the_llm():
             with pytest.raises(_Sent):
-                async for _ in get_llm_client(config, api_key=api_key).stream_completion(
+                async for _ in client.stream_completion(
                     messages=[{"role": "user", "content": "hi"}], tools=[]
                 ):
                     pass

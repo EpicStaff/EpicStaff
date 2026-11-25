@@ -5,7 +5,8 @@ from django.urls import reverse
 from rest_framework import status
 
 from rbac.models.enums import Permission, ResourceType
-from tables.models import EmbeddingConfig, EmbeddingModel, Provider, SourceCollection
+from tables.models import SourceCollection
+from ai_models.models import EmbeddingConfig, EmbeddingModel, Provider
 from tables.models.knowledge_models import BaseRagType, NaiveRag
 from tests.api_tests.role_grant_clients import FULL_CRUD, client_with_grants
 from tests.rbac_cross_org_fixtures import beta  # noqa: F401
@@ -47,7 +48,7 @@ def embedder_config_1(embedding_model_1, default_org):
         custom_name="embedder-1",
         defaults={
             "model": embedding_model_1,
-            "task_type": "retrieval_document",
+            "parameters": {"task_type": "retrieval_document"},
             "org": default_org,
         },
     )
@@ -60,7 +61,7 @@ def embedder_config_2(embedding_model_2, default_org):
         custom_name="embedder-2",
         defaults={
             "model": embedding_model_2,
-            "task_type": "retrieval_document",
+            "parameters": {"task_type": "retrieval_document"},
             "org": default_org,
         },
     )
@@ -99,7 +100,7 @@ def beta_collection(beta, openai_provider_fixture, embedding_model_1):
     beta_embedder = EmbeddingConfig.objects.create(
         custom_name="beta-embedder",
         model=embedding_model_1,
-        task_type="retrieval_document",
+        parameters={"task_type": "retrieval_document"},
         org=beta,
     )
     collection = SourceCollection.objects.create(collection_name="Beta Collection", org=beta)

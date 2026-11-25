@@ -111,6 +111,40 @@
         line-height: 1.4;
     }
 
+    &__add-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.25rem;
+        height: 40px;
+        border: 1px dashed var(--steel-alpha-8);
+        border-radius: 0.625rem;
+        background: none;
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-medium-size);
+        font-weight: var(--text-body-medium-weight);
+        line-height: var(--text-body-medium-line-height);
+        cursor: pointer;
+        transition:
+            color 0.15s ease,
+            border-color 0.15s ease;
+
+        &:is(:hover, :focus-visible):not(:disabled) {
+            color: var(--color-text-primary);
+            border-color: var(--fog-alpha-16);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+
+        &:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+    }
+
     &__remove-btn {
         flex-shrink: 0;
         width: 40px;

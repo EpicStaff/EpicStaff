@@ -67,13 +67,14 @@ class BinResource:
             brings it back without an owner.
         unique_names: False when the name isn't unique (voice channels), so a
             restore never renames.
-        slug_names: The name is an identifier without spaces or "#" (a webhook
-            path): a restore renames it to "name-2" instead of "name #2".
+        slug_names: The name can't hold "#" (a webhook path, a secret name): a
+            restore renames it to "name-2" instead of "name #2".
         global_names: The name is unique across all organizations (a webhook
             path), so a restore checks every org's live rows.
         before_restore: Frees unique values other than the name that a restore
-            would collide on (a Twilio phone number). Called with the root and
-            its batch, inside the restore's transaction.
+            would collide on, or must not bring back unproven (a Twilio phone
+            number). Called with the root and its batch, inside the restore's
+            transaction.
         after_restore: Reconnects what the restore can't bring back by itself
             (a webhook trigger's Telegram bots). Called with the restored root
             once the restore has committed.
@@ -118,7 +119,7 @@ def bin_resources() -> dict[RecycleBinSource, BinResource]:
     from tables.models.python_models import PythonCodeTool
     from tables.services.recycle_bin.purge_hooks import delete_flow_sessions
     from tables.services.recycle_bin.restore_hooks import (
-        drop_taken_phone_number,
+        drop_unavailable_phone_number,
         register_telegram_bots,
     )
 
@@ -140,14 +141,17 @@ def bin_resources() -> dict[RecycleBinSource, BinResource]:
         RecycleBinSource.COLLECTION: BinResource(
             SourceCollection, "collection_name", "org", ResourceType.KNOWLEDGE_SOURCES
         ),
-        RecycleBinSource.SECRET: BinResource(Secret, "name", "org", ResourceType.SECRETS),
+        # validate_secret_name rejects "#".
+        RecycleBinSource.SECRET: BinResource(
+            Secret, "name", "org", ResourceType.SECRETS, slug_names=True
+        ),
         RecycleBinSource.REALTIME_CHANNEL: BinResource(
             RealtimeChannel,
             "name",
             "org",
             ResourceType.VOICE,
             unique_names=False,
-            before_restore=drop_taken_phone_number,
+            before_restore=drop_unavailable_phone_number,
         ),
         RecycleBinSource.WEBHOOK_TRIGGER: BinResource(
             WebhookTrigger,

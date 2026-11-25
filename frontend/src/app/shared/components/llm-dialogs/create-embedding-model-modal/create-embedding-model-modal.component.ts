@@ -59,8 +59,6 @@ export class CreateEmbeddingModelModalComponent implements OnInit {
 
     form = this.fb.group({
         name: [this.dialogData.model?.name ?? '', Validators.required],
-        baseUrl: [this.dialogData.model?.base_url ?? '', Validators.pattern(/^$|^https?:\/\/.+/i)],
-        deployment: [this.dialogData.model?.deployment ?? ''],
         isVisible: [this.dialogData.model?.is_visible ?? true],
     });
 
@@ -93,14 +91,10 @@ export class CreateEmbeddingModelModalComponent implements OnInit {
         const request$ = this.isEditMode
             ? this.embeddingModelsService.patchModel(this.dialogData.model!.id, {
                   name: (value.name || '').trim(),
-                  base_url: value.baseUrl?.trim() || null,
-                  deployment: value.deployment?.trim() || null,
                   is_visible: !!value.isVisible,
               })
             : this.embeddingModelsService.createModel({
                   name: (value.name || '').trim(),
-                  base_url: value.baseUrl?.trim() || null,
-                  deployment: value.deployment?.trim() || null,
                   embedding_provider: this.provider.id,
                   is_visible: !!value.isVisible,
               });

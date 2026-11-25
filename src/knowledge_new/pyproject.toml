@@ -10,11 +10,10 @@ authors = [
 requires-python = "==3.12.10"
 dependencies = [
     "beautifulsoup4==4.15.0",
-    "chonkie==1.7.0",
     "foundation[cryptographer]",
     "graphrag==3.1.1",
     "langchain-text-splitters==1.1.2",
-    "litellm==1.108.1",
+    "litellm==1.108.12",
     "litestar==2.24.0",
     "loguru==0.7.3",
     "miniopy-async>=1.23.5",
@@ -26,6 +25,7 @@ dependencies = [
     "pydantic==2.13.4",
     "python-docx==1.2.0",
     "sqlalchemy==2.0.51",
+    "tiktoken==0.13.0",
     "uvicorn==0.52.3",
 ]
 
@@ -113,7 +113,7 @@ transitive-pins = [
 package = false
 # graphrag 3.1.1 pins litellm==1.92.0 exactly; override it to the version every other service ships
 # until graphrag releases a compatible pin.
-override-dependencies = ["litellm==1.108.1"]
+override-dependencies = ["litellm==1.108.12"]
 
 [tool.uv.sources]
 foundation = { path = "../foundation", editable = true }

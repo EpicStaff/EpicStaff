@@ -23,8 +23,7 @@ from helpers.timings import Timings
 
 STORAGE_FOLDER = "e2e"
 STORAGE_FILE_NAME = "kb.txt"
-# Character chunking: the default `token` chunker downloads the gpt2 tokenizer from
-# huggingface.co at indexing time.
+# Character chunking keeps the expected chunks independent of any tokenizer.
 CHUNKING = {"chunk_strategy": "character", "chunk_size": 500, "chunk_overlap": 50}
 INDEXING_PICKUP_TIMEOUT_SECONDS = 30
 INDEXING_TIMEOUT_SECONDS = 240

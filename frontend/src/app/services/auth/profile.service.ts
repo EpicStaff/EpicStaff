@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
 import { ROLE_LABELS } from '@shared/constants';
 import {
@@ -8,6 +8,7 @@ import {
     EMPTY_SHORTCUT_SETTINGS,
     GetMeResponse,
     GetMyApiKeyResponse,
+    Organization,
     PasswordChangeConfirmRequest,
     PasswordChangeVerifyRequest,
     PasswordChangeVerifyResponse,
@@ -16,11 +17,14 @@ import {
     UserRole,
 } from '@shared/models';
 import { AppStorageService } from '@shared/services';
-import { forkJoin, map, Observable, of, switchMap } from 'rxjs';
+import { defer, forkJoin, map, Observable, of, switchMap } from 'rxjs';
 import { tap } from 'rxjs/operators';
 
+import { ORG_ID_OVERRIDE } from '../../core/interceptors/org-id-override.context';
+import { SKIP_FORBIDDEN_RELOAD } from '../../core/interceptors/skip-forbidden-reload.context';
 import { ConfigService } from '../config';
 import { ActiveOrgService } from './active-org.service';
+import { CurrentUserReload } from './current-user-reload.model';
 import { PermissionsService } from './permissions.service';
 
 @Injectable({
@@ -59,7 +63,7 @@ export class ProfileService {
 
     /** Simple single fetch — use for refreshing profile data mid-session. */
     getCurrentUser(): Observable<GetMeResponse> {
-        return this.http.get<GetMeResponse>(this.baseUrl).pipe(tap((user) => this.setUser(user)));
+        return this.fetchCurrentUser(new HttpContext());
     }
 
     /** Bootstrap: picks active org, then fetches active permissions + cross-org capabilities.
@@ -69,31 +73,32 @@ export class ProfileService {
         const cachedUser = this.currentUserSignal();
         const user$ = cachedUser ? of(cachedUser) : this.getCurrentUser();
 
-        return user$.pipe(
-            switchMap((user) => {
-                if (user.memberships.length === 0 && !user.is_superadmin) {
-                    this.permissionsService.setActivePermissions(null);
-                    // Still load /me/orgs/ so downstream gates read `is_superadmin: false, orgs: []`.
-                    return this.permissionsService.loadOrgPermissions().pipe(map(() => user));
-                }
+        return user$.pipe(switchMap((user) => this.selectActiveOrgAndLoadPermissions(user)));
+    }
 
-                // For superadmins with no memberships, skip active-org selection but still load /me/orgs/.
-                if (user.memberships.length === 0) {
-                    return this.permissionsService.loadOrgPermissions().pipe(map(() => user));
-                }
-
-                const cachedId = this.activeOrgService.activeOrgId();
-                const stillValid = cachedId !== null && user.memberships.some((m) => m.organization.id === cachedId);
-                const orgId = stillValid ? cachedId! : user.memberships[0].organization.id;
-                this.activeOrgService.set(orgId);
-
-                // /me/ uses the header just set; /me/orgs/ is cross-org (header skipped in interceptor).
-                return forkJoin({
-                    active: this.permissionsService.loadActivePermissions(),
-                    orgs: this.permissionsService.loadOrgPermissions(),
-                }).pipe(map(() => user));
-            })
-        );
+    /**
+     * Refetches the profile, then does what the bootstrap does with it: keeps the active org while the user still
+     * belongs to it, else picks another one, and reloads the active-org and cross-org permissions. For when the
+     * memberships may have changed under the session (an organization was deactivated, reactivated or deleted, a 403
+     * says the user lost access). Emits what changed for the user. Nothing changes until everything arrived: a failed
+     * reload leaves the profile, the active org, the caches and the permissions as they were.
+     *
+     * Its own requests skip the forbidden interceptor's reload: a 403 among them fails this reload instead of
+     * starting (or waiting for) another one. Each subscription runs a new reload; `CurrentUserRefreshService` runs
+     * them one at a time and shares each run with every caller.
+     */
+    reloadCurrentUser(): Observable<CurrentUserReload> {
+        return defer(() => {
+            const previousUser = this.currentUser();
+            const previousActiveOrgId = this.activeOrgService.activeOrgId();
+            const skipForbiddenReload = (): HttpContext => new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true);
+            return this.http.get<GetMeResponse>(this.baseUrl, { context: skipForbiddenReload() }).pipe(
+                switchMap((user) => this.selectActiveOrgAndLoadPermissions(user, skipForbiddenReload)),
+                map((user) =>
+                    describeReload(previousUser, previousActiveOrgId, user, this.activeOrgService.activeOrgId())
+                )
+            );
+        });
     }
 
     updateCurrentUser(dto: UpdateMeRequest): Observable<GetMeResponse> {
@@ -172,6 +177,50 @@ export class ProfileService {
         return this.http.delete<void>(`${this.baseUrl}api-keys/${id}/`);
     }
 
+    private fetchCurrentUser(context: HttpContext): Observable<GetMeResponse> {
+        return this.http.get<GetMeResponse>(this.baseUrl, { context }).pipe(tap((user) => this.setUser(user)));
+    }
+
+    /**
+     * Picks the active org `user` may act in and loads its permissions, then adopts all of it at once. The active-org
+     * permissions are fetched for the picked org explicitly (`ORG_ID_OVERRIDE`), so nothing is changed before they
+     * arrive: if a request fails, the session keeps its previous, consistent profile, org, caches and permissions.
+     */
+    private selectActiveOrgAndLoadPermissions(
+        user: GetMeResponse,
+        requestContext: () => HttpContext = () => new HttpContext()
+    ): Observable<GetMeResponse> {
+        const previousOrgId = this.activeOrgService.activeOrgId();
+        const orgId = selectActiveOrgId(user, previousOrgId);
+
+        return forkJoin({
+            active:
+                orgId === null
+                    ? of(null)
+                    : this.permissionsService.fetchActivePermissions(requestContext().set(ORG_ID_OVERRIDE, orgId)),
+            // Still loaded with no org left, so downstream gates read `is_superadmin: false, orgs: []`.
+            orgs: this.permissionsService.fetchOrgPermissions(requestContext()),
+        }).pipe(
+            tap(({ active, orgs }) => {
+                // Leaving an org the app worked in: every org-scoped cache still holds its data. As in `switchOrg()`,
+                // clear first, then set the org and its permissions.
+                if (previousOrgId !== null && orgId !== previousOrgId) {
+                    this.appStorageService.clearAll();
+                }
+                // No organization left sets `null`: a cached id would keep sending the header of an org the user lost.
+                this.activeOrgService.set(orgId);
+                this.setUser(user);
+                this.permissionsService.applyOrgPermissions(orgs);
+                if (active !== null) {
+                    this.permissionsService.applyActivePermissions(active);
+                } else if (!user.is_superadmin) {
+                    this.permissionsService.setActivePermissions(null);
+                }
+            }),
+            map(() => user)
+        );
+    }
+
     private setUser(user: GetMeResponse): void {
         this.currentUser.set(user);
         this.permissionsService.setSuperadmin(user.is_superadmin);
@@ -188,4 +237,35 @@ export class ProfileService {
             this.updateUser(partial);
         }
     }
+}
+
+/** The active org the user's memberships allow: the current one while they still belong to it, else the first one. */
+function selectActiveOrgId(user: GetMeResponse, currentOrgId: number | null): number | null {
+    if (user.memberships.length === 0) return null;
+    const stillMember =
+        currentOrgId !== null && user.memberships.some((membership) => membership.organization.id === currentOrgId);
+    return stillMember ? currentOrgId : user.memberships[0].organization.id;
+}
+
+function describeReload(
+    previousUser: GetMeResponse | null,
+    previousActiveOrgId: number | null,
+    user: GetMeResponse,
+    activeOrgId: number | null
+): CurrentUserReload {
+    const organizations = user.memberships.map((membership) => membership.organization);
+    const previousOrganizations = previousUser?.memberships.map((membership) => membership.organization) ?? [];
+    const activeOrgChanged = activeOrgId !== previousActiveOrgId;
+    return {
+        user,
+        activeOrgChanged,
+        switchedTo: activeOrgChanged ? findOrganization(organizations, activeOrgId) : null,
+        lostOrganizations: previousOrganizations.filter(
+            (previous) => !organizations.some((organization) => organization.id === previous.id)
+        ),
+    };
+}
+
+function findOrganization(organizations: readonly Organization[], orgId: number | null): Organization | null {
+    return orgId === null ? null : (organizations.find((organization) => organization.id === orgId) ?? null);
 }

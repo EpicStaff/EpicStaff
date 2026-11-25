@@ -11,7 +11,7 @@ from litestar.openapi.plugins import (
     SwaggerRenderPlugin,
 )
 from presentation.rest.controllers.maintenances import MaintenanceController
-from presentation.rest.controllers.rag import RagController
+from presentation.rest.controllers.rag import GraphRagReadController, RagController
 from presentation.rest.error_handlers import get_error_handlers
 
 configure_logging()
@@ -22,6 +22,7 @@ app = Litestar(
     route_handlers=[
         MaintenanceController,
         RagController,
+        GraphRagReadController,
     ],
     on_startup=get_lifespans("on_startup"),
     on_shutdown=get_lifespans("on_shutdown"),

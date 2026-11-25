@@ -10,8 +10,12 @@ export const SCENE_BACKGROUND = 0x000000;
 export const MAX_PIXEL_RATIO = 2;
 
 /** Label pill colors (approximates --tooltip-bg and --color-text-primary). */
-export const LABEL_BACKGROUND_COLOR = 'rgba(30, 30, 34, 1)';
+export const LABEL_BACKGROUND_COLOR = 'rgba(30, 30, 30, 1)';
 export const LABEL_TEXT_COLOR = '#e8e8ec';
+/** Light outline around the pill, so it reads clearly on the dark scene background. */
+export const LABEL_BORDER_COLOR = 'rgba(200, 200, 210, 0.9)';
+export const LABEL_BORDER_WIDTH = 2;
+export const LABEL_FONT_WEIGHT = 400;
 
 /** Stable color palette for entity types — high-saturation, high-contrast hues. */
 export const TYPE_COLORS: readonly string[] = [
@@ -59,12 +63,32 @@ export const LABEL_HORIZONTAL_PADDING = 12;
 export const LABEL_SPRITE_HEIGHT = 8;
 /** Gap between a node's top edge and its label, in world units. */
 export const LABEL_OFFSET_ABOVE_NODE = 4;
+
+/**
+ * Minimum on-screen node radius (px) at which a label shows. Higher = fewer labels, lower = more.
+ * 2D uses the node's own radius (per-node toggle); 3D uses NODE_MIN_RADIUS as a reference so
+ * visibility depends on view depth alone. Range: 0 (always show) … ~20 (effectively never).
+ */
+export const LABEL_MIN_NODE_PIXEL_RADIUS_2D = 6;
+export const LABEL_MIN_NODE_PIXEL_RADIUS_3D = 5;
+
+/**
+ * How strongly node size spreads the 2D toggle zoom across nodes. 0 = all nodes toggle together,
+ * 1 = linear in radius (4× zoom spread between smallest and biggest). Range: 0 … 1.
+ */
+export const LABEL_SIZE_INFLUENCE_2D = 1;
+
+/**
+ * 2D label pill size multiplier (applied after ortho-zoom cancellation). Higher = bigger pills.
+ * Range: > 0 (≈ 1 renders at authored pixel size, past ~5 pills overflow neighbour nodes).
+ */
+export const LABEL_SCREEN_SIZE_SCALE_2D = 2;
 /** Gap between a node's top edge and the anchor of its hover tooltip, in world units. */
 export const HOVER_TOOLTIP_OFFSET_ABOVE_NODE = 2;
 
 /** Node radius range in world units; a node's radius grows linearly with its degree. */
 export const NODE_MIN_RADIUS = 4;
-export const NODE_MAX_RADIUS = 16;
+export const NODE_MAX_RADIUS = 25;
 
 /** Sphere tessellation of the node and node-outline meshes — both must match so the outline wraps the node. */
 export const NODE_SPHERE_WIDTH_SEGMENTS = 16;
@@ -83,7 +107,7 @@ export const HIGHLIGHT_LINE_FLOATS_PER_EDGE = 6;
 export const EDGE_COLOR: ColorTuple = [0.5, 0.5, 0.55];
 
 /** Hover colors — the hovered node's outline and its connected edges. */
-export const HOVERED_BORDER_COLOR: ColorTuple = [0.42, 0.45, 0.98]; // accent / indigo
+export const HOVERED_BORDER_COLOR: ColorTuple = [0.408, 0.372, 1.0]; // accent purple (#685fff)
 export const HIGHLIGHT_EDGE_COLOR: ColorTuple = [0.75, 0.6, 0.15]; // deeper amber
 export const OUTLINE_SCALE = 1.35; // how much larger the outline ring is vs the node
 export const DOTS_PER_EDGE = 3;
@@ -157,6 +181,14 @@ export const SIMULATION_LINK_DISTANCE = 40;
 export const SIMULATION_CHARGE_STRENGTH = -150;
 /** Gap the layout keeps between the surfaces of two nodes, in world units, so no node is drawn over another. */
 export const SIMULATION_COLLISION_PADDING = 2;
+
+/**
+ * Weak per-axis spring that pulls every node toward the origin. Inside a cluster local repulsion and links
+ * dominate, so cluster shape and density do not change; at long distance the spring accumulates and keeps a
+ * small cluster from drifting far from a big one — `forceCenter` alone only shifts the whole system's
+ * centroid to the origin, it does not pull individual clusters back.
+ */
+export const SIMULATION_GRAVITY_STRENGTH = 0.03;
 
 /**
  * Community grouping: each tick a node's velocity moves by `(centroid − position) × strength × alpha`, toward
