@@ -6,7 +6,9 @@ from django.conf import settings
 from foundation.cryptographer import FernetRotatedCryptographer
 
 # The consumers' own copy of the marker syntax, independent of django_app's.
-SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
+SECRET_MARKER_RE = re.compile(
+    r"epicstaff_secret\(\s*((?!epicstaff_secret\()[^)\s](?:(?:(?!epicstaff_secret\()[^)])*[^)\s])?)\s*\)"
+)
 
 
 def consumer_cryptographer() -> FernetRotatedCryptographer:

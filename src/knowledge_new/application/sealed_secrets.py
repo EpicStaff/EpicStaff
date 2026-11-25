@@ -7,8 +7,10 @@ from foundation.cryptographer import AbstractCryptographer, CryptographerError
 
 __all__ = ["open_sealed_secrets"]
 
-# Byte-identical to the producer's, in django_app tables/services/secrets/secret_resolver.py.
-_SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
+# Byte-identical to the producer's, in django_app utils/secret_marker.py.
+_SECRET_MARKER_RE = re.compile(
+    r"epicstaff_secret\(\s*((?!epicstaff_secret\()[^)\s](?:(?:(?!epicstaff_secret\()[^)])*[^)\s])?)\s*\)"
+)
 
 
 def open_sealed_secrets[TCommand: (RunIndex, RunSearch)](
