@@ -26,6 +26,9 @@ from django.core.signals import request_finished, request_started
 from django.db import close_old_connections
 from django.test import override_settings
 from django.urls import reverse
+from rest_framework.parsers import JSONParser
+from rest_framework.request import Request
+from rest_framework.test import APIRequestFactory
 
 from django_app.asgi import application, django_asgi_app
 from rbac.models import PasswordResetToken
@@ -35,6 +38,7 @@ from rbac.throttles import (
     LoginThrottle,
     PasswordResetConfirmThrottle,
     PasswordResetRequestIpThrottle,
+    PasswordResetRequestThrottle,
     TokenRefreshThrottle,
 )
 
@@ -520,3 +524,57 @@ def test_login_account_cap_answers_alike_for_registered_and_unknown_emails(
     assert registered.json() == unknown.json()
     assert registered.headers["Retry-After"] == unknown.headers["Retry-After"]
     assert "access" not in registered.json()
+
+
+# --- cache keys stay a fixed size whatever account the caller sends ---------
+
+HUGE_ACCOUNT = "a" * 100_000
+MAX_KEY_LENGTH = 200
+
+
+class _AccountView:
+    throttle_account_field = "email"
+
+
+def _cache_key(throttle_class, email, view=None):
+    request = APIRequestFactory().post("/", {"email": email}, format="json")
+    request = Request(request, parsers=[JSONParser()])
+    return throttle_class().get_cache_key(
+        request, _AccountView() if view is None else view
+    )
+
+
+ACCOUNT_THROTTLES = [LoginThrottle, LoginAccountThrottle, PasswordResetRequestThrottle]
+
+
+@pytest.mark.parametrize("throttle_class", ACCOUNT_THROTTLES)
+def test_cache_key_of_a_huge_account_is_bounded(throttle_class):
+    key = _cache_key(throttle_class, HUGE_ACCOUNT)
+
+    assert len(key) < MAX_KEY_LENGTH
+    assert HUGE_ACCOUNT not in key
+
+
+@pytest.mark.parametrize("throttle_class", ACCOUNT_THROTTLES)
+def test_cache_key_ignores_case_and_surrounding_whitespace(throttle_class):
+    assert _cache_key(throttle_class, "  Alice@Example.COM ") == _cache_key(
+        throttle_class, "alice@example.com"
+    )
+
+
+@pytest.mark.parametrize("throttle_class", ACCOUNT_THROTTLES)
+def test_cache_key_differs_per_account(throttle_class):
+    assert _cache_key(throttle_class, "alice@example.com") != _cache_key(
+        throttle_class, "bob@example.com"
+    )
+
+
+def test_empty_account_is_keyed_on_ip_only_or_not_at_all():
+    ip_only = _cache_key(LoginThrottle, "")
+
+    assert ip_only == _cache_key(LoginThrottle, "   ")
+    assert "|" not in ip_only
+    reset_key = _cache_key(PasswordResetRequestThrottle, "")
+    assert reset_key.startswith("throttle_password_reset_request_")
+    assert "|" not in reset_key
+    assert _cache_key(LoginAccountThrottle, "") is None
