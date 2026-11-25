@@ -2037,7 +2037,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             },
             field: 'continue_flag',
             editable: true,
-            minWidth: 80,
+            // One checkbox: fixed to the width its "Continue" label and chevron need. The
+            // max width also caps a width saved before it was fixed, and fitting the
+            // columns to the panel never grows it.
+            width: 100,
+            minWidth: 100,
+            maxWidth: 100,
+            resizable: false,
             cellDataType: 'boolean',
             suppressMovable: true,
             cellStyle: {

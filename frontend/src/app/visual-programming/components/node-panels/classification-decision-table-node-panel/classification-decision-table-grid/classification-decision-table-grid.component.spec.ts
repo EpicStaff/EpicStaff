@@ -406,6 +406,25 @@ describe(
             });
         });
 
+        describe('the Continue column', () => {
+            function continueWidth(): string | undefined {
+                return host.querySelector<HTMLElement>('.ag-header-cell[col-id="continue_flag"]')?.style.width;
+            }
+
+            it('has a narrow fixed width', async () => {
+                await render();
+
+                expect(continueWidth()).toBe('100px');
+            });
+
+            it('keeps that width over a wider one saved for it before', async () => {
+                localStorage.setItem(`cdt-grid-state-${NODE_ID}`, JSON.stringify({ widths: { continue_flag: 200 } }));
+                await render();
+
+                expect(continueWidth()).toBe('100px');
+            });
+        });
+
         describe('freezing columns from a column header menu', () => {
             /** Opens the header menu of `colId` and returns its freeze items, by label. */
             async function openFreezeItems(colId: string): Promise<Map<string, HTMLElement>> {
