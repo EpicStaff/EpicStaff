@@ -8,7 +8,7 @@ from loguru import logger
 
 from es_plugins.hardening import make_not_dumpable
 from es_plugins.launcher.directory_setup import DirectorySetup
-from es_plugins.launcher.kill_by_uid import signal_uid
+from es_plugins.launcher.kill_by_uid import check_signaller_uid, signal_uid
 from es_plugins.launcher.privileged_launcher import (
     LauncherOperations,
     LauncherServer,
@@ -62,6 +62,7 @@ def main() -> int:
     os.umask(0o022)
     try:
         uid_range = UidRange.parse(os.environ.get("PLUGINS_NODE_UID_RANGE", ""))
+        check_signaller_uid(uid_range)
     except ValueError as error:
         logger.error("{}", error)
         return EXIT_CONFIGURATION_ERROR

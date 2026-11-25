@@ -458,7 +458,7 @@ else
   fail "the disk cap: $(placement 1 '[.observed_state, .restarts, .last_error] | tostring') $(cat "$work/fill.json")"
 fi
 
-echo "# kill by UID, runtime file rewrite, purge"
+echo "# kill by UID, runtime file rewrite"
 
 call probe-b 20002 /api/daemons "count=3" > "$work/daemons.json"
 daemons=$(jq -r '.started | join(" ")' "$work/daemons.json")
@@ -501,21 +501,7 @@ check "the launcher answers no peer but the agent, not even root ($refusal)" \
 check "the launcher logged the refused peer" sh -c "docker logs $node 2>&1 | grep -q 'Refused a launcher connection from UID 0'"
 
 change 2 '{"desired_state": "stopped"}'
-if wait_for 60 field_is 2 .observed_state stopped; then
-  # As the agent's UID and GID: the launcher's socket directory is root:10000, mode 0750.
-  docker exec --user 10000:10000 "$node" python -c "
-import asyncio
-from es_plugins.agent.launcher_client import LauncherClient
-async def purge():
-    client = LauncherClient(__import__('pathlib').Path('/run/es_launcher/launcher.sock'))
-    await client.connect()
-    await client.purge_data('probe-b', 20002)
-asyncio.run(purge())
-" > "$work/purge.out" 2>&1 || true
-  check "purging probe-b's data (as its UID, through the launcher) removes its HOME, keeps its code" \
-    sh -c "! docker exec $node test -e /var/lib/es_plugins/data/probe-b && docker exec $node test -d /var/lib/es_plugins/plugins/probe-b"
-  if [ -s "$work/purge.out" ]; then sed 's/^/    /' "$work/purge.out"; fi
-else
+if ! wait_for 60 field_is 2 .observed_state stopped; then
   fail "probe-b did not stop for desired_state stopped"
 fi
 

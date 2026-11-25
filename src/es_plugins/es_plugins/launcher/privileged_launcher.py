@@ -150,10 +150,6 @@ class LauncherOperations:
                     process_table=self._process_table,
                 )
                 return None, [result_pipe]
-            case protocol.PurgeData(plugin=plugin, uid=uid):
-                kill_uid(uid, self._process_table, reap=self.reap)
-                self._directory_setup.purge_plugin_data(plugin, uid)
-                return None, []
             case protocol.RemovePlugin(plugin=plugin, uid=uid):
                 return None, [self._start_removal(plugin, uid)]
         raise LauncherRefusalError(f"unknown operation {request.operation}")

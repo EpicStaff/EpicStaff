@@ -959,7 +959,7 @@ async def test_the_launcher_answers_other_requests_while_a_removal_deletes_a_lar
     removing_client, other_client = LauncherClient(layout.launcher_socket), LauncherClient(layout.launcher_socket)
     try:
         await removing_client.prepare_plugin("weather", PLUGIN_UID)
-        assert run_as_user(PLUGIN_UID, lambda: _fill_home(layout.plugin_home("weather"), 50_000))
+        assert run_as_user(PLUGIN_UID, lambda: _fill_home(layout.plugin_home("weather"), 50_000), timeout_seconds=120)
         removal = asyncio.create_task(removing_client.remove_plugin("weather", PLUGIN_UID, timeout_seconds=120))
         await asyncio.sleep(0.05)
 
@@ -1036,7 +1036,7 @@ async def test_a_second_removal_while_the_first_runs_is_answered_as_temporary(la
     first, second = LauncherClient(layout.launcher_socket), LauncherClient(layout.launcher_socket)
     try:
         await first.prepare_plugin("weather", PLUGIN_UID)
-        assert run_as_user(PLUGIN_UID, lambda: _fill_home(layout.plugin_home("weather"), 50_000))
+        assert run_as_user(PLUGIN_UID, lambda: _fill_home(layout.plugin_home("weather"), 50_000), timeout_seconds=120)
         removal = asyncio.create_task(first.remove_plugin("weather", PLUGIN_UID, timeout_seconds=120))
         await asyncio.sleep(0.05)
 
