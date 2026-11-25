@@ -413,6 +413,13 @@ Minting itself (`_mint_and_persist()`):
   `session` / `python_code_result` / `realtime_agent_chat` via a
   `CheckConstraint`. `secret_key` is never persisted — it only ever travels
   in the in-memory/Redis payload for that one execution.
+- Nothing is minted for an organization over its storage quota
+  (`is_over_quota`, used bytes strictly above `ORG_STORAGE_QUOTA`): run code
+  writes straight to the store, past the upload quota check, so the credential
+  is the gate. The caller gets `409 organization_storage_full`
+  (`OrganizationStorageFullError`, a run admission refusal): a session is
+  stopped, a Test-run result and a realtime chat row are deleted, and a
+  Test run evicts none of the org's stored results.
 - Minting is not best-effort: a failure (scope validation, the Admin API
   call, or the DB write) raises and stops the caller (session startup, the
   Test-run request, or realtime chat init) — there is no silent fallback to
@@ -436,6 +443,53 @@ revoke leaves the row in place for the manager's daily cleanup job
 (`src/manager/services/storage_account_cleanup_service.py`) to retry later.
 Revocation failure is logged and swallowed: it never blocks the caller's own
 completion (status update, result persistence, or chat teardown).
+
+After a successful revoke, multipart uploads left incomplete in the run's own
+folders (`sessions/<id>/`, or the `test-runs/` folders of a Test run) are
+aborted: their parts take space that no object, listing or notification shows.
+Shared folders are left alone, since the store does not say who started an
+upload there; the bucket's lifecycle rule aborts any upload a day after it
+started.
+
+`revoke_for_organization()` revokes every account of an organization's live
+runs at once. The bucket notifications call it when an organization is over
+its quota (see below), so a run that fills the store is cut off while it runs.
+Each run's own end-of-life revocation then finds nothing left to do.
+
+### Bucket notifications: indexing what run code writes
+
+Run code writes with its temporary account straight to the store, so django
+learns about those writes from the store itself. `storage` sends every
+`s3:ObjectCreated:*` and `s3:ObjectRemoved:*` event of the bucket to
+`django_app` at `POST /internal/storage-events/`
+(`tables/views/storage_bucket_events_view.py` →
+`tables/services/storage_service/bucket_events.py`).
+
+- The route sits outside `api/`: epicstaff-nginx never proxies it, only
+  containers on django's networks reach it, and it has no credentials.
+- A record only names a key. django reads that key again from the store
+  (`StorageReconciler.reconcile_file`) under the org row lock and makes the
+  `StorageFile` row match, so a replayed, late or forged record changes
+  nothing a re-read would not.
+- Records written by django's own storage account (`principalId` equal to
+  `STORAGE_ACCESS_KEY`) are skipped: the app indexes its own writes in the
+  request, and reconciling in between would race it (a rename's delete event
+  would drop the row being moved, with its flow attachments).
+- Skipped too: other buckets, keys outside `org_<id>/`, folder markers and the
+  recycle bin.
+- An object with a blocked executable extension, or with a key the index
+  cannot name (a backslash, which `storage_key` rewrites), is deleted from the
+  store. It is never indexed, so kept it would be bytes outside the quota.
+- After a notification, an organization over its quota loses every temporary
+  account (`revoke_for_organization`).
+- An error answers 500 and the store sends the notification again: undelivered
+  notifications wait in `storage`'s queue directory (volume
+  `rustfs_notify_queue`). With the queue a notification reaches django about
+  4–5 s after the write, so the quota can be overshot by what a run writes in
+  that time.
+
+The end-of-run reconcile of the run's granted folders still runs as before; it
+is the fallback for anything a notification missed.
 
 ### Deny Statement Verification
 
@@ -465,8 +519,10 @@ calls the storage backend itself.
 
 The storage server is a core service — it starts with every `docker compose up`. No profiles are needed.
 
-- **`storage`** — RustFS (`rustfs/rustfs:1.0.4`, pinned by digest), volume: `rustfs_data`.
-- **`storage-init`** — one-shot container (`curlimages/curl:8.23.0`, pinned by digest) that creates the bucket with a SigV4-signed `curl` request; restarts on failure until successful
+- **`storage`** — RustFS (`rustfs/rustfs:1.0.4`, pinned by digest), volumes: `rustfs_data`, and `rustfs_notify_queue` for bucket notifications django has not taken yet. Its `RUSTFS_NOTIFY_*` variables send bucket notifications to `django_app`; `RUSTFS_OUTBOUND_ALLOW_ORIGINS` must name the endpoint, or the webhook target silently fails to start.
+- **`storage-init`** — one-shot container (`curlimages/curl:8.23.0`, pinned by digest) that creates the bucket with a SigV4-signed `curl` request, sets the avatar read policy, subscribes the bucket to the notification target, and sets the lifecycle rule that aborts multipart uploads one day after they start; restarts on failure until successful. Each of these PUTs replaces the bucket's whole configuration of that kind.
+
+After `storage` is recreated, restart `sandbox_worker`: its egress firewall pins the storage container's IP at startup, so sandbox code cannot reach a recreated storage container until then.
 
 The `django_app` and `knowledge_new` services depend on `storage` being healthy before starting.
 
