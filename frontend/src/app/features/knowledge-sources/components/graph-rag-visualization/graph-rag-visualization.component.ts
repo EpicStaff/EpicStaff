@@ -10,6 +10,7 @@ import {
     input,
     NgZone,
     OnInit,
+    output,
     signal,
     untracked,
     viewChild,
@@ -39,6 +40,8 @@ import {
     GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
     GRAPH_VISUALIZATION_DETAIL_PANEL_WIDTH_KEY,
     GRAPH_VISUALIZATION_DETAIL_PANEL_WIDTH_OPTIONS,
+    GRAPH_VISUALIZATION_GROUP_BY_COMMUNITY_KEY,
+    GRAPH_VISUALIZATION_MAX_TOTAL_ENTITIES,
     GRAPH_VISUALIZATION_MIN_ENTITIES,
     GRAPH_VISUALIZATION_SIDEBAR_WIDTH_KEY,
     GRAPH_VISUALIZATION_SIDEBAR_WIDTH_OPTIONS,
@@ -46,6 +49,9 @@ import {
 import { isGraphNotIndexedError } from '../../helpers/graph-not-indexed-error.util';
 import { GraphVisualizationData, VisualizationEntity } from '../../models/graph-visualization.model';
 import { GraphRagService } from '../../services/graph-rag.service';
+import { GraphRagLinkPairsStorageService } from '../../services/graph-rag-link-pairs-storage.service';
+import { LinkedToTargetType } from '../graph-rag-linked-to-picker/linked-to-targets';
+import { GraphRagOpenInPickerComponent } from '../graph-rag-open-in-picker/graph-rag-open-in-picker.component';
 import { DRAG_REHEAT_ALPHA } from './graph-scene.constants';
 import { ForceLayoutNode, GraphEdge, GraphNode } from './graph-scene.model';
 import { GraphSceneService } from './graph-scene.service';
@@ -56,6 +62,17 @@ import { createLayoutSimulation, getLayoutStartPositions } from './graph-scene.u
  * - `not-indexed`: the backend answered 409 `graph_not_indexed` — the graph exists but has not been indexed yet.
  */
 type ViewState = 'loading' | 'ready' | 'no-matches' | 'not-indexed' | 'error';
+
+/**
+ * Payload for the "Open in" request raised from the detail panel: emit which subject table the user
+ * wants to jump to, together with the type and id of the currently selected node ('entities') or
+ * edge ('relationships') that should prime the linked-to filter.
+ */
+export interface GraphRagOpenInRequest {
+    subject: LinkedToTargetType;
+    linkedToType: 'entities' | 'relationships';
+    linkedToId: string;
+}
 
 interface EntityTypeFilter {
     type: string | null;
@@ -91,12 +108,14 @@ interface SimulationNode extends ForceLayoutNode {
         ToggleSwitchComponent,
         AppSvgIconComponent,
         RadioButtonComponent,
+        GraphRagOpenInPickerComponent,
     ],
     providers: [GraphSceneService],
 })
 export class GraphRagVisualizationComponent implements OnInit {
-    // 1. Inputs
+    // 1. Inputs / Outputs
     readonly ragId = input.required<number>();
+    readonly openInRequested = output<GraphRagOpenInRequest>();
 
     // 2. ViewChild
     private readonly graphCanvas = viewChild<ElementRef<HTMLCanvasElement>>('graphCanvas');
@@ -108,9 +127,8 @@ export class GraphRagVisualizationComponent implements OnInit {
     readonly is3D = signal(false);
     readonly maxEntities = signal(GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES);
     readonly searchTerm = signal('');
-    readonly labelsVisible = signal(false);
     /** Clusters nodes around their top-level community and colors them by it. */
-    readonly groupByCommunity = signal(true);
+    readonly groupByCommunity = signal(readStoredBoolean(GRAPH_VISUALIZATION_GROUP_BY_COMMUNITY_KEY, true));
     /** Entities of the graph currently drawn. */
     private readonly drawnEntities = signal<VisualizationEntity[]>([]);
     /**
@@ -122,15 +140,27 @@ export class GraphRagVisualizationComponent implements OnInit {
     readonly selectedEdgeIndex = signal<number | null>(null);
     readonly hoveredNodeTitle = signal<string | null>(null);
     readonly hoverPosition = signal<{ x: number; y: number }>({ x: 0, y: 0 });
+    /**
+     * Title + screen-space position of the selected node's HTML label pill, bound together so the overlay
+     * never shows the new node's title at the old position for a frame when selection changes.
+     */
+    readonly selectedLabelOverlay = signal<{ title: string; x: number; y: number } | null>(null);
 
     readonly toolbarVisible = signal(false);
     readonly entityCount = signal(0);
     readonly totalEntityCount = signal(0);
     readonly relationshipCount = signal(0);
 
-    /** Never below the current value, so the control cannot clamp what is already displayed. */
+    /** Hard-capped at GRAPH_VISUALIZATION_MAX_TOTAL_ENTITIES: the backend splits a request into at most
+     * GRAPH_VISUALIZATION_MAX_PARALLEL_PAGES pages of GRAPH_VISUALIZATION_MAX_ENTITIES_PER_REQUEST each,
+     * so nothing beyond that can be fetched — even if the graph has more entities. Within the cap,
+     * never below totalEntityCount or the current maxEntities so the control cannot clamp what is
+     * already displayed. */
     readonly sliderMax = computed(() =>
-        Math.max(this.totalEntityCount(), this.maxEntities(), GRAPH_VISUALIZATION_MIN_ENTITIES)
+        Math.min(
+            GRAPH_VISUALIZATION_MAX_TOTAL_ENTITIES,
+            Math.max(this.totalEntityCount(), this.maxEntities(), GRAPH_VISUALIZATION_MIN_ENTITIES)
+        )
     );
     readonly sliderStep = computed(() => {
         const total = this.totalEntityCount();
@@ -188,6 +218,15 @@ export class GraphRagVisualizationComponent implements OnInit {
     /** The sidebar stays mounted across reloads; its filters only apply to a drawn graph. */
     readonly typeFiltersDisabled = computed(() => this.viewState() !== 'ready');
 
+    /** Subject tables that accept a node row (entities) as a linked-to filter. */
+    readonly openInTargetsForNode = computed<readonly LinkedToTargetType[]>(() =>
+        this.linkPairsStore.subjectsAcceptingLinkedTo('entities')
+    );
+    /** Subject tables that accept an edge row (relationships) as a linked-to filter. */
+    readonly openInTargetsForEdge = computed<readonly LinkedToTargetType[]>(() =>
+        this.linkPairsStore.subjectsAcceptingLinkedTo('relationships')
+    );
+
     // 4. Effects
     /**
      * Keeps the 3D scene bound to the canvas element: creates it once the canvas exists and graph
@@ -228,7 +267,11 @@ export class GraphRagVisualizationComponent implements OnInit {
 
     /** Mirror the selected node into the scene so it keeps a border + persistent label while the panel is open. */
     private readonly selectedNodeSceneEffect = effect(() => {
-        this.sceneService.setSelectedNode(this.selectedNodeIndex());
+        const index = this.selectedNodeIndex();
+        this.sceneService.setSelectedNode(index);
+        // Clear the HTML label overlay synchronously on any selection change, so when switching between
+        // two nodes it never renders the new node's title at the previous node's screen position for a frame.
+        untracked(() => this.selectedLabelOverlay.set(null));
     });
 
     /** Keep the scene's color mode in sync with the toggle — otherwise the default-on state never reaches it. */
@@ -267,6 +310,8 @@ export class GraphRagVisualizationComponent implements OnInit {
     private readonly graphRagService = inject(GraphRagService);
     private readonly sceneService = inject(GraphSceneService);
     private readonly ngZone = inject(NgZone);
+    private readonly linkPairsStore = inject(GraphRagLinkPairsStorageService);
+    private readonly destroyRef = inject(DestroyRef);
 
     private simulation: { stop: () => void; reheat: () => void } | null = null;
     private simNodes: SimulationNode[] = [];
@@ -286,7 +331,7 @@ export class GraphRagVisualizationComponent implements OnInit {
     private hoveredFilterIndex: number | null = null;
 
     constructor() {
-        inject(DestroyRef).onDestroy(() => {
+        this.destroyRef.onDestroy(() => {
             this.destroyed = true;
             this.teardownScene();
         });
@@ -359,6 +404,9 @@ export class GraphRagVisualizationComponent implements OnInit {
 
     // 8. Lifecycle
     ngOnInit(): void {
+        // The data-tables tab also primes this cache; shareReplay dedupes, so calling it here is
+        // safe and guarantees the Open-in picker's allowed targets are available before selection.
+        this.linkPairsStore.ensureLoaded().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
         this.loadData();
     }
 
@@ -386,16 +434,9 @@ export class GraphRagVisualizationComponent implements OnInit {
         this.searchTrigger$.next(term);
     }
 
-    onToggleLabels(visible: boolean): void {
-        this.labelsVisible.set(visible);
-        this.sceneService.setLabelsVisible(visible);
-        if (visible) {
-            this.hoveredNodeTitle.set(null);
-        }
-    }
-
     onToggleGroupByCommunity(enabled: boolean): void {
         this.groupByCommunity.set(enabled);
+        writeStoredBoolean(GRAPH_VISUALIZATION_GROUP_BY_COMMUNITY_KEY, enabled);
         void this.startSimulation();
     }
 
@@ -415,6 +456,10 @@ export class GraphRagVisualizationComponent implements OnInit {
         const filter = this.entityTypeFilters()[filterIndex];
         if (!filter || !filter.checked) return;
         this.sceneService.zoomToType(filter.type);
+    }
+
+    onFitToView(): void {
+        this.sceneService.fitToView();
     }
 
     onTypeFilterChange(filterIndex: number, checked: boolean): void {
@@ -471,6 +516,9 @@ export class GraphRagVisualizationComponent implements OnInit {
                 // It was a click, not a drag — select the node
                 this.selectedNodeIndex.set(this.draggedNodeIndex);
                 this.selectedEdgeIndex.set(null);
+                // Hover suppresses itself on the selected node, but the HTML tooltip signal lingers until
+                // the next pointer move. Clear it now so it doesn't briefly overlay the selected-node pill.
+                this.hoveredNodeTitle.set(null);
             }
             this.releaseDraggedNode();
         } else if (this.clickedEdgeOnDown >= 0) {
@@ -498,6 +546,18 @@ export class GraphRagVisualizationComponent implements OnInit {
 
     retryLoad(): void {
         this.loadData();
+    }
+
+    onOpenInNode(target: LinkedToTargetType): void {
+        const node = this.selectedNode();
+        if (!node) return;
+        this.openInRequested.emit({ subject: target, linkedToType: 'entities', linkedToId: node.id });
+    }
+
+    onOpenInEdge(target: LinkedToTargetType): void {
+        const edge = this.selectedEdge();
+        if (!edge) return;
+        this.openInRequested.emit({ subject: target, linkedToType: 'relationships', linkedToId: edge.id });
     }
 
     closeDetailPanel(): void {
@@ -574,7 +634,29 @@ export class GraphRagVisualizationComponent implements OnInit {
         if (this.destroyed || generation !== this.sceneGeneration) return;
 
         this.sceneService.initScene(canvas, container, this.is3D());
+        this.sceneService.setAfterRenderCallback(() => this.updateSelectedLabelPosition());
         await this.startSimulation();
+    }
+
+    /**
+     * Reproject the selected node to screen space each rendered frame, so its HTML label follows camera motion.
+     * Runs outside the Angular zone — re-enter it only when the position actually changes, to avoid change detection on every frame while idle.
+     */
+    private updateSelectedLabelPosition(): void {
+        const index = this.selectedNodeIndex();
+        const container = this.canvasContainer()?.nativeElement;
+        if (index === null || !container || !this.sceneService.isNodeIndexVisible(index)) {
+            if (this.selectedLabelOverlay() !== null) {
+                this.ngZone.run(() => this.selectedLabelOverlay.set(null));
+            }
+            return;
+        }
+        const node = this.sceneService.getNodes()[index];
+        const position = node ? this.sceneService.projectToScreen(index, container) : null;
+        if (!node || !position) return;
+        const current = this.selectedLabelOverlay();
+        if (current && current.title === node.title && current.x === position.x && current.y === position.y) return;
+        this.ngZone.run(() => this.selectedLabelOverlay.set({ title: node.title, x: position.x, y: position.y }));
     }
 
     /** Stop the simulation and dispose the scene; any in-flight initialization is abandoned. */
@@ -582,8 +664,10 @@ export class GraphRagVisualizationComponent implements OnInit {
         this.sceneGeneration++;
         this.simulationGeneration++;
         this.stopSimulation();
+        this.sceneService.setAfterRenderCallback(null);
         this.sceneService.dispose();
         this.sceneCanvas = null;
+        this.selectedLabelOverlay.set(null);
     }
 
     private async startSimulation(): Promise<void> {
@@ -654,8 +738,9 @@ export class GraphRagVisualizationComponent implements OnInit {
         if (nodeIndex >= 0) {
             this.sceneService.setHoveredEdge(null);
             this.sceneService.setHoveredNode(nodeIndex);
-            // The selected node already shows its title via a persistent sprite — skip the hover tooltip for it.
-            if (!this.labelsVisible() && nodeIndex !== this.selectedNodeIndex()) {
+            // The selected node already has its own HTML label overlay — skip the hover tooltip only for it.
+            // The sprite label of the hovered node is hidden in the scene, so the hover pill replaces it instead of stacking.
+            if (nodeIndex !== this.selectedNodeIndex()) {
                 this.setHoverTooltip(nodeIndex, containerRef.nativeElement);
             } else {
                 this.setHoverTooltip(null);
@@ -747,5 +832,24 @@ export class GraphRagVisualizationComponent implements OnInit {
             );
             this.sceneService.setVisibleTypes(visibleTypes);
         }
+    }
+}
+
+/** Reads a persisted boolean toggle; returns `fallback` when storage is empty or unavailable. */
+function readStoredBoolean(key: string, fallback: boolean): boolean {
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw === null) return fallback;
+        return raw === 'true';
+    } catch {
+        return fallback;
+    }
+}
+
+function writeStoredBoolean(key: string, value: boolean): void {
+    try {
+        localStorage.setItem(key, String(value));
+    } catch {
+        // localStorage unavailable (quota exceeded, private mode) — the toggle still holds in memory.
     }
 }
