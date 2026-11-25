@@ -1,5 +1,6 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { DatePipe } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 import { getRelativeTime } from '@shared/utils';
 
 import { DASHBOARD_TRIGGER_TYPES } from '../../constants/dashboard-trigger-types';
@@ -8,6 +9,10 @@ import {
     DashboardLiveSession,
     DashboardTriggerType,
 } from '../../models/dashboard-report.model';
+import {
+    ActiveTriggersDialogComponent,
+    ActiveTriggersDialogData,
+} from '../active-triggers-dialog/active-triggers-dialog.component';
 
 const PREVIEW_ROWS = 7;
 
@@ -21,6 +26,9 @@ const PREVIEW_ROWS = 7;
 export class ActiveTriggersCardComponent {
     readonly triggers = input.required<DashboardActiveTrigger[]>();
     readonly waitingSessions = input.required<DashboardLiveSession[]>();
+    private readonly dialog = inject(Dialog);
+    protected readonly previewRows = PREVIEW_ROWS;
+    protected readonly total = computed(() => this.triggers().length + this.waitingSessions().length);
 
     protected readonly triggerTypes = DASHBOARD_TRIGGER_TYPES;
     protected readonly getRelativeTime = getRelativeTime;
@@ -38,4 +46,13 @@ export class ActiveTriggersCardComponent {
             })
             .join(' · ')
     );
+
+    protected openAll(): void {
+        this.dialog.open<void, ActiveTriggersDialogData>(ActiveTriggersDialogComponent, {
+            width: 'calc(100vw - 2rem)',
+            height: 'calc(100vh - 2rem)',
+            maxWidth: '100vw',
+            data: { triggers: this.triggers(), waitingSessions: this.waitingSessions() },
+        });
+    }
 }

@@ -7,7 +7,18 @@
         Active triggers
         <span class="active-triggers-card__count">{{ triggers().length }}</span>
     </span>
-    <span class="active-triggers-card__summary">{{ summary() }}</span>
+    <div class="active-triggers-card__head-right">
+        <span class="active-triggers-card__summary">{{ summary() }}</span>
+        @if (total() > previewRows) {
+            <button
+                type="button"
+                class="active-triggers-card__view-all"
+                (click)="openAll()"
+            >
+                View all {{ total() }}
+            </button>
+        }
+    </div>
 </div>
 
 @if (triggers().length || waitingSessions().length) {

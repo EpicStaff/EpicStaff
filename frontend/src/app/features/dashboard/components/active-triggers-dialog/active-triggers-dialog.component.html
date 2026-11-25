@@ -1,0 +1,74 @@
+<div
+    class="triggers-dialog"
+    role="dialog"
+    aria-labelledby="triggers-dialog-title"
+>
+    <header class="triggers-dialog__header">
+        <div>
+            <h2
+                id="triggers-dialog-title"
+                class="triggers-dialog__title"
+            >
+                Active triggers <span class="triggers-dialog__count">{{ rows.length }}</span>
+            </h2>
+            <p class="triggers-dialog__desc">
+                Triggers waiting for an event or a schedule, and sessions waiting for a user.
+            </p>
+        </div>
+        <button
+            type="button"
+            class="triggers-dialog__close"
+            aria-label="Close"
+            matTooltip="Close"
+            (click)="close()"
+        >
+            <app-svg-icon
+                icon="x"
+                size="16px"
+            />
+        </button>
+    </header>
+
+    <div class="triggers-dialog__body">
+        <app-table
+            [columns]="columns"
+            [data]="rows"
+        >
+            <ng-template
+                appTableCell="type"
+                let-row
+            >
+                <span [class]="'triggers-dialog__trigger triggers-dialog__trigger--' + row['type']">
+                    <i
+                        [class]="'ti ' + row['icon']"
+                        aria-hidden="true"
+                    ></i>
+                    {{ row['label'] }}
+                </span>
+            </ng-template>
+            <ng-template
+                appTableCell="flow"
+                let-row
+            >
+                {{ row['flow'] }}
+            </ng-template>
+            <ng-template
+                appTableCell="when"
+                let-row
+            >
+                <span class="triggers-dialog__muted">{{ row['when'] }}</span>
+            </ng-template>
+            <ng-template
+                appTableCell="status"
+                let-row
+            >
+                <span
+                    class="triggers-dialog__status"
+                    [class.triggers-dialog__status--waiting]="row['type'] === 'waiting'"
+                >
+                    {{ row['status'] }}
+                </span>
+            </ng-template>
+        </app-table>
+    </div>
+</div>

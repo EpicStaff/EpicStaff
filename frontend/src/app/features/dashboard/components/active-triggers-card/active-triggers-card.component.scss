@@ -96,3 +96,13 @@
     font-size: 14px;
     color: var(--color-text-secondary);
 }
+
+.active-triggers-card__head-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.active-triggers-card__view-all {
+    @include dashboard-card.view-all;
+}
