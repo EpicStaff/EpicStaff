@@ -3,6 +3,7 @@
 import os
 import signal
 import sys
+from collections.abc import Mapping
 
 from loguru import logger
 
@@ -39,6 +40,7 @@ AGENT_VARIABLES = (
 )
 AGENT_STOP_TIMEOUT_SECONDS = 8.0
 EXIT_CONFIGURATION_ERROR = 64
+_MIB = 1024 * 1024
 
 
 def agent_environment(layout: NodeLayout) -> dict[str, str]:
@@ -56,6 +58,27 @@ def agent_environment(layout: NodeLayout) -> dict[str, str]:
     return environment
 
 
+def max_file_bytes(environment: Mapping[str, str]) -> int:
+    """The largest file a plugin process may write: its whole disk cap, `ES_PLUGINS_DISK_MB_PER_PLUGIN`.
+
+    The launcher takes it from its own environment, not from each spawn request: the agent does
+    not choose a limit root enforces on the plugins.
+
+    Raises:
+        ValueError: The variable is missing or not a whole number above 0.
+    """
+    text = environment.get("ES_PLUGINS_DISK_MB_PER_PLUGIN", "")
+    try:
+        megabytes = int(text)
+    except ValueError:
+        megabytes = 0
+    if megabytes < 1:
+        raise ValueError(
+            f"ES_PLUGINS_DISK_MB_PER_PLUGIN must be a whole number above 0, not {text!r}"
+        )
+    return megabytes * _MIB
+
+
 def main() -> int:
     configure_logging("launcher")
     make_not_dumpable()
@@ -63,13 +86,16 @@ def main() -> int:
     try:
         uid_range = UidRange.parse(os.environ.get("PLUGINS_NODE_UID_RANGE", ""))
         check_signaller_uid(uid_range)
+        plugin_max_file_bytes = max_file_bytes(os.environ)
     except ValueError as error:
         logger.error("{}", error)
         return EXIT_CONFIGURATION_ERROR
     layout = NodeLayout()
     directory_setup = DirectorySetup(layout)
     directory_setup.prepare_tree()
-    operations = LauncherOperations(layout, uid_range, directory_setup, ProcessTable())
+    operations = LauncherOperations(
+        layout, uid_range, directory_setup, ProcessTable(), max_file_bytes=plugin_max_file_bytes
+    )
     server = LauncherServer(layout.launcher_socket, operations, agent_uid=AGENT_UID)
     server.listen(group=AGENT_GID)
 

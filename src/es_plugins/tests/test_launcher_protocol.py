@@ -20,7 +20,7 @@ from es_plugins.agent.launcher_client import LauncherClient, LauncherError
 from es_plugins.disk_usage import DiskUsage
 from es_plugins.launcher import protocol
 from es_plugins.launcher.directory_setup import DirectorySetup
-from es_plugins.launcher.__main__ import agent_environment
+from es_plugins.launcher.__main__ import agent_environment, max_file_bytes
 from es_plugins.launcher.kill_by_uid import kill_uid, run_as_user
 from es_plugins.launcher.privileged_launcher import (
     ACCEPT_BACKOFF_SECONDS,
@@ -34,7 +34,7 @@ from es_plugins.launcher.privileged_launcher import (
 from es_plugins.launcher.process_spawn import LISTEN_FD, SpawnError, SpawnSpec, spawn_process
 from es_plugins.process_table import ProcessTable
 from es_plugins.uid_range import UidRange
-from tests.helpers import SYSTEM_PYTHON, OwnProcessTable
+from tests.helpers import PLUGIN_MAX_FILE_BYTES, SYSTEM_PYTHON, OwnProcessTable
 
 PLUGIN_UID = 20011
 
@@ -108,7 +108,7 @@ def test_an_install_into_another_directory_is_refused(version):
 @pytest.fixture
 def operations(layout, unprivileged_setup):
     return LauncherOperations(
-        layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), unprivileged_setup, ProcessTable()
+        layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), unprivileged_setup, ProcessTable(), max_file_bytes=PLUGIN_MAX_FILE_BYTES
     )
 
 
@@ -138,7 +138,7 @@ def test_root_the_agent_and_nobody_are_never_plugin_uids(operations, uid):
 )
 def test_a_command_outside_the_plugins_venvs_is_refused(layout, unprivileged_setup, executable):
     operations = LauncherOperations(
-        layout, UidRange(PLUGIN_UID, PLUGIN_UID), unprivileged_setup, ProcessTable()
+        layout, UidRange(PLUGIN_UID, PLUGIN_UID), unprivileged_setup, ProcessTable(), max_file_bytes=PLUGIN_MAX_FILE_BYTES
     )
     executable = executable.replace("/var/lib/es_plugins", str(layout.data_root))
     listener = listening_tcp_socket()
@@ -272,7 +272,7 @@ SERVED_UID = os.getuid() or PLUGIN_UID
 @pytest.fixture
 def own_uid_operations(layout, unprivileged_setup):
     return LauncherOperations(
-        layout, UidRange(SERVED_UID, SERVED_UID), unprivileged_setup, OwnProcessTable()
+        layout, UidRange(SERVED_UID, SERVED_UID), unprivileged_setup, OwnProcessTable(), max_file_bytes=PLUGIN_MAX_FILE_BYTES
     )
 
 
@@ -611,7 +611,7 @@ def test_a_plugin_process_serves_on_the_listening_socket_it_inherits_as_fd_3(lay
     setup.prepare_tree()
     setup.prepare_plugin("weather", PLUGIN_UID)
     operations = LauncherOperations(
-        layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable()
+        layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable(), max_file_bytes=PLUGIN_MAX_FILE_BYTES
     )
     listener = listening_tcp_socket()
     read_end, write_end = os.pipe()
@@ -867,7 +867,7 @@ def test_root_measures_a_plugins_home_as_the_plugin(layout):
     data.write_bytes(b"\x01" * (3 * 1024 * 1024))
     os.chown(data, PLUGIN_UID, PLUGIN_UID)
     operations = LauncherOperations(
-        layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable()
+        layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable(), max_file_bytes=PLUGIN_MAX_FILE_BYTES
     )
 
     _, (result_pipe,) = operations.handle(
@@ -901,6 +901,53 @@ def test_a_removal_of_something_that_is_not_a_plugin_is_refused(overrides):
 def test_a_removal_for_a_uid_outside_the_range_is_refused(operations):
     with pytest.raises(LauncherRefusalError, match="outside PLUGINS_NODE_UID_RANGE"):
         operations.handle(protocol.RemovePlugin(plugin="weather", uid=PLUGIN_UID + 10), [])
+
+
+WRITE_PAST_THE_CAP = """
+import errno, os
+try:
+    with open("big", "wb") as file:
+        file.write(b"\\x01" * (2 * 1024 * 1024))
+    print("written", os.path.getsize("big"))
+except OSError as error:
+    print(errno.errorcode[error.errno], os.path.getsize("big"))
+"""
+
+
+@pytest.mark.root
+def test_a_plugin_process_cannot_write_a_file_larger_than_its_disk_cap(layout):
+    setup = DirectorySetup(layout)
+    setup.prepare_tree()
+    setup.prepare_plugin("weather", PLUGIN_UID)
+    one_mebibyte = 1024 * 1024
+    operations = LauncherOperations(
+        layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable(), max_file_bytes=one_mebibyte
+    )
+    listener = listening_tcp_socket()
+    read_end, write_end = os.pipe()
+    request = spawn_request(argv=[plugin_python(layout), "-I", "-c", WRITE_PAST_THE_CAP], environment={})
+    result, (pidfd,) = operations.handle(request, [write_end, listener.fileno()])
+    os.close(write_end)
+    try:
+        with os.fdopen(read_end, "rb") as output:
+            printed = output.read().decode()
+    finally:
+        os.close(pidfd)
+        os.waitpid(result.pid, 0)
+        listener.close()
+
+    assert printed.split() == ["EFBIG", str(one_mebibyte)]
+
+
+@pytest.mark.parametrize(("megabytes", "expected"), [("2048", 2048 * 1024 * 1024), ("1", 1024 * 1024)])
+def test_the_launcher_takes_the_largest_file_a_plugin_may_write_from_the_disk_cap(megabytes, expected):
+    assert max_file_bytes({"ES_PLUGINS_DISK_MB_PER_PLUGIN": megabytes}) == expected
+
+
+@pytest.mark.parametrize("environment", [{}, {"ES_PLUGINS_DISK_MB_PER_PLUGIN": "0"}, {"ES_PLUGINS_DISK_MB_PER_PLUGIN": "-5"}, {"ES_PLUGINS_DISK_MB_PER_PLUGIN": "lots"}])
+def test_the_launcher_refuses_a_disk_cap_that_is_not_a_whole_number_above_0(environment):
+    with pytest.raises(ValueError, match="ES_PLUGINS_DISK_MB_PER_PLUGIN must be a whole number above 0"):
+        max_file_bytes(environment)
 
 
 MQ_OPEN_AS_PLUGIN = """
@@ -954,7 +1001,7 @@ def _fill_home(home: Path, files: int) -> None:
 async def test_the_launcher_answers_other_requests_while_a_removal_deletes_a_large_home(layout):
     setup = DirectorySetup(layout)
     setup.prepare_tree()
-    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable())
+    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable(), max_file_bytes=PLUGIN_MAX_FILE_BYTES)
     running = RunningServer(layout.launcher_socket, operations, agent_uid=os.getuid())
     removing_client, other_client = LauncherClient(layout.launcher_socket), LauncherClient(layout.launcher_socket)
     try:
@@ -981,7 +1028,7 @@ async def test_the_launcher_answers_other_requests_while_a_removal_deletes_a_lar
 async def test_a_removal_the_launcher_cannot_finish_comes_back_as_its_reason(layout):
     setup = DirectorySetup(layout)
     setup.prepare_tree()
-    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable())
+    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable(), max_file_bytes=PLUGIN_MAX_FILE_BYTES)
     running = RunningServer(layout.launcher_socket, operations, agent_uid=os.getuid())
     client = LauncherClient(layout.launcher_socket)
     try:
@@ -1031,7 +1078,7 @@ async def test_a_second_removal_while_the_first_runs_is_answered_as_temporary(la
 
     setup = DirectorySetup(layout)
     setup.prepare_tree()
-    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable())
+    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable(), max_file_bytes=PLUGIN_MAX_FILE_BYTES)
     running = RunningServer(layout.launcher_socket, operations, agent_uid=os.getuid())
     first, second = LauncherClient(layout.launcher_socket), LauncherClient(layout.launcher_socket)
     try:
@@ -1055,7 +1102,7 @@ def test_root_prunes_a_plugins_code_but_the_version_it_runs(layout):
     setup = DirectorySetup(layout)
     setup.prepare_tree()
     setup.prepare_plugin("weather", PLUGIN_UID)
-    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable())
+    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable(), max_file_bytes=PLUGIN_MAX_FILE_BYTES)
     for version in ("0.6.0", "0.7.0"):
         (layout.plugin_code("weather", version) / "backend").mkdir(parents=True)
 

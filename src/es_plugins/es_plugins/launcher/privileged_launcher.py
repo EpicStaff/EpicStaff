@@ -83,8 +83,13 @@ class LauncherOperations:
         uid_range: UidRange,
         directory_setup: DirectorySetup,
         process_table: ProcessTable,
+        *,
+        max_file_bytes: int,
     ):
         self._layout = layout
+        # RLIMIT_FSIZE: no file a plugin writes grows past its whole disk cap, whatever it writes
+        # between two of the disk watchdog's measurements.
+        self._resource_limits = (*PLUGIN_RESOURCE_LIMITS, (resource.RLIMIT_FSIZE, max_file_bytes))
         self._uid_range = uid_range
         self._directory_setup = directory_setup
         self._process_table = process_table
@@ -187,7 +192,7 @@ class LauncherOperations:
                 environment={**request.environment, "EPICSTAFF_PLUGIN_LISTEN_FD": str(LISTEN_FD)},
                 working_directory=self._layout.plugin_home(request.plugin),
                 nice=request.nice,
-                resource_limits=PLUGIN_RESOURCE_LIMITS,
+                resource_limits=self._resource_limits,
                 oom_score_adj=PLUGIN_OOM_SCORE_ADJ,
                 seccomp_filter=plugin_filter(),
                 output_descriptor=output_descriptor,

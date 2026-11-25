@@ -993,7 +993,8 @@ backups taken before upgrades: up to three per plugin with a database, each abou
 size or less (see [Backups](#backups)). During an upgrade a plugin's old and new versions are on
 the volume together; the old one goes when the upgrade is done.
 
-**The cap per plugin.** Every 30 s the node measures each running plugin's HOME (TMPDIR is inside
+**The cap per plugin.** Every 30 s, and at once when the volume's free space falls by 256 MiB or
+10,000 inodes or below the floor, the node measures each running plugin's HOME (TMPDIR is inside
 it): the blocks its files take, so a sparse file counts what it really uses, and its files,
 directories and links, each one inode. Deleted files that the plugin's processes still hold open
 count too. Symlinks are counted as links and never followed. A plugin above
@@ -1003,7 +1004,9 @@ the node cannot measure completely (it made a directory unreadable to itself, ne
 more than 128 deep, or stopped the node from seeing a process's open files) is treated the same,
 and so is one whose measurement brings no result two times in a row (the node was refused or ran
 out of time): "its disk use could not be measured 2 times in a row".
-Between two measurements a plugin can write past its cap, by its write rate × 30 s.
+No single file of a plugin can grow past `ES_PLUGINS_DISK_MB_PER_PLUGIN`. Between two
+measurements a plugin can write past its cap by about 256 MiB plus a second of writing, or by its
+write rate × 30 s while other plugins free space at the same time.
 
 **The floor for the whole volume.** Below 2 GiB or 100,000 free inodes the node starts no
 download and builds no Python environment: a plugin that needs one fails with the free space in

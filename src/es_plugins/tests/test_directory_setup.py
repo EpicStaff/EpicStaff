@@ -350,6 +350,7 @@ def test_root_removes_everything_of_a_plugin_with_its_processes_and_ipc_objects(
     from es_plugins.launcher.privileged_launcher import LauncherOperations
     from es_plugins.process_table import ProcessTable
     from es_plugins.uid_range import UidRange
+    from tests.helpers import PLUGIN_MAX_FILE_BYTES
 
     setup = DirectorySetup(layout)
     setup.prepare_tree()
@@ -372,7 +373,7 @@ def test_root_removes_everything_of_a_plugin_with_its_processes_and_ipc_objects(
     sleeper = subprocess.Popen(
         ["/bin/sleep", "300"], user=PLUGIN_UID, group=PLUGIN_UID, extra_groups=[], start_new_session=True
     )
-    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable())
+    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable(), max_file_bytes=PLUGIN_MAX_FILE_BYTES)
 
     def remove() -> dict:
         _, [result_pipe] = operations.handle(protocol.RemovePlugin(plugin=PLUGIN, uid=PLUGIN_UID), [])

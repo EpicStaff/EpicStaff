@@ -435,7 +435,9 @@ b_pid=$(placement 2 .pid)
 call probe-a 20001 /api/fill "mb=100" > "$work/fill.json"
 if wait_for 90 field_is 1 .observed_state failed; then
   disk_error=$(placement 1 .last_error)
-  # The measurement may catch the write half done: any size past the cap.
+  # 100 MB in files of 10 MB, as no one file may grow past the cap. The measurement stops at the
+  # first file past the cap, so it reports some size above 64 MB, never the whole 100 MB.
+  over_the_disk_cap() { printf '%s' "$1" | grep -Eq '^uses [0-9]+ MB of disk, more than its limit of 64 MB$'; }
   check "probe-a, past its disk cap, is stopped and marked failed ($disk_error)" \
     contains "$disk_error" "MB of disk, more than its limit of 64 MB"
   check "no process of probe-a is left" test "$(placement 1 .pid)" = null
@@ -450,7 +452,7 @@ if wait_for 90 field_is 1 .observed_state failed; then
   change 1 '{"restart_generation": 2}'
   if wait_for 60 field_is 1 .applied_restart_generation 2 && wait_for 90 field_is 1 .observed_state failed; then
     check "restarted with its files still there, it is stopped again at the next measurement" \
-      test "$(placement 1 .last_error)" = "uses 100 MB of disk, more than its limit of 64 MB"
+      over_the_disk_cap "$(placement 1 .last_error)"
   else
     fail "probe-a after a restart over its disk cap: $(placement 1 '[.observed_state, .last_error] | tostring')"
   fi

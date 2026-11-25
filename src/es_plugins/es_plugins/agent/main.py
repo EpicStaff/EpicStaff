@@ -8,7 +8,7 @@ Loops, all in one event loop:
 - report, every 10 s and right after anything a report shows changed;
 - memory watchdog, every 2 s;
 - socket watchdog, every second;
-- disk watchdog, every 30 s;
+- disk watchdog, every 30 s, and at once when the free space (read every second) falls fast;
 - database limits watchdog, every 60 s.
 
 Before any of them, the agent empties the egress proxy's policy files (no proxy password of an

@@ -105,10 +105,23 @@ in between is marked failed and stays stopped until a SuperAdmin restarts it fro
 The operator caps the disk every plugin backend's own files may use, the same for every plugin:
 `ES_PLUGINS_DISK_MB_PER_PLUGIN` (2048 MiB by default) and `ES_PLUGINS_FILES_PER_PLUGIN`
 (100,000 files, directories and links). Every 30 seconds the plugin node measures the plugin's
-HOME, its TMPDIR included, and the deleted files its processes still hold open. A plugin above
+HOME, its TMPDIR included, and the deleted files its processes still hold open. It measures at
+once, without waiting for the 30 seconds, when the node's free disk space falls fast (by 256 MiB
+or 10,000 inodes since the last measurement) or falls below the node's floor. A plugin above
 either cap is stopped and marked failed at once, without restarts, and stays stopped until a
 SuperAdmin restarts it from the Runtime tab after space was freed. Keep caches small and
 delete temporary files when done.
+
+No single file can grow past `ES_PLUGINS_DISK_MB_PER_PLUGIN`: a write beyond it fails with `EFBIG`
+("File too large"). The limit is on the file's size, not on what it takes on disk, so extending a
+file past it with `ftruncate`, `fallocate` or a write at a far offset fails too, even for a sparse
+file. Your Python process gets the error; a child it starts with `subprocess` is killed instead
+(`SIGXFSZ`), since `subprocess` gives children that signal's default action. The cap on the whole
+HOME is a soft cap, like the memory cap: between two measurements a plugin can write past it by
+about 256 MiB, plus what it writes in the second before the node notices and during the measurement
+itself. When other plugins free space at the same time, the fall the node sees is smaller, and a
+plugin can write past its cap for up to the 30 seconds. A hard cap would need file system quotas,
+which the plugin node does not use.
 
 ## Connections
 

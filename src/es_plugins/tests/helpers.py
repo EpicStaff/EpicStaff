@@ -36,6 +36,8 @@ NODE_KEY = "n" * 64
 # tool cache that other users cannot enter. The scripts run with it use only the standard library.
 SYSTEM_PYTHON = shutil.which("python3", path="/usr/local/bin:/usr/bin")
 API_URL = "http://epicstaff-api:8081/api/"
+# ES_PLUGINS_DISK_MB_PER_PLUGIN's default, in bytes: the largest file a plugin process may write.
+PLUGIN_MAX_FILE_BYTES = 2048 * 1024 * 1024
 ICON_SVG = (
     b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
     b'<circle cx="12" cy="12" r="5" fill="currentColor"/></svg>'

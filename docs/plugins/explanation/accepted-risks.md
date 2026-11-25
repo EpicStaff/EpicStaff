@@ -137,6 +137,15 @@ Some limits are enforced after the fact. A process may briefly use more memory t
 before it is stopped, and the database statement timeout is a setting of the plugin's role that
 the node puts back when it was changed, rather than a hard limit.
 
+The disk cap is measured too, not enforced by the file system. The node measures every 30
+seconds, and at once when its free space falls fast, so a plugin can write past its cap by a few
+hundred MiB, or for up to 30 seconds while other plugins free space, before it is stopped. No one
+file grows past the cap. On a default install the plugin node's volume shares the host's file
+system with the database and the rest of EpicStaff, so a plugin that writes at the disk's full
+speed when the disk is nearly full can take the free space they need too. Give the node a file
+system of its own ([Enable plugins](../operator/enable-plugins.md#disk)) to keep that away from
+them. A hard cap would need file system quotas.
+
 ## One plugin can restart the shared database server
 
 Every plugin's database lives on one Postgres server, `plugins_db`, whose container has a memory
