@@ -76,3 +76,25 @@ def test_nothing_is_removed(plugin, spa_root):
     SpaStateReconciler(SpaPublisher(spa_root)).run()
 
     assert (spa_root / "weather" / "0.5.0").is_dir() and (spa_root / "weather" / "0.6.0").is_dir()
+
+
+@pytest.mark.parametrize("state", [PluginState.UNINSTALLING, PluginState.PURGING])
+def test_an_out_of_service_plugin_s_page_is_withdrawn_and_its_files_kept(plugin, spa_root, state):
+    publisher = SpaPublisher(spa_root)
+    _set_state(plugin, state)
+
+    assert SpaStateReconciler(publisher).run() == 1
+
+    assert publisher.current_version("weather") is None
+    assert publisher.has_version("weather", "0.6.0")
+    assert SpaStateReconciler(publisher).run() == 0
+
+
+def test_a_provisioning_plugin_s_page_is_served_again(plugin, spa_root):
+    publisher = SpaPublisher(spa_root)
+    publisher.remove_current("weather")
+    _set_state(plugin, PluginState.PROVISIONING)
+
+    assert SpaStateReconciler(publisher).run() == 1
+
+    assert publisher.current_version("weather") == "0.6.0"

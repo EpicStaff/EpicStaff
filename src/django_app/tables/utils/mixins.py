@@ -43,10 +43,12 @@ class SerializedEvent:
     data: str
 
 
-def _refusal(status_code: int, code: str, message: str) -> JsonResponse:
-    # The body every refused stream answers with, in the API's error shape.
+def _refusal(status_code: int, code: str, message: str, extra: dict | None = None) -> JsonResponse:
+    # The body every refused stream answers with, in the API's error shape: `extra` adds
+    # top-level keys as the exception handler does, and the envelope's keys win.
     return JsonResponse(
-        {"status_code": status_code, "code": code, "message": message}, status=status_code
+        {**(extra or {}), "status_code": status_code, "code": code, "message": message},
+        status=status_code,
     )
 
 
@@ -280,7 +282,13 @@ class SSEMixin(View, ABC):
 
     def refuse(self, exc: APIException) -> JsonResponse:
         """Return the response refusing the stream for `exc`, for `authorize()` to return."""
-        return _refusal(exc.status_code, exc.default_code, str(exc.detail))
+        extra = getattr(exc, "extra_response_data", None)
+        return _refusal(
+            exc.status_code,
+            exc.default_code,
+            str(exc.detail),
+            extra if isinstance(extra, dict) else None,
+        )
 
     async def get(self, request, *args, **kwargs):
         ticket = request.GET.get("ticket", "")

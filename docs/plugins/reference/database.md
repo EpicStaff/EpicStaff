@@ -62,6 +62,10 @@ database and to give the owner its one-time password; it never connects to your 
 **CONNECT** on the database is revoked from `PUBLIC` and granted to the three roles, to the
 plugin node, and to the role EpicStaff backs plugin databases up with. Your roles cannot
 connect to any other database on the server, and no other plugin's roles can connect to yours.
+The database is created closed to every login, also when a restore creates it again, and the
+plugin node opens it only in the transaction that sets these grants. So no other role can log in
+to it while it is being set up, nor after setting it up stopped half-way: the next provisioning,
+backup or restore opens it with these grants, and a removal drops it without opening it.
 
 **What your app role starts with:** nothing in your database beyond CONNECT. Grant it, in a
 migration, `USAGE` on your schemas, the table privileges it needs, and `USAGE` on the sequences

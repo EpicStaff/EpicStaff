@@ -46,6 +46,7 @@ from tables.services.llm_clients import (
     UnsupportedLLMProviderError,
     get_llm_client,
 )
+from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
 from utils.logger import logger
 
 from . import partial_json as _partial_json
@@ -275,6 +276,23 @@ class FlowAssistantService:
         title = _derive_title(message)
         conversation.title = title
         conversation.save(update_fields=["title"])
+
+    def assert_reply_admitted(self, flow_assistant: FlowAssistant, organization_id: int) -> None:
+        """Refuse a reply that calls an LLM config no run could use now.
+
+        A reply calls the model as a run would, so it is admitted like one: a config of a
+        plugin that is not active in the organization is refused, as in a flow. The config
+        admitted is the one the reply calls, `resolve_llm_config`: the assistant's own, else
+        the org's default agent LLM. When neither is set there is nothing to admit, and the
+        reply fails on the missing config.
+
+        Raises:
+            RunAdmissionRefusedError: The reply may not call the LLM config it would use.
+        """
+        llm_config = self.resolve_llm_config(flow_assistant)
+        if llm_config is None:
+            return
+        assert_run_admitted(RunSubject(RunKind.LLM_CONFIG, llm_config.pk, organization_id))
 
     def append_user_message(
         self, conversation: FlowAssistantConversation, content: str
