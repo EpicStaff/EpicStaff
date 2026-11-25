@@ -47,7 +47,15 @@ COPY 50x.html /usr/share/nginx/html/
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Runs as the image's unprivileged nginx user (uid 101). Files stay root-owned and read-only for it;
+# the `user` directive only applies to a root master, and the pid file moves to the /tmp tmpfs.
+# Port 80 needs net.ipv4.ip_unprivileged_port_start=0, set in src/docker-compose.yaml.
+RUN chmod +x /entrypoint.sh \
+ && sed -i -E -e '/^user[[:space:]]/d' -e 's|^pid[[:space:]].*|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf \
+ && grep -q '^pid /tmp/nginx.pid;$' /etc/nginx/nginx.conf \
+ && ! grep -q '^user[[:space:]]' /etc/nginx/nginx.conf
+
+USER nginx
 
 EXPOSE 80
 
