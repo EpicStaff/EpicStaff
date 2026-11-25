@@ -26,6 +26,7 @@ def _make_chat(rt_agent, connection_key="conn-under-test"):
 
 
 @pytest.mark.django_db
+@pytest.mark.usefixtures("media_root")
 class TestConversationRecordingCreateSystemKey:
     """`create` (POST /conversation-recordings/) serves only the realtime
     service's `voice_call_service._post_recording`, which authenticates with
@@ -33,11 +34,6 @@ class TestConversationRecordingCreateSystemKey:
     knows its chat only by the opaque `connection_key`. The SYSTEM key is the
     authorization check, mirroring `RealtimeAgentChatViewSet.end`; any other
     key gets 403, so a USER key cannot attach a recording to any chat."""
-
-    @pytest.fixture(autouse=True)
-    def media_root(self, settings, tmp_path_factory):
-        # The test transaction's rollback does not remove a stored recording file.
-        settings.MEDIA_ROOT = str(tmp_path_factory.mktemp("media"))
 
     def _url(self):
         return reverse("conversationrecording-list")

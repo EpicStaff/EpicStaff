@@ -21,18 +21,12 @@ from tests.voice_recording_files import WAV_HEADER_BYTES, wav_upload
 URL = "/api/conversation-recordings/"
 LIMIT = 100
 
+pytestmark = pytest.mark.usefixtures("media_root")
+
 
 @pytest.fixture(autouse=True)
 def small_limit(settings):
     settings.MAX_VOICE_RECORDING_SIZE = LIMIT
-
-
-@pytest.fixture(autouse=True)
-def media_root(settings, tmp_path_factory):
-    # tests/conftest.py makes tmp_path one directory shared by every test.
-    media_root = tmp_path_factory.mktemp("media")
-    settings.MEDIA_ROOT = str(media_root)
-    return media_root
 
 
 @pytest.fixture

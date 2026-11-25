@@ -7,20 +7,24 @@ anyone who has its URL.
 import importlib
 
 import pytest
+from django.test import override_settings
 from django.urls import Resolver404, clear_url_caches, resolve
 
 import django_app.urls
 
 
+def _rebuild_urlconf() -> None:
+    """Re-import the URL module so its import-time DEBUG check runs again."""
+    importlib.reload(django_app.urls)
+    clear_url_caches()
+
+
 @pytest.fixture
-def debug_urlconf(settings):
-    settings.DEBUG = True
-    clear_url_caches()
-    importlib.reload(django_app.urls)
-    yield
-    settings.DEBUG = False
-    clear_url_caches()
-    importlib.reload(django_app.urls)
+def debug_urlconf():
+    with override_settings(DEBUG=True):
+        _rebuild_urlconf()
+        yield
+    _rebuild_urlconf()
 
 
 def test_a_recording_path_resolves_to_no_view_in_debug(debug_urlconf):

@@ -19,15 +19,7 @@ from tables.models.realtime_models import (
 )
 from tests.voice_recording_files import wav_upload
 
-pytestmark = pytest.mark.django_db
-
-
-@pytest.fixture(autouse=True)
-def media_root(settings, tmp_path_factory):
-    # tests/conftest.py makes tmp_path one directory shared by every test.
-    media_root = tmp_path_factory.mktemp("media")
-    settings.MEDIA_ROOT = str(media_root)
-    return media_root
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("media_root")]
 
 
 def _chat(connection_key):

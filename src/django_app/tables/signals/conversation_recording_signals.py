@@ -1,6 +1,7 @@
 from django.db import transaction
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from loguru import logger
 
 
 @receiver(post_delete, sender="tables.ConversationRecording")
@@ -16,5 +17,17 @@ def delete_recording_file(sender, instance, **kwargs):
         return
     storage = instance.file.storage
     name = instance.file.name
-    # robust: a file that cannot be removed is logged, not raised into a committed deletion.
-    transaction.on_commit(lambda: storage.delete(name), robust=True)
+
+    def delete_file() -> None:
+        # Logged, not raised: the deletion has committed, and the name tells an operator
+        # which file was left behind.
+        try:
+            storage.delete(name)
+        except Exception as error:
+            logger.error(
+                "Voice recording file was not deleted name={name} error={error}",
+                name=name,
+                error=error,
+            )
+
+    transaction.on_commit(delete_file)
