@@ -1,0 +1,91 @@
+:host {
+    display: inline-flex;
+}
+
+.open-in-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--color-text-secondary);
+    font-size: var(--text-body-small-large-size);
+    font-weight: var(--text-body-small-large-weight);
+    line-height: var(--text-body-small-large-line-height);
+    cursor: pointer;
+    white-space: nowrap;
+
+    &:hover {
+        color: var(--color-text-primary);
+        border-color: var(--transparent-white-8);
+    }
+
+    .chevron {
+        transition: transform 0.15s ease;
+    }
+
+    &--open {
+        color: var(--color-text-primary);
+        border-color: var(--accent-color);
+
+        .chevron {
+            transform: rotate(180deg);
+        }
+    }
+
+    &__label {
+        line-height: 1;
+    }
+}
+
+.open-in-popover {
+    display: flex;
+    flex-direction: column;
+    width: 160px;
+    max-height: 320px;
+    background-color: var(--color-ks-background);
+    border: 1px solid var(--graphite-750);
+    border-radius: 8px;
+    box-shadow: var(--shadow-raised);
+    overflow: hidden;
+
+    &__state {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        color: var(--color-text-secondary);
+        font-size: var(--text-body-size);
+    }
+
+    &__list {
+        list-style: none;
+        margin: 0;
+        overflow-y: auto;
+    }
+
+    &__item {
+        display: block;
+    }
+
+    &__row {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        padding: 8px 16px;
+        border: none;
+        background: transparent;
+        color: var(--color-text-primary);
+        font-size: 0.75rem;
+        line-height: var(--text-body-line-height);
+        text-align: left;
+        cursor: pointer;
+
+        &:hover {
+            background-color: var(--color-ks-hover-row);
+        }
+    }
+}

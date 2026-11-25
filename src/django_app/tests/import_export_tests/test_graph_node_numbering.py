@@ -240,6 +240,8 @@ class TestPartialImportNumbersAboveTheTargetsCounter:
         python_node = _python_node(source, "Python", 5)
         agent_node = _agent_node(source, "Agent", 2)
         legacy = _partial_export([python_node, agent_node])
+        # Node files of that era carried no version.
+        del legacy["version"]
         for entity_type in (EntityType.PYTHON_NODE, EntityType.AGENT_NODE):
             for node in legacy[entity_type]:
                 number = node.pop("node_number")

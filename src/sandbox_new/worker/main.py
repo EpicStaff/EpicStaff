@@ -32,15 +32,19 @@ from worker.presentation.run_gate_sampler import RunGateSampler
 async def main() -> None:
     boot_id = str(uuid.uuid4())
     logger.info("Sandbox worker starting; boot id {}", boot_id)
-    if settings.BLOCK_PRIVATE_NETWORK:
+    if settings.BLOCK_PRIVATE_NETWORK or settings.BLOCK_NETWORK:
         # Fail closed: a worker that cannot confine user code must not take jobs.
         # The raised error ends the process, and the restart loop makes it visible.
-        egress_firewall.apply(SANDBOX_UID)
-        logger.info("Egress firewall installed for uid {}", SANDBOX_UID)
+        egress_firewall.apply(SANDBOX_UID, block_internet=settings.BLOCK_NETWORK)
+        logger.info(
+            "Egress firewall installed for uid {}; internet {}",
+            SANDBOX_UID,
+            "blocked" if settings.BLOCK_NETWORK else "open",
+        )
     else:
         logger.warning(
-            "SANDBOX_BLOCK_PRIVATE_NETWORK is off: user code can reach the Docker "
-            "host, the LAN and cloud metadata"
+            "SANDBOX_BLOCK_PRIVATE_NETWORK and SANDBOX_BLOCK_NETWORK are off: user code can "
+            "reach the internet, the Docker host, the LAN and cloud metadata"
         )
     client = AsyncClient(
         base_url=settings.MANAGER_URL,
@@ -58,7 +62,11 @@ async def main() -> None:
     runners: dict[str, Runner] = {
         "admission gate": admission_gate,
         "job consumer": job_consumer,
-        "heartbeat": Heartbeat(client, job_consumer.held_execution_ids),
+        "heartbeat": Heartbeat(
+            client,
+            job_consumer.held_execution_ids,
+            guaranteed_slots=admission_gate.snapshot().floor,
+        ),
         "run-gate sampler": RunGateSampler(admission_gate),
     }
     tasks = []

@@ -98,7 +98,7 @@ def test_a_flow_the_plugin_owns_is_refused(grant, acme, olga, redis_client_mock)
 
 def test_a_flow_with_an_owned_secret_runs_once_the_grant_is_active(grant, acme, olga, redis_client_mock):
     digest = flow(acme, "Digest")
-    secret = secret_row(acme, "Weather · LLM key")
+    secret = secret_row(acme, "Weather - LLM key")
     PythonNode.objects.get(graph=digest).python_code.secrets.set([secret])
     own(secret, grant)
     set_state(grant, GrantState.ACTIVE)

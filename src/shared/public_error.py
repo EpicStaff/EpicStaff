@@ -8,6 +8,19 @@ class PublicErrorMessage(StrEnum):
     MESSAGE_PROCESSING_FAILED = "Failed to process the message"
     TOOL_EXECUTION_FAILED = "Tool execution failed"
     KNOWLEDGE_SEARCH_FAILED = "Knowledge search failed"
+    # The knowledge-search failures that searching again cannot fix say so, or a model
+    # reading the tool result keeps retrying them.
+    KNOWLEDGE_BASE_NOT_FOUND = (
+        "Knowledge search failed: the knowledge base was not found. Retrying will not help"
+    )
+    KNOWLEDGE_BASE_NOT_INDEXED = (
+        "Knowledge search failed: the knowledge base has not been indexed yet. "
+        "Retrying will not help until it is indexed"
+    )
+    KNOWLEDGE_SEARCH_REJECTED = (
+        "Knowledge search failed: the knowledge service rejected the request. "
+        "Retrying will not help"
+    )
     NODE_EXECUTION_FAILED = "Node execution failed"
     SESSION_EXECUTION_FAILED = "Session execution failed"
 

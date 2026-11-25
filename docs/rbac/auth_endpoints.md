@@ -142,8 +142,10 @@ When the header is missing or contains a non-integer value on a
 header-required endpoint, the response is `400` with code
 `org_context_required`. When the header points to an org the caller
 isn't a member of (and is not superadmin), `403` with code
-`org_membership_required`. Superadmin can set any `org_id` and bypasses
-the membership check.
+`org_membership_required`. When it points to a deactivated org the
+caller is a member of, or the caller is superadmin, `403` with code
+`organization_deactivated`. Superadmin can set any active `org_id` and
+bypasses the membership check.
 
 `/api/profile/` is the exception — when the header is absent, malformed,
 or points to an inaccessible org, both `active_organization_id` and

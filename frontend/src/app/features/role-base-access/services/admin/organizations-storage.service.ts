@@ -7,7 +7,6 @@ import {
 } from '@shared/models';
 import { StorageService } from '@shared/services';
 import { catchError, map, Observable, of, tap, throwError } from 'rxjs';
-import { shareReplay } from 'rxjs/operators';
 
 import { AdminOrganizationsService, ListOrganizationsParams } from './organizations.service';
 
@@ -31,6 +30,10 @@ export class OrganizationsStorageService implements StorageService {
         );
     }
 
+    /**
+     * The organizations, from the cache unless `forceRefresh`. Each subscription sends its own request, and
+     * unsubscribing cancels it: a list request a newer one replaced must not overwrite the list when it answers late.
+     */
     getOrganizations(
         forceRefresh = false,
         params: ListOrganizationsParams = {}
@@ -44,7 +47,6 @@ export class OrganizationsStorageService implements StorageService {
                 this.organizationsSignal.set(organizations);
                 this.organizationsLoaded.set(true);
             }),
-            shareReplay(1),
             catchError((err) => {
                 this.organizationsLoaded.set(false);
                 return throwError(() => err);

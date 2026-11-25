@@ -199,6 +199,8 @@ class RecordingSandboxIntake:
         # Set to raise instead of answering: the sandbox could not be reached at all,
         # which the transport reports as a raw httpx error rather than a ClientError.
         self.transport_error: Exception | None = None
+        # The body of an error answer; the sandbox's own envelope when a test needs it.
+        self.error_body: dict = {"detail": "rejected"}
 
     def client(self) -> SandboxExecutionClient:
         return SandboxExecutionClient(
@@ -212,7 +214,7 @@ class RecordingSandboxIntake:
         if self.transport_error is not None:
             raise self.transport_error
         if self.status_code >= 400:
-            return httpx.Response(self.status_code, json={"detail": "rejected"})
+            return httpx.Response(self.status_code, json=self.error_body)
         return httpx.Response(
             self.status_code,
             json={"execution_id": body["execution_id"], "status": "pending"},

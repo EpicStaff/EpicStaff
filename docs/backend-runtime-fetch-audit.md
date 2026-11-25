@@ -43,7 +43,7 @@ Scope: `src/django_app`, `src/crew`, `src/knowledge_new`, `src/realtime`, `src/a
 
 | # | Component | Trigger | Data sent/pulled if unmitigated | Status at this commit | Mitigation |
 |---|---|---|---|---|---|
-| 1 | chonkie `TokenChunker` (`chonkie` 1.7.0 via `tokie` 0.1.4) — naive RAG default chunker | First document chunked with `chunk_strategy="token"` (the default) | Downloads the `gpt2` tokenizer from huggingface.co | **Fixed** | Tokenizer baked into the image and loaded by path (`KNOWLEDGE_TOKENIZER_PATH`) |
+| 1 | Naive-RAG `TokenChunker` (`tiktoken` 0.13.0; formerly `chonkie` 1.7.0 via `tokie` 0.1.4) — naive RAG default chunker | First document chunked with `chunk_strategy="token"` (the default) | The `o200k_base` BPE file from `openaipublic.blob.core.windows.net` (formerly the `gpt2` tokenizer from huggingface.co) | **Fixed** | chonkie and tokie removed; the chunker uses `o200k_base`, already pre-cached for finding 2 |
 | 2 | GraphRAG / litellm tiktoken encodings in `knowledge_new` (`graphrag` 3.1.1, `tiktoken` 0.13.0) | First `rag_type="graph"` indexing/search; litellm token counting | BPE rank files from `openaipublic.blob.core.windows.net` | **Fixed** | `o200k_base` and `cl100k_base` pre-cached at build; `TIKTOKEN_CACHE_DIR` + `CUSTOM_TIKTOKEN_CACHE_DIR` set at runtime |
 | 3 | `realtime` chat-buffer tokenizer (`tiktoken.encoding_for_model("gpt-4o")`, `tiktoken` 0.9.0) | Every realtime/voice session that uses the summarized chat buffer | Same tiktoken BPE download as #2 | **Fixed** | `o200k_base` pre-cached at build; `TIKTOKEN_CACHE_DIR` set at runtime |
 | 4 | `litellm` model-price JSON fetch (`litellm` 1.100.5) | Every `import litellm` (module level) | GET `https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json` | **Fixed in all four importing services** | `LITELLM_LOCAL_MODEL_COST_MAP=True` in the runtime `ENV` of `agent`, `crew`, `django_app`, `knowledge_new` |
@@ -57,13 +57,14 @@ Findings about packages that are no longer shipped are listed under
 
 ## Detail per finding
 
-### 1. chonkie `TokenChunker` — HuggingFace tokenizer download (default chunker)
+### 1. Naive-RAG `TokenChunker` — tokenizer download (default chunker)
 
 - `src/knowledge_new/infrastructure/database/models/naive.py:55` — `chunk_strategy` defaults to `"token"`, which `src/knowledge_new/infrastructure/naive/chunkers/factory.py:13` maps to `TokenChunker`.
-- chonkie ≥1.7 resolves a tokenizer name through `tokie`, a Rust extension that ignores `HF_HOME`/`HF_HUB_OFFLINE`, caches under `$HOME/.cache/huggingface/hub`, and downloads `openai-community/gpt2` from huggingface.co on a cold cache. A builder-stage cache warm cannot reach the runtime stage.
-- Mitigation: `src/knowledge_new/Dockerfile:54-56` saves the tokenizer to `/app/.cache/tokie/gpt2.tkz` at build; `src/knowledge_new/infrastructure/naive/chunkers/strategies/token_chunker.py:9-16` loads it with `Tokenizer.from_file(settings.TOKENIZER_PATH)`. `KNOWLEDGE_TOKENIZER_PATH` is required — `src/knowledge_new/settings.py:43` (`env.str`, no default) and `src/docker-compose.yaml:661` (`${KNOWLEDGE_TOKENIZER_PATH:?}`) — so the `"gpt2"` name fallback in the chunker is not reached in a compose deploy.
-- `HF_HUB_OFFLINE=1` (`src/knowledge_new/Dockerfile:94`) still covers the Python `huggingface_hub` client.
-- Verified when the fix landed: a container from the built image with `--network none` completes a token chunking operation; the control with `KNOWLEDGE_TOKENIZER_PATH` unset fails with a DNS error from tokie. Not re-run at this commit.
+- The chunker counts tokens with tiktoken's `o200k_base` encoding (`TOKEN_ENCODING` and `load_token_encoding()` in `src/knowledge_new/infrastructure/naive/chunkers/strategies/token_chunker.py`). Without a cache, `tiktoken.get_encoding` downloads its BPE file from `openaipublic.blob.core.windows.net` on first use per process — the same path as finding 2.
+- Mitigation: the one from finding 2. The Dockerfile already pre-caches `o200k_base` into `/app/.cache/tiktoken`, and the runtime `ENV` sets `TIKTOKEN_CACHE_DIR` and `CUSTOM_TIKTOKEN_CACHE_DIR` to that path. The chunker adds no encoding of its own.
+- Earlier the chunker was chonkie's `TokenChunker`, which resolved the `gpt2` tokenizer through `tokie`, a Rust extension that ignores `HF_HOME`/`HF_HUB_OFFLINE` and downloads `openai-community/gpt2` from huggingface.co on a cold cache. That needed a tokenizer file baked into the image and the `KNOWLEDGE_TOKENIZER_PATH` variable. `chonkie`, `chonkie-core` and `tokie` are no longer in `src/knowledge_new/uv.lock`, and the file and the variable are gone.
+- `HF_HUB_OFFLINE=1` (runtime `ENV` in `src/knowledge_new/Dockerfile`) still covers the Python `huggingface_hub` client.
+- Verified on the built image: a container started with `--network none` loads `o200k_base` from the baked cache.
 
 ### 2. tiktoken encodings in `knowledge_new` (GraphRAG and litellm)
 

@@ -6,6 +6,7 @@ from datetime import timedelta
 from uuid import UUID
 
 from common.humanize import Rate
+from common.logging import error_summary
 from common.utils import client_network, new_id, utc_today, utcnow
 from domain.enums import (
     CloseReason,
@@ -87,15 +88,63 @@ class PublicLimits:
     extra_data_max_bytes: int
 
 
+def _storable_text(text: str) -> str:
+    """Return `text` without NUL (U+0000) or surrogate code points.
+
+    Postgres text and JSONB cannot store NUL, and psycopg cannot encode a surrogate code point
+    as UTF-8. A decoded string can still hold some: `json.loads` turns an unpaired escape such
+    as "\\ud800" into a lone surrogate, and decodes bytes with "surrogatepass", so a pair sent
+    as raw CESU-8 bytes arrives as two separate surrogates. A round trip through UTF-16 joins
+    each such adjacent high-low pair into its one character and replaces every remaining
+    surrogate with U+FFFD, marking where text was lost (the UTF-8 encoder's "?" would not).
+    NUL goes first, so a pair it separated is joined too.
+    """
+    without_nul = text.replace("\x00", "")
+    return without_nul.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "replace")
+
+
+def _storable(value: object) -> object:
+    """Return a copy of JSON-decoded `value` with `_storable_text` applied to every string, keys included.
+
+    Keys of one object that differ only in NUL or surrogates become equal once cleaned; the
+    last of them wins, as with a duplicate key in the JSON itself.
+
+    A loop, not recursion: the JSON decoder accepts nesting deeper than Python's recursion
+    limit, and a result that fails here could never be applied.
+    """
+    root = [value]
+    pending: list[tuple[list | dict, int | str]] = [(root, 0)]
+    while pending:
+        container, key = pending.pop()
+        item = container[key]
+        if isinstance(item, str):
+            container[key] = _storable_text(item)
+        elif isinstance(item, list):
+            copy = list(item)
+            container[key] = copy
+            pending.extend((copy, index) for index in range(len(copy)))
+        elif isinstance(item, dict):
+            copy = {_storable_text(name): entry for name, entry in item.items()}
+            container[key] = copy
+            pending.extend((copy, name) for name in copy)
+    return root[0]
+
+
 def parse_end_node_result(result: object) -> EndResult:
-    """Read the flow contract's outputs; anything malformed becomes "no reply"."""
+    """Read the flow contract's outputs; anything malformed becomes "no reply".
+
+    Text Postgres cannot store (see `_storable_text`) is cleaned out of the reply and the
+    actions rather than refused: a run whose result fails to store is never released, so its
+    conversation would stay "processing" for good.
+    """
     if not isinstance(result, dict):
         return EndResult(reply=None, actions=None, request_human=False)
     reply = result.get("reply")
+    reply = _storable_text(reply) if isinstance(reply, str) else ""
     actions = result.get("actions")
     return EndResult(
-        reply=reply if isinstance(reply, str) and reply.strip() else None,
-        actions=actions if isinstance(actions, list) else None,
+        reply=reply if reply.strip() else None,
+        actions=_storable(actions) if isinstance(actions, list) else None,
         request_human=result.get("request_human") is True,
     )
 
@@ -656,7 +705,12 @@ class ConversationOrchestrator:
             )
             raise BindingBrokenError() from error
         except FlowStartError as error:
-            logger.error("run-session failed for conversation {}: {}", conversation_id, error)
+            logger.error(
+                "run-session failed for conversation {}: {}, HTTP {}",
+                conversation_id,
+                error_summary(error),
+                error.status_code,
+            )
             await self._fail_start(
                 conversation_id, run_id, binding, "The flow could not be started.", broken=None
             )

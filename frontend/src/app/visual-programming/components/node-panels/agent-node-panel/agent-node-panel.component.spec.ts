@@ -2,6 +2,7 @@ import { Dialog } from '@angular/cdk/dialog';
 import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR, ReactiveFormsModule } from '@angular/forms';
+import { HasPermissionDirective } from '@shared/directives';
 import { NodeType } from '@shared/models';
 import { of, Subject } from 'rxjs';
 
@@ -87,6 +88,7 @@ function createCollapsedPanel(): ComponentFixture<AgentNodePanelComponent> {
                 AgentTasksTableComponent,
                 InputsYouCanUseComponent,
                 IfFlowEditableDirective,
+                HasPermissionDirective,
             ],
             schemas: [CUSTOM_ELEMENTS_SCHEMA],
         },

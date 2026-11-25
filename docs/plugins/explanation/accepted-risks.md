@@ -135,6 +135,25 @@ Some limits are enforced after the fact. A process may briefly use more memory t
 before it is stopped, and the database statement timeout is a setting of the plugin's role that
 the node puts back when it was changed, rather than a hard limit.
 
+## One plugin can restart the shared database server
+
+Every plugin's database lives on one Postgres server, `plugins_db`, whose container has a memory
+limit, `PLUGINS_DB_MEMORY`. A plugin can write a query that alone needs more than that limit, for
+example by raising its own `work_mem` and sorting or aggregating a large set. The kernel then
+kills that query's server process, and Postgres resets to recover from it: every plugin's open
+connections drop and its queries in flight fail, in every organization, for the seconds the
+recovery takes. Committed data is not lost. A plugin can do this again after every recovery.
+
+What bounds it: the memory limit itself, which keeps the rest of the host safe; the plugin role's
+`statement_timeout`, which ends a long query, though a plugin can change it for its own session
+(see [Soft limits](#soft-limits)); and the SuperAdmin's review, since the plugin's code issues
+the query. The setup wizard (`python scripts/envtool.py --setup`, "Tune performance and limits")
+fits `PLUGINS_DB_MEMORY` to the host, 2 GiB by default. An operator who sees `plugins_db`
+recovering, with "terminated by signal 9" in its logs, raises `PLUGINS_DB_MEMORY` in `src/.env`
+(for example to `4g`), recreates the container with
+`docker compose --profile plugins up -d plugins_db`, and finds and removes the plugin that issues
+the query.
+
 ## What a suspension does not stop
 
 A suspension stops runs, keys and people's access at once, but not everything: AI features

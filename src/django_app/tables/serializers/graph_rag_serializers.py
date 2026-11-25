@@ -14,12 +14,17 @@ from tables.constants.knowledge_constants import (
     DYNAMIC_SEARCH_NUM_REPEATS_MIN,
     DYNAMIC_SEARCH_THRESHOLD_MAX,
     DYNAMIC_SEARCH_THRESHOLD_MIN,
+    GRAPH_LINKED_TO_ID_MAX_LENGTH,
+    GRAPH_LINKED_TO_TYPE_CHOICES,
     GRAPH_SEARCH_MAX_LENGTH,
+    GRAPH_SEARCH_SCOPE_CHOICES,
     GRAPH_TABLE_DEFAULT_PAGE,
     GRAPH_TABLE_DEFAULT_PAGE_SIZE,
     GRAPH_TABLE_MAX_PAGE_SIZE,
     GRAPH_TABLE_MIN_PAGE,
     GRAPH_TABLE_MIN_PAGE_SIZE,
+    GRAPH_VISUALIZATION_MAX_MAX_ENTITIES,
+    GRAPH_VISUALIZATION_MAX_PAGE_COUNT,
     GRAPH_VISUALIZATION_MIN_MAX_ENTITIES,
     GRAPHRAG_MAX_CHUNK_OVERLAP,
     GRAPHRAG_MAX_CHUNK_SIZE,
@@ -577,6 +582,18 @@ class GraphRagTableDataQuerySerializer(serializers.Serializer):
         default=GRAPH_TABLE_DEFAULT_PAGE_SIZE,
     )
     search = _graph_search_field()
+    # Which columns `search` matches. `all` (default) scans every user-facing column; `identity`
+    # restricts to id + the table's label column — used by the linked-to picker so body-text
+    # hits do not surface rows the user did not ask for.
+    search_scope = serializers.ChoiceField(
+        choices=GRAPH_SEARCH_SCOPE_CHOICES,
+        required=False,
+        default="all",
+        help_text=(
+            "Which columns `search` matches: `all` (default) scans every user-facing column; "
+            "`identity` restricts to id + the per-table label column (used by the linked-to picker)."
+        ),
+    )
     # Exact-match filter: both parts must be sent together. knowledge_new validates the column name
     # against the table's user-facing columns and 400s on an unknown column or a half-set pair.
     filter_column = serializers.CharField(
@@ -592,6 +609,21 @@ class GraphRagTableDataQuerySerializer(serializers.Serializer):
         max_length=GRAPH_SEARCH_MAX_LENGTH,
         help_text="Exact-match filter value. Must be sent together with filter_column.",
     )
+    # Graph-relation filter: keep rows linked to one row of another graph index table.
+    # Both parts must be sent together; applied before `filter_column` and `search`.
+    linked_to_type = serializers.ChoiceField(
+        choices=GRAPH_LINKED_TO_TYPE_CHOICES,
+        required=False,
+        help_text=(
+            "Graph index table the picked row belongs to. Must be sent together with linked_to_id."
+        ),
+    )
+    linked_to_id = serializers.CharField(
+        required=False,
+        allow_blank=False,
+        max_length=GRAPH_LINKED_TO_ID_MAX_LENGTH,
+        help_text="Id of the row to be linked to. Must be sent together with linked_to_type.",
+    )
 
     def validate(self, attrs: dict) -> dict:
         has_column = "filter_column" in attrs
@@ -599,6 +631,12 @@ class GraphRagTableDataQuerySerializer(serializers.Serializer):
         if has_column != has_value:
             raise serializers.ValidationError(
                 "filter_column and filter_value must be sent together."
+            )
+        has_link_type = "linked_to_type" in attrs
+        has_link_id = "linked_to_id" in attrs
+        if has_link_type != has_link_id:
+            raise serializers.ValidationError(
+                "linked_to_type and linked_to_id must be sent together."
             )
         return attrs
 
@@ -608,10 +646,36 @@ class GraphRagVisualizationQuerySerializer(serializers.Serializer):
 
     max_entities = serializers.IntegerField(
         min_value=GRAPH_VISUALIZATION_MIN_MAX_ENTITIES,
+        max_value=GRAPH_VISUALIZATION_MAX_MAX_ENTITIES,
         required=False,
         help_text=(
-            "Most entities to return: search matches first, then the highest degree. "
-            "Omitted means knowledge_new's default limit applies. No upper cap."
+            "Most entities to return per page: search matches first, then the highest degree. "
+            "Omitted means knowledge_new's default limit applies."
         ),
     )
     search = _graph_search_field()
+    page = serializers.IntegerField(
+        min_value=0,
+        required=False,
+        help_text="Zero-based page index; must be less than page_count.",
+    )
+    page_count = serializers.IntegerField(
+        min_value=1,
+        max_value=GRAPH_VISUALIZATION_MAX_PAGE_COUNT,
+        required=False,
+        help_text=(
+            "Number of pages the top pool is partitioned into. The pool is "
+            "max_entities * page_count entities; each page returns its slice and share of edges."
+        ),
+    )
+
+    def validate(self, attrs: dict) -> dict:
+        page = attrs.get("page")
+        page_count = attrs.get("page_count")
+        if page is None and page_count is None:
+            return attrs
+        if page is None or page_count is None:
+            raise serializers.ValidationError("page and page_count must be sent together.")
+        if page >= page_count:
+            raise serializers.ValidationError("page must be less than page_count.")
+        return attrs

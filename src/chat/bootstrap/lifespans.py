@@ -7,6 +7,7 @@ import redis.asyncio as redis_asyncio
 from application.orchestrators.identity import OperatorIdentity
 from application.orchestrators.lifecycle import LifecycleTimers
 from application.orchestrators.reconcile import Reconciler
+from common.logging import error_summary
 from common.utils import utcnow
 from infrastructure.database.config import make_engine, make_session_factory
 from infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
@@ -78,7 +79,8 @@ async def _reconcile_forever(app: Litestar) -> None:
         try:
             await reconciler.run_once(utcnow())
         except Exception as error:  # the loop outlives any single failure
-            logger.error("Reconcile pass failed: {}", error)
+            # Never the error's text: a failed write's error can quote what it wrote.
+            logger.error("Reconcile pass failed: {}", error_summary(error))
 
 
 # Registered after init_database and init_clients: Litestar runs on_startup in list order.

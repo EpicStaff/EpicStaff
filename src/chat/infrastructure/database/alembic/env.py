@@ -1,9 +1,8 @@
 import asyncio
 
 from alembic import context
-from infrastructure.database.config import Base
+from infrastructure.database.config import Base, make_engine
 from infrastructure.database.models import *
-from sqlalchemy.ext.asyncio import create_async_engine
 
 config = context.config
 target_metadata = Base.metadata
@@ -35,7 +34,7 @@ def _run_sync(connection) -> None:
 
 
 async def run_migrations_online() -> None:
-    engine = create_async_engine(_url())
+    engine = make_engine(_url())
     async with engine.connect() as connection:
         await connection.run_sync(_run_sync)
     await engine.dispose()

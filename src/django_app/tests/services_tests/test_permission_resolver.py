@@ -11,6 +11,7 @@ from rbac.access.org_context import OrgContextService
 from rbac.access.resolver import PermissionResolver
 from rbac.exceptions import (
     OrgContextRequiredError,
+    OrgDeactivatedError,
     OrgMembershipRequiredError,
 )
 from rbac.models import Organization, OrganizationUser, Role
@@ -152,19 +153,23 @@ def test_resolver_org_admin_membership(resolver, org_admin_user, org_acme):
 
 
 @pytest.mark.django_db
-def test_resolver_no_membership_raises(resolver, member_user, db):
-    other_org = Organization.objects.create(name="Other Inc (resolver tests)")
-    with pytest.raises(OrgMembershipRequiredError):
+@pytest.mark.parametrize("other_org_is_active", [True, False], ids=["active", "deactivated"])
+def test_resolver_no_membership_raises(resolver, member_user, other_org_is_active):
+    other_org = Organization.objects.create(
+        name="Other Inc (resolver tests)", is_active=other_org_is_active
+    )
+    with pytest.raises(OrgMembershipRequiredError) as exc_info:
         resolver.resolve(user=member_user, org_id=other_org.id)
+    assert exc_info.type is OrgMembershipRequiredError
 
 
 @pytest.mark.django_db
-def test_resolver_inactive_org_raises_for_non_superadmin(
+def test_resolver_inactive_org_raises_organization_deactivated_for_its_member(
     resolver, member_user, org_acme
 ):
     org_acme.is_active = False
     org_acme.save(update_fields=["is_active"])
-    with pytest.raises(OrgMembershipRequiredError):
+    with pytest.raises(OrgDeactivatedError):
         resolver.resolve(user=member_user, org_id=org_acme.id)
 
 

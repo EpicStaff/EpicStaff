@@ -5,14 +5,20 @@ import re
 from asgiref.sync import sync_to_async
 from django.db import transaction
 from django.utils import timezone
+from src.shared.untrusted_content import wrap_untrusted_tool_result
 from tables.models.flow_assistant_models import FlowAssistantConversation, FlowAssistantMessage
 from tables.services.redis_service import RedisService
 
 from .constants import (
     _CANCEL_KEY,
     _CANCEL_TTL_SECONDS,
+    _FIRST_PARTY_OUTPUT_TOOLS,
     _MD_TABLE_PATTERN,
     _TITLE_MAX_CHARS,
+)
+
+_UNATTRIBUTED_STALE_TOOL_RESULT_STUB = (
+    "[tool result from an earlier turn was omitted to save context.]"
 )
 
 
@@ -80,7 +86,7 @@ def _sanitize_for_llm(msg: dict) -> dict:
 def _messages_for_llm(messages: list[dict]) -> list[dict]:
     """Return a sanitized copy of *messages* ready for the LLM.
 
-    Two transforms are applied:
+    Three transforms are applied:
 
     1. **FA-internal field strip** — ``ef_tables``, ``action_message``,
        ``interrupted``, and any other non-OpenAI field are removed via
@@ -94,59 +100,70 @@ def _messages_for_llm(messages: list[dict]) -> list[dict]:
        evict here because every FA tool is a pure, idempotent read.  If a
        future tool has side effects or non-deterministic output, exclude it
        from eviction (or add a per-tool whitelist).
+
+    3. **Untrusted-data envelope** — every other tool result is wrapped so the
+       flow data, run history and error text it carries can never pose as
+       instructions. Only the payload is wrapped: the stored conversation keeps
+       the plain result the frontend shows. Results of the first-party tools in
+       ``_FIRST_PARTY_OUTPUT_TOOLS`` are left as they are.
+
+    A tool message is attributed only to a call in the assistant turn directly before
+    its tool block, and only when exactly one call there carries its id: providers may
+    send no id (``""``) or reuse one (``call_0``) across turns. A result that cannot be
+    attributed this way is never exempted: from the current turn it is enveloped in full,
+    from an earlier turn it becomes a generic stub that names no tool and repeats none of
+    its output.
     """
-    # Find the index of the last user message.
     last_user_idx = -1
     for i, msg in enumerate(messages):
         if msg.get("role") == "user":
             last_user_idx = i
 
-    # No user message or it's the very first message — return a sanitized copy.
-    if last_user_idx <= 0:
-        return [_sanitize_for_llm(m) for m in messages]
-
-    # Build tool_call_id → (name, args_str) from assistant messages before the last user turn.
-    call_map: dict[str, tuple[str, str]] = {}
-    for msg in messages[:last_user_idx]:
-        if msg.get("role") == "assistant" and msg.get("tool_calls"):
-            for tc in msg["tool_calls"]:
-                tc_id = tc.get("id", "")
-                fn = tc.get("function", {})
-                call_map[tc_id] = (fn.get("name", ""), fn.get("arguments", ""))
-
-    # Build output list, stubbing stale tool messages, sanitizing all messages.
     result: list[dict] = []
+    turn_tool_calls: list[dict] = []
     for i, msg in enumerate(messages):
-        if i >= last_user_idx or msg.get("role") != "tool":
-            result.append(_sanitize_for_llm(msg))
-            continue
+        sanitized = _sanitize_for_llm(msg)
+        if msg.get("role") == "tool":
+            tool_call = _tool_call_answered_by(msg, turn_tool_calls)
+            sanitized["content"] = _tool_content_for_llm(msg, tool_call, is_stale=i < last_user_idx)
+        elif msg.get("role") == "assistant":
+            turn_tool_calls = msg.get("tool_calls") or []
+        else:
+            # A user or system message ends the previous tool block.
+            turn_tool_calls = []
+        result.append(sanitized)
 
-        content = msg.get("content", "")
-        if isinstance(content, str) and content.startswith("[tool result from an earlier turn"):
-            # Already stubbed — idempotent pass-through (sanitize anyway).
-            result.append(_sanitize_for_llm(msg))
-            continue
+    return result
 
-        tc_id = msg.get("tool_call_id", "")
-        if tc_id not in call_map:
-            # Defensive: unknown call id — pass through sanitized.
-            result.append(_sanitize_for_llm(msg))
-            continue
 
-        name, args = call_map[tc_id]
+def _tool_call_answered_by(tool_message: dict, turn_tool_calls: list[dict]) -> dict | None:
+    tool_call_id = tool_message.get("tool_call_id") or ""
+    matches = [call for call in turn_tool_calls if (call.get("id") or "") == tool_call_id]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _tool_content_for_llm(msg: dict, tool_call: dict | None, *, is_stale: bool) -> str:
+    content = msg.get("content") or ""
+    if is_stale and tool_call is None:
+        return _UNATTRIBUTED_STALE_TOOL_RESULT_STUB
+    if tool_call is None:
+        return wrap_untrusted_tool_result(content)
+
+    function = tool_call.get("function") or {}
+    name = function.get("name", "")
+    args = function.get("arguments", "")
+    if is_stale:
         args_display = args if len(args) <= 200 else args[:200] + "…"
-        stub = (
+        return (
             f"[tool result from an earlier turn was omitted to save context. "
             f"tool: {name}, args: {args_display}. "
             f"The assistant already used this result; do not re-call unless the user "
             f"explicitly asks for fresh data.]"
         )
-        # Build the stubbed message via sanitize then override content.
-        sanitized = _sanitize_for_llm(msg)
-        sanitized["content"] = stub
-        result.append(sanitized)
 
-    return result
+    if name in _FIRST_PARTY_OUTPUT_TOOLS:
+        return content
+    return wrap_untrusted_tool_result(content)
 
 
 def _dict_to_message_row(conversation_id: int, idx: int, msg: dict) -> FlowAssistantMessage:

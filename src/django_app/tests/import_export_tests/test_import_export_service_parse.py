@@ -73,7 +73,7 @@ class TestParseAndValidateGuards:
         ("version", "expected_message"),
         [
             (IMPORT_VERSION + 1, "is newer than supported"),
-            (0, "No migration path from version 0"),
+            (0, "File version 0 is older than the first export version 1"),
         ],
     )
     def test_unsupported_version_raises_validation_error(

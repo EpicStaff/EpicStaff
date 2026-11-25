@@ -1,12 +1,18 @@
 from .variables import VariableTypeInput
 
 __all__ = [
+    "InvalidInputTypeError",
     "_normalize_type",
     "args_schema_to_variables",
     "json_schema_node_to_nested_variable",
     "nested_variable_to_json_schema_node",
     "variables_to_args_schema",
 ]
+
+
+class InvalidInputTypeError(ValueError):
+    """Raised when an args_schema property declares an input_type VariableTypeInput lacks."""
+
 
 _PASSTHROUGH_TYPES = {"string", "number", "boolean", "object", "array", "any"}
 
@@ -64,7 +70,7 @@ def args_schema_to_variables(args_schema: dict, input_type: str = "agent_input")
         allowed_input_types = {v.value for v in VariableTypeInput}
         if property_input_type not in allowed_input_types:
             allowed = ", ".join(sorted(allowed_input_types))
-            raise ValueError(
+            raise InvalidInputTypeError(
                 f"Invalid input_type {property_input_type!r} for property {name!r}: "
                 f"allowed values are {allowed}"
             )

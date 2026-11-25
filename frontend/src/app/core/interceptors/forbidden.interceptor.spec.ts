@@ -8,239 +8,140 @@ import { HttpClient, HttpErrorResponse, provideHttpClient, withInterceptors } fr
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { Router } from '@angular/router';
-import { GetMeResponse } from '@shared/models';
-import { of } from 'rxjs';
+import { firstValueFrom } from 'rxjs';
+import type { Mock } from 'vitest';
 
+import { ActiveOrgService } from '../../services/auth/active-org.service';
+import { PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
-import { ToastService } from '../../services/notifications';
+import {
+    answerUserLoad,
+    API_URL,
+    memberOf,
+    ORGANIZATION_A,
+    ORGANIZATION_B,
+    PROFILE_URL,
+} from '../../services/auth/testing/current-user-fixtures';
+import { ConfigService } from '../../services/config';
+import { ToastMessage, ToastService } from '../../services/notifications';
+import { activeOrgInterceptor } from './active-org.interceptor';
 import { forbiddenInterceptor } from './forbidden.interceptor';
 
+const CURRENT_PAGE = '/agents';
+
+/** A 403 as the backend sends it. */
+function forbidden(code: string, message?: string): object {
+    return message === undefined ? { status_code: 403, code } : { status_code: 403, code, message };
+}
+
 describe('forbiddenInterceptor', () => {
-    let httpClient: HttpClient;
-    let httpMock: HttpTestingController;
-    let profileService: { clearCurrentUser: ReturnType<typeof vi.fn>; bootstrapUser: ReturnType<typeof vi.fn> };
-    let toastService: { error: ReturnType<typeof vi.fn> };
-    let router: { navigateByUrl: ReturnType<typeof vi.fn>; url: string };
+    let http: HttpTestingController;
+    let navigateByUrl: Mock<(url: string) => Promise<boolean>>;
 
     beforeEach(() => {
-        profileService = { clearCurrentUser: vi.fn(), bootstrapUser: vi.fn() };
-        toastService = { error: vi.fn() };
-        router = { navigateByUrl: vi.fn(), url: '/current-page' };
-
-        profileService.bootstrapUser.mockReturnValue(of({} as GetMeResponse));
-        router.navigateByUrl.mockResolvedValue(true);
-
+        navigateByUrl = vi.fn(() => Promise.resolve(true));
         TestBed.configureTestingModule({
             providers: [
-                provideHttpClient(withInterceptors([forbiddenInterceptor])),
+                provideHttpClient(withInterceptors([activeOrgInterceptor, forbiddenInterceptor])),
                 provideHttpClientTesting(),
-                { provide: ProfileService, useValue: profileService as unknown as ProfileService },
-                { provide: ToastService, useValue: toastService as unknown as ToastService },
-                { provide: Router, useValue: router as unknown as Router },
+                { provide: ConfigService, useValue: { apiUrl: API_URL } as unknown as ConfigService },
+                { provide: Router, useValue: { url: CURRENT_PAGE, navigateByUrl } as unknown as Router },
             ],
         });
+        http = TestBed.inject(HttpTestingController);
 
-        httpClient = TestBed.inject(HttpClient);
-        httpMock = TestBed.inject(HttpTestingController);
+        // Signed in to Organization A, as the app's bootstrap leaves the session.
+        TestBed.inject(ProfileService).bootstrapUser().subscribe();
+        answerUserLoad(http, memberOf(ORGANIZATION_A, ORGANIZATION_B));
     });
 
-    afterEach(() => httpMock.verify());
+    afterEach(() => {
+        localStorage.clear();
+        http.verify();
+    });
 
-    it('does not force a session refresh or toast for a built_in_model_immutable 403', () =>
-        new Promise<void>((resolve, reject) => {
-            httpClient.get('/api/llm-models/1/').subscribe({
-                next: () => reject(new Error('expected the request to error')),
-                error: (err: HttpErrorResponse) => {
-                    try {
-                        expect(err.status).toBe(403);
-                        expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
-                        expect(router.navigateByUrl).not.toHaveBeenCalled();
-                        expect(toastService.error).not.toHaveBeenCalled();
-                        resolve();
-                    } catch (e) {
-                        reject(e as Error);
-                    }
-                },
-            });
+    /** Sends a request whose errors land in the returned list. */
+    function send(url: string): HttpErrorResponse[] {
+        const errors: HttpErrorResponse[] = [];
+        TestBed.inject(HttpClient)
+            .get(url)
+            .subscribe({ error: (error: HttpErrorResponse) => errors.push(error) });
+        return errors;
+    }
 
-            const req = httpMock.expectOne('/api/llm-models/1/');
-            req.flush(
-                {
-                    status_code: 403,
-                    code: 'built_in_model_immutable',
-                    message: 'BuiltInModelImmutableError: Built-in models cannot be edited or deleted.',
-                },
-                { status: 403, statusText: 'Forbidden' }
-            );
-        }));
+    function refuse(url: string, body: object): void {
+        http.expectOne(url).flush(body, { status: 403, statusText: 'Forbidden' });
+    }
 
-    it('does not force a session refresh or toast for a storage_grant_denied 403 (the flow save handler shows it)', () =>
-        new Promise<void>((resolve, reject) => {
-            httpClient.put('/api/pythonnodes/7/', {}).subscribe({
-                next: () => reject(new Error('expected the request to error')),
-                error: (err: HttpErrorResponse) => {
-                    try {
-                        expect(err.status).toBe(403);
-                        expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
-                        expect(router.navigateByUrl).not.toHaveBeenCalled();
-                        expect(toastService.error).not.toHaveBeenCalled();
-                        resolve();
-                    } catch (e) {
-                        reject(e as Error);
-                    }
-                },
-            });
+    async function shownToasts(): Promise<Pick<ToastMessage, 'type' | 'message'>[]> {
+        const toasts = await firstValueFrom(TestBed.inject(ToastService).toasts$);
+        return toasts.map(({ type, message }) => ({ type, message }));
+    }
 
-            httpMock
-                .expectOne('/api/pythonnodes/7/')
-                .flush(
-                    { status_code: 403, code: 'storage_grant_denied', message: 'Needs Files: Read.' },
-                    { status: 403, statusText: 'Forbidden' }
-                );
-        }));
-
-    it('does not force a session refresh or toast for an in_use_restricted 403 (bulk-delete single-item block)', () =>
-        new Promise<void>((resolve, reject) => {
-            httpClient.delete('/api/flows/1/').subscribe({
-                next: () => reject(new Error('expected the request to error')),
-                error: (err: HttpErrorResponse) => {
-                    try {
-                        expect(err.status).toBe(403);
-                        expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
-                        expect(router.navigateByUrl).not.toHaveBeenCalled();
-                        expect(toastService.error).not.toHaveBeenCalled();
-                        resolve();
-                    } catch (e) {
-                        reject(e as Error);
-                    }
-                },
-            });
-
-            const req = httpMock.expectOne('/api/flows/1/');
-            req.flush(
-                {
-                    status_code: 403,
-                    code: 'in_use_restricted',
-                    message: 'InUseRestrictedError: This flow is in use and cannot be deleted.',
-                },
-                { status: 403, statusText: 'Forbidden' }
-            );
-        }));
-
-    it('does not force a session refresh or toast for a key_value_mode_denied 403', () =>
-        new Promise<void>((resolve, reject) => {
-            httpClient.post('/api/graphs/1/save-flow/', {}).subscribe({
-                next: () => reject(new Error('expected the request to error')),
-                error: (err: HttpErrorResponse) => {
-                    try {
-                        expect(err.status).toBe(403);
-                        expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
-                        expect(router.navigateByUrl).not.toHaveBeenCalled();
-                        expect(toastService.error).not.toHaveBeenCalled();
-                        resolve();
-                    } catch (e) {
-                        reject(e as Error);
-                    }
-                },
-            });
-
-            const req = httpMock.expectOne('/api/graphs/1/save-flow/');
-            req.flush(
-                {
-                    status_code: 403,
-                    code: 'key_value_mode_denied',
-                    message:
-                        "You need Key-Value Tables Create and Edit permission to configure a write node on the table 'profiles'.",
-                },
-                { status: 403, statusText: 'Forbidden' }
-            );
-        }));
-
-    const TRIGGER_NODES_REFUSAL = {
-        status_code: 403,
-        code: 'trigger_nodes_require_use_permission',
-        message: 'Trigger nodes require the Flows Use permission.',
-    };
+    /** The addresses the router was sent to, after the navigations a re-entry chains have run. */
+    async function navigations(): Promise<string[]> {
+        await Promise.resolve();
+        return navigateByUrl.mock.calls.map(([url]) => url);
+    }
 
     it.each([
-        ['flow_with_trigger_nodes_requires_use_permission', 'This flow contains trigger nodes.'],
-        ['code_with_secrets_requires_secrets_use_permission', 'This contains code that reads secrets.'],
-        ['agent_with_owned_surfaces_requires_surfaces_create_permission', 'This agent owns surfaces.'],
-    ])(
-        'passes a %s 403 to the caller without a refresh or toast',
-        (code, message) =>
-            new Promise<void>((resolve, reject) => {
-                httpClient.post('/api/graphs/1/copy/', { name: 'Orders' }).subscribe({
-                    next: () => reject(new Error('expected the request to error')),
-                    error: (err: HttpErrorResponse) => {
-                        try {
-                            expect(err.status).toBe(403);
-                            expect(err.error.code).toBe(code);
-                            expect(profileService.clearCurrentUser).not.toHaveBeenCalled();
-                            expect(profileService.bootstrapUser).not.toHaveBeenCalled();
-                            expect(router.navigateByUrl).not.toHaveBeenCalled();
-                            expect(toastService.error).not.toHaveBeenCalled();
-                            resolve();
-                        } catch (e) {
-                            reject(e as Error);
-                        }
-                    },
-                });
+        'built_in_model_immutable',
+        'storage_grant_denied',
+        'in_use_restricted',
+        'key_value_mode_denied',
+        'flow_with_trigger_nodes_requires_use_permission',
+        'code_with_secrets_requires_secrets_use_permission',
+        'agent_with_owned_surfaces_requires_surfaces_create_permission',
+    ])('passes a %s 403 to the caller with no toast, reload or navigation', async (code) => {
+        const errors = send('/api/flows/1/');
 
-                httpMock
-                    .expectOne('/api/graphs/1/copy/')
-                    .flush({ status_code: 403, code, message }, { status: 403, statusText: 'Forbidden' });
-            })
+        refuse('/api/flows/1/', forbidden(code, 'Refused by a rule on this row.'));
+
+        expect(errors.map((error) => error.error.code)).toEqual([code]);
+        http.expectNone(PROFILE_URL);
+        expect(await shownToasts()).toEqual([]);
+        expect(await navigations()).toEqual([]);
+    });
+
+    it.each<[string, string, string | undefined]>([
+        // Flows Use may just have been revoked.
+        ['a trigger_nodes_require_use_permission', 'trigger_nodes_require_use_permission', 'Needs Flows Use.'],
+        ['a stale-permissions', 'permission_denied', 'You do not have access to this resource.'],
+        ['a message-less', 'permission_denied', undefined],
+    ])(
+        'shows %s 403 once, reloads the user, re-enters the page, then fails the caller',
+        async (_case, code, message) => {
+            const errors = send('/api/flows/1/');
+
+            refuse('/api/flows/1/', forbidden(code, message));
+
+            expect(await shownToasts()).toEqual([{ type: 'error', message: message ?? 'Forbidden' }]);
+            expect(errors).toEqual([]);
+
+            answerUserLoad(http, memberOf(ORGANIZATION_A, ORGANIZATION_B));
+
+            expect(errors.map((error) => error.status)).toEqual([403]);
+            expect(TestBed.inject(ActiveOrgService).activeOrgId()).toBe(ORGANIZATION_A.id);
+            expect(await navigations()).toEqual(['/profile', CURRENT_PAGE]);
+            expect(await shownToasts()).toHaveLength(1);
+        }
     );
 
-    it('refreshes permissions on a trigger_nodes_require_use_permission 403 (Use may just have been revoked)', () =>
-        new Promise<void>((resolve, reject) => {
-            httpClient.post('/api/graphs/1/save/', {}).subscribe({
-                next: () => reject(new Error('expected the request to error')),
-                error: (err: HttpErrorResponse) => {
-                    try {
-                        expect(err.status).toBe(403);
-                        expect(profileService.clearCurrentUser).toHaveBeenCalled();
-                        expect(profileService.bootstrapUser).toHaveBeenCalled();
-                        expect(toastService.error).toHaveBeenCalledWith(TRIGGER_NODES_REFUSAL.message);
-                        resolve();
-                    } catch (e) {
-                        reject(e as Error);
-                    }
-                },
-            });
+    it('tells about a deactivated active organization once and reloads once for three refused requests', async () => {
+        const errorLists = [send('/api/flows/'), send('/api/agents/'), send('/api/tools/')];
 
-            httpMock
-                .expectOne('/api/graphs/1/save/')
-                .flush(TRIGGER_NODES_REFUSAL, { status: 403, statusText: 'Forbidden' });
-        }));
+        for (const url of ['/api/flows/', '/api/agents/', '/api/tools/']) {
+            refuse(url, forbidden('organization_deactivated', 'This organization has been deactivated.'));
+        }
+        // One reload for all three: a second profile request here would fail `expectOne`.
+        answerUserLoad(http, memberOf(ORGANIZATION_B));
 
-    it('still forces a session refresh for an unrelated 403 (e.g. stale permissions)', () =>
-        new Promise<void>((resolve, reject) => {
-            httpClient.get('/api/llm-models/1/').subscribe({
-                next: () => reject(new Error('expected the request to error')),
-                error: (err: HttpErrorResponse) => {
-                    try {
-                        expect(err.status).toBe(403);
-                        expect(profileService.clearCurrentUser).toHaveBeenCalled();
-                        expect(toastService.error).toHaveBeenCalledWith(
-                            'PermissionDenied: You do not have access to this resource.'
-                        );
-                        resolve();
-                    } catch (e) {
-                        reject(e as Error);
-                    }
-                },
-            });
-
-            const req = httpMock.expectOne('/api/llm-models/1/');
-            req.flush(
-                {
-                    status_code: 403,
-                    code: 'permission_denied',
-                    message: 'PermissionDenied: You do not have access to this resource.',
-                },
-                { status: 403, statusText: 'Forbidden' }
-            );
-        }));
+        expect(await shownToasts()).toEqual([
+            { type: 'warning', message: 'Organization A has been deactivated. You have been switched to B.' },
+        ]);
+        expect(errorLists.map((list) => list.map((error) => error.status))).toEqual([[403], [403], [403]]);
+        expect(TestBed.inject(ActiveOrgService).activeOrgId()).toBe(ORGANIZATION_B.id);
+        expect(TestBed.inject(PermissionsService).active()?.org_id).toBe(ORGANIZATION_B.id);
+        expect(await navigations()).toEqual(['/profile', CURRENT_PAGE]);
+    });
 });

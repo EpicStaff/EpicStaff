@@ -67,6 +67,11 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     stepSize = input<number>(1);
     /** Lets the user type a decimal point; by default only whole numbers can be typed. */
     allowDecimal = input<boolean>(false);
+    /**
+     * Deferred-commit mode: keystrokes don't emit `changed`; the value is parsed, clamped to [min, max]
+     * (empty/invalid → min) and committed only on blur or Enter. Lets the user freely clear and retype.
+     */
+    commitOnBlur = input<boolean>(false);
     value = model<number | null>(null);
     changed = output<number | null>();
 
@@ -130,6 +135,10 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     isDisabled = computed(() => this.disabled() || this.controlDisabled());
 
     onInputChange(value: number) {
+        // Deferred-commit mode lets the native input hold whatever the user types; we only read and clamp
+        // it on blur/Enter. The signal stays unchanged mid-edit, so ngModel won't fight the DOM.
+        if (this.commitOnBlur()) return;
+
         // Only decimal fields accept typed separators, so only they can end up with malformed text.
         // Report it as an error instead of passing the empty value on, which would silently clear the field.
         if (this.allowDecimal() && this.nativeInput()?.nativeElement.validity.badInput) {
@@ -148,6 +157,44 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
         if (Number.isNaN(num)) return;
 
         this.updateValue(num);
+    }
+
+    protected onInputBlur(): void {
+        this.onTouched();
+        if (this.commitOnBlur()) this.commitTypedValue();
+    }
+
+    protected onInputEnter(event: Event): void {
+        if (!this.commitOnBlur()) return;
+        event.preventDefault();
+        this.commitTypedValue();
+    }
+
+    /** Reads the native input, parses, clamps to [min, max] (empty/invalid → min), and emits via `updateValue`. */
+    private commitTypedValue(): void {
+        const el = this.nativeInput()?.nativeElement;
+        if (!el) return;
+        const raw = el.value.trim();
+        const min = this.min();
+        const max = this.max();
+        const floor = min ?? 0;
+
+        let next: number;
+        const parsed = Number(raw);
+        if (raw === '' || Number.isNaN(parsed)) {
+            next = floor;
+        } else {
+            next = parsed;
+            if (min !== null && next < min) next = min;
+            if (max !== null && next > max) next = max;
+        }
+
+        if (next !== this.value()) {
+            this.updateValue(next);
+        }
+        if (el.valueAsNumber !== next) {
+            el.value = String(next);
+        }
     }
 
     onStep(direction: 1 | -1 = 1) {
@@ -188,6 +235,10 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     }
 
     onKeyDown(event: KeyboardEvent) {
+        if (event.key === 'Enter') {
+            this.onInputEnter(event);
+            return;
+        }
         const allowedKeys = ['Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End'];
         if (allowedKeys.includes(event.key)) return;
         // Steps from the input itself, as a native number field does.

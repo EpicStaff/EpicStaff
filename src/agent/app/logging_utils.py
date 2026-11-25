@@ -12,6 +12,7 @@ from http import HTTPStatus
 from typing import Any
 from urllib.parse import urlsplit
 
+import httpx
 import httpx2
 from loguru import logger
 from pydantic import ValidationError
@@ -46,7 +47,7 @@ _URL = re.compile(r"(?i)(https?://)(?:[^\s/?#]*@)?([^\s/?#'\"<>@]*)[^\s\"<>]*")
 _MCP_SDK_LOGGER_NAMES = ("mcp", "client")
 
 
-def url_origin(url: str | httpx2.URL) -> str:
+def url_origin(url: str | httpx.URL | httpx2.URL) -> str:
     """Render a URL held as a value as its origin, `scheme://host[:port]`.
 
     Parsed rather than matched, so no character in the userinfo or path can hide them:
@@ -75,11 +76,12 @@ def http_status_text(code: int) -> str:
         return f"HTTP {code}"
 
 
-def describe_http_status_error(error: httpx2.HTTPStatusError) -> str:
+def describe_http_status_error(error: httpx.HTTPStatusError | httpx2.HTTPStatusError) -> str:
     """Render a status error as "HTTP 401 Unauthorized from <origin>".
 
-    httpx2's own text quotes the full request URL, any redirect Location and the
-    server's reason phrase.
+    The library's own text quotes the full request URL, any redirect Location and the
+    server's reason phrase. Both httpx flavours are accepted: the MCP SDK raises
+    httpx2's, the shared knowledge client raises httpx's.
     """
     origin = url_origin(error.request.url)
     return f"{http_status_text(error.response.status_code)} from {origin}"

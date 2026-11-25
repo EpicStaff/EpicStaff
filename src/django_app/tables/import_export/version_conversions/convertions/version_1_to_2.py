@@ -12,6 +12,8 @@ _FIELD_TYPE_TO_VAR_TYPE = {
     "float": "number",
 }
 
+_V1_TOOL_FIELDS = {"args_schema", "python_code_tool_config_fields"}
+
 
 @VersionConverter.register(from_version=1)
 def v1_to_v2(data: dict) -> dict:
@@ -23,13 +25,17 @@ def v1_to_v2(data: dict) -> dict:
     agent_input variables come from args_schema.properties;
     user_input variables come from python_code_tool_config_fields records.
     Bundles that carry no PythonCodeTool key (e.g. graph-only snapshots)
-    pass through unchanged.
+    pass through unchanged, and so do tools already in the v2 shape.
 
     JSON-schema "integer" types are normalized to "number" to match the
     runtime VariableType enum, which has no integer variant. Nested
     object/array schemas are recursively converted to NestedVariable shape.
     """
     for tool in data.get("PythonCodeTool", []):
+        # An unversioned partial file can be newer than v1; a tool that already
+        # carries `variables` and none of the v1 fields keeps what it has.
+        if "variables" in tool and not _V1_TOOL_FIELDS & tool.keys():
+            continue
         variables = args_schema_to_variables(tool.get("args_schema") or {})
 
         for field in tool.get("python_code_tool_config_fields", []):

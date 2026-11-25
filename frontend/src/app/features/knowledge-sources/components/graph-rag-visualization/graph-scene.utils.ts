@@ -12,6 +12,7 @@ import {
     NO_COMMUNITY_COLOR,
     SIMULATION_CHARGE_STRENGTH,
     SIMULATION_COLLISION_PADDING,
+    SIMULATION_GRAVITY_STRENGTH,
     SIMULATION_LINK_DISTANCE,
 } from './graph-scene.constants';
 import { ColorTuple, ForceLayoutNode } from './graph-scene.model';
@@ -101,7 +102,12 @@ export function createLayoutSimulation<N extends ForceLayoutNode>(
             'collide',
             d3.forceCollide<N>((_node, nodeIndex) => nodeRadii[nodeIndex] + SIMULATION_COLLISION_PADDING)
         )
-        .force('center', d3.forceCenter(0, 0, dimensions === 3 ? 0 : undefined));
+        .force('center', d3.forceCenter(0, 0, dimensions === 3 ? 0 : undefined))
+        .force('gravityX', d3.forceX(0).strength(SIMULATION_GRAVITY_STRENGTH))
+        .force('gravityY', d3.forceY(0).strength(SIMULATION_GRAVITY_STRENGTH));
+    if (dimensions === 3) {
+        newSimulation.force('gravityZ', d3.forceZ(0).strength(SIMULATION_GRAVITY_STRENGTH));
+    }
     if (groupByCommunity) {
         newSimulation.force(
             'community',

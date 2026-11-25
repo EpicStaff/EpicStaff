@@ -24,6 +24,7 @@ from tables.import_export.strategies.source_collection import remove_restored_gr
 from tables.services.storage_service.archive_unpacking.extraction_guard import ArchiveLimitExceeded
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
 from tables.validators.run_refusal_validator import assert_no_run_refusals_in_export
+from tables.validators.top_level_node_list_validator import assert_no_top_level_node_lists
 
 
 class ImportService:
@@ -63,6 +64,7 @@ class ImportService:
 
         id_mapper = IDMapper()
         denied_resources = set()
+        assert_no_top_level_node_lists(export_data)
         export_data = prepare_import_data(export_data)
         # A trigger node in the file is live once created, so the whole import needs
         # flows:USE; refused here, before the transaction opens, so nothing is written.

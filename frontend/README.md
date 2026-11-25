@@ -18,17 +18,44 @@ The server automatically reloads the app when source files change.
 
 ## Pointing the frontend at a different backend
 
-Backend URLs live in [src/environments/environment.ts](./src/environments/environment.ts), which is tracked by git — editing it directly leaves the file permanently dirty in `git status`. Use a personal override instead:
+Every backend URL in [src/environments/environment.ts](./src/environments/environment.ts) is
+relative (`/api/`, `/realtime/`, `/chat/`, …). The dev server forwards them through
+[proxy.conf.js](./proxy.conf.js) to `PROXY_TARGET`, which defaults to `http://localhost` — the
+local docker stack behind nginx. To run the local frontend against a remote stand, set the
+variable; no local backend and no file edits are needed:
+
+```powershell
+$env:PROXY_TARGET = 'https://some-stand.example.com'; npm start
+Remove-Item Env:PROXY_TARGET      # back to the local backend
+```
+
+`$env:` lasts for the whole PowerShell window, so a later `npm start` in the same window still
+targets the stand until the variable is removed. In bash:
+`PROXY_TARGET=https://some-stand.example.com npm start`.
+
+Only the paths listed in `proxy.conf.js` are forwarded. A new backend route the app calls has to
+be added there as well, or the dev server answers it itself and the request never reaches the
+backend.
+
+Keep `apiUrl` and `realtimeApiUrl` relative. An absolute URL to a stand or to `127.0.0.1` makes
+the requests cross-site: the browser then drops the `SameSite=Lax` refresh cookie, and the session
+silently dies after the first token refresh. The proxy exists to keep everything same-origin.
+
+### Personal environment overrides
+
+To change anything else in `environment.ts` — feature flags such as `isPluginsEnabled` — use a
+personal override rather than editing the tracked file:
 
 ```powershell
 cp src/environments/environment.local.example.ts src/environments/environment.local.ts
-# edit environment.local.ts — set apiUrl / realtimeApiUrl
+# edit environment.local.ts
 npm run start:local
 ```
 
-`environment.local.ts` is listed in [.gitignore](../.gitignore), so it never shows up as a pending change. The example file documents the usual targets: a remote stand (no local backend needed), a local backend behind docker/nginx, or services exposed directly on their ports.
-
-A plain `npm start` keeps using the repository's `environment.ts`. The swap is wired through the `local` configuration in [angular.json](./angular.json) via `fileReplacements` — the same mechanism `test` and `production` builds use.
+`environment.local.ts` is listed in [.gitignore](../.gitignore), so it never shows up as a
+pending change. `PROXY_TARGET` works with `start:local` the same way. The swap is wired through
+the `local` configuration in [angular.json](./angular.json) via `fileReplacements` — the same
+mechanism `test` and `production` builds use.
 
 ## Build
 

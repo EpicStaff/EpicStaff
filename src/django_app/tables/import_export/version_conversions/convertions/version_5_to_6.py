@@ -58,6 +58,8 @@ def v5_to_v6(data: dict) -> dict:
       Empty ones are left out.
       Only a custom model row's endpoint is copied; a built-in row's is dropped with a warning.
     - Model rows lose their endpoint columns.
+    An entry already in the v6 shape carries none of these columns and keeps its
+    `parameters` and `connection` as they are.
     Settings the model does not take are dropped later by the config import strategy, which
     knows the model catalog.
     """
@@ -67,7 +69,7 @@ def v5_to_v6(data: dict) -> dict:
             for model in data.get(model_type, [])
         }
         for config in data.get(config_type, []):
-            config["parameters"] = {
+            folded_parameters = {
                 column: value
                 for column in settings
                 if (value := config.pop(column, None)) is not None
@@ -76,10 +78,14 @@ def v5_to_v6(data: dict) -> dict:
                 key: config.pop(column, None) for key, column in config_endpoints.items()
             }
             # Runs read the endpoint from the model row only, so the row's value wins.
-            config["connection"] = {
+            folded_connection = {
                 **_non_empty(own_endpoint),
                 **endpoints_by_model_id.get(config.get("model"), {}),
             }
+            # An unversioned partial file can already be in the v6 shape: what its
+            # `parameters` and `connection` hold wins over anything folded here.
+            config["parameters"] = {**folded_parameters, **(config.get("parameters") or {})}
+            config["connection"] = {**folded_connection, **(config.get("connection") or {})}
     return data
 
 

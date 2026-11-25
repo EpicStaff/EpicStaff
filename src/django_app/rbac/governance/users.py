@@ -34,6 +34,7 @@ from rbac.identity.credential_revocation import (
 )
 from rbac.models import ApiKey, Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole, ResourceType
+from rbac.signals import superadmin_revoked
 
 
 @dataclass
@@ -268,6 +269,7 @@ class UserManagementService(CrossOrgResourceService):
                 .exclude(org_id__in=OrganizationUser.objects.filter(user=target).values("org_id"))
                 .delete()
             )
+            superadmin_revoked.send(sender=UserModel, user_id=target.pk)
             # Not audited: a superadmin holds no membership, so the revoke reaches no org's
             # trail, and there is no platform-level trail yet.
 

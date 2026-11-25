@@ -5,7 +5,11 @@ so without this beat the manager would eventually declare it lost and fail jobs 
 are still legitimately running. The beat also carries the execution ids the worker
 actually holds: the manager reconciles its assignments against that list and releases
 the ones whose pull response never arrived -- nothing else could, since this run keeps
-beating and never goes silent.
+beating and never goes silent. It carries the worker's guaranteed slots too: the
+manager admits a job at once while its executions in flight are fewer than that.
+
+The first beat goes out at start, not one interval later, so the manager learns the
+guaranteed slots before the first burst of jobs arrives.
 
 A failed beat is logged by exception type and the loop carries on -- the pull and
 result paths handle a manager that is really gone. The loop runs supervised: if it
@@ -29,21 +33,32 @@ HEARTBEAT_INTERVAL_SECONDS = 10.0
 
 
 class Heartbeat:
+    """Beat every `interval` seconds, starting at once.
+
+    Args:
+        guaranteed_slots: Executions the worker's admission gate always starts at once,
+            whatever the load (the gate's floor).
+    """
+
     def __init__(
         self,
         client: AsyncClient,
         held_execution_ids: Callable[[], set[str]],
         *,
+        guaranteed_slots: int,
         interval: float = HEARTBEAT_INTERVAL_SECONDS,
     ):
         self._client = client
         self._held_execution_ids = held_execution_ids
+        self._guaranteed_slots = guaranteed_slots
         self._interval = interval
 
     async def run(self) -> None:
         while True:
-            await asyncio.sleep(self._interval)
-            beat = WorkerHeartbeatMessage(execution_ids=sorted(self._held_execution_ids()))
+            beat = WorkerHeartbeatMessage(
+                execution_ids=sorted(self._held_execution_ids()),
+                guaranteed_slots=self._guaranteed_slots,
+            )
             try:
                 await self._client.request(
                     "POST",
@@ -53,3 +68,4 @@ class Heartbeat:
                 )
             except ClientError as error:
                 logger.warning("Heartbeat failed ({})", type(error).__name__)
+            await asyncio.sleep(self._interval)
