@@ -61,6 +61,8 @@ plugin may; …", and the plugin stays stopped until a SuperAdmin restarts it.
 made through a 32-bit ABI. So do `unshare`, `setns`, `keyctl`, `add_key`, `request_key`, `bpf`,
 `perf_event_open` and `userfaultfd`, and `clone` with any namespace flag. `clone3` answers
 `ENOSYS`, and glibc then falls back to `clone`, so threads and child processes work.
+`memfd_create` and `memfd_secret` answer `ENOSYS` too, as on a kernel without them: put such data
+in a file under your TMPDIR, where it counts against your disk cap.
 
 So your lock must pin `uvicorn` and `epicstaff-plugin` (upload refuses a lock without them), and
 your app must be an ASGI app: FastAPI, Starlette, Litestar, Django's ASGI handler and so on.
@@ -231,12 +233,12 @@ Hence two rules:
 
 ## Limits
 
-The node caps the memory of all processes of the plugin's user together, and runs them at the
-CPU priority the plugin's limits give. Above the cap it stops every process of the plugin and
-restarts it. The cap counts the resident memory of those processes: memory a plugin holds in a
-memory file (`memfd_create`) or a tmpfs is not counted, though the node's own memory limit still
-bounds it. [Limits](limits.md) gives the details, including by how much the memory cap can be
-overshot.
+The node caps the memory of all processes of the plugin's user together, and runs them at the CPU
+priority the plugin's limits give. Above the cap it stops every process of the plugin and restarts
+it. The cap counts the resident memory of those processes, and a plugin cannot keep memory outside
+that count: `memfd_create` and `memfd_secret` answer `ENOSYS`, and it cannot create files on the
+container's tmpfs mounts (`/tmp`, `/dev/shm`, `/run`). [Limits](limits.md) gives the details,
+including by how much the memory cap can be overshot.
 
 ## A development backend
 

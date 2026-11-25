@@ -87,9 +87,10 @@ process running under the plugin's Unix user**: the server process and anything 
 including processes it detached. It counts each process's anonymous and shared pages
 (`RssAnon + RssShmem`), not the interpreter and libraries each process maps from disk, so a
 forked worker is not charged again for the code it shares with its parent. Copy-on-write pages
-a worker has written to count in that worker. Memory a plugin keeps in a file in memory that no
-process maps (a `memfd`, for example) is not counted here, only in the node's
-`ES_PLUGINS_MEMORY`; and `/dev/shm` is read-only, so plugins have no POSIX shared memory, which
+a worker has written to count in that worker. Files that live only in memory are not available,
+so no memory escapes this count: `memfd_create` and `memfd_secret` answer `ENOSYS`, as on a kernel
+without them, and a library then falls back to a file, which counts against the disk cap; and
+`/dev/shm` is read-only, so plugins have no POSIX shared memory, which
 `multiprocessing.shared_memory` and `multiprocessing`'s locks, queues and pools need. When the
 sum is above the effective `memory_mb`,
 the node kills every process of that user and starts the plugin again, waiting longer after each
@@ -103,14 +104,17 @@ in between is marked failed and stays stopped until a SuperAdmin restarts it fro
 ## Disk
 
 The operator caps the disk every plugin backend's own files may use, the same for every plugin:
-`ES_PLUGINS_DISK_MB_PER_PLUGIN` (2048 MiB by default) and `ES_PLUGINS_FILES_PER_PLUGIN`
-(100,000 files, directories and links). Every 30 seconds the plugin node measures the plugin's
-HOME, its TMPDIR included, and the deleted files its processes still hold open. It measures at
-once, without waiting for the 30 seconds, when the node's free disk space falls fast (by 256 MiB
-or 10,000 inodes since the last measurement) or falls below the node's floor. A plugin above
-either cap is stopped and marked failed at once, without restarts, and stays stopped until a
-SuperAdmin restarts it from the Runtime tab after space was freed. Keep caches small and
-delete temporary files when done.
+`ES_PLUGINS_DISK_MB_PER_PLUGIN` (2048 MiB by default) and `ES_PLUGINS_FILES_PER_PLUGIN` (100,000
+files, directories and links). Every 30 seconds the plugin node measures the plugin's HOME, its
+TMPDIR included, and the deleted files its processes still hold open. A plugin that keeps a deleted
+file of its HOME only mapped (`mmap`), with no descriptor open on it, is stopped as one whose disk
+use cannot be measured: the node cannot see that file's size, and one mapped page keeps all of it on
+disk. Keep a file open for as long as it is mapped (Python's `mmap` does this by itself, unless you
+pass `trackfd=False`), or delete it only after unmapping it. It measures at once, without waiting
+for the 30 seconds, when the node's free disk space falls fast (by 256 MiB or 10,000 inodes since
+the last measurement) or falls below the node's floor. A plugin above either cap is stopped and
+marked failed at once, without restarts, and stays stopped until a SuperAdmin restarts it from the
+Runtime tab after space was freed. Keep caches small and delete temporary files when done.
 
 No single file can grow past `ES_PLUGINS_DISK_MB_PER_PLUGIN`: a write beyond it fails with `EFBIG`
 ("File too large"). The limit is on the file's size, not on what it takes on disk, so extending a

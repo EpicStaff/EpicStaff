@@ -142,9 +142,16 @@ seconds, and at once when its free space falls fast, so a plugin can write past 
 hundred MiB, or for up to 30 seconds while other plugins free space, before it is stopped. No one
 file grows past the cap. On a default install the plugin node's volume shares the host's file
 system with the database and the rest of EpicStaff, so a plugin that writes at the disk's full
-speed when the disk is nearly full can take the free space they need too. Give the node a file
-system of its own ([Enable plugins](../operator/enable-plugins.md#disk)) to keep that away from
-them. A hard cap would need file system quotas.
+speed when the disk is nearly full can take the free space they need too.
+
+A plugin can also hide what it uses from the measurement. A deleted file whose descriptor the
+plugin sent over a UNIX socket and never received belongs to no process, so the node cannot see
+it, yet its space stays taken. Each plugin can keep up to 256 such files, each up to its cap: about
+512 GiB at the default cap, more than most disks. The node then measures that plugin as almost
+empty, and when the free space falls below the floor it stops the other plugins first. Only file
+system quotas would close this. So give the node a file system of its own
+([Enable plugins](../operator/enable-plugins.md#disk)) wherever its plugins are not all trusted:
+a full plugin volume then stops plugins, never the database or the rest of EpicStaff.
 
 ## One plugin can restart the shared database server
 

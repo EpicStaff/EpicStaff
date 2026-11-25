@@ -511,19 +511,20 @@ Nothing needs configuring for it, but EpicStaff's login cookie changed with it, 
 
 The node container runs with a read-only root file system and `no-new-privileges`. Its launcher
 process has the `SETUID`, `SETGID` and `CHOWN` capabilities and no other. The container also has
-`NET_ADMIN`, `BPF` and `SETPCAP` for its entrypoint only: before the launcher starts, the
-entrypoint installs the per-plugin connection limits below in the container's network namespace
-and the refusal of `bind()` in its cgroup, then starts the launcher with nothing but those three
-capabilities left in any capability set, so nothing on the node can change them afterwards. A
-shell you open in the container with `docker exec` gets the container's capabilities, `NET_ADMIN`
-and `BPF` included; no plugin process does. Each plugin backend runs as its own user id from
-`PLUGINS_NODE_UID_RANGE`, without any capability, with at most 64 processes and 256 open files
-each, no POSIX message queues, no System V IPC objects, no `io_uring`, no `unshare`, `setns`,
-`keyctl`, `add_key`, `request_key`, `bpf`, `perf_event_open` or `userfaultfd`, and no `clone` with
-a namespace flag (a seccomp filter makes those system calls answer `EPERM`; `clone3` answers
-`ENOSYS`, and glibc falls back to `clone`), in its own session. Its secret settings reach it only in a file that only its own user
-id can read; its database URL and its proxy URL, credentials included, are in its environment,
-which only its own user id can read too.
+`NET_ADMIN`, `BPF` and `SETPCAP` for its entrypoint only: before the launcher starts, the entrypoint
+installs the per-plugin connection limits below in the container's network namespace and the refusal
+of `bind()` in its cgroup, then starts the launcher with nothing but those three capabilities left
+in any capability set, so nothing on the node can change them afterwards. A shell you open in the
+container with `docker exec` gets the container's capabilities, `NET_ADMIN` and `BPF` included; no
+plugin process does. Each plugin backend runs as its own user id from `PLUGINS_NODE_UID_RANGE`,
+without any capability, with at most 64 processes and 256 open files each, no file larger than
+`ES_PLUGINS_DISK_MB_PER_PLUGIN`, no POSIX message queues, no System V IPC objects, no `io_uring`, no
+`unshare`, `setns`, `keyctl`, `add_key`, `request_key`, `bpf`, `perf_event_open` or `userfaultfd`,
+and no `clone` with a namespace flag (a seccomp filter makes those system calls answer `EPERM`;
+`clone3` answers `ENOSYS`, and glibc falls back to `clone`; `memfd_create` and `memfd_secret` answer
+`ENOSYS` too, so a plugin keeps such data in a file), in its own session. Its secret settings reach
+it only in a file that only its own user id can read; its database URL and its proxy URL,
+credentials included, are in its environment, which only its own user id can read too.
 
 A plugin **cannot** read another plugin's settings, environment, code, data or Python
 environment, signal or trace its processes, or reach the node's launcher. A plugin **can** see
@@ -968,8 +969,10 @@ Every plugin backend writes its own files to its HOME and TMPDIR on the `es_plug
 next to the node's copies of the plugins' code and Python environments. A Docker volume has no
 size limit of its own: on a default install it is a directory on the host's file system, the one
 EpicStaff's database and Docker's own data live on, so a plugin that filled it would stop them
-too. The node caps each plugin and keeps a floor of free space, but for a hard boundary give the
-volume a file system of its own.
+too. The node caps each plugin and keeps a floor of free space, but it measures use after the
+fact, and a plugin can hide files from the measurement
+([Soft limits](../explanation/accepted-risks.md#soft-limits)). Unless you trust every plugin you
+install, give the volume a file system of its own.
 
 **Give `es_plugins_data` its own file system.** Mount a dedicated disk, partition or file system
 image on the host, for example at `/srv/es-plugins`, and bind the volume to it in a
@@ -1003,14 +1006,15 @@ it): the blocks its files take, so a sparse file counts what it really uses, and
 directories and links, each one inode. Deleted files that the plugin's processes still hold open
 count too. Symlinks are counted as links and never followed. A plugin above
 `ES_PLUGINS_DISK_MB_PER_PLUGIN` or `ES_PLUGINS_FILES_PER_PLUGIN` is stopped at once and marked
-failed, without the restarts a crash gets: it would only fill its HOME again. A plugin whose use
-the node cannot measure completely (it made a directory unreadable to itself, nested directories
-more than 128 deep, or stopped the node from seeing a process's open files) is treated the same,
-and so is one whose measurement brings no result two times in a row (the node was refused or ran
-out of time): "its disk use could not be measured 2 times in a row".
-No single file of a plugin can grow past `ES_PLUGINS_DISK_MB_PER_PLUGIN`. Between two
-measurements a plugin can write past its cap by about 256 MiB plus a second of writing, or by its
-write rate × 30 s while other plugins free space at the same time.
+failed, without the restarts a crash gets: it would only fill its HOME again. A plugin whose use the
+node cannot measure completely (it made a directory unreadable to itself, nested directories more
+than 128 deep, stopped the node from seeing a process's open files, or kept a deleted file mapped
+with no descriptor open on it, so its size cannot be seen) is treated the same, and so is one whose
+measurement brings no result two times in a row (the node was refused or ran out of time): "its disk
+use could not be measured 2 times in a row". No single file of a plugin can grow past
+`ES_PLUGINS_DISK_MB_PER_PLUGIN`. Between two measurements a plugin can write past its cap by about
+256 MiB plus a second of writing, or by its write rate × 30 s while other plugins free space at the
+same time.
 
 **The floor for the whole volume.** Below 2 GiB or 100,000 free inodes the node starts no
 download and builds no Python environment: a plugin that needs one fails with the free space in

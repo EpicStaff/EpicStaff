@@ -889,6 +889,61 @@ def test_root_measures_a_plugins_home_as_the_plugin(layout):
     assert usage.bytes >= 3 * 1024 * 1024
 
 
+KEEP_A_DELETED_FILE_ONLY_MAPPED = """
+import ctypes, mmap, os, time
+libc = ctypes.CDLL(None)
+libc.mmap.restype = ctypes.c_void_p
+libc.mmap.argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_long]
+descriptor = os.open("kept", os.O_RDWR | os.O_CREAT, 0o600)
+os.write(descriptor, b"\\x01" * (3 * 1024 * 1024))
+# One page mapped keeps all 3 MiB allocated once the descriptor is closed.
+libc.mmap(None, 4096, mmap.PROT_READ, mmap.MAP_SHARED, descriptor, 0)
+os.close(descriptor)
+os.unlink("kept")
+print("ready", flush=True)
+time.sleep(60)
+"""
+
+
+@pytest.mark.root
+def test_a_deleted_file_the_plugin_keeps_only_mapped_makes_its_disk_use_unmeasurable(layout):
+    setup = DirectorySetup(layout)
+    setup.prepare_tree()
+    setup.prepare_plugin("weather", PLUGIN_UID)
+    operations = LauncherOperations(
+        layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable(), max_file_bytes=PLUGIN_MAX_FILE_BYTES
+    )
+    read_end, write_end = os.pipe()
+    pid = spawn_process(
+        SpawnSpec(
+            uid=PLUGIN_UID,
+            gid=PLUGIN_UID,
+            argv=[SYSTEM_PYTHON, "-I", "-c", KEEP_A_DELETED_FILE_ONLY_MAPPED],
+            environment={},
+            working_directory=layout.plugin_home("weather"),
+            output_descriptor=write_end,
+        )
+    )
+    os.close(write_end)
+    try:
+        with os.fdopen(read_end, "rb") as output:
+            assert output.readline() == b"ready\n"
+            _, (result_pipe,) = operations.handle(
+                protocol.MeasureDisk(plugin="weather", uid=PLUGIN_UID, max_bytes=10**12, max_files=10**9),
+                [],
+            )
+            usage = read_usage(result_pipe)
+    finally:
+        kill_uid(PLUGIN_UID, ProcessTable(), reap=operations.reap)
+        operations.reap()
+
+    assert usage.problem == (
+        f"process {pid} keeps a deleted file mapped without an open descriptor, "
+        "so its size cannot be measured"
+    )
+    assert operations.exit_code_of(pid) == -9
+
+
 def test_a_removal_request_is_decoded():
     request = protocol.decode_request(json.dumps({"operation": "remove_plugin", "plugin": "weather", "uid": PLUGIN_UID}).encode())
 
