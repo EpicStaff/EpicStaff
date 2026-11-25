@@ -27,8 +27,8 @@ from tables.services.llm_clients.base import (
     TokenEvent,
     UnsupportedLLMProviderError,
 )
-from tables.services.secrets.pinned_principal_rules import pinned_principal_of_user
 from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
+from tables.services.secrets.pinned_principal_rules import pinned_principal_of_user
 
 from .context import render_user_message
 from .output_schema import CDT_EXPLAIN_OUTPUT_SCHEMA
