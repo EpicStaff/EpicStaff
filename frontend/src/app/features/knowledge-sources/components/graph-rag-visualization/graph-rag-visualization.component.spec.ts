@@ -165,6 +165,9 @@ describe('GraphRagVisualizationComponent', () => {
     }
 
     beforeEach(async () => {
+        // The component persists the "Group by Community" toggle in localStorage, so a prior test that
+        // flips it off would otherwise seed the next test with the wrong initial state.
+        localStorage.clear();
         vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         await TestBed.configureTestingModule({
             imports: [TestHostComponent],
@@ -259,6 +262,13 @@ describe('GraphRagVisualizationComponent', () => {
         });
 
         it('says GraphRAG is unavailable on a 503', () => {
+            vi.useFakeTimers();
+            // The service retries 5XX once after a 300ms backoff, so the error only surfaces after the
+            // retry also fails.
+            httpMock
+                .expectOne(INITIAL_REQUEST_URL)
+                .flush({ message: 'unavailable' }, { status: 503, statusText: 'Service Unavailable' });
+            vi.advanceTimersByTime(300);
             httpMock
                 .expectOne(INITIAL_REQUEST_URL)
                 .flush({ message: 'unavailable' }, { status: 503, statusText: 'Service Unavailable' });
