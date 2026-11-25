@@ -51,7 +51,11 @@ import {
     LABEL_FONT_SIZE,
     LABEL_FONT_WEIGHT,
     LABEL_HORIZONTAL_PADDING,
+    LABEL_MIN_NODE_PIXEL_RADIUS_2D,
+    LABEL_MIN_NODE_PIXEL_RADIUS_3D,
     LABEL_OFFSET_ABOVE_NODE,
+    LABEL_SCREEN_SIZE_SCALE_2D,
+    LABEL_SIZE_INFLUENCE_2D,
     LABEL_SPRITE_HEIGHT,
     LABEL_TEXT_COLOR,
     MAX_FRAME_DELTA_SECONDS,
@@ -88,6 +92,9 @@ export class GraphSceneService {
     private resizeObserver: ResizeObserver | null = null;
     private readonly controlsChangeHandler = (): void => {
         this.depthOrderStale = true;
+        // Nodes have not moved, but their distance to the camera (3D) or the ortho zoom (2D) has —
+        // re-evaluate per-label distance culling. The call is cheap: a vector subtract + length per sprite.
+        this.updateLabelPositions();
         this.requestRender();
     };
 
@@ -95,7 +102,6 @@ export class GraphSceneService {
     private edges: GraphEdge[] = [];
     private titleToIndex = new Map<string, number>();
     private is3D = false;
-    private labelsVisible = false;
     /** When true, nodes are colored by community instead of by entity type. */
     private colorByCommunity = false;
 
@@ -276,9 +282,7 @@ export class GraphSceneService {
         ) {
             this.updateHoverVisuals();
         }
-        if (this.labelsVisible) {
-            this.updateLabelPositions();
-        }
+        this.updateLabelPositions();
         this.requestRender();
     }
 
@@ -403,9 +407,7 @@ export class GraphSceneService {
         this.updateInstanceColors();
         this.updateEdgePositions();
         this.updateHoverVisuals();
-        if (this.labelsVisible) {
-            this.updateLabelPositions();
-        }
+        this.updateLabelPositions();
         this.requestRender();
     }
 
@@ -434,9 +436,8 @@ export class GraphSceneService {
 
     /** Write the current graph state (positions, colors, visibility, labels) into freshly created meshes. */
     private applyGraphState(): void {
-        if (this.labelsVisible) {
-            this.createLabelSprites();
-        }
+        this.createLabelSprites();
+        this.updateLabelPositions();
         this.updateInstanceMatrices();
         this.updateInstanceColors();
         this.updateEdgePositions();
@@ -611,19 +612,6 @@ export class GraphSceneService {
         this.applyVisibilityChange();
     }
 
-    /** Toggle labels on/off. */
-    setLabelsVisible(visible: boolean): void {
-        this.labelsVisible = visible;
-        if (!this.resources) return;
-
-        if (visible && this.resources.labelSprites.length === 0) {
-            this.createLabelSprites();
-        } else if (!visible) {
-            this.disposeLabelSprites();
-        }
-        this.requestRender();
-    }
-
     /** Color nodes by community (true) or by entity type (false). Search highlight and dimming still apply on top. */
     setColorByCommunity(enabled: boolean): void {
         this.colorByCommunity = enabled;
@@ -765,7 +753,7 @@ export class GraphSceneService {
         this.updateHoverVisuals();
         // Sprite labels hide the currently-selected one; re-run the visibility pass so switching
         // selection (including clearing it) takes effect without waiting for the next sim tick.
-        if (this.labelsVisible) this.updateLabelPositions();
+        this.updateLabelPositions();
         this.requestRender();
     }
 
@@ -799,7 +787,7 @@ export class GraphSceneService {
         this.updateHoverVisuals();
         // Sprite labels hide the currently-hovered one; re-run the visibility pass so entering/leaving a
         // node takes effect immediately without waiting for the next sim tick.
-        if (this.labelsVisible) this.updateLabelPositions();
+        this.updateLabelPositions();
         this.requestRender();
     }
 
@@ -1145,9 +1133,7 @@ export class GraphSceneService {
         this.updateInstanceMatrices();
         this.updateInstanceColors();
         this.updateEdgePositions();
-        if (this.labelsVisible) {
-            this.updateLabelPositions();
-        }
+        this.updateLabelPositions();
         this.requestRender();
     }
 
@@ -1273,13 +1259,60 @@ export class GraphSceneService {
 
     private updateLabelPositions(): void {
         if (!this.resources) return;
-        for (let i = 0; i < this.resources.labelSprites.length && i < this.nodes.length; i++) {
+        const { camera, labelSprites, renderer } = this.resources;
+        const perspective = (camera as PerspectiveCamera).isPerspectiveCamera === true;
+        const zoom = perspective ? 0 : (camera as OrthographicCamera).zoom;
+        const cameraInverse = perspective ? camera.matrixWorldInverse : null;
+        const nodeInView = perspective ? new this.three!.Vector3() : null;
+        // Half the canvas height in device-independent pixels; perspective projection maps a world
+        // segment of length `L` at view depth `d` to `L · halfHeightPx / (d · tan(fov/2))` pixels.
+        const halfHeightPx = perspective ? renderer.domElement.clientHeight / 2 : 0;
+        const tanHalfFov = perspective ? Math.tan(((camera as PerspectiveCamera).fov * Math.PI) / 360) : 0;
+        // Reference radius used for the 3D culling metric: by using a fixed radius instead of each
+        // node's own, visibility depends solely on view depth, so a bigger-but-farther node can never
+        // win a label while a smaller-but-closer one has none.
+        const referenceRadius3D = NODE_MIN_RADIUS;
+        // 2D radius pivot: the influence coefficient blends each node's radius toward this midpoint, so
+        // a node whose radius equals the midpoint keeps the same toggle zoom regardless of the setting.
+        const midpointRadius2D = (NODE_MIN_RADIUS + NODE_MAX_RADIUS) / 2;
+
+        for (let i = 0; i < labelSprites.length && i < this.nodes.length; i++) {
             const node = this.nodes[i];
-            const sprite = this.resources.labelSprites[i];
+            const sprite = labelSprites[i];
             sprite.position.set(node.x, node.y + node.radius + LABEL_OFFSET_ABOVE_NODE, node.z);
             // Hide the sprite label for the selected or hovered node — their HTML overlays already show
             // the title (in the accent-purple style), and keeping both would stack two pills over the node.
-            sprite.visible = i !== this.selectedNodeIndex && i !== this.hoveredNodeIndex && this.isNodeVisible(node);
+            const allowedByNode =
+                i !== this.selectedNodeIndex && i !== this.hoveredNodeIndex && this.isNodeVisible(node);
+            if (!allowedByNode) {
+                sprite.visible = false;
+                continue;
+            }
+
+            if (perspective) {
+                // Pixel radius of a reference-sized node at this node's view depth; view-depth-based
+                // so panning (which does not change view depth) leaves labels alone, and the reference
+                // radius makes the metric node-size-independent.
+                nodeInView!.set(node.x, node.y, node.z).applyMatrix4(cameraInverse!);
+                const viewDepth = -nodeInView!.z;
+                const pixelRadius = viewDepth > 0 ? (referenceRadius3D * halfHeightPx) / (viewDepth * tanHalfFov) : 0;
+                sprite.visible = pixelRadius > LABEL_MIN_NODE_PIXEL_RADIUS_3D;
+                // Restore base world-space scale; a prior 2D pass may have shrunk it to counter ortho zoom.
+                sprite.scale.set(sprite.userData['baseScaleX'], sprite.userData['baseScaleY'], 1);
+            } else {
+                // 2D ortho: 1 world unit = 1 pixel at zoom = 1, so pixel radius = radius × zoom.
+                // Influence coefficient dampens how strongly node size spreads the toggle zoom across nodes.
+                const effectiveRadius = midpointRadius2D + (node.radius - midpointRadius2D) * LABEL_SIZE_INFLUENCE_2D;
+                sprite.visible = effectiveRadius * zoom > LABEL_MIN_NODE_PIXEL_RADIUS_2D;
+                // Keep labels at a constant on-screen size in 2D by countering the ortho zoom: world
+                // extent of a pixel = 1 / zoom, so scale = baseScale / zoom renders at a fixed pixel size.
+                const screenSizeScale = LABEL_SCREEN_SIZE_SCALE_2D / zoom;
+                sprite.scale.set(
+                    sprite.userData['baseScaleX'] * screenSizeScale,
+                    sprite.userData['baseScaleY'] * screenSizeScale,
+                    1
+                );
+            }
         }
     }
 
@@ -1339,9 +1372,13 @@ export class GraphSceneService {
             depthTest: false,
         });
         const sprite = new THREE.Sprite(material);
-        // Scale proportional to canvas aspect ratio
+        // Scale proportional to canvas aspect ratio. The base scale is stashed on `userData` so the 2D
+        // branch of `updateLabelPositions` can counter the ortho zoom and keep the pill at a constant
+        // on-screen size, while 3D keeps the raw world-size scaling for natural perspective shrinkage.
         const spriteWidth = LABEL_SPRITE_HEIGHT * (canvasWidth / canvasHeight);
         sprite.scale.set(spriteWidth, LABEL_SPRITE_HEIGHT, 1);
+        sprite.userData['baseScaleX'] = spriteWidth;
+        sprite.userData['baseScaleY'] = LABEL_SPRITE_HEIGHT;
         // Within transparent group, higher renderOrder draws later — so the pill sits on top of the
         // back-to-front-sorted node mesh in the 3D multi-pass.
         sprite.renderOrder = FOREGROUND_RENDER_ORDER;

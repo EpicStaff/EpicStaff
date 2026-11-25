@@ -41,7 +41,6 @@ import {
     GRAPH_VISUALIZATION_DETAIL_PANEL_WIDTH_KEY,
     GRAPH_VISUALIZATION_DETAIL_PANEL_WIDTH_OPTIONS,
     GRAPH_VISUALIZATION_GROUP_BY_COMMUNITY_KEY,
-    GRAPH_VISUALIZATION_LABELS_VISIBLE_KEY,
     GRAPH_VISUALIZATION_MAX_TOTAL_ENTITIES,
     GRAPH_VISUALIZATION_MIN_ENTITIES,
     GRAPH_VISUALIZATION_SIDEBAR_WIDTH_KEY,
@@ -128,7 +127,6 @@ export class GraphRagVisualizationComponent implements OnInit {
     readonly is3D = signal(false);
     readonly maxEntities = signal(GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES);
     readonly searchTerm = signal('');
-    readonly labelsVisible = signal(readStoredBoolean(GRAPH_VISUALIZATION_LABELS_VISIBLE_KEY, false));
     /** Clusters nodes around their top-level community and colors them by it. */
     readonly groupByCommunity = signal(readStoredBoolean(GRAPH_VISUALIZATION_GROUP_BY_COMMUNITY_KEY, true));
     /** Entities of the graph currently drawn. */
@@ -279,11 +277,6 @@ export class GraphRagVisualizationComponent implements OnInit {
     /** Keep the scene's color mode in sync with the toggle — otherwise the default-on state never reaches it. */
     private readonly colorByCommunityEffect = effect(() => {
         this.sceneService.setColorByCommunity(this.groupByCommunity());
-    });
-
-    /** Same for labels — a persisted-on state restored from storage must reach the scene without a user click. */
-    private readonly labelsVisibleEffect = effect(() => {
-        this.sceneService.setLabelsVisible(this.labelsVisible());
     });
 
     /** Fetch relationship description lazily when an edge is selected. */
@@ -439,15 +432,6 @@ export class GraphRagVisualizationComponent implements OnInit {
     onSearchTermChange(term: string): void {
         this.searchTerm.set(term);
         this.searchTrigger$.next(term);
-    }
-
-    onToggleLabels(visible: boolean): void {
-        this.labelsVisible.set(visible);
-        writeStoredBoolean(GRAPH_VISUALIZATION_LABELS_VISIBLE_KEY, visible);
-        // The scene is kept in sync by `labelsVisibleEffect`; we only need to clear the hover title here.
-        if (visible) {
-            this.hoveredNodeTitle.set(null);
-        }
     }
 
     onToggleGroupByCommunity(enabled: boolean): void {

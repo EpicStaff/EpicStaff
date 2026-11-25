@@ -34,16 +34,6 @@
 
             <span class="divider">/</span>
 
-            <div class="visualization__toolbar-control">
-                <span class="visualization__toolbar-label">Labels</span>
-                <app-toggle-switch
-                    [checked]="labelsVisible()"
-                    (checkedChange)="onToggleLabels($event)"
-                />
-            </div>
-
-            <span class="divider">/</span>
-
             <!-- The tooltip sits on the wrapper: a disabled switch gets no pointer events -->
             <div
                 class="visualization__toolbar-control"

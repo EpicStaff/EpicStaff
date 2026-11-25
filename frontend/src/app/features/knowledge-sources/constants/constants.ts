@@ -62,9 +62,6 @@ export const GRAPH_VISUALIZATION_DETAIL_PANEL_WIDTH_OPTIONS = {
     maxWidth: 600,
 } as const satisfies SidebarWidthOptions;
 
-/** localStorage key for the "Show labels" toggle in the graph visualization toolbar. */
-export const GRAPH_VISUALIZATION_LABELS_VISIBLE_KEY = 'graph-viz-labels-visible';
-
 /** localStorage key for the "Group by community" toggle in the graph visualization toolbar. */
 export const GRAPH_VISUALIZATION_GROUP_BY_COMMUNITY_KEY = 'graph-viz-group-by-community';
 

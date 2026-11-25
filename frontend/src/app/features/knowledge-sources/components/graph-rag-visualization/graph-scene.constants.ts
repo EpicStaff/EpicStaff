@@ -63,12 +63,32 @@ export const LABEL_HORIZONTAL_PADDING = 12;
 export const LABEL_SPRITE_HEIGHT = 8;
 /** Gap between a node's top edge and its label, in world units. */
 export const LABEL_OFFSET_ABOVE_NODE = 4;
+
+/**
+ * Minimum on-screen node radius (px) at which a label shows. Higher = fewer labels, lower = more.
+ * 2D uses the node's own radius (per-node toggle); 3D uses NODE_MIN_RADIUS as a reference so
+ * visibility depends on view depth alone. Range: 0 (always show) … ~20 (effectively never).
+ */
+export const LABEL_MIN_NODE_PIXEL_RADIUS_2D = 6;
+export const LABEL_MIN_NODE_PIXEL_RADIUS_3D = 5;
+
+/**
+ * How strongly node size spreads the 2D toggle zoom across nodes. 0 = all nodes toggle together,
+ * 1 = linear in radius (4× zoom spread between smallest and biggest). Range: 0 … 1.
+ */
+export const LABEL_SIZE_INFLUENCE_2D = 1;
+
+/**
+ * 2D label pill size multiplier (applied after ortho-zoom cancellation). Higher = bigger pills.
+ * Range: > 0 (≈ 1 renders at authored pixel size, past ~5 pills overflow neighbour nodes).
+ */
+export const LABEL_SCREEN_SIZE_SCALE_2D = 2;
 /** Gap between a node's top edge and the anchor of its hover tooltip, in world units. */
 export const HOVER_TOOLTIP_OFFSET_ABOVE_NODE = 2;
 
 /** Node radius range in world units; a node's radius grows linearly with its degree. */
 export const NODE_MIN_RADIUS = 4;
-export const NODE_MAX_RADIUS = 16;
+export const NODE_MAX_RADIUS = 25;
 
 /** Sphere tessellation of the node and node-outline meshes — both must match so the outline wraps the node. */
 export const NODE_SPHERE_WIDTH_SEGMENTS = 16;
