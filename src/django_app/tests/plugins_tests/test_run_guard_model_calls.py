@@ -10,12 +10,12 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
-from ai_models.models import EmbeddingConfig, LLMConfig, LLMModel, Provider
-from django.test import Client
+from ai_models.models import DefaultModels, EmbeddingConfig, LLMConfig, LLMModel, Provider
+from asgiref.sync import sync_to_async
+from django.test import AsyncClient, Client
 from django.urls import reverse
 from plugins.models import GrantState
 from rbac.identity.tickets import sse_ticket_service
-from rbac.models import OrganizationUser
 from tables.models.flow_assistant_models import (
     FlowAssistant,
     FlowAssistantConversation,
@@ -23,7 +23,7 @@ from tables.models.flow_assistant_models import (
 )
 from tables.models.graph_models import ClassificationDecisionTableNode
 from tables.models.knowledge_models.collection_models import BaseRagType, DocumentMetadata, SourceCollection
-from tables.models.knowledge_models.graphrag_models import GraphRag, GraphRagIndexConfig
+from tables.models.knowledge_models.graphrag_models import GraphRag, GraphRagDocument, GraphRagIndexConfig
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
 from tables.services.llm_clients.base import DoneEvent, TokenEvent
 
@@ -88,13 +88,17 @@ def _naive_rag(organization, embedder) -> NaiveRag:
 
 def _graph_rag(organization, embedder, llm) -> GraphRag:
     collection = SourceCollection.objects.create(org=organization, collection_name="Forecast graph")
-    DocumentMetadata.objects.create(source_collection=collection, file_name="forecast.txt")
-    return GraphRag.objects.create(
+    document = DocumentMetadata.objects.create(source_collection=collection, file_name="forecast.txt")
+    rag = GraphRag.objects.create(
         base_rag_type=BaseRagType.objects.create(rag_type=BaseRagType.RagType.GRAPH, source_collection=collection),
         embedder=embedder,
         llm=llm,
         index_config=GraphRagIndexConfig.objects.create(),
     )
+    # A GraphRAG indexes only the documents linked to it; creating one through the API links
+    # every document of its collection.
+    GraphRagDocument.objects.create(graph_rag=rag, document=document)
+    return rag
 
 
 def _index(client, rag_type: str, rag_id: int):
@@ -117,7 +121,7 @@ def test_indexing_with_the_plugin_s_embedder_is_refused(grant, acme, olga, knowl
 
 
 def test_indexing_with_an_embedder_using_the_plugin_s_secret_is_refused(grant, acme, olga, knowledge_client):
-    key = secret_row(acme, "Weather · embeddings key")
+    key = secret_row(acme, "Weather - embeddings key")
     own(key, grant)
     embedder = EmbeddingConfig.objects.create(org=acme, custom_name="Acme embeddings", api_key_secret=key)
 
@@ -258,9 +262,7 @@ def llm_client():
 
 def _conversation(user, organization, llm_config) -> FlowAssistantConversation:
     assistant = FlowAssistant.objects.create(graph=flow(organization, "Digest"), llm_config=llm_config)
-    return FlowAssistantConversation.objects.create(
-        flow_assistant=assistant, organization_user=OrganizationUser.objects.get(user=user, org=organization)
-    )
+    return FlowAssistantConversation.objects.create(flow_assistant=assistant, user=user)
 
 
 def _send(client, conversation, message="what does this flow do?"):
@@ -309,16 +311,59 @@ def test_the_assistant_s_reply_is_refused_once_the_plugin_is_suspended(
     llm_client.assert_not_called()
 
 
-def test_the_assistant_answers_with_the_organization_s_own_llm_config(grant, acme, admin_acme, olga, llm_client):
-    own(_llm_config(acme, "Weather assistant"), grant)
-    conversation = _conversation(admin_acme, acme, _llm_config(acme, "Acme assistant"))
+def test_an_assistant_without_a_config_is_refused_when_the_org_default_llm_is_the_plugin_s(
+    grant, acme, admin_acme, olga, llm_client
+):
+    # The reply falls back to the organization's default agent LLM, so that config is admitted.
+    default_config = _llm_config(acme, "Weather default")
+    own(default_config, grant)
+    DefaultModels.objects.update_or_create(org=acme, defaults={"agent_llm_config": default_config})
+    conversation = _conversation(admin_acme, acme, llm_config=None)
 
     sent = _send(olga, conversation)
-    response = _stream(admin_acme, conversation)
+    streamed = _stream(admin_acme, conversation)
+
+    _assert_refused(sent.status_code, sent.json(), acme)
+    assert not streamed.streaming
+    _assert_refused(streamed.status_code, streamed.json(), acme)
+    assert not FlowAssistantMessage.objects.filter(conversation=conversation).exists()
+    llm_client.assert_not_called()
+
+
+def test_an_assistant_without_a_config_is_asked_when_the_org_default_llm_is_the_org_s_own(
+    grant, acme, admin_acme, olga
+):
+    # The suspended plugin owns a config of the organization that the default is not.
+    own(_llm_config(acme, "Weather assistant"), grant)
+    DefaultModels.objects.update_or_create(
+        org=acme, defaults={"agent_llm_config": _llm_config(acme, "Acme default")}
+    )
+    conversation = _conversation(admin_acme, acme, llm_config=None)
+
+    sent = _send(olga, conversation)
+
+    assert sent.status_code == 200, sent.content
+    assert FlowAssistantMessage.objects.filter(conversation=conversation, role="user").exists()
+
+
+@pytest.mark.asyncio
+@pytest.mark.django_db(transaction=True)
+async def test_the_assistant_answers_with_the_organization_s_own_llm_config(grant, acme, admin_acme, olga, llm_client):
+    # Transactional and async: the stream is an async iterator, and it closes its database
+    # connection, which a test transaction would not survive.
+    def conversation_beside_the_plugin_s_config():
+        own(_llm_config(acme, "Weather assistant"), grant)
+        return _conversation(admin_acme, acme, _llm_config(acme, "Acme assistant"))
+
+    conversation = await sync_to_async(conversation_beside_the_plugin_s_config)()
+    sent = await sync_to_async(_send)(olga, conversation)
+    ticket, _ = await sync_to_async(sse_ticket_service.issue)(admin_acme)
+    url = reverse("flow-assistant-stream", args=[conversation.flow_assistant.graph_id, conversation.pk])
+    response = await AsyncClient().get(url, {"ticket": ticket})
 
     assert (sent.status_code, response.status_code) == (200, 200), sent.content
     assert response.streaming
-    assert "hi" in b"".join(response.streaming_content).decode()
+    assert "hi" in b"".join([frame async for frame in response.streaming_content]).decode()
     llm_client.assert_called_once()
 
 

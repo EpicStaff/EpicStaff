@@ -281,17 +281,18 @@ class FlowAssistantService:
         """Refuse a reply that calls an LLM config no run could use now.
 
         A reply calls the model as a run would, so it is admitted like one: a config of a
-        plugin that is not active in the organization is refused, as in a flow. An assistant
-        without a config has nothing to admit; its reply fails on the missing config.
+        plugin that is not active in the organization is refused, as in a flow. The config
+        admitted is the one the reply calls, `resolve_llm_config`: the assistant's own, else
+        the org's default agent LLM. When neither is set there is nothing to admit, and the
+        reply fails on the missing config.
 
         Raises:
-            RunAdmissionRefusedError: The reply may not call the assistant's LLM config.
+            RunAdmissionRefusedError: The reply may not call the LLM config it would use.
         """
-        if flow_assistant.llm_config_id is None:
+        llm_config = self.resolve_llm_config(flow_assistant)
+        if llm_config is None:
             return
-        assert_run_admitted(
-            RunSubject(RunKind.LLM_CONFIG, flow_assistant.llm_config_id, organization_id)
-        )
+        assert_run_admitted(RunSubject(RunKind.LLM_CONFIG, llm_config.pk, organization_id))
 
     def append_user_message(
         self, conversation: FlowAssistantConversation, content: str
