@@ -8,6 +8,7 @@ from tables.models import (
 from tables.serializers.utils.description_sanitizer import validate_tool_description
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 from tables.validators.execution_timeout_validator import normalize_imported_execution_timeout
+from tables.validators.python_entrypoint_validator import validate_python_entrypoint
 
 
 class PythonCodeImportSerializer(serializers.ModelSerializer):
@@ -18,7 +19,9 @@ class PythonCodeImportSerializer(serializers.ModelSerializer):
     """
 
     code = serializers.CharField(allow_blank=True)
-    entrypoint = serializers.CharField(allow_blank=True, required=False)
+    entrypoint = serializers.CharField(
+        allow_blank=True, required=False, validators=[validate_python_entrypoint]
+    )
     # A plain integer on purpose, not a related field: the value is the exporting
     # system's binding pk, so resolving it against this database would validate --
     # and could import -- another organization's environment. The strategies remap

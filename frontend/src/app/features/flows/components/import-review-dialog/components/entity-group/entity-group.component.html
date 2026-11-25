@@ -19,7 +19,10 @@
                 <div class="entity-items-list">
                     @for (item of result().created.items; track item.id) {
                         <ng-container
-                            *ngTemplateOutlet="itemRow; context: { $implicit: item, status: 'created' }"
+                            *ngTemplateOutlet="
+                                itemRow;
+                                context: { $implicit: item, status: 'created', position: $index }
+                            "
                         ></ng-container>
                     }
                 </div>
@@ -31,7 +34,14 @@
                 <div class="entity-items-list">
                     @for (item of result().reused.items; track item.id) {
                         <ng-container
-                            *ngTemplateOutlet="itemRow; context: { $implicit: item, status: 'reused' }"
+                            *ngTemplateOutlet="
+                                itemRow;
+                                context: {
+                                    $implicit: item,
+                                    status: 'reused',
+                                    position: result().created.items.length + $index,
+                                }
+                            "
                         ></ng-container>
                     }
                 </div>
@@ -44,17 +54,18 @@
     #itemRow
     let-item
     let-status="status"
+    let-position="position"
 >
     <div class="entity-item-wrapper">
         <div
             class="entity-item"
-            [class.expandable]="isRowClickable(item)"
+            [class.expandable]="isRowClickable(item, position)"
             [class.expanded]="isItemExpanded(status, item.id)"
-            [attr.tabindex]="isRowClickable(item) ? 0 : null"
-            [attr.role]="isRowClickable(item) ? 'button' : null"
+            [attr.tabindex]="isRowClickable(item, position) ? 0 : null"
+            [attr.role]="isRowClickable(item, position) ? 'button' : null"
             [attr.aria-expanded]="isRowExpandable(item) ? isItemExpanded(status, item.id) : null"
-            (click)="onRowClick(item, status)"
-            (keydown)="onRowKeydown($event, item, status)"
+            (click)="onRowClick(item, status, position)"
+            (keydown)="onRowKeydown($event, item, status, position)"
         >
             @if (isRowExpandable(item)) {
                 <app-svg-icon
@@ -66,11 +77,11 @@
             }
             <span class="item-name">
                 {{ item.name }}
-                @if (!store.hasPythonCode(item.name) && toolTransport(item); as transport) {
+                @if (!store.hasPythonCode(entityType(), position) && toolTransport(item); as transport) {
                     <span class="item-transport">{{ transport }}</span>
                 }
             </span>
-            @if (store.hasReviewNodes(item.name)) {
+            @if (hasFlowReviewNodes(item)) {
                 <app-review-status-badge
                     [reviewed]="store.isFlowFullyReviewed(item.name)"
                     [notReviewedLabel]="
@@ -78,17 +89,17 @@
                     "
                 ></app-review-status-badge>
             }
-            @if (store.hasPythonCode(item.name)) {
+            @if (store.hasPythonCode(entityType(), position)) {
                 <app-review-status-badge
-                    [reviewed]="store.isToolReviewed(item.name)"
-                    [clickable]="store.isToolViewed(item.name)"
-                    (toggled)="store.toggleToolReviewed(item.name)"
+                    [reviewed]="store.isToolReviewed(entityType(), position)"
+                    [clickable]="store.isToolViewed(entityType(), position)"
+                    (toggled)="store.toggleToolReviewed(entityType(), position)"
                 ></app-review-status-badge>
-            } @else if (store.isMcpTool(item.name)) {
+            } @else if (store.isMcpTool(entityType(), position)) {
                 <span class="status-no-code">No code</span>
             }
         </div>
-        @if (store.hasReviewNodes(item.name)) {
+        @if (hasFlowReviewNodes(item)) {
             <app-flow-review-nodes
                 [nodes]="store.flowNodes(item.name)"
                 [expanded]="isItemExpanded(status, item.id)"
