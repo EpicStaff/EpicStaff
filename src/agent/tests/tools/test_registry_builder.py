@@ -245,6 +245,47 @@ async def test_two_tools_with_one_name_are_refused(add_twice):
         add_twice(ToolRegistryBuilder(_fake_sandbox()))
 
 
+def _add_mcp(builder: ToolRegistryBuilder, tool_name: str, epicstaff_name: str | None) -> ToolRegistryBuilder:
+    data = McpToolData(transport="http://localhost:8080/sse", tool_name=tool_name, name=epicstaff_name)
+    return builder.add_mcp_tool(data, name=tool_name, description="d", args_schema={})
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "expected"),
+    [
+        (("echo", "echo-a"), ("echo", "echo-b"), {"echo", "echo-b"}),
+        # Names that only collide after sanitizing are told apart the same way.
+        (("search.v1", "search a"), ("search_v1", "search b"), {"search_v1", "search_b"}),
+        # Without an EpicStaff name the server name is numbered.
+        (("echo", None), ("echo", None), {"echo", "echo_2"}),
+        # The number still fits the 64-character limit.
+        (("s" * 64, None), ("s" * 64, None), {"s" * 64, "s" * 62 + "_2"}),
+    ],
+    ids=["epicstaff-name", "after-sanitizing", "numbered", "at-length-limit"],
+)
+async def test_an_mcp_tool_whose_name_is_taken_gets_a_free_one(first, second, expected):
+    builder = _add_mcp(ToolRegistryBuilder(_fake_sandbox(), _fake_gateway()), *first)
+
+    registry = _add_mcp(builder, *second).build()
+
+    assert {spec.name for spec in registry.tool_specs()} == expected
+
+
+async def test_an_mcp_tool_numbers_its_epicstaff_name_when_that_is_taken_too():
+    builder = ToolRegistryBuilder(_fake_sandbox(), _fake_gateway()).add_python_code_tool(_python_tool_data("echo-b"))
+    builder = _add_mcp(_add_mcp(builder, "echo", "echo-a"), "echo", "echo-b")
+
+    registry = _add_mcp(builder, "echo", "echo-b").build()
+
+    assert {spec.name for spec in registry.tool_specs()} == {"echo-b", "echo", "echo-b_2", "echo-b_3"}
+
+
+async def test_an_mcp_tool_with_a_free_name_keeps_it():
+    registry = _add_mcp(ToolRegistryBuilder(_fake_sandbox(), _fake_gateway()), "search", "Web search").build()
+
+    assert [spec.name for spec in registry.tool_specs()] == ["search"]
+
+
 @pytest.mark.parametrize(
     "use_again",
     [lambda builder: builder.build(), lambda builder: builder.add_python_code_tool(_python_tool_data("after_build"))],
