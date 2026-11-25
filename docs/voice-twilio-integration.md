@@ -203,6 +203,8 @@ Created once per call/conversation; captures the agent's config at session start
 
 Only the realtime service creates recordings: `POST /conversation-recordings/` requires the SYSTEM API key, and any other caller (a JWT session or a USER API key) gets 403. The file must be a WAV of at most `DJANGO_MAX_VOICE_RECORDING_SIZE` (default `22mb`), or the API answers 400. realtime caps each direction of a 30-minute call below that: 30 min × 8000 bytes/s × 1.5 = 21,600,000 bytes, WAV header included (`MAX_RECORDING_AUDIO_BYTES` in `src/realtime/core/config.py`).
 
+The file lives on django_app's media volume exactly as long as its row: deleting a recording, directly, through its chat or with its organization, removes the file once the deletion commits (`tables/signals/conversation_recording_signals.py`). No URL serves the media volume, not even with `DJANGO_DEBUG` on.
+
 ---
 
 ## Django Backend API
