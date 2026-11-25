@@ -38,6 +38,8 @@ class InMemoryStorageBackend(AbstractStorageBackend):
         self.organization_prefix = organization_prefix
         self._part_size = part_size
         self._objects: dict[str, tuple[bytes, datetime]] = {}
+        # Full keys of multipart uploads started and never completed, one entry per upload.
+        self.incomplete_uploads: list[str] = []
 
     def _full_path(self, path: str) -> str:
         """Prepend the organization prefix to a caller-provided path."""
@@ -127,6 +129,14 @@ class InMemoryStorageBackend(AbstractStorageBackend):
         self._store(self._full_path(path), (bytes(data), datetime.now(timezone.utc)))
         return len(data)
 
+    def put_raw_key(self, key: str, data: bytes) -> None:
+        """Store `key` exactly, past the app's path rules, as run code with its own client can
+        (S3 accepts a backslash in a key)."""
+        self._objects[key] = (bytes(data), datetime.now(timezone.utc))
+
+    def has_raw_key(self, key: str) -> bool:
+        return key in self._objects
+
     def download(self, path: str) -> bytes:
         full_path = self._full_path(path)
         if full_path not in self._objects:
@@ -153,6 +163,14 @@ class InMemoryStorageBackend(AbstractStorageBackend):
     def delete_keys(self, keys: list[str]) -> None:
         for key in keys:
             self._objects.pop(key, None)
+
+    def abort_incomplete_uploads(self, prefix: str) -> int:
+        full_prefix = self._full_path(prefix)
+        if not full_prefix.endswith("/"):
+            full_prefix += "/"
+        aborted = [key for key in self.incomplete_uploads if key.startswith(full_prefix)]
+        self.incomplete_uploads = [key for key in self.incomplete_uploads if key not in aborted]
+        return len(aborted)
 
     def delete_prefix(self, prefix: str) -> None:
         """Delete every object under prefix, including any folder marker keyed as the prefix itself."""
@@ -576,6 +594,21 @@ class _Paginator:
             }
 
 
+class _MultipartUploadPaginator:
+    def __init__(self, client, page_size):
+        self._client = client
+        self._page_size = page_size
+
+    def paginate(self, *, Bucket, Prefix):
+        uploads = [
+            {"Key": key, "UploadId": upload_id}
+            for key, upload_id in self._client.pending_uploads
+            if key.startswith(Prefix)
+        ]
+        for start in range(0, len(uploads), self._page_size):
+            yield {"Uploads": uploads[start : start + self._page_size]}
+
+
 class FakeS3Client:
     """The slice of the boto3 S3 client that S3StorageBackend uses, over a dict."""
 
@@ -591,6 +624,8 @@ class FakeS3Client:
         self.parts: dict[int, bytes] = {}
         self.completed: list[dict] | None = None
         self.aborted = False
+        # (key, upload id) of multipart uploads started and never completed.
+        self.pending_uploads: list[tuple[str, str]] = []
         self.peak_live_parts = 0
         self._live_parts = 0
         self._copies = 0
@@ -648,6 +683,8 @@ class FakeS3Client:
         return response
 
     def get_paginator(self, name):
+        if name == "list_multipart_uploads":
+            return _MultipartUploadPaginator(self, self.page_size)
         assert name == "list_objects_v2"
         return _Paginator(self, self.page_size)
 
@@ -691,6 +728,8 @@ class FakeS3Client:
 
     def abort_multipart_upload(self, *, Bucket, Key, UploadId):
         self.aborted = True
+        if (Key, UploadId) in self.pending_uploads:
+            self.pending_uploads.remove((Key, UploadId))
 
 
 def make_s3_backend(client: FakeS3Client, part_size: int = 16 * 1024 * 1024) -> S3StorageBackend:

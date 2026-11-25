@@ -58,3 +58,27 @@ def test_every_copy_of_the_trash_folder_name_matches():
     for relative_path, pattern in copies.items():
         source = (repository_root / relative_path).read_text(encoding="utf-8")
         assert re.search(pattern, source, re.MULTILINE).group(1) == TRASH_DIRECTORY, relative_path
+
+
+
+@pytest.mark.parametrize(
+    ("path", "indexable"),
+    [
+        ("reports/out.csv", True),
+        ("reports/звіт за рік.csv", True),
+        ("a..b.txt", True),
+        ("/".join(["s" * 200] * 6)[:1000], True),
+        ("reports\\out.csv", False),
+        ("reports//out.csv", False),
+        ("reports/./out.csv", False),
+        ("reports/../out.csv", False),
+        ("../out.csv", False),
+        ("", False),
+        ("/".join(["s" * 200] * 6)[:1001], False),
+    ],
+    ids=lambda value: value if isinstance(value, bool) or len(value) < 40 else f"{len(value)}-chars",
+)
+def test_a_path_is_indexable_only_when_a_row_can_hold_it_unchanged(path, indexable):
+    from tables.services.storage_service.path_utils import is_indexable_path
+
+    assert is_indexable_path(1, path) is indexable
