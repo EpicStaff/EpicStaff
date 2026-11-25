@@ -90,7 +90,13 @@ class Feature(NamedTuple):
 # A feature is on only when its flag is true AND its compose profile is active; the wizard
 # writes both together so they cannot drift apart.
 FEATURES = (
-    Feature("Chat", "CHAT_ENABLED", "chat", ("chat", "chatdb"), ("CHAT_WORKERS", "CHAT_LOG_LEVEL")),
+    Feature(
+        "Chat",
+        "CHAT_ENABLED",
+        "chat",
+        ("chat", "chatdb"),
+        ("CHAT_WORKERS", "CHAT_MEMORY", "CHAT_LOG_LEVEL"),
+    ),
     # Both audit switches share the auditor stack: its profile is on when either is.
     Feature(
         "Session audit trail",
@@ -216,6 +222,74 @@ SERVER_SIZE_VALUES = {
     "medium": {"DJANGO_SGI_WORKERS": "3", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "2"},
     "large": {"DJANGO_SGI_WORKERS": "6", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "4"},
 }
+
+
+class MemoryLimit(NamedTuple):
+    variable: str
+    services: tuple[str, ...]
+    default_mb: int
+    floor_mb: int
+    profile: str | None
+
+
+# The limits the wizard scales to the host. Defaults are benchmark peaks with headroom; floors are
+# the memory each service used at the lightest load plus about 20%.
+MEMORY_LIMITS = (
+    MemoryLimit("CREW_MEMORY", ("crew",), 2048, 384, None),
+    MemoryLimit("CREWDB_MEMORY", ("crewdb",), 2048, 384, None),
+    MemoryLimit("SANDBOX_MEMORY", ("sandbox_new",), 1024, 256, None),
+    MemoryLimit("SANDBOX_WORKER_MEMORY", ("sandbox_worker",), 2048, 512, None),
+    MemoryLimit("KNOWLEDGE_MEMORY", ("knowledge_new",), 2048, 512, None),
+    MemoryLimit("AGENT_MEMORY", ("agent",), 1024, 256, None),
+    MemoryLimit("REDIS_MEMORY", ("redis",), 512, 256, None),
+    MemoryLimit("OPENSEARCH_MEMORY", ("opensearch",), 2048, 1536, "auditor"),
+    MemoryLimit("PLUGINS_DB_MEMORY", ("plugins_db",), 2048, 1024, "plugins"),
+)
+# Limit variable -> (worker variable, MiB per worker, base MiB, profile). Never scaled down:
+# below this the workers themselves run out of memory.
+WORKER_MEMORY = {
+    "DJANGO_MEMORY": ("DJANGO_SGI_WORKERS", 512, 1024, None),
+    "CHAT_MEMORY": ("CHAT_WORKERS", 256, 512, "chat"),
+}
+# Compose service -> (memory MiB, pids, profile). Written in docker-compose.yaml, not in `.env`.
+FIXED_LIMITS = {
+    "epicstaff-nginx": (128, 256, None),
+    "frontend": (64, 64, None),
+    "storage": (256, 512, None),
+    "storage-init": (64, 64, None),
+    "volume-permissions": (64, 64, None),
+    "webhook": (128, 128, None),
+    "manager": (128, 128, None),
+    "realtime": (256, 256, None),
+    "mailpit": (128, 64, "dev"),
+    "auditor": (512, 256, "auditor"),
+    "chatdb": (512, 512, "chat"),
+    "plugins_egress": (256, 128, "plugins"),
+}
+# They get limits but are left out of the total: they exit after startup.
+ONE_SHOT_SERVICES = ("storage-init", "volume-permissions")
+MEMORY_ROUNDING_MB = 64
+DEFAULT_ES_PLUGINS_MEMORY_MB = 4096
+
+
+class MemoryFit(NamedTuple):
+    values: dict[str, str]
+    ram_mb: int
+    reserve_mb: int
+    total_mb: int
+    fits: bool
+    largest: list[str]
+
+
+MEMORY_CHOICES = {"fit": "Fit to this machine", "keep": "Keep current"}
+MEMORY_UNKNOWN_NOTE = (
+    "Could not detect the memory: keeping the default limits; check they fit this machine."
+)
+TUNE_MEMORY_HINT = (
+    'Run python scripts/envtool.py --setup and pick "Tune performance and limits" to fit the new '
+    "memory limits to this machine."
+)
+
 # Sandbox limit -> (description, how long crew waits for the result). Crew must wait longer than
 # the sandbox may run, with room for library installation.
 CODE_TIME_LIMITS = {
@@ -592,6 +666,7 @@ def update_env_file(
     overrides = {
         **_split_audit_switch(original),
         **carried_forward_values(read_env_values(original)),
+        **worker_memory_values(read_env_values(original)),
         **(overrides or {}),
     }
     added, needs_value, content = [], [], []
@@ -884,17 +959,11 @@ def ask_production_values(
     serving_mode = screen.ask(
         "Served", "How do users reach it?", choices=SERVING_MODE_CHOICES, validate=matching_mode
     )
-    enabled = ask_features(screen, {feature.flag: False for feature in FEATURES})
-    enabled["PLUGINS_ENABLED"] = enabled["PLUGINS_ENABLED"] and plugins_allowed(screen, public_url)
-    plugins_host_template = (
-        ask_plugins_host_template(screen, public_url) if enabled["PLUGINS_ENABLED"] else None
-    )
+    enabled, plugins_host_template = ask_production_features(screen, public_url)
     image_tag = screen.ask(
         "Release", "Release tag to pull (IMAGE_TAG), e.g. v1.3.0", validate=validate_image_tag
     )
     values = production_values(public_url, serving_mode, image_tag)
-    if plugins_host_template:
-        values["PLUGINS_HOST_TEMPLATE"] = plugins_host_template
     retention = screen.ask(
         "Retention",
         "How long to keep finished sessions, chat conversations and audit events? "
@@ -903,7 +972,50 @@ def ask_production_values(
     )
     values |= dict.fromkeys(RETENTION_DAYS, retention)
     cpu_count = detect_cpu_count()
-    size = server_size_for(cpu_count)
+    memory_mb = detect_memory_mb()
+    if memory_mb is None:
+        screen.notes.append(MEMORY_UNKNOWN_NOTE)
+    notes_before_sizing = len(screen.notes)
+    while True:
+        sized, fit = ask_server_size(screen, schema, enabled, cpu_count, memory_mb)
+        if fit is None or confirm_memory_fit(screen, fit):
+            break
+        # The wizard has no back step: ask the features and the size again, then fit again.
+        del screen.notes[notes_before_sizing:]
+        enabled, plugins_host_template = ask_production_features(screen, public_url)
+    values |= sized
+    if plugins_host_template:
+        values["PLUGINS_HOST_TEMPLATE"] = plugins_host_template
+    return values, enabled, serving_mode
+
+
+def ask_production_features(screen: Screen, public_url: str) -> tuple[dict[str, bool], str | None]:
+    enabled = ask_features(screen, {feature.flag: False for feature in FEATURES})
+    enabled["PLUGINS_ENABLED"] = enabled["PLUGINS_ENABLED"] and plugins_allowed(screen, public_url)
+    plugins_host_template = (
+        ask_plugins_host_template(screen, public_url) if enabled["PLUGINS_ENABLED"] else None
+    )
+    return enabled, plugins_host_template
+
+
+def ask_server_size(
+    screen: Screen,
+    schema: dict,
+    enabled: dict[str, bool],
+    cpu_count: int | None,
+    memory_mb: int | None,
+) -> tuple[dict[str, str], MemoryFit | None]:
+    """Size the server from its CPUs, stepping down until the memory limits fit, unless the
+    operator opens the advanced settings and picks the size there."""
+    size, fit = server_size_for(cpu_count), None
+    if memory_mb is not None:
+        sizes = list(SERVER_SIZES)
+        # From the CPU size down to Small; Small stays when even it does not fit.
+        for candidate in reversed(sizes[: sizes.index(size) + 1]):
+            size = candidate
+            fit = fit_memory_limits(memory_mb, enabled_profiles(enabled), SERVER_SIZE_VALUES[size])
+            if fit.fits:
+                break
     detected = (
         f"Detected {cpu_count} CPU{'' if cpu_count == 1 else 's'}"
         if cpu_count
@@ -915,14 +1027,16 @@ def ask_production_values(
     )
     screen.notes.append(size_note)
     if screen.ask_yes_no(
-        "Advanced", "Adjust advanced settings (server size, code time limit, logging)?", False
+        "Advanced",
+        "Adjust advanced settings (server size, code time limit, logging, memory limits)?",
+        False,
     ):
         # The operator picks the size now: keep only the part that stays true whatever they pick.
         screen.notes[screen.notes.index(size_note)] = f"{detected}."
-        values |= ask_advanced(screen, schema, enabled, detected_size=size)
+        values, fit = ask_advanced(screen, schema, enabled, detected_size=size, memory_mb=memory_mb)
     else:
-        values |= advanced_values(size, None, None, enabled, schema)
-    return values, enabled, serving_mode
+        values = advanced_values(size, None, None, enabled, schema)
+    return (values | fit.values, fit) if fit else (values, None)
 
 
 def detect_cpu_count() -> int | None:
@@ -939,6 +1053,146 @@ def detect_cpu_count() -> int | None:
             # Some sandboxes refuse the call; the wizard must not fail after all its questions.
             pass
     return os.cpu_count()
+
+
+def detect_memory_mb() -> int | None:
+    """Return the physical RAM in MiB, or None when the OS cannot say (Windows has no sysconf)."""
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // 2**20
+    except (ValueError, OSError, AttributeError):
+        return None
+
+
+def memory_reserve_mb(ram_mb: int) -> int:
+    """Room kept for the OS, SSH and Docker itself: 1 GiB or 10% of RAM, whichever is larger."""
+    return max(1024, ram_mb // 10)
+
+
+def worker_memory_values(values: dict[str, str]) -> dict[str, str]:
+    """Return the Django / chat limits that follow the worker counts held in `values`."""
+    return {
+        variable: f"{per_worker * int(values[workers_variable]) + base}m"
+        for variable, (workers_variable, per_worker, base, _) in WORKER_MEMORY.items()
+        if workers_variable in values
+    }
+
+
+def size_worker_memory_from(env_file: Path, override_file: Path) -> dict[str, str]:
+    """Rewrite the Django / chat limits in `env_file` to follow the worker counts compose will use
+    when `override_file` is loaded after it (its values win). A limit the override file sets
+    itself is left alone. Returns the values written."""
+    values = read_env_values(env_file.read_text(encoding="utf-8"))
+    overrides = read_env_values(override_file.read_text(encoding="utf-8"))
+    sized = {
+        variable: value
+        for variable, value in worker_memory_values({**values, **overrides}).items()
+        if variable not in overrides
+    }
+    if sized:
+        rewrite_env_values(env_file, sized)
+    return sized
+
+
+def _plugins_memory_mb(values: dict[str, str]) -> int:
+    raw = values.get("ES_PLUGINS_MEMORY")
+    if raw is None:
+        return DEFAULT_ES_PLUGINS_MEMORY_MB
+    # Docker writes 4g / 512m; humanize only knows gb / mb.
+    raw = raw.strip().lower()
+    if raw[-1:] in ("k", "m", "g"):
+        raw += "b"
+    return humanize.to_byte_size(raw) // 2**20
+
+
+def fit_memory_limits(ram_mb: int, profiles: list[str], values: dict[str, str]) -> MemoryFit:
+    """Scale the sized services down together until they fit the RAM left after the reserve.
+
+    `values` holds the chosen settings: worker counts and ES_PLUGINS_MEMORY. Django, chat and
+    the plugin node are counted as fixed; the rest shrink by one factor, never below a floor.
+    """
+
+    def active(profile: str | None) -> bool:
+        return profile is None or profile in profiles
+
+    worker_values = {
+        variable: value
+        for variable, value in worker_memory_values(values).items()
+        if active(WORKER_MEMORY[variable][3])
+    }
+    fixed = (
+        sum(
+            memory
+            for service, (memory, _, profile) in FIXED_LIMITS.items()
+            if active(profile) and service not in ONE_SHOT_SERVICES
+        )
+        + sum(int(value[:-1]) for value in worker_values.values())
+        + (_plugins_memory_mb(values) if "plugins" in profiles else 0)
+    )
+    reserve = memory_reserve_mb(ram_mb)
+    budget = ram_mb - reserve - fixed
+    scaled = [limit for limit in MEMORY_LIMITS if active(limit.profile)]
+
+    pinned: set[str] = set()
+    while True:
+        free = [limit for limit in scaled if limit.variable not in pinned]
+        pinned_floor = sum(limit.floor_mb for limit in scaled if limit.variable in pinned)
+        factor = (budget - pinned_floor) / sum(limit.default_mb for limit in free) if free else 1
+        newly_pinned = {
+            limit.variable for limit in free if limit.default_mb * factor < limit.floor_mb
+        }
+        if not newly_pinned:
+            break
+        pinned |= newly_pinned
+
+    sized = {}
+    for limit in scaled:
+        mb = (
+            limit.floor_mb
+            if limit.variable in pinned
+            else min(limit.default_mb, int(limit.default_mb * factor))
+        )
+        sized[limit.variable] = mb // MEMORY_ROUNDING_MB * MEMORY_ROUNDING_MB
+    fit_values = {**worker_values, **{variable: f"{mb}m" for variable, mb in sized.items()}}
+    in_mb = {variable: int(value[:-1]) for variable, value in fit_values.items()}
+    if "plugins" in profiles:
+        in_mb["ES_PLUGINS_MEMORY"] = _plugins_memory_mb(values)
+    return MemoryFit(
+        values=fit_values,
+        ram_mb=ram_mb,
+        reserve_mb=reserve,
+        total_mb=fixed + sum(sized.values()),
+        fits=sum(sized.values()) <= budget,
+        largest=sorted(in_mb, key=in_mb.get, reverse=True)[:3],
+    )
+
+
+def enabled_profiles(enabled: dict[str, bool]) -> list[str]:
+    return [feature.profile for feature in FEATURES if enabled[feature.flag]]
+
+
+def confirm_memory_fit(screen: Screen, fit: MemoryFit) -> bool:
+    """Note the fitted limits, or warn that they do not fit and ask whether to go on anyway."""
+    if fit.fits:
+        screen.notes.append(memory_note(fit))
+        return True
+    available_gb = (fit.ram_mb - fit.reserve_mb) / 1024
+    screen.notes.append(
+        style(
+            f"Memory limits do not fit: these features need {fit.total_mb / 1024:.1f} GB even at "
+            f"their minimum limits, but {available_gb:.1f} GB is left after keeping "
+            f"{fit.reserve_mb / 1024:.1f} GB free for the system ({fit.ram_mb / 1024:.0f} GB "
+            f"detected). The most memory goes to {', '.join(fit.largest)}.",
+            RED,
+        )
+    )
+    return screen.ask_yes_no("Memory", "Continue anyway?", False)
+
+
+def memory_note(fit: MemoryFit) -> str:
+    return (
+        f"Memory limits: {fit.total_mb / 1024:.1f} GB for containers, "
+        f"{fit.reserve_mb / 1024:.1f} GB kept free for the system ({fit.ram_mb / 1024:.0f} GB detected)."
+    )
 
 
 def server_size_for(cpu_count: int | None) -> str:
@@ -964,6 +1218,9 @@ def advanced_values(
     values: dict[str, str] = {}
     if size:
         values |= SERVER_SIZE_VALUES[size]
+        # Below this the workers run out of memory, so it follows the size even when the operator
+        # keeps the other memory limits.
+        values |= worker_memory_values(SERVER_SIZE_VALUES[size])
     if code_limit:
         values["SANDBOX_MAX_EXECUTION_TIMEOUT"] = code_limit
         values["CREW_CODE_RESULT_TIMEOUT"] = CODE_TIME_LIMITS[code_limit][1]
@@ -993,10 +1250,13 @@ def ask_advanced(
     enabled: dict[str, bool],
     current: dict[str, str] | None = None,
     detected_size: str | None = None,
-) -> dict[str, str]:
-    """Ask the three advanced questions; with `current` (an existing file) each can keep its value.
+    memory_mb: int | None = None,
+) -> tuple[dict[str, str], MemoryFit | None]:
+    """Ask the advanced questions; with `current` (an existing file) each can keep its value.
 
-    `detected_size` is the server size an empty answer keeps.
+    `detected_size` is the server size an empty answer keeps. With `memory_mb` (the host RAM) the
+    limits are fitted, after asking whether to when `current` has limits to keep. The fit comes
+    back apart from the values, so the caller can still drop it; it is None when not fitted.
     """
     keep = {}
     if current is not None:
@@ -1022,7 +1282,13 @@ def ask_advanced(
     log_level = screen.ask(
         "Logging", "Log level for every service?", choices=keep.get("log", {}) | LOG_CHOICES
     )
-    return advanced_values(
+    memory = "keep" if memory_mb is None else "fit"
+    # A new file has no current limits to keep, so there is nothing to ask.
+    if memory_mb is not None and current is not None:
+        memory = screen.ask(
+            "Memory limits", "Memory limits of the containers?", MEMORY_CHOICES, default="fit"
+        )
+    values = advanced_values(
         None if size == "keep" else size,
         None if code_limit == "keep" else code_limit,
         None if log_level == "keep" else log_level.upper(),
@@ -1030,6 +1296,10 @@ def ask_advanced(
         schema,
         current,
     )
+    if memory == "keep":
+        return values, None
+    fit = fit_memory_limits(memory_mb, enabled_profiles(enabled), {**(current or {}), **values})
+    return values, fit
 
 
 def carried_over(
@@ -1141,23 +1411,23 @@ def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev
             )
         current[feature.flag] = flag_on and profile_on
         was_on[feature.flag] = flag_on or profile_on
-    enabled = ask_features(screen, current)
-    plugin_values: dict[str, str] = {}
-    if enabled["PLUGINS_ENABLED"]:
-        public_url = old.get("DJANGO_FRONTEND_BASE_URL", "")
-        if target == "dev" and plugins_host_problem(public_url):
-            plugin_values |= LOCAL_PLUGINS_HOST
-            public_url = LOCAL_PLUGINS_HOST["DJANGO_FRONTEND_BASE_URL"]
-        enabled["PLUGINS_ENABLED"] = plugins_allowed(screen, public_url)
-    if enabled["PLUGINS_ENABLED"]:
-        plugin_values |= missing_plugin_secrets(old)
-        old_template = old.get("PLUGINS_HOST_TEMPLATE") or converted_host_template(old)
-        try:
-            template = validate_plugins_host_template(old_template or "", public_url)
-        except ValueError:
-            template = ask_plugins_host_template(screen, public_url)
-        if template != old.get("PLUGINS_HOST_TEMPLATE"):
-            plugin_values["PLUGINS_HOST_TEMPLATE"] = template
+    # Dev runs mostly on Docker Desktop, where the host RAM is not what Docker gets.
+    memory_mb = detect_memory_mb() if target == "prod" else None
+    if target == "prod" and memory_mb is None:
+        screen.notes.append(MEMORY_UNKNOWN_NOTE)
+    notes_before_features = len(screen.notes)
+    old_feature_profiles = {feature.profile for feature in FEATURES} & set(profiles)
+    while True:
+        enabled, plugin_values = ask_changed_features(screen, old, current, target)
+        # Unchanged profiles start no new service: leave the limits, hand edits included.
+        if memory_mb is None or set(enabled_profiles(enabled)) == old_feature_profiles:
+            break
+        # The file holds the worker counts and plugin memory in effect.
+        fit = fit_memory_limits(memory_mb, enabled_profiles(enabled), old)
+        if confirm_memory_fit(screen, fit):
+            plugin_values |= fit.values
+            break
+        del screen.notes[notes_before_features:]
     values = feature_values(enabled, old.get("COMPOSE_PROFILES", ""), local=target == "dev")
     values |= plugin_values
     screen.draw()
@@ -1175,7 +1445,33 @@ def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev
     print_panel("Apply it with", commands)
 
 
-def tune_settings(screen: Screen, env_file: Path, schema: dict) -> None:
+def ask_changed_features(
+    screen: Screen, old: dict[str, str], current: dict[str, bool], target: Literal["prod", "dev"]
+) -> tuple[dict[str, bool], dict[str, str]]:
+    """Ask the features; return them with the plugin settings turning plugins on needs."""
+    enabled = ask_features(screen, current)
+    plugin_values: dict[str, str] = {}
+    if enabled["PLUGINS_ENABLED"]:
+        public_url = old.get("DJANGO_FRONTEND_BASE_URL", "")
+        if target == "dev" and plugins_host_problem(public_url):
+            plugin_values |= LOCAL_PLUGINS_HOST
+            public_url = LOCAL_PLUGINS_HOST["DJANGO_FRONTEND_BASE_URL"]
+        enabled["PLUGINS_ENABLED"] = plugins_allowed(screen, public_url)
+    if enabled["PLUGINS_ENABLED"]:
+        plugin_values |= missing_plugin_secrets(old)
+        old_template = old.get("PLUGINS_HOST_TEMPLATE") or converted_host_template(old)
+        try:
+            template = validate_plugins_host_template(old_template or "", public_url)
+        except ValueError:
+            template = ask_plugins_host_template(screen, public_url)
+        if template != old.get("PLUGINS_HOST_TEMPLATE"):
+            plugin_values["PLUGINS_HOST_TEMPLATE"] = template
+    return enabled, plugin_values
+
+
+def tune_settings(
+    screen: Screen, env_file: Path, schema: dict, target: Literal["prod", "dev"]
+) -> None:
     old = read_env_values(env_file.read_bytes().decode("utf-8-sig"))
     profiles = parse_profiles(old.get("COMPOSE_PROFILES", ""))
     enabled = {
@@ -1183,7 +1479,20 @@ def tune_settings(screen: Screen, env_file: Path, schema: dict) -> None:
         and feature.profile in profiles
         for feature in FEATURES
     }
-    values = ask_advanced(screen, schema, enabled, current=old)
+    # Dev runs mostly on Docker Desktop, where the host RAM is not what Docker gets.
+    memory_mb = detect_memory_mb() if target == "prod" else None
+    if target == "prod" and memory_mb is None:
+        screen.notes.append(MEMORY_UNKNOWN_NOTE)
+    notes_before_questions = len(screen.notes)
+    while True:
+        values, fit = ask_advanced(screen, schema, enabled, current=old, memory_mb=memory_mb)
+        if fit is None:
+            break
+        if confirm_memory_fit(screen, fit):
+            values |= fit.values
+            break
+        # Nothing is written for a setup the operator declined: ask the questions again.
+        del screen.notes[notes_before_questions:]
     screen.draw()
     # Rewrite only what actually changes, so hand-tuned neighbours stay byte-identical.
     changed = {name: value for name, value in values.items() if old.get(name) != value}
@@ -1237,7 +1546,7 @@ def run_setup(
         if action == "change-features":
             change_features(screen, env_file, target)
         elif action == "tune":
-            tune_settings(screen, env_file, schema)
+            tune_settings(screen, env_file, schema, target)
         elif action == "add-missing":
             overrides = (
                 {name: generate_secret(name) for name in GENERATED_SECRETS}
@@ -1274,6 +1583,12 @@ def main(argv: list[str] | None = None):
         action="store_true",
         help="Ask questions to create the env file or change its features (production unless --dev).",
     )
+    mode.add_argument(
+        "--size-worker-memory-from",
+        metavar="OVERRIDE_ENV_FILE",
+        help="Set DJANGO_MEMORY / CHAT_MEMORY in the env file from the worker counts in it and in"
+        " OVERRIDE_ENV_FILE, which compose loads after it; limits the override file sets stay.",
+    )
     parser.add_argument("--env-file", default=".env", help="Env file path.")
     parser.add_argument("--schema-file", default="env.yaml", help="Schema file path.")
 
@@ -1290,6 +1605,21 @@ def main(argv: list[str] | None = None):
         run_setup(load_schema(schema_file), target, env_file, schema_file)
         return
 
+    if args.size_worker_memory_from:
+        override_file = BASE_DIR / args.size_worker_memory_from
+        for required in (env_file, override_file):
+            if not required.is_file():
+                sys.exit(f"{required} does not exist.")
+        sized = size_worker_memory_from(env_file, override_file)
+        print(
+            f"{env_file}: "
+            + (
+                ", ".join(f"{name}={value}" for name, value in sized.items())
+                or "no worker memory to change"
+            )
+        )
+        return
+
     if args.update:
         if not env_file.is_file():
             generate = "python scripts/envtool.py" + (" --dev" if args.dev else "")
@@ -1300,6 +1630,8 @@ def main(argv: list[str] | None = None):
             load_schema(schema_file), target, env_file, datetime.now().astimezone().date()
         )
         print(f"{env_file}: {update_summary(added, needs_value)}")
+        if target == "prod" and any(name.endswith("_MEMORY") for name in added):
+            print(TUNE_MEMORY_HINT)
         return
 
     schema = load_schema(schema_file)
