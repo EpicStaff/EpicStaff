@@ -1,6 +1,5 @@
 // Pins what the graph data-tables view shows and requests as the user picks tables, pages, searches and previews
 // documents. Component layer: rendered in a host against HttpTestingController, driven and asserted through the DOM.
-import { OverlayContainer } from '@angular/cdk/overlay';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { Component, signal } from '@angular/core';
@@ -152,13 +151,12 @@ describe('GraphRagDataTablesComponent', () => {
         fixture.detectChanges();
     }
 
-    function chooseRowsPerPage(label: string): void {
-        host.querySelector<HTMLButtonElement>('.data-tables__page-size-select .selector__btn')!.click();
-        fixture.detectChanges();
-        const overlay = TestBed.inject(OverlayContainer).getContainerElement();
-        Array.from(overlay.querySelectorAll<HTMLElement>('.selector__option'))
-            .find((option) => option.textContent?.trim() === label)!
-            .click();
+    function chooseRowsPerPage(value: string): void {
+        // "Rows per page" is an `<app-input-number>` with `commitOnBlur` — the value only commits when the
+        // native input receives a `blur` event.
+        const input = host.querySelector<HTMLInputElement>('.data-tables__page-size-input input')!;
+        input.value = value;
+        input.dispatchEvent(new Event('blur'));
         fixture.detectChanges();
     }
 
