@@ -77,7 +77,11 @@ class RotatingLogFile:
 
 
 class _RateBudget:
-    """A one-second token bucket for lines and bytes; `allow` says whether a line fits."""
+    """A one-second window of lines and bytes; `allow` says whether a line fits.
+
+    The first line that does not fit spends the window: every later line of the same second is
+    refused too, so a flood is dropped in bulk without looking at each line (`spent`).
+    """
 
     def __init__(
         self,
@@ -94,16 +98,20 @@ class _RateBudget:
         self._bytes = bytes_per_second
 
     def allow(self, size: int) -> bool:
+        if self.spent() or self._bytes < size:
+            self._lines = 0
+            return False
+        self._lines -= 1
+        self._bytes -= size
+        return True
+
+    def spent(self) -> bool:
         now = self._clock()
         if now - self._window >= 1.0:
             self._window = now
             self._lines = self._lines_per_second
             self._bytes = self._bytes_per_second
-        if self._lines <= 0 or self._bytes < size:
-            return False
-        self._lines -= 1
-        self._bytes -= size
-        return True
+        return self._lines <= 0
 
 
 class LogCollector:
@@ -140,11 +148,19 @@ class LogCollector:
         try:
             while chunk := await reader.read(_READ_BYTES):
                 pending += chunk
-                *lines, pending = pending.split(b"\n")
+                if self._budget.spent():
+                    # Nothing more fits this second: count the finished lines, never split them.
+                    self._dropped += pending.count(b"\n")
+                    lines = []
+                    pending = pending[pending.rfind(b"\n") + 1 :]
+                else:
+                    *lines, pending = pending.split(b"\n")
                 while len(pending) > MAX_LINE_BYTES:
                     lines.append(pending[:MAX_LINE_BYTES])
                     pending = pending[MAX_LINE_BYTES:]
                 await self._record(lines)
+                # read() returns at once while data is buffered: let the other plugins' work run.
+                await asyncio.sleep(0)
             if pending:
                 await self._record([pending])
             if self._dropped:
@@ -156,11 +172,12 @@ class LogCollector:
 
     async def _record(self, raw_lines: list[bytes]) -> None:
         accepted: list[bytes] = []
-        for raw_line in raw_lines:
+        for index, raw_line in enumerate(raw_lines):
             line = raw_line.rstrip(b"\r")
             if not self._budget.allow(len(line)):
-                self._dropped += 1
-                continue
+                # The second is spent: this line and every later one are dropped.
+                self._dropped += len(raw_lines) - index
+                break
             if self._dropped:
                 accepted.append(self._dropped_notice())
                 self._dropped = 0

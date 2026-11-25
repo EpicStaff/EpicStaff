@@ -18,8 +18,10 @@ class StoppedClock:
 
     def __init__(self):
         self.now = 1000.0
+        self.readings = 0
 
     def __call__(self) -> float:
+        self.readings += 1
         return self.now
 
 
@@ -156,5 +158,40 @@ async def test_the_byte_budget_drops_output_even_in_few_lines_and_the_count_is_w
     assert written[:pieces_per_second] == [piece] * pieces_per_second
     assert written[pieces_per_second:] == [
         b"[es_plugins] dropped 4 line(s) over the log rate limit",
+        b"",
+    ]
+
+
+async def test_a_flood_of_empty_lines_is_counted_in_bulk_once_the_budget_is_spent(tmp_path):
+    clock = StoppedClock()
+    collector, _ = collector_in(tmp_path, clock=clock)
+    newlines = 40 * MAX_LINE_BYTES
+
+    await feed(collector, b"\n" * newlines)
+    collector.close()
+
+    written = (tmp_path / "logs" / "current.log").read_text().splitlines()
+    assert written == [""] * MAX_LINES_PER_SECOND + [
+        f"[es_plugins] dropped {newlines - MAX_LINES_PER_SECOND} line(s) over the log rate limit"
+    ]
+    # Line by line, the budget would be asked once per line: millions of times.
+    assert clock.readings < newlines // 100
+
+
+async def test_once_a_line_is_over_the_budget_the_rest_of_the_second_is_dropped(tmp_path):
+    clock = StoppedClock()
+    collector, _ = collector_in(tmp_path, clock=clock)
+    piece = b"z" * MAX_LINE_BYTES
+    pieces_per_second = MAX_BYTES_PER_SECOND // MAX_LINE_BYTES
+
+    await feed(collector, b"\n".join([piece] * (pieces_per_second + 1) + [b"", b"short"]) + b"\n")
+    clock.now += 1.0
+    await feed(collector, b"next second\n")
+    collector.close()
+
+    written = (tmp_path / "logs" / "current.log").read_bytes().split(b"\n")
+    assert written[pieces_per_second:] == [
+        b"[es_plugins] dropped 3 line(s) over the log rate limit",
+        b"next second",
         b"",
     ]
