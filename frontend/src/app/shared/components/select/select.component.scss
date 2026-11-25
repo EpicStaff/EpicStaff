@@ -462,6 +462,56 @@
             padding: 0.5rem 0.75rem;
             color: var(--color-input-text-placeholder);
         }
+
+        // Room at the end for the trailing action laid over it.
+        &--has-action {
+            padding-right: 2.75rem;
+        }
+    }
+
+    // An option with a trailing action: the action sits over the option's end, so the option keeps its whole look.
+    &__option-row {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        flex-shrink: 0;
+
+        &:last-child > .selector__option--default,
+        &:last-child > .selector__option--small {
+            border-bottom: none;
+        }
+    }
+
+    &__option-action {
+        position: absolute;
+        top: 50%;
+        right: 0.375rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        color: var(--color-ks-transparent-text-60);
+        cursor: pointer;
+        transform: translateY(-50%);
+
+        &:is(:hover, :focus-visible) {
+            color: var(--color-text-primary);
+            background: var(--white-alpha-10);
+        }
+
+        &:focus-visible {
+            outline-offset: -2px;
+        }
+
+        &--pressed,
+        &--pressed:is(:hover, :focus-visible) {
+            color: var(--accent-color);
+        }
     }
 }
 

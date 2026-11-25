@@ -74,8 +74,10 @@
                         [showSearch]="true"
                         [allowCustomValue]="allowsCustomModel()"
                         [items]="modelItems()"
+                        [grouped]="hasFavoriteModels()"
                         (searchChange)="onModelSearch($event)"
                         (changed)="onModelChange()"
+                        (itemAction)="onFavoriteToggle($event)"
                     />
                     @if (allowsCustomModel()) {
                         <app-hint-message

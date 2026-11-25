@@ -291,6 +291,7 @@ RUN_TRAVERSAL_STOPS: Mapping[tuple[str, str], str] = MappingProxyType(
         ("tables.TaskMcpTools", "tool"): "A legacy crew-task link.",
         ("tables.PythonCodeToolFavorite", "tool"): "A person's favourites.",
         ("tables.McpToolFavorite", "tool"): "A person's favourites.",
+        ("ai_models.LLMModelFavorite", "llm_model"): "A person's favourites.",
     }
 )
 

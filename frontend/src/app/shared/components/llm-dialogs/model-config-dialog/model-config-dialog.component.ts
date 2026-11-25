@@ -35,7 +35,7 @@ import {
     perTokenToPerMillion,
     trackPickedSecrets,
 } from '@shared/utils';
-import { catchError, debounceTime, EMPTY, map, Observable, of, startWith, Subject, switchMap } from 'rxjs';
+import { catchError, debounceTime, EMPTY, finalize, map, Observable, of, startWith, Subject, switchMap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
 import { InputNumberComponent } from '../../app-input-number/input-number.component';
@@ -86,6 +86,14 @@ const OPTION_LABELS: Record<string, Record<string, string>> = {
 const CONNECTION_PLACEHOLDERS: Record<string, string> = { base_url: 'e.g. https://your-endpoint.example.com' };
 const SCHEMA_LOAD_ERROR = "Failed to load the model's settings.";
 const MODEL_SEARCH_DEBOUNCE_MS = 300;
+/** The model list's groups once the user has starred one of the provider's models; starred ones are listed twice. */
+const FAVORITES_GROUP = 'Favorites';
+const ALL_MODELS_GROUP = 'All models';
+
+/** Keys a star the user toggled in this dialog: the same model name may belong to several providers. */
+function favoriteKey(provider: string, model: string): string {
+    return JSON.stringify([provider, model]);
+}
 
 /**
  * Creates or edits an LLM or embedding config: provider, then model, then the model's Connection and Settings, both
@@ -93,6 +101,8 @@ const MODEL_SEARCH_DEBOUNCE_MS = 300;
  * limits), drops the others and adds its new ones at their defaults, and lists what changed until the save. A stored
  * config is fitted to its own model the same way when it is opened, as a write with a setting the model does not list
  * is refused. Stored connection fields the model does not list are not shown, and go back unchanged with that model.
+ * An LLM model can be starred from the model list, which then lists the provider's starred models first, under
+ * Favorites, and every model again under All models.
  */
 @Component({
     selector: 'app-model-config-dialog',
@@ -189,18 +199,27 @@ export class ModelConfigDialogComponent implements OnInit {
             ? [{ name: current, value: current }, ...items]
             : items;
     });
+    /** The stars the user toggled in this dialog; they outrank the `is_favorite` of a list loaded before the toggle. */
+    private readonly favoriteToggles = signal<ReadonlyMap<string, boolean>>(new Map());
+    /** Stars whose toggle still waits for the server; another click on them is ignored. */
+    private readonly pendingFavorites = signal<ReadonlySet<string>>(new Set());
     protected readonly modelItems = computed<SelectItem[]>(() => {
-        const items: SelectItem[] = this.catalogModels().map((model) => ({
-            name: model.name,
-            value: model.name,
-            tip: model.custom ? 'Custom' : model.recommended ? 'Recommended' : undefined,
-        }));
+        const models = this.catalogModels();
+        const items = models.map((model) => this.modelItem(model, ALL_MODELS_GROUP));
+        // LLM models only: the server keeps no stars on embedding models.
+        const favorites = this.isLlm
+            ? models.filter((model) => this.isFavorite(model)).map((model) => this.modelItem(model, FAVORITES_GROUP))
+            : [];
         const current = this.modelName();
         // A search can hide the chosen model, and a hidden custom or a deprecated one is not listed: keep it listed.
         return current && !items.some((item) => item.value === current)
-            ? [{ name: current, value: current }, ...items]
-            : items;
+            ? [{ name: current, value: current }, ...favorites, ...items]
+            : [...favorites, ...items];
     });
+    /** The model list shows a Favorites group first, and so groups its models. */
+    protected readonly hasFavoriteModels = computed(() =>
+        this.modelItems().some((item) => item.group === FAVORITES_GROUP)
+    );
     protected readonly allowsCustomModel = computed(
         () => this.providers().find((provider) => provider.name === this.providerName())?.custom_models ?? false
     );
@@ -312,6 +331,38 @@ export class ModelConfigDialogComponent implements OnInit {
 
     protected onModelSearch(search: string): void {
         this.modelSearches.next(search);
+    }
+
+    /** Stars or unstars a model of the list without picking it or closing the list. */
+    protected onFavoriteToggle(modelName: unknown): void {
+        const provider = this.providerName();
+        const model = this.catalogModels().find((item) => item.name === modelName);
+        if (!provider || !model) return;
+        const key = favoriteKey(provider, model.name);
+        if (this.pendingFavorites().has(key)) return;
+
+        const favorite = !this.isFavorite(model);
+        this.setFavoriteToggle(key, favorite);
+        this.pendingFavorites.update((pending) => new Set(pending).add(key));
+        // Not tied to the dialog's lifetime: a dialog closed right after the click would cancel the request, and the
+        // star the user saw change would not be saved.
+        this.catalog
+            .setFavorite(provider, model.name, favorite)
+            .pipe(
+                finalize(() =>
+                    this.pendingFavorites.update((pending) => {
+                        const next = new Set(pending);
+                        next.delete(key);
+                        return next;
+                    })
+                )
+            )
+            .subscribe({
+                error: (error: HttpErrorResponse) => {
+                    this.setFavoriteToggle(key, !favorite);
+                    this.toast.error(extractHttpErrorMessage(error, 'Could not update favorite models.'));
+                },
+            });
     }
 
     protected onModelChange(): void {
@@ -464,6 +515,35 @@ export class ModelConfigDialogComponent implements OnInit {
         this.fieldErrors.set([]);
         this.schemas.set(schemas);
         this.isSchemaLoading.set(false);
+    }
+
+    /** One option of the model list; an LLM model's carries the star that toggles it as a favorite. */
+    private modelItem(model: CatalogModel, group: string): SelectItem {
+        const item = {
+            name: model.name,
+            value: model.name,
+            tip: model.custom ? 'Custom' : model.recommended ? 'Recommended' : undefined,
+            group,
+        };
+        if (!this.isLlm) return item;
+        const favorite = this.isFavorite(model);
+        return {
+            ...item,
+            trailingActionIcon: favorite ? 'star-filled' : 'star',
+            trailingActionLabel: `Favorite ${model.name}`,
+            trailingActionPressed: favorite,
+            trailingActionTooltip: favorite ? 'Remove from favorites' : 'Add to favorites',
+        };
+    }
+
+    private isFavorite(model: CatalogModel): boolean {
+        const provider = this.providerName();
+        const toggled = provider === null ? undefined : this.favoriteToggles().get(favoriteKey(provider, model.name));
+        return toggled ?? model.is_favorite;
+    }
+
+    private setFavoriteToggle(key: string, favorite: boolean): void {
+        this.favoriteToggles.update((toggles) => new Map(toggles).set(key, favorite));
     }
 
     /** A model was chosen before: its settings are what a switch keeps. */

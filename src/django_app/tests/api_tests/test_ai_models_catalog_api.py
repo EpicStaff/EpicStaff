@@ -94,7 +94,7 @@ def test_models_are_searchable(viewer_client):
     body = response.json()
     assert len(body) >= 1
     assert all("gpt-4o-mini" in model["name"] for model in body)
-    assert set(body[0]) == {"name", "recommended", "deprecation_date", "limits", "custom"}
+    assert set(body[0]) == {"name", "recommended", "deprecation_date", "limits", "custom", "is_favorite"}
 
 
 def test_models_list_every_model_of_a_large_provider(viewer_client):
@@ -179,7 +179,14 @@ def test_models_list_the_orgs_custom_models_first(viewer_client, acme, model_cla
     body = viewer_client.get(MODELS, {"kind": kind, "provider": "openai"}).json()
 
     assert body[:2] == [
-        {"name": name, "recommended": False, "deprecation_date": None, "limits": {}, "custom": True}
+        {
+            "name": name,
+            "recommended": False,
+            "deprecation_date": None,
+            "limits": {},
+            "custom": True,
+            "is_favorite": False,
+        }
         for name in ("alpha-fine-tune", "zeta-fine-tune")
     ]
     assert [model["name"] for model in body[2:]] == catalog
