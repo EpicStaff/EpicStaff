@@ -49,7 +49,7 @@ import {
 import { isGraphNotIndexedError } from '../../helpers/graph-not-indexed-error.util';
 import { GraphVisualizationData, VisualizationEntity } from '../../models/graph-visualization.model';
 import { GraphRagService } from '../../services/graph-rag.service';
-import { GraphRagLinkPairsStore } from '../../services/graph-rag-link-pairs.service';
+import { GraphRagLinkPairsStorageService } from '../../services/graph-rag-link-pairs-storage.service';
 import { LinkedToTargetType } from '../graph-rag-linked-to-picker/linked-to-targets';
 import { GraphRagOpenInPickerComponent } from '../graph-rag-open-in-picker/graph-rag-open-in-picker.component';
 import { DRAG_REHEAT_ALPHA } from './graph-scene.constants';
@@ -310,7 +310,7 @@ export class GraphRagVisualizationComponent implements OnInit {
     private readonly graphRagService = inject(GraphRagService);
     private readonly sceneService = inject(GraphSceneService);
     private readonly ngZone = inject(NgZone);
-    private readonly linkPairsStore = inject(GraphRagLinkPairsStore);
+    private readonly linkPairsStore = inject(GraphRagLinkPairsStorageService);
     private readonly destroyRef = inject(DestroyRef);
 
     private simulation: { stop: () => void; reheat: () => void } | null = null;

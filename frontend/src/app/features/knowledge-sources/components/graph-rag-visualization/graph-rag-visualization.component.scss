@@ -241,7 +241,7 @@
         padding: 4px 10px;
         border: 2px solid var(--accent-color);
         border-radius: 999px;
-        background-color: #000;
+        background-color: var(--tooltip-bg);
         color: var(--accent-color);
         font-size: var(--text-body-size);
         font-weight: 600;

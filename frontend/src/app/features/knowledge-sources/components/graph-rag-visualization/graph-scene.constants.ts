@@ -10,7 +10,7 @@ export const SCENE_BACKGROUND = 0x000000;
 export const MAX_PIXEL_RATIO = 2;
 
 /** Label pill colors (approximates --tooltip-bg and --color-text-primary). */
-export const LABEL_BACKGROUND_COLOR = 'rgba(0, 0, 0, 1)';
+export const LABEL_BACKGROUND_COLOR = 'rgba(30, 30, 30, 1)';
 export const LABEL_TEXT_COLOR = '#e8e8ec';
 /** Light outline around the pill, so it reads clearly on the dark scene background. */
 export const LABEL_BORDER_COLOR = 'rgba(200, 200, 210, 0.9)';

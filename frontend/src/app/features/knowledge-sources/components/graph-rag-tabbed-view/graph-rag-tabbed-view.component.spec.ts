@@ -7,7 +7,7 @@ import { ConfigService } from '../../../../services/config';
 import { IndexingUsage } from '../../models/base-rag.model';
 import { CreateCollectionDtoResponse } from '../../models/collection.model';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
-import { GraphRagLinkPairsStore } from '../../services/graph-rag-link-pairs.service';
+import { GraphRagLinkPairsStorageService } from '../../services/graph-rag-link-pairs-storage.service';
 import { GraphRagTabbedViewComponent } from './graph-rag-tabbed-view.component';
 
 const API_URL = 'http://api.test/api/';
@@ -62,7 +62,7 @@ describe('GraphRagTabbedViewComponent', () => {
         if (indexingUsage) {
             TestBed.inject(CollectionsStorageService).updateOrCreateCollectionInCache(buildCollection(indexingUsage));
         }
-        TestBed.inject(GraphRagLinkPairsStore).resetForTesting();
+        TestBed.inject(GraphRagLinkPairsStorageService).resetForTesting();
         fixture = TestBed.createComponent(TestHostComponent);
         httpMock = TestBed.inject(HttpTestingController);
         fixture.detectChanges();

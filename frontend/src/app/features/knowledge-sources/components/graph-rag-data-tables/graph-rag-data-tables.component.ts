@@ -24,7 +24,7 @@ import { GraphTableData, GraphTableSummaryItem } from '../../models/graph-visual
 import { DocumentsApiService } from '../../services/documents-api.service';
 import { GraphRagService } from '../../services/graph-rag.service';
 import { GraphRagDocumentsStorageService } from '../../services/graph-rag-documents-storage.service';
-import { GraphRagLinkPairsStore } from '../../services/graph-rag-link-pairs.service';
+import { GraphRagLinkPairsStorageService } from '../../services/graph-rag-link-pairs-storage.service';
 import { GraphRagGridTableComponent } from '../graph-rag-grid-table/graph-rag-grid-table.component';
 import { GraphGridActionEvent, GraphGridColumnDef } from '../graph-rag-grid-table/graph-rag-grid-table.model';
 import {
@@ -167,7 +167,7 @@ export class GraphRagDataTablesComponent implements OnInit {
     private readonly graphRagService = inject(GraphRagService);
     private readonly documentsApiService = inject(DocumentsApiService);
     private readonly documentsStorage = inject(GraphRagDocumentsStorageService);
-    private readonly linkPairsStore = inject(GraphRagLinkPairsStore);
+    private readonly linkPairsStore = inject(GraphRagLinkPairsStorageService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly searchSubject = new Subject<string>();
     private readonly loadSubject = new Subject<void>();

@@ -10,7 +10,7 @@ import { By } from '@angular/platform-browser';
 
 import { ConfigService } from '../../../../services/config';
 import { GraphVisualizationData } from '../../models/graph-visualization.model';
-import { GraphRagLinkPairsStore } from '../../services/graph-rag-link-pairs.service';
+import { GraphRagLinkPairsStorageService } from '../../services/graph-rag-link-pairs-storage.service';
 import { GraphRagVisualizationComponent } from './graph-rag-visualization.component';
 import { GraphSceneService } from './graph-scene.service';
 
@@ -180,7 +180,7 @@ describe('GraphRagVisualizationComponent', () => {
             .compileComponents();
 
         // The link-pairs store caches per session; reset so each test starts with an empty cache.
-        TestBed.inject(GraphRagLinkPairsStore).resetForTesting();
+        TestBed.inject(GraphRagLinkPairsStorageService).resetForTesting();
 
         fixture = TestBed.createComponent(TestHostComponent);
         httpMock = TestBed.inject(HttpTestingController);

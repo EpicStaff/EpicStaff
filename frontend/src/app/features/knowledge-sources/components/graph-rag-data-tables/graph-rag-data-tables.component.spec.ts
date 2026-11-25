@@ -11,7 +11,7 @@ import { ConfigService } from '../../../../services/config';
 import { GraphRagDocument } from '../../models/graph-rag-document.model';
 import { GraphTableData, GraphTableSummaryItem } from '../../models/graph-visualization.model';
 import { GraphRagDocumentsStorageService } from '../../services/graph-rag-documents-storage.service';
-import { GraphRagLinkPairsStore } from '../../services/graph-rag-link-pairs.service';
+import { GraphRagLinkPairsStorageService } from '../../services/graph-rag-link-pairs-storage.service';
 import { GRAPH_ACTION_VIEW_COMMUNITY } from '../graph-rag-grid-table/graph-rag-table-columns';
 import { GraphRagDataTablesComponent, GraphRagPendingOpenIn } from './graph-rag-data-tables.component';
 
@@ -183,7 +183,7 @@ describe('GraphRagDataTablesComponent', () => {
 
         // The link-pairs store is providedIn: root and caches per session; reset so each test
         // starts with an empty cache and re-issues the request on init.
-        TestBed.inject(GraphRagLinkPairsStore).resetForTesting();
+        TestBed.inject(GraphRagLinkPairsStorageService).resetForTesting();
 
         fixture = TestBed.createComponent(TestHostComponent);
         httpMock = TestBed.inject(HttpTestingController);
