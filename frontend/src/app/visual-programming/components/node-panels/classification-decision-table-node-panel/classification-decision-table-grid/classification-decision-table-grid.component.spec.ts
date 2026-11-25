@@ -1012,6 +1012,99 @@ describe(
             });
         });
 
+        describe('a click on a column header', () => {
+            const POINTER = { bubbles: true, isPrimary: true, pointerId: 1, pointerType: 'mouse', button: 0 };
+
+            /** Presses and releases where `points` say, then clicks: a press always ends, or ag-grid keeps its drag going. */
+            async function pressAndClick(target: HTMLElement, points: readonly number[]): Promise<void> {
+                const [startX, ...movesX] = points;
+                target.dispatchEvent(new PointerEvent('pointerdown', { ...POINTER, clientX: startX, clientY: 10 }));
+                for (const clientX of movesX) {
+                    target.dispatchEvent(new PointerEvent('pointermove', { ...POINTER, clientX, clientY: 10 }));
+                }
+                const endX = movesX.at(-1) ?? startX;
+                target.dispatchEvent(new PointerEvent('pointerup', { ...POINTER, clientX: endX, clientY: 10 }));
+                target.click();
+                await settle();
+            }
+
+            async function click(target: Element | null | undefined): Promise<void> {
+                if (!(target instanceof HTMLElement)) throw new Error('nothing to click');
+                await pressAndClick(target, [10]);
+            }
+
+            /** Moves the column the way a mouse does: well past ag-grid's drag threshold, and released. */
+            async function dragThenClick(target: HTMLElement): Promise<void> {
+                await pressAndClick(target, [10, 60]);
+            }
+
+            it.each([
+                ['its label', '.chm-label'],
+                ['the empty area around it', null],
+            ])('opens the menu from %s', async (_name, selector) => {
+                const header = headerCell('group_name');
+                await click(selector ? header.querySelector(selector) : header);
+
+                expect(menuLabels()).toEqual(['Freeze All Left', 'Hide']);
+            });
+
+            it('opens nothing when the click ends a drag that moved the column', async () => {
+                await dragThenClick(headerCell('expression'));
+
+                expect(menuItems()).toEqual([]);
+            });
+
+            describe('with an expression variable', () => {
+                beforeEach(async () => {
+                    fixture.componentInstance.addFieldColumn('amount');
+                    await settle();
+                });
+
+                it('opens nothing on the variable header, whose only control deletes the variable', async () => {
+                    await click(headerCell('field_amount').querySelector('.chm-label'));
+
+                    expect(menuItems()).toEqual([]);
+                    expect(host.querySelector('.ag-header-cell[col-id="field_amount"]')).not.toBeNull();
+                });
+
+                it('leaves the remove icon to remove the variable, without a menu', async () => {
+                    await click(headerCell('field_amount').querySelector('button'));
+
+                    expect(menuItems()).toEqual([]);
+                    expect(host.querySelector('.ag-header-cell[col-id="field_amount"]')).toBeNull();
+                });
+
+                it('opens the Params menu from the Params group label', async () => {
+                    await click(paramsGroupHeaderCell().querySelector('.params-label'));
+
+                    expect(menuLabels()).toEqual(['Add variable', 'Freeze All Left', 'Freeze All Right', 'Hide']);
+                });
+
+                it('leaves the + button to open the variable picker', async () => {
+                    await click(paramsGroupHeaderCell().querySelector('.add-btn'));
+
+                    expect(menuLabels()).not.toContain('Hide');
+                    expect(
+                        document.querySelector('.cdk-overlay-container input[placeholder="Search fields..."]')
+                    ).not.toBeNull();
+                });
+
+                it('opens nothing when a press on the + button is released over the label', async () => {
+                    const header = paramsGroupHeaderCell();
+                    const addButton = header.querySelector<HTMLElement>('.add-btn');
+                    if (!addButton) throw new Error('no + button');
+
+                    // Slid off the button within the drag threshold: the browser clicks the element both share.
+                    addButton.dispatchEvent(new PointerEvent('pointerdown', { ...POINTER, clientX: 10, clientY: 10 }));
+                    header.dispatchEvent(new PointerEvent('pointerup', { ...POINTER, clientX: 13, clientY: 10 }));
+                    header.click();
+                    await settle();
+
+                    expect(menuItems()).toEqual([]);
+                });
+            });
+        });
+
         describe('the Enable header', () => {
             it.each([
                 ['Enter', 'Enter'],

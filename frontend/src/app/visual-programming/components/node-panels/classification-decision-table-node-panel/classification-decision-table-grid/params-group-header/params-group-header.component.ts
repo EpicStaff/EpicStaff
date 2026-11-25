@@ -17,6 +17,7 @@ import { Column, GridApi, IHeaderGroupParams } from 'ag-grid-community';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CdtFreezeMenuItem, CdtFreezeSide } from '../shared/column-freeze.util';
+import { listenForHeaderClick } from '../shared/header-click.util';
 import { headerBesideColumns, listenForHeaderActivation } from '../shared/header-keyboard.util';
 import { OverlayMenuController } from '../shared/overlay-menu.util';
 
@@ -142,6 +143,10 @@ export interface ParamsGroupHeaderParams extends IHeaderGroupParams {
             }
             .params-group-header--add-only {
                 justify-content: space-between;
+            }
+            /* A click anywhere on a header with a menu opens it. */
+            .params-group-header:not(.params-group-header--add-only) {
+                cursor: pointer;
             }
             .add-btn {
                 background: #27272b;
@@ -274,6 +279,7 @@ export class ParamsGroupHeaderComponent implements IHeaderGroupAngularComp, OnDe
     private groupId = '';
     private leafColumns: () => Column[] = () => [];
     private stopListeningForActivation: (() => void) | null = null;
+    private stopListeningForClick: (() => void) | null = null;
 
     agInit(params: ParamsGroupHeaderParams): void {
         this.gridApi = params.api;
@@ -283,6 +289,11 @@ export class ParamsGroupHeaderComponent implements IHeaderGroupAngularComp, OnDe
         // opens the column menu, or the variable picker when there is no menu.
         this.stopListeningForActivation = listenForHeaderActivation(params.eGridHeader, () =>
             (this.chevronButton() ?? this.addButton())?.nativeElement.click()
+        );
+        // A click anywhere on the header opens the column menu under the chevron. Without a
+        // menu it does nothing: the variable picker opens from the + button only.
+        this.stopListeningForClick = listenForHeaderClick(params.eGridHeader, () =>
+            this.chevronButton()?.nativeElement.click()
         );
         this.mode = params.mode ?? 'full';
         this.ownerLabel = params.ownerLabel ?? '';
@@ -332,6 +343,7 @@ export class ParamsGroupHeaderComponent implements IHeaderGroupAngularComp, OnDe
 
     ngOnDestroy(): void {
         this.stopListeningForActivation?.();
+        this.stopListeningForClick?.();
         this.menuCtrl.dispose();
     }
 }
