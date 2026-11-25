@@ -8,6 +8,7 @@ from tables.models.realtime_models import (
 )
 from tables.services.converter_service import ConverterService
 from tables.services.redis_service import RedisService
+from tables.services.run_admission import RunAdmissionRefusedError
 from utils.logger import logger
 from utils.singleton_meta import SingletonMeta
 
@@ -120,12 +121,25 @@ class RealtimeService(metaclass=SingletonMeta):
         org_id: int,
         user_id: int | None = None,
     ) -> str:
+        """Create a realtime chat for an agent definition and hand it to the realtime service.
+
+        Raises:
+            RunAdmissionRefusedError: Minting storage credentials refused the chat; the chat
+                row is deleted.
+        """
         rt_agent_definition = self.get_rt_agent_definition(agent_definition_id=agent_definition_id)
         rt_agent_chat = self.create_rt_agent_definition_chat(rt_agent_definition)
 
-        rt_agent_chat_data = self.converter_service.convert_rt_agent_definition_chat_to_pydantic(
-            rt_agent_chat=rt_agent_chat, user_id=user_id
-        )
+        try:
+            rt_agent_chat_data = (
+                self.converter_service.convert_rt_agent_definition_chat_to_pydantic(
+                    rt_agent_chat=rt_agent_chat, user_id=user_id
+                )
+            )
+        except RunAdmissionRefusedError:
+            # Nothing references the chat yet: nothing was minted or published.
+            rt_agent_chat.delete()
+            raise
         # Override with provided config (whitelisted keys only, see
         # _apply_config_overrides)
         _apply_config_overrides(rt_agent_chat_data, config)

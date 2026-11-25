@@ -10,6 +10,7 @@ from tables.services.storage_service.db_sync import (
 )
 from tables.services.storage_service.path_utils import (
     TRASH_DIRECTORY,
+    is_canonical_path,
     is_trash_path,
     storage_key,
 )
@@ -71,7 +72,9 @@ class StorageReconciler:
 
         Objects with a blocked executable extension are never indexed (and any live row
         for one is swept as stale); they are logged, not deleted, because deleting is
-        the mutation handler's job.
+        the mutation handler's job. The same goes for a key whose path is not canonical (a
+        backslash): `storage_key` would name another key, so its row could never be read,
+        moved or deleted, nor swept by a later notification of the key.
 
         Recycle-bin rows are left alone: their objects live under the reserved
         trash folder, which is skipped here, so they are neither re-created as
@@ -91,7 +94,7 @@ class StorageReconciler:
         file_validator = FileValidator()
         desired: dict[str, StorageFile] = {}
         ancestor_paths: set[str] = set()
-        skipped_executables: list[str] = []
+        skipped_unindexable: list[str] = []
 
         for key, size, modified_iso in raw_objects:
             if not key.startswith(org_prefix):
@@ -99,8 +102,8 @@ class StorageReconciler:
             rel_path = key[len(org_prefix) :]
             if is_trash_path(rel_path):
                 continue
-            if file_validator.is_executable_filename(rel_path):
-                skipped_executables.append(rel_path)
+            if file_validator.is_executable_filename(rel_path) or not is_canonical_path(rel_path):
+                skipped_unindexable.append(rel_path)
                 continue
 
             desired[rel_path] = StorageFile(
@@ -114,12 +117,12 @@ class StorageReconciler:
             )
             ancestor_paths.update(_ancestor_paths(rel_path))
 
-        if skipped_executables:
+        if skipped_unindexable:
             logger.warning(
-                "Not indexing {} executable object(s) in org {}, e.g. {}",
-                len(skipped_executables),
+                "Not indexing {} executable or non-canonical object(s) in org {}, e.g. {}",
+                len(skipped_unindexable),
                 org_id,
-                skipped_executables[:_SKIPPED_SAMPLE_SIZE],
+                skipped_unindexable[:_SKIPPED_SAMPLE_SIZE],
             )
 
         for folder_path in ancestor_paths:

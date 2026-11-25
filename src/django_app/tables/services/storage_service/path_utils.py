@@ -44,6 +44,15 @@ def storage_key(org_id: int, path: str) -> str:
     return f"{org_storage_prefix(org_id)}/{safe_path}"
 
 
+def is_canonical_path(path: str) -> bool:
+    """True when `storage_key` names `path` as it is stored; a path it would rewrite (a
+    backslash) can never be read, moved or deleted through the app."""
+    try:
+        return sanitize_storage_path(path, allow_empty=False, allow_leading_slash=True) == path
+    except ValueError:
+        return False
+
+
 def trash_storage_key(org_id: int, batch, path: str) -> str:
     """Key a recycle-bin batch keeps `path` under: org_<id>/.recycle-bin/<batch>/<path>."""
     safe_path = sanitize_storage_path(path, allow_empty=False, allow_leading_slash=True)

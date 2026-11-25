@@ -33,11 +33,13 @@ from src.shared.models.sessions import SessionData
 from src.shared.models.storage_scope import StorageAction, StorageCredentials
 from tables.models import PythonCodeResult, RealtimeAgentChat, Session
 from tables.services.storage_service import get_storage_backend
+from tables.services.storage_service.quota import is_over_quota
 from tables.services.storage_service.reconciler import StorageReconciler
 
 from storage_credentials.clients.minio_admin_client import StorageAdminGateway
 from storage_credentials.exceptions import (
     CredentialScopeValidationError,
+    OrganizationStorageFullError,
     TemporaryCredentialIssueError,
 )
 from storage_credentials.models import TemporaryStorageAccount
@@ -117,6 +119,7 @@ class SessionCredentialService:
             The accounts; empty when no node needs storage.
 
         Raises:
+            OrganizationStorageFullError: If the organization is over its storage quota.
             CredentialScopeValidationError: If the collected scope is missing,
             malformed, or escapes the org's own prefix.
             TemporaryCredentialIssueError: If minting or DB persistence fails.
@@ -179,6 +182,7 @@ class SessionCredentialService:
         `own_paths`: the saved grant of a tested node, none for bare tool code.
 
         Raises:
+            OrganizationStorageFullError: If the organization is over its storage quota.
             CredentialScopeValidationError: If the given scope is missing,
             malformed, or escapes the org's own prefix.
             TemporaryCredentialIssueError: If minting or DB persistence fails.
@@ -204,6 +208,7 @@ class SessionCredentialService:
         call within it (mirrors `issue_for_session`'s one-per-session reuse).
 
         Raises:
+            OrganizationStorageFullError: If the organization is over its storage quota.
             CredentialScopeValidationError: If the given scope is missing,
             malformed, or escapes the org's own prefix.
             TemporaryCredentialIssueError: If minting or DB persistence fails.
@@ -274,7 +279,11 @@ class SessionCredentialService:
         `allowed_paths` allow only its `shared_actions`. A request with none of them has
         the shared folders left out, and the run still gets its own folders.
 
+        Nothing is minted for an organization over its storage quota: run code writes
+        straight to the store, past the upload quota check.
+
         Raises:
+            OrganizationStorageFullError: the organization is over its storage quota.
             CredentialScopeValidationError: A request has neither `allowed_paths` nor an
                 own folder, or a path escapes the org prefix, or nothing is left to grant
                 because an account may do nothing to the shared folders and the run has
@@ -282,6 +291,12 @@ class SessionCredentialService:
             TemporaryPolicyTooLargeError: too many files are attached for one policy.
             TemporaryCredentialIssueError: minting or persisting failed.
         """
+        if is_over_quota(org_id):
+            logger.info(
+                "Refused storage credentials for {}: org {} is over quota", owner_label, org_id
+            )
+            raise OrganizationStorageFullError()
+
         planned: list[_PlannedAccount] = []
         for request in requests:
             shared_actions = request.shared_actions
@@ -520,6 +535,27 @@ class SessionCredentialService:
             owner_label=f"realtime chat {realtime_agent_chat_id}",
         )
 
+    def revoke_for_organization(self, org_id: int) -> None:
+        """Revoke every temporary storage account of an organization's live runs.
+
+        For an organization over its storage quota: its runs write past the quota check, so
+        they lose storage access now instead of when they end. What they wrote so far is
+        reconciled into the file index first, as at the end of a run. Their own end-of-run
+        revocation then finds no account left and does nothing. Best-effort, like
+        `revoke_for_session`: an account the backend fails to revoke keeps its row, for the
+        run's own revocation or the manager's cleanup job to retry.
+        """
+        for org_id_path in (
+            "session__graph__org_id",
+            "python_code_result__org_id",
+            "realtime_agent_chat__rt_agent_definition__agent_definition__org_id",
+        ):
+            self._revoke_and_delete(
+                owner_filter={org_id_path: org_id},
+                org_id_path=org_id_path,
+                owner_label=f"runs of org {org_id}",
+            )
+
     async def _delete_service_accounts(self, org_creds, access_keys: list[str]) -> list[str]:
         """Delete service accounts on one gateway; returns the access keys confirmed gone."""
         gateway = StorageAdminGateway(
@@ -626,9 +662,67 @@ class SessionCredentialService:
                     len(confirmed_pks),
                     owner_label,
                 )
+                self._abort_run_uploads(
+                    org_id,
+                    [account for account in org_accounts if account.access_key in revoked_keys],
+                    owner_label,
+                )
             except Exception as error:
                 logger.warning(
                     "Failed to revoke temporary storage credentials for {}: {}", owner_label, error
+                )
+
+    @staticmethod
+    def _run_own_folders(account: TemporaryStorageAccount) -> list[str]:
+        """The run's own folders of `account`, from its owner, never from what the run sent.
+
+        A session's folder is `sessions/<id>/`; a test run's own folders are the ones under
+        `test-runs/` its account was granted. A realtime chat has none.
+        """
+        if account.session_id is not None:
+            return [f"sessions/{account.session_id}/"]
+        if account.python_code_result_id is not None:
+            return [
+                folder
+                for folder in account.granted_folders or []
+                if folder.startswith("test-runs/")
+            ]
+        return []
+
+    def _abort_run_uploads(
+        self, org_id: int, accounts: Iterable[TemporaryStorageAccount], owner_label: str
+    ) -> None:
+        """Abort the multipart uploads left incomplete in the revoked runs' own folders.
+
+        Run after the revocation, so the run cannot start another. Only the run's own
+        folders: the store does not say who started an upload, and in a shared folder it
+        may be the app's own upload in progress. Best-effort, like the revocation.
+        """
+        folders = sorted(
+            {folder for account in accounts for folder in self._run_own_folders(account)}
+        )
+        if not folders:
+            return
+        backend = get_storage_backend(organization_prefix="")
+        for folder in folders:
+            try:
+                aborted = backend.abort_incomplete_uploads(f"{org_storage_prefix(org_id)}/{folder}")
+            except Exception as error:
+                logger.warning(
+                    "Failed to abort incomplete uploads in '{}' of org {} at the end of {}: {}",
+                    folder,
+                    org_id,
+                    owner_label,
+                    error,
+                )
+                continue
+            if aborted:
+                logger.info(
+                    "Aborted {} incomplete upload(s) in '{}' of org {} left by {}",
+                    aborted,
+                    folder,
+                    org_id,
+                    owner_label,
                 )
 
     @staticmethod
