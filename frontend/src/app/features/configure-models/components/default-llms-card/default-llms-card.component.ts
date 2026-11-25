@@ -17,8 +17,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
-    EmbeddingModelConfigDialogComponent,
-    LlmModelConfigDialogComponent,
+    ModelConfigDialogComponent,
+    ModelConfigDialogData,
     SelectComponent,
     SelectItem,
     TranscriptionModelConfigDialogComponent,
@@ -36,12 +36,6 @@ import { Observable } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { DefaultLlmsCard } from '../../interfaces/default-llms-card.interface';
-
-type DialogComponentType =
-    | EmbeddingModelConfigDialogComponent
-    | LlmModelConfigDialogComponent
-    | VoiceModelConfigDialogComponent
-    | TranscriptionModelConfigDialogComponent;
 
 @Component({
     selector: 'app-default-llms-card',
@@ -83,11 +77,12 @@ export class DefaultLlmsCardComponent implements OnInit {
         [ModelTypes.TRANSCRIPTION]: () => this.transcriptionConfigStorage.getAllConfigs(),
     };
 
-    private readonly dialogComponents: Record<ModelTypes, ComponentType<DialogComponentType>> = {
-        [ModelTypes.LLM]: LlmModelConfigDialogComponent,
-        [ModelTypes.EMBEDDING]: EmbeddingModelConfigDialogComponent,
-        [ModelTypes.REALTIME]: VoiceModelConfigDialogComponent,
-        [ModelTypes.TRANSCRIPTION]: TranscriptionModelConfigDialogComponent,
+    /** LLM and embedding configs open the shared model config dialog; the voice kinds keep their own. */
+    private readonly dialogOpeners: Record<ModelTypes, () => void> = {
+        [ModelTypes.LLM]: () => this.openModelConfig({ kind: 'llm' }),
+        [ModelTypes.EMBEDDING]: () => this.openModelConfig({ kind: 'embedding' }),
+        [ModelTypes.REALTIME]: () => this.openVoiceDialog(VoiceModelConfigDialogComponent),
+        [ModelTypes.TRANSCRIPTION]: () => this.openVoiceDialog(TranscriptionModelConfigDialogComponent),
     };
 
     public readonly selectItems = computed<SelectItem[]>(() =>
@@ -111,15 +106,15 @@ export class DefaultLlmsCardComponent implements OnInit {
     }
 
     public onAddModel(): void {
-        const component = this.getDialogComponent();
-        this.dialog.open(component, {
-            height: '90vh',
-            width: '600px',
-        });
+        this.dialogOpeners[this.card().configType]();
     }
 
-    private getDialogComponent(): ComponentType<DialogComponentType> {
-        return this.dialogComponents[this.card().configType];
+    private openModelConfig(data: ModelConfigDialogData): void {
+        this.dialog.open(ModelConfigDialogComponent, { autoFocus: false, data });
+    }
+
+    private openVoiceDialog(component: ComponentType<unknown>): void {
+        this.dialog.open(component, { height: '800px', maxHeight: '90vh', width: '560px' });
     }
 
     protected readonly ResourceCode = ResourceCode;

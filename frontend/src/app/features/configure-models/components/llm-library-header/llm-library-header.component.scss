@@ -1,3 +1,5 @@
+@use '../../../../../styles/row-more-menu';
+
 // The title's and the search's design minimums and the labelled Capabilities width come from the component
 // (TITLE_MIN_WIDTH, SEARCH_MIN_WIDTH, CAPABILITIES_LABELLED_WIDTH), which lays the toolbar out with the same numbers:
 // --llm-library-title-min-width, --llm-library-search-min-width and --llm-library-capabilities-width.
@@ -81,6 +83,7 @@
     }
 
     > app-button,
+    > .add-button,
     > app-bulk-select-dropdown,
     > .filter {
         flex-shrink: 0;
@@ -114,4 +117,40 @@
     &--labelled {
         width: var(--llm-library-capabilities-width);
     }
+}
+
+// Add Model is a native button, as a menu trigger has to be the focusable element: app-button's primary look in its
+// toolbar appearance (40px tall, 10px radius, the icon 16px in and 8px before the label; alone, a 40px square).
+.add-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    height: 40px;
+    padding: 0 1rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-xl);
+    color: var(--color-text-primary);
+    background: var(--accent-color);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 0.2s;
+
+    &:is(:hover, :focus-visible) {
+        background: var(--accent-color-hover);
+    }
+
+    &:active {
+        background: var(--accent-color-active);
+    }
+
+    &--icon-only {
+        width: 40px;
+        padding: 0;
+    }
+}
+
+// The Add Model menu, in an overlay: the card ⋮ menu's panel.
+.add-menu {
+    @include row-more-menu.divided-panel;
 }

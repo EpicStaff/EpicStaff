@@ -19,7 +19,6 @@ class ToolData:
     args_schema: str
     code_file: str
     entrypoint: str
-    requirements: str
     use_storage: bool = False
 
 
@@ -43,7 +42,6 @@ def get_tool_data(tool_path: Path) -> ToolData:
         args_schema=tool_data.get("args-schema", ""),
         code_file=tool_data.get("code-file", ""),
         entrypoint=tool_data.get("entrypoint", ""),
-        requirements=tool_data.get("requirements", ""),
         use_storage=tool_data.get("use-storage", False),
     )
 
@@ -54,21 +52,6 @@ def get_args_schema(tool_path: Path, args_schema_file_name: str) -> dict:
     with args_schema_file.open("r", encoding="utf-8") as f:
         args_schema = json.load(f)
     return args_schema
-
-
-def get_requirements(tool_path: Path, requirements_file_name: str) -> list[str]:
-    requirements_file = tool_path / requirements_file_name
-    if not requirements_file.exists():
-        return []
-
-    with open(requirements_file, encoding="utf-8") as f:
-        lines = f.readlines()
-
-    requirements = [
-        line.strip() for line in lines if line.strip() and not line.strip().startswith("#")
-    ]
-
-    return requirements
 
 
 def get_code_file(tool_path: Path, code_file_name: str) -> str:
@@ -84,7 +67,6 @@ def args_schema_to_variables(args_schema: dict) -> list[dict]:
 def create_or_update_python_tool(
     name: str,
     code: str,
-    requirements: str,
     entrypoint: str,
     description: str,
     variables: list[dict],
@@ -127,17 +109,12 @@ def upload_tools():
                 )
                 variables = args_schema_to_variables(args_schema)
                 code = get_code_file(tool_path=tool_path, code_file_name=tool_data.code_file)
-                requirements = get_requirements(
-                    tool_path=tool_path, requirements_file_name=tool_data.requirements
-                )
-                requirements_string = " ".join(requirements)
                 name = tool_data.name
                 entrypoint = tool_data.entrypoint
                 description = tool_data.description
                 create_or_update_python_tool(
                     name=name,
                     code=code,
-                    requirements=requirements_string,
                     entrypoint=entrypoint,
                     description=description,
                     variables=variables,

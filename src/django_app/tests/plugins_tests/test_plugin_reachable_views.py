@@ -68,7 +68,7 @@ PLUGIN_REACHABLE_VIEWS: dict[str, tuple[str, str]] = {
     "tables.views.views.ProcessRagIndexingEstimateView": (RESOLVER_IN_CODE, "assert_org_permission on the knowledge source, fetched in the active organization; estimates only, writes nothing"),
     "tables.views.views.CancelRagIndexingView": (RESOLVER_IN_CODE, "assert_org_permission on the knowledge source, fetched in the active organization"),
     "tables.views.views.TelegramTriggerNodeAvailableFieldsView": (GLOBAL_READ_ONLY, "the fixed list of Telegram trigger fields"),
-    "tables.views.default_config.DefaultModelsAPIView": (RESOLVER_IN_CODE, "assert_org_permission in the active organization: llm_configs read for a plugin's read, update for every write"),
+    "ai_models.views.default_config.DefaultModelsAPIView": (RESOLVER_IN_CODE, "assert_org_permission in the active organization: llm_configs read for a plugin's read, update for every write"),
     "tables.views.recycle_bin_views.RecycleBinSettingsView": (GLOBAL_READ_ONLY, "the deployment's recycle-bin retention"),
     "tables.views.execution_timeout_limits_views.ExecutionTimeoutLimitsAPIView": (GLOBAL_READ_ONLY, "the deployment's execution timeout limits for Python code"),
     "tables.views.sse_views.RunSessionSSEViewSwagger": (GLOBAL_READ_ONLY, "a documentation stub that answers nothing"),
@@ -80,7 +80,7 @@ PLUGIN_REACHABLE_VIEWS: dict[str, tuple[str, str]] = {
     "tables.views.knowledge_views.search_config_views.NaiveRagSuggestParamsView": (RESOLVER_IN_CODE, "assert_org_permission on the knowledge source, fetched in the active organization"),
     "tables.views.knowledge_views.search_config_views.GraphRagSuggestParamsView": (RESOLVER_IN_CODE, "assert_org_permission on the knowledge source, fetched in the active organization"),
     "tables.views.transfer_job_views.TransferJobViewSet": (RESOLVER_IN_CODE, "a service account owns no job (empty queryset); a user lists, reads and removes only their own jobs in the active organization, and download re-checks the export's right on the job's organization"),
-    "tables.views.model_view_sets.ProviderReadWriteViewSet": (GLOBAL_READ_ONLY, "the deployment's provider catalog: a service account may read it, writes need a SuperAdmin session, never a key (SuperadminWriteMixin)"),
+    "ai_models.views.model_view_sets.ProviderReadWriteViewSet": (GLOBAL_READ_ONLY, "the deployment's provider catalog: a service account may read it, writes need a SuperAdmin session, never a key (SuperadminWriteMixin)"),
 }
 
 

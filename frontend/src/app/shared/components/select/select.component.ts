@@ -164,6 +164,8 @@ export class SelectComponent implements ControlValueAccessor {
     changed = output<unknown>();
     opened = output<void>();
     onCreate = output<void>();
+    /** The search text as typed, for a caller that loads `items` by it; cleared ('') when the panel opens or closes. */
+    searchChange = output<string>();
 
     selectedValue = model<unknown | null>(null);
 
@@ -280,7 +282,7 @@ export class SelectComponent implements ControlValueAccessor {
     openAt(originElement: HTMLElement, minWidth = 160) {
         if (this.isDisabled() || this.readonly()) return;
         this.opened.emit();
-        this.search.set('');
+        this.setSearch('');
 
         const positionStrategy = this.overlayPositionBuilder
             .flexibleConnectedTo(originElement)
@@ -334,7 +336,13 @@ export class SelectComponent implements ControlValueAccessor {
         }
         this.onTouched();
         this.open.set(false);
-        this.search.set('');
+        this.setSearch('');
+    }
+
+    protected setSearch(value: string): void {
+        if (value === this.search()) return;
+        this.search.set(value);
+        this.searchChange.emit(value);
     }
 
     select(item: SelectItem) {

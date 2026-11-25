@@ -16,6 +16,11 @@ from django.core import checks
 from epicstaff_plugin.signing import SignatureFormatError, parse_trusted_keys
 
 from plugins.configuration.grace_period import MAX_GRACE_PERIOD_DAYS, grace_period_days
+from plugins.configuration.host_template import (
+    MAX_DNS_NAME_LENGTH,
+    InvalidHostTemplateError,
+    PluginHostTemplate,
+)
 from plugins.configuration.limits import MAXIMUM_SETTINGS, positive_integer
 from plugins.development.development_mode import (
     LOCALHOST_SUFFIX,
@@ -26,7 +31,7 @@ from plugins.development.development_mode import (
 from plugins.nodes.node_registration import parse_uid_range
 
 HTTPS_REQUIRED_CHECK_ID = "plugins.E001"
-BASE_DOMAIN_CHECK_ID = "plugins.E002"
+HOST_TEMPLATE_CHECK_ID = "plugins.E002"
 FRONTEND_ORIGIN_CHECK_ID = "plugins.E003"
 TRUSTED_KEYS_CHECK_ID = "plugins.E004"
 CORS_ORIGINS_CHECK_ID = "plugins.E005"
@@ -38,14 +43,12 @@ EPICSTAFF_HOST_CHECK_ID = "plugins.E010"
 GRACE_PERIOD_CHECK_ID = "plugins.E011"
 DEVELOPMENT_MODE_CHECK_ID = "plugins.E012"
 DEVELOPMENT_API_PORT_CHECK_ID = "plugins.E013"
+SAME_SITE_CHECK_ID = "plugins.E014"
 DEVELOPMENT_MODE_WARNING_ID = "plugins.W001"
 
 MIN_SHARED_SECRET_LENGTH = 32
 UNCONFIGURED = "none"
 
-PLACEHOLDER_SUFFIX = ".invalid"
-_DNS_LABEL = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
-_MAX_DNS_NAME_LENGTH = 253
 _HOST_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?"
 # The whole URL, matched in full: urlsplit accepts characters a host cannot have, and the
 # origin is written into nginx's configuration.
@@ -64,11 +67,12 @@ def check_plugin_platform_settings(app_configs, **kwargs) -> list[checks.CheckMe
         return []
     return [
         *_https_errors(),
-        *_base_domain_errors(),
+        *_host_template_errors(),
         *_frontend_origin_errors(),
         *_trusted_key_errors(),
         *_cors_errors(),
         *_epicstaff_host_errors(),
+        *_same_site_errors(),
         *_shared_secret_errors(
             "PLUGINS_GATEWAY_SECRET",
             settings.PLUGINS_GATEWAY_SECRET,
@@ -140,49 +144,54 @@ def _is_local_development(host: str | None) -> bool:
 def _https_errors() -> list[checks.Error]:
     # Over plain http a plugin page can plant a copy of EpicStaff's login cookie, so plain http
     # is allowed only for *.localhost development.
-    if settings.REFRESH_COOKIE_SECURE or _is_local_development(settings.PLUGINS_BASE_DOMAIN):
+    # Quiet while the template is invalid or the placeholder: plugins.E002 reports that.
+    template = _host_template()
+    if settings.REFRESH_COOKIE_SECURE or template is None or _is_local_development(template.parent):
         return []
     return [
         checks.Error(
             "The plugin platform needs HTTPS: DJANGO_REFRESH_COOKIE_SECURE is false and "
-            f"PLUGINS_BASE_DOMAIN ({settings.PLUGINS_BASE_DOMAIN!r}) does not end in .localhost.",
+            f"PLUGINS_HOST_TEMPLATE ({settings.PLUGINS_HOST_TEMPLATE!r}) does not end in "
+            ".localhost.",
             hint=(
                 "Serve EpicStaff over HTTPS and set DJANGO_REFRESH_COOKIE_SECURE=true, or use a "
-                "*.localhost base domain for local development, or set PLUGINS_ENABLED=false."
+                "template ending in .localhost for local development, or set "
+                "PLUGINS_ENABLED=false."
             ),
             id=HTTPS_REQUIRED_CHECK_ID,
         )
     ]
 
 
-def _base_domain_errors() -> list[checks.Error]:
-    domain = settings.PLUGINS_BASE_DOMAIN
-    if not _is_dns_name(domain):
-        message = (
-            f"PLUGINS_BASE_DOMAIN ({domain!r}) is not a lower-case DNS name such as "
-            "plugins.example.com."
-        )
-    elif domain.endswith(PLACEHOLDER_SUFFIX):
-        message = f"PLUGINS_BASE_DOMAIN ({domain!r}) is still a placeholder."
-    else:
-        return []
+def _host_template_errors() -> list[checks.Error]:
+    template = settings.PLUGINS_HOST_TEMPLATE
+    try:
+        if not PluginHostTemplate.parse(template).is_placeholder:
+            return []
+        message = f"PLUGINS_HOST_TEMPLATE ({template!r}) is still a placeholder."
+    except InvalidHostTemplateError as error:
+        message = f"PLUGINS_HOST_TEMPLATE ({template!r}) is not valid: {error}."
     return [
         checks.Error(
             message,
             hint=(
-                "Set it to the parent domain of the plugin hosts, the one the wildcard DNS record "
-                "*.<domain> points at."
+                "Set it to the plugin hosts' name with {id} for the plugin identifier, such as "
+                "{id}-app.example.com, and point the wildcard DNS record *.<the part after the "
+                "first label> at EpicStaff."
             ),
-            id=BASE_DOMAIN_CHECK_ID,
+            id=HOST_TEMPLATE_CHECK_ID,
         )
     ]
 
 
-def _is_dns_name(domain: str | None) -> bool:
-    if not domain or len(domain) > _MAX_DNS_NAME_LENGTH:
-        return False
-    labels = domain.split(".")
-    return len(labels) >= 2 and all(_DNS_LABEL.match(label) for label in labels)
+def _host_template() -> PluginHostTemplate | None:
+    """The deployment's template, or None when it is not valid or still the placeholder
+    (plugins.E002 reports both), so the checks built on it stay quiet."""
+    try:
+        template = PluginHostTemplate.parse(settings.PLUGINS_HOST_TEMPLATE)
+    except InvalidHostTemplateError:
+        return None
+    return None if template.is_placeholder else template
 
 
 def _frontend_origin_errors() -> list[checks.Error]:
@@ -220,7 +229,7 @@ def _http_origin(url: str) -> tuple[str, str] | None:
         return None
     host = match["host"].lower()
     port = match["port"]
-    if _NUMERIC_LABEL.fullmatch(host.rsplit(".", 1)[-1]) or len(host) > _MAX_DNS_NAME_LENGTH:
+    if _NUMERIC_LABEL.fullmatch(host.rsplit(".", 1)[-1]) or len(host) > MAX_DNS_NAME_LENGTH:
         return None
     if port is not None and not 0 < int(port) < 65536:
         return None
@@ -247,19 +256,19 @@ def _trusted_key_errors() -> list[checks.Error]:
 def _cors_errors() -> list[checks.Error]:
     # CORS_ALLOW_CREDENTIALS is on, so a plugin host in the allow-list could call EpicStaff's
     # API from a plugin page with the person's login.
-    base_domain = settings.PLUGINS_BASE_DOMAIN
-    if not _is_dns_name(base_domain):
+    template = _host_template()
+    if template is None:
         return []
     plugin_origins = [
         origin
         for origin in settings.CORS_ALLOWED_ORIGINS or []
-        if _is_under(_origin_host(origin), base_domain)
+        if template.covers(_origin_host(origin))
     ]
     return [
         checks.Error(
-            f"DJANGO_CORS_ALLOWED_ORIGINS lists {origin!r}, a plugin host under "
-            f"PLUGINS_BASE_DOMAIN ({base_domain!r}): plugin pages could call EpicStaff's API "
-            "with the person's login.",
+            f"DJANGO_CORS_ALLOWED_ORIGINS lists {origin!r}, a plugin host of "
+            f"PLUGINS_HOST_TEMPLATE ({settings.PLUGINS_HOST_TEMPLATE!r}): plugin pages could "
+            "call EpicStaff's API with the person's login.",
             hint="Remove it. Plugin pages never call EpicStaff's API directly.",
             id=CORS_ORIGINS_CHECK_ID,
         )
@@ -269,22 +278,48 @@ def _cors_errors() -> list[checks.Error]:
 
 def _epicstaff_host_errors() -> list[checks.Error]:
     # A plugin identifier could name EpicStaff's own host, and the Origin policy, which refuses
-    # every plugin-domain origin, would refuse EpicStaff's own pages.
-    base_domain = settings.PLUGINS_BASE_DOMAIN
-    if not _is_dns_name(base_domain):
+    # every plugin-zone origin, would refuse EpicStaff's own pages.
+    template = _host_template()
+    if template is None:
         return []
     host = _origin_host(settings.FRONTEND_BASE_URL)
-    if not _is_under(host, base_domain):
+    if not template.covers(host):
         return []
     return [
         checks.Error(
-            f"DJANGO_FRONTEND_BASE_URL's host ({host!r}) is PLUGINS_BASE_DOMAIN "
-            f"({base_domain!r}) or a host under it.",
+            f"DJANGO_FRONTEND_BASE_URL's host ({host!r}) is in the plugin zone of "
+            f"PLUGINS_HOST_TEMPLATE ({settings.PLUGINS_HOST_TEMPLATE!r}): it has the shape of a "
+            "plugin host, or is under one or under the plugins' own parent.",
             hint=(
-                "Serve the plugins from a domain beside EpicStaff's host, such as "
-                "plugins.example.com for epicstaff.example.com, never one that contains it."
+                "Pick a template whose hosts can never be EpicStaff's, such as "
+                "{id}-app.example.com or {id}.plugins.example.com for epicstaff.example.com."
             ),
             id=EPICSTAFF_HOST_CHECK_ID,
+        )
+    ]
+
+
+def _same_site_errors() -> list[checks.Error]:
+    # A plugin in EpicStaff's frame signs its user in through EpicStaff inside that frame, and
+    # the browser sends EpicStaff's SameSite=Lax login cookie there only when the frame and the
+    # page around it are the same site.
+    template = _host_template()
+    if template is None or _frontend_origin_errors():
+        return []
+    _, host = _http_origin(settings.FRONTEND_BASE_URL)
+    if template.shares_site_with(host):
+        return []
+    return [
+        checks.Error(
+            f"DJANGO_FRONTEND_BASE_URL's host ({host!r}) and the plugin hosts of "
+            f"PLUGINS_HOST_TEMPLATE ({settings.PLUGINS_HOST_TEMPLATE!r}) are not the same site: "
+            "they do not end in the same domain of two or more labels.",
+            hint=(
+                "Serve the plugins under EpicStaff's own domain, such as {id}-app.example.com "
+                "for epicstaff.example.com. Did EpicStaff move to another domain without the "
+                "template?"
+            ),
+            id=SAME_SITE_CHECK_ID,
         )
     ]
 
@@ -294,10 +329,6 @@ def _origin_host(origin: str) -> str | None:
         return urlsplit(origin).hostname
     except ValueError:
         return None
-
-
-def _is_under(host: str | None, domain: str) -> bool:
-    return bool(host) and (host == domain or host.endswith(f".{domain}"))
 
 
 def _shared_secret_errors(

@@ -22,6 +22,7 @@ import {
     StepperComponent,
 } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { extractHttpErrorMessage } from '@shared/utils';
 import { EMPTY, filter, Observable, of } from 'rxjs';
 import { catchError, finalize, map, switchMap } from 'rxjs/operators';
 
@@ -299,7 +300,7 @@ export class CreateCollectionDialogComponent {
                             componentInstance.setServerValidationErrors?.(err.validationErrors);
                             return of(false);
                         }
-                        this.toastService.error('Indexing failed');
+                        this.toastService.error(extractHttpErrorMessage(err, 'Indexing failed'));
                         return of(false);
                     })
                 );

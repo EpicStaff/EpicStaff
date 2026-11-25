@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 from datetime import datetime, timedelta
 from uuid import UUID
 
@@ -19,7 +20,8 @@ from main import create_app
 from presentation.rest.controllers.operator import PAGE_SIZE
 from application.orchestrators.budgets import NEW_DESK_RULES
 from presentation.rest.schemas.operator import ConversationOutput
-from sqlalchemy import func, select
+from loguru import logger
+from sqlalchemy import func, select, text
 from tests.factories import make_binding, make_closed, make_conversation
 from tests.infrastructure.test_django_client import CHAT_FLOW
 
@@ -68,6 +70,15 @@ async def test_auth_failures(client, people):
     forbidden = await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("agent"))
     assert (forbidden.status_code, forbidden.json()["code"]) == (403, "forbidden")
     assert (await client.get(f"{BASE}/bindings", headers=h("viewer"))).status_code == 403
+
+
+@pytest.mark.parametrize("epicstaff", [500, None], ids=["fails", "unreachable"])
+async def test_epicstaff_down_answers_the_fixed_upstream_message_without_internal_detail(client, people, django, epicstaff):
+    django.introspect_status = epicstaff
+    response = await client.get(f"{BASE}/bindings", headers=h("admin"))
+    assert response.status_code == 503
+    assert response.json() == {"code": "upstream_unavailable", "message": "EpicStaff could not be reached."}
+    assert "/api/auth/introspect/" not in response.text
 
 
 async def test_bindings_are_org_scoped(client, people):
@@ -184,6 +195,38 @@ async def test_snippet_carries_the_widget_integrity_only_when_one_is_set(setting
         f'<script src="{settings.CHAT_WIDGET_URL}"{attributes} data-public-key="{binding["public_key"]}" '
         f'data-chat-url="{settings.CHAT_PUBLIC_BASE_URL}/chat/" async></script>'
     )
+
+
+# Postgres text and JSONB cannot store U+0000: unrefused, the write fails with a 500.
+NUL_IN_TEXT = {
+    "name": {"name": "Sup\x00port"},
+    "budget_exhausted_message": {"budget_exhausted_message": "Limit\x00reached"},
+    "allowed_origins item": {"allowed_origins": [ORIGIN, "https://evil.example\x00"]},
+    # Regression guards: the public-name rules already refused these two as control characters.
+    "bot_display_name": {"bot_display_name": "Bot\x00"},
+    "operator_display_name": {"operator_display_name": "Agent\x00"},
+}
+
+
+@pytest.mark.parametrize("field", NUL_IN_TEXT.values(), ids=NUL_IN_TEXT.keys())
+async def test_a_nul_in_any_binding_text_is_400_on_create_and_patch_and_stores_nothing(client, people, field):
+    refused = await client.post(f"{BASE}/bindings", json={**NEW_BINDING, **field}, headers=h("admin"))
+    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
+    assert (await client.get(f"{BASE}/bindings", headers=h("admin"))).json() == []
+    binding = (await client.post(f"{BASE}/bindings", json=NEW_BINDING, headers=h("admin"))).json()
+    url = f"{BASE}/bindings/{binding['id']}"
+    stored = (await client.get(url, headers=h("admin"))).json()
+    patched = await client.patch(url, json=field, headers=h("admin"))
+    assert (patched.status_code, patched.json()["code"]) == (400, "validation_error")
+    assert (await client.get(url, headers=h("admin"))).json() == stored
+
+
+async def test_a_lone_surrogate_in_a_binding_field_is_400_and_stores_nothing(client, people):
+    # The body decoder refuses an unpaired "\ud800" escape, so it never reaches a text column.
+    body = json.dumps({**NEW_BINDING, "name": "Sup\ud800port"})
+    refused = await client.post(f"{BASE}/bindings", content=body, headers={**h("admin"), "Content-Type": "application/json"})
+    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
+    assert (await client.get(f"{BASE}/bindings", headers=h("admin"))).json() == []
 
 
 # ---- visitor token revocation -------------------------------------------------------------------
@@ -1959,3 +2002,36 @@ async def test_a_record_epicstaff_does_not_take_never_fails_the_desk_write(clien
     assert (await client.delete(f"{BASE}/bindings/{desk_id}", headers=h("admin"))).status_code == 204
     assert (await client.get(f"{BASE}/bindings", headers=h("admin"))).json() == []
     assert django.user_actions == []
+
+
+# ---- what a write the database refuses logs ----------------------------------------------------
+
+REFUSED_NAME = "Refused by the database"
+
+
+@pytest.fixture
+async def name_refused_by_the_database(session_factory):
+    # NOT VALID: existing rows stay, every later write of the name is checked.
+    async with session_factory() as session:
+        await session.execute(text(f"ALTER TABLE binding ADD CONSTRAINT ck_test_refused_name CHECK (name <> '{REFUSED_NAME}') NOT VALID"))
+        await session.commit()
+    yield
+    async with session_factory() as session:
+        await session.execute(text("ALTER TABLE binding DROP CONSTRAINT ck_test_refused_name"))
+        await session.commit()
+
+
+async def test_a_refused_write_is_the_fixed_500_and_logs_its_constraint_but_not_the_failing_row(client, people, name_refused_by_the_database):
+    created = (await client.post(f"{BASE}/bindings", json={**NEW_BINDING, "identity_mode": "signed"}, headers=h("admin"))).json()
+    records: list[tuple[str, str]] = []
+    # DEBUG, not ERROR: the row must not reach any record, whatever its level.
+    sink_id = logger.add(lambda message: records.append((message.record["level"].name, message)), level="DEBUG", format="{message}")
+    try:
+        refused = await client.patch(f"{BASE}/bindings/{created['id']}", json={"name": REFUSED_NAME}, headers=h("admin"))
+    finally:
+        logger.remove(sink_id)
+    assert (refused.status_code, refused.json()) == (500, {"code": "internal_error", "message": "Internal error."})
+    [record] = [record for level, record in records if level == "ERROR" and record.startswith("Unhandled error on PATCH")]
+    assert "sqlalchemy.exc.IntegrityError: sqlstate 23514, constraint ck_test_refused_name\n" in record
+    # Postgres's DETAIL line quotes the whole row, the desk's identity secret included.
+    assert not [record for _, record in records if created["identity_secret"] in record or "Failing row" in record]

@@ -4,8 +4,6 @@ from django.db.models import PositiveIntegerField
 
 from ..base_models import SoftDeleteFields, soft_delete_consistency_constraint
 from ..crew_models import Agent
-from ..embedding_models import EmbeddingConfig
-from ..llm_models import LLMConfig
 from .collection_models import BaseRagType, DocumentMetadata
 
 
@@ -39,13 +37,13 @@ class GraphRag(SoftDeleteFields, models.Model):
         limit_choices_to={"rag_type": BaseRagType.RagType.GRAPH},
     )
     embedder = models.ForeignKey(
-        EmbeddingConfig,
+        "ai_models.EmbeddingConfig",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
     )
     llm = models.ForeignKey(
-        LLMConfig,
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 
+from ai_models.models import EmbeddingConfig, LLMConfig
 from django.db.models import (
     BooleanField,
     Exists,
@@ -14,9 +15,7 @@ from django.db.models.functions import Cast, Concat
 from rbac.scoping.fields import org_visible_queryset
 from tables.models import (
     ElevenLabsRealtimeConfig,
-    EmbeddingConfig,
     GeminiRealtimeConfig,
-    LLMConfig,
     McpTool,
     OpenAIRealtimeConfig,
     RealtimeConfig,

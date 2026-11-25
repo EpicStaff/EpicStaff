@@ -1,3 +1,4 @@
+from ai_models.utils.litellm_model_info import resolve_context_window
 from drf_spectacular.utils import extend_schema
 from pydantic import ValidationError
 from rbac.access.asserts import assert_org_permission
@@ -12,6 +13,8 @@ from src.shared.models.search_config_suggestion import (
     SuggestOutput,
 )
 from tables.exceptions import (
+    GraphRagEmbedderNotConfiguredException,
+    GraphRagLlmAndEmbedderNotConfiguredException,
     GraphRagLlmNotConfiguredException,
     NoGraphRagForCollectionException,
 )
@@ -35,7 +38,6 @@ from tables.swagger_schemas.knowledge_schemas.search_config_schemas import (
     GRAPH_RAG_SUGGEST_PARAMS_POST,
     NAIVE_RAG_SUGGEST_PARAMS_POST,
 )
-from tables.utils.litellm_model_info import resolve_context_window
 from user_audit.read_only import reads_only
 
 
@@ -57,16 +59,28 @@ def _resolve_graph_llm_ctx(collection_id: int) -> tuple[int, str, str | None, bo
 
     Raises:
         NoGraphRagForCollectionException: The collection has no GraphRag.
+        GraphRagLlmAndEmbedderNotConfiguredException: The GraphRag has neither an
+            LLM nor an embedder config. Checked before the single-field cases so a
+            caller missing both is not told only about one.
         GraphRagLlmNotConfiguredException: The GraphRag has no LLM config, e.g. its
             LLM config was deleted. The graph view calls this before it fetches
             metrics, so a missing LLM is reported even while the index is not ready.
+        GraphRagEmbedderNotConfiguredException: The GraphRag has no embedder
+            config, e.g. its embedder was deleted. Reported before metrics for the
+            same reason as the LLM case.
     """
     graph_rag = GraphRagService.get_or_none_graph_rag_by_collection(collection_id)
     if graph_rag is None:
         raise NoGraphRagForCollectionException(collection_id)
-    llm_cfg = graph_rag.llm
-    if llm_cfg is None:
+    missing_llm = graph_rag.llm is None
+    missing_embedder = graph_rag.embedder is None
+    if missing_llm and missing_embedder:
+        raise GraphRagLlmAndEmbedderNotConfiguredException(collection_id)
+    if missing_llm:
         raise GraphRagLlmNotConfiguredException(collection_id)
+    if missing_embedder:
+        raise GraphRagEmbedderNotConfiguredException(collection_id)
+    llm_cfg = graph_rag.llm
     model_name = llm_cfg.model.name if llm_cfg.model else ""
     user_override = getattr(llm_cfg, "context_window", None)
     ctx, warning, is_trusted = resolve_context_window(model_name, user_override)

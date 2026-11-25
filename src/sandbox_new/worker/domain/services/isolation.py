@@ -40,13 +40,15 @@ def build_jail(*, exec_dir: Path, venv_path: Path) -> Jail:
     """The filesystem allowlist one confined execution is restricted to.
 
     The only writable paths are the run's own workspace, so no two executions share
-    writable state. Widening any of these lists is a security-relevant change and
-    requires review.
+    writable state, and `/dev/null`, which discards what is written to it. Widening
+    any of these lists is a security-relevant change and requires review.
     """
     read_write = (
         str(exec_dir.absolute()),
         str((exec_dir / "home").absolute()),
         str((exec_dir / "tmp").absolute()),
+        # Opened read-write by git and other subprocesses; read-only, they fail to start.
+        "/dev/null",
     )
     read_exec = (
         str(venv_path.absolute()),
@@ -62,7 +64,6 @@ def build_jail(*, exec_dir: Path, venv_path: Path) -> Jail:
         "/etc/hosts",
         "/etc/nsswitch.conf",
         "/etc/localtime",
-        "/dev/null",
         "/dev/zero",
         "/dev/urandom",
         "/dev/random",

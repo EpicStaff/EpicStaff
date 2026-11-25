@@ -26,6 +26,9 @@ PREDEFINED_VENV_PACKAGES = (
 # Wheels of those packages and their dependencies, built into the image by
 # Dockerfile.manager, so a venv build installs them without the network.
 PREDEFINED_WHEELHOUSE_DIR = BASE_DIR / "predefined_wheelhouse"
+# Wheels of the system venvs' libraries (SYSTEM_VENV_LIBS) and their dependencies, built
+# into the image, so the manager builds those venvs at startup without the network.
+SYSTEM_WHEELHOUSE_DIR = BASE_DIR / "system_wheelhouse"
 
 # Seconds a job may wait for its venv to finish building before it is failed instead of
 # run. Keep it below the producers' result backstops (CREW_CODE_RESULT_TIMEOUT,

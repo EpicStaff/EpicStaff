@@ -27,7 +27,7 @@ plugin page `/<rest>?<query>` in a frame:
 
 | Part | Value |
 |---|---|
-| Frame origin | `https://<id>.<plugins base domain>[:<port>]` — every plugin has its own origin. Plain `http` only on `*.localhost` hosts, for local development |
+| Frame origin | `https://<plugin host>[:<port>]`, the deployment's `PLUGINS_HOST_TEMPLATE` with the plugin's id in place of `{id}` (such as `https://weather-app.example.com`) — every plugin has its own origin. Plain `http` only on `*.localhost` hosts, for local development |
 | `es_org` | The organization the person opened the plugin in, appended with `?` or `&` after the page's own query. EpicStaff removes an `es_org` of the page's own first: the name is reserved |
 | Sandbox | The page keeps its real origin (`allow-same-origin`). There is no `allow-top-navigation`: a plugin page cannot navigate EpicStaff away |
 | Credentials | None. The frame address and the messages never carry a token, a cookie or any other secret |

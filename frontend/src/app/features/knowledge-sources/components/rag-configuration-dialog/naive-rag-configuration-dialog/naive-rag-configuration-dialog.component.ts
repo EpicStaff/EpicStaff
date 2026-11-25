@@ -1,8 +1,10 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ButtonComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { extractHttpErrorMessage } from '@shared/utils';
 import { EMPTY, Observable, of } from 'rxjs';
 import { filter, finalize, switchMap } from 'rxjs/operators';
 
@@ -96,8 +98,12 @@ export class NaiveRagConfigurationDialog extends RagConfigurationDialogComponent
                     this.collectionsStorage.markConfigsAsProcessing(configIds);
                     this.collectionsStorage.markRagAsProcessing(this.data.ragId);
                 },
-                error: () => {
-                    this.toast.error('Files re-indexing failed');
+                // The chain carries any stage's error, not only an HTTP response.
+                error: (error: unknown) => {
+                    const fallback = 'Files re-indexing failed';
+                    this.toast.error(
+                        error instanceof HttpErrorResponse ? extractHttpErrorMessage(error, fallback) : fallback
+                    );
                     // If bulkDeletePending() was the stage that failed, its documents are
                     // still optimistically hidden from the table with nothing left to
                     // retry the delete. Recover the same way the "Re-include Files"

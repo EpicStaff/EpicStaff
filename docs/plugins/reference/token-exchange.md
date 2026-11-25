@@ -1,6 +1,7 @@
 # Token exchange: how a person logs in to a plugin
 
-A plugin's page calls its own backend (`https://<id>.<plugins base domain>/api/**`) as the person
+A plugin's page calls its own backend (`https://<plugin host>/api/**`, the
+deployment's `PLUGINS_HOST_TEMPLATE` with the plugin's id in place of `{id}`) as the person
 using EpicStaff. To do that it needs a **plugin login token**, which it gets from EpicStaff
 without ever seeing the person's password or EpicStaff's own session. The [JS SDK](js-sdk.md)
 runs this whole exchange for you; this page describes what happens underneath, for reviewers,
@@ -20,7 +21,7 @@ for a plugin without a backend `login` is `null`.
 ## The flow
 
 ```
-plugin page (https://weather.plugins.example.com)            EpicStaff (https://epicstaff.example.com)
+plugin page (https://weather-app.example.com)                EpicStaff (https://epicstaff.example.com)
  1. make code_verifier and state, keep them in sessionStorage
  2. location.replace ──▶ GET /api/auth/plugin-authorize/?plugin=…&state=…&code_challenge=…
                                                      reads the session from EpicStaff's cookie
@@ -58,7 +59,7 @@ value that breaks its rule gets `400 invalid_authorize_request` as JSON, with `e
 each parameter. A plugin that is not running or has no backend gets `404 plugin_not_found`.
 Neither is a redirect.
 
-Otherwise the answer is a redirect, decided in this order:
+Otherwise EpicStaff decides in this order, and answers with a redirect (all but step 3's refusal):
 
 1. **The session.** EpicStaff reads its own refresh cookie, as its refresh endpoint does, but
    only reads it: the cookie is neither rotated nor changed. Without a valid session, a silent
@@ -74,11 +75,15 @@ Otherwise the answer is a redirect, decided in this order:
    - A person who may use the plugin once an upgrade finishes (the plugin is stopped for its
      upgrade, or their organization's upgrade has not finished) gets `temporarily_unavailable`
      instead of `access_denied`.
-3. **The code.** EpicStaff issues a one-time code and redirects to the plugin's callback page.
+3. **The host.** With a template that has a prefix or a suffix, the plugin's host must prove that
+   this EpicStaff serves it ([the host check](../operator/enable-plugins.md#the-host-check)).
+   Otherwise the answer is `503 plugin_host_not_served_here` as JSON on EpicStaff's origin, not a
+   redirect: a code never goes to a host another server answers for.
+4. **The code.** EpicStaff issues a one-time code and redirects to the plugin's callback page.
 
 | Redirect | Target |
 |---|---|
-| Code | `https://<id>.<plugins base domain>/.well-known/epicstaff/callback.html#code=<code>&state=<state>` |
+| Code | `https://<plugin host>/.well-known/epicstaff/callback.html#code=<code>&state=<state>` |
 | Refusal | The same page, `#error=<error>&state=<state>` (see [login callback errors](error-codes.md#login-callback-errors)) |
 | Silent request | `…/.well-known/epicstaff/silent-callback.html` instead of `callback.html` |
 | Login | `https://<EpicStaff>/plugin-login?continue=<this request, rebuilt>` |
@@ -157,7 +162,7 @@ A plugin page talks to EpicStaff only through the login above. EpicStaff refuses
 else before it is handled:
 
 - **No cross-origin calls to EpicStaff's API.** A request whose `Origin` is a plugin address
-  (or any host under the plugins base domain) gets `403 plugin_origin_refused` on every path
+  (or any host that matches the deployment's `PLUGINS_HOST_TEMPLATE`) gets `403 plugin_origin_refused` on every path
   except the token
   exchange from the plugin's own origin and the authorize navigation. That includes
   `/api/plugin-public/*`: a page loads its platform config from its own

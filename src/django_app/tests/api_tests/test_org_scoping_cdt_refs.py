@@ -21,7 +21,7 @@ from tables.models.graph_models import (
     ClassificationDecisionTablePrompt,
     StartNode,
 )
-from tables.models.llm_models import LLMConfig
+from ai_models.models import LLMConfig
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 

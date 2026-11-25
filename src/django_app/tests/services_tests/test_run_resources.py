@@ -65,9 +65,9 @@ class World:
         return row
 
     def llm_config(self):
-        model = self.make("tables.LLMModel", name=self.name("llm"), org=self.org)
+        model = self.make("ai_models.LLMModel", name=self.name("llm"), org=self.org)
         return self.make(
-            "tables.LLMConfig",
+            "ai_models.LLMConfig",
             custom_name=self.name("llm-config"),
             model=model,
             api_key_secret=self.secret(),
@@ -94,9 +94,9 @@ class World:
         )
 
     def embedding_config(self):
-        model = self.make("tables.EmbeddingModel", name=self.name("embedding"), org=self.org)
+        model = self.make("ai_models.EmbeddingModel", name=self.name("embedding"), org=self.org)
         return self.make(
-            "tables.EmbeddingConfig",
+            "ai_models.EmbeddingConfig",
             custom_name=self.name("embedding-config"),
             model=model,
             api_key_secret=self.secret(),
@@ -760,7 +760,7 @@ def _flow_asking(world: World, *configs):
 
 
 def _config_with_headers(world: World, headers: dict[str, str]):
-    return world.make("tables.LLMConfig", custom_name=world.name("cfg"), org=world.org, extra_headers=headers)
+    return world.make("ai_models.LLMConfig", custom_name=world.name("cfg"), org=world.org, extra_headers=headers)
 
 
 @pytest.mark.django_db
@@ -780,12 +780,36 @@ def test_a_header_marker_reaches_the_live_secret_of_its_name_in_the_row_s_organi
 
 
 @pytest.mark.django_db
+def test_a_connection_marker_reaches_its_secret_as_a_header_marker_does(world):
+    # The AWS access key id of a Bedrock config is a marker in its `connection`.
+    live = world.secret()
+    elsewhere = _make_secret(Organization.objects.create(name="Connection elsewhere"), live.name, "value")
+    config = world.make(
+        "ai_models.LLMConfig",
+        custom_name=world.name("cfg"),
+        org=world.org,
+        connection={"aws_access_key_id": f"epicstaff_secret({live.name})", "aws_region_name": "eu-west-1"},
+    )
+
+    resources = _collect(RunKind.FLOW, _flow_asking(world, config))
+
+    assert ref(live) in resources.refs
+    assert ref(elsewhere) not in resources.refs
+    assert resources.secret_marker_names == {live.name}
+
+
+@pytest.mark.django_db
 def test_an_embedding_config_s_markers_are_followed_too(world):
     secret = world.secret()
     collection = world.make("tables.SourceCollection", collection_name=world.name("kb"), org=world.org)
     base = world.make("tables.BaseRagType", rag_type="naive", source_collection=collection)
+    connection_secret = world.secret()
     embedder = world.make(
-        "tables.EmbeddingConfig", custom_name=world.name("emb"), org=world.org, extra_headers=_marker_headers(secret.name)
+        "ai_models.EmbeddingConfig",
+        custom_name=world.name("emb"),
+        org=world.org,
+        extra_headers=_marker_headers(secret.name),
+        connection={"base_url": f"https://gateway.example/epicstaff_secret({connection_secret.name})"},
     )
     world.make("tables.NaiveRag", base_rag_type=base, embedder=embedder)
     flow = world.make("tables.Graph", name=world.name("kb-flow"), org=world.org)
@@ -793,8 +817,8 @@ def test_an_embedding_config_s_markers_are_followed_too(world):
 
     resources = _collect(RunKind.FLOW, flow)
 
-    assert ref(secret) in resources.refs
-    assert resources.secret_marker_names == {secret.name}
+    assert {ref(secret), ref(connection_secret)} <= resources.refs
+    assert resources.secret_marker_names == {secret.name, connection_secret.name}
 
 
 @pytest.mark.django_db

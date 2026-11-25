@@ -14,6 +14,7 @@ from src.shared.public_error import (
     build_public_error_message,
     new_error_correlation_id,
 )
+from src.shared.untrusted_content import wrap_untrusted_tool_result
 from starlette.websockets import WebSocketDisconnect
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
@@ -265,11 +266,12 @@ class ElevenLabsRealtimeAgentClient(BaseRealtimeAgentClient):
 
         clean_result = clean_result.strip('"').replace("\\n", "\n")
 
+        # Only the provider's copy is enveloped: the frontend shows the plain result.
         await self.send_server(
             {
                 "type": "client_tool_result",
                 "tool_call_id": call_id,
-                "result": clean_result,
+                "result": wrap_untrusted_tool_result(clean_result),
                 "is_error": False,
             }
         )

@@ -326,6 +326,14 @@ BOLD, DIM, RED, GREEN, YELLOW, CYAN = "1", "2", "31", "32", "33", "36"
 # browsers read as a number makes the host an IP address.
 DNS_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 NUMERIC_LABEL = re.compile(r"[0-9]+|0[xX][0-9A-Fa-f]*")
+# PLUGINS_HOST_TEMPLATE, by the rules of django_app's plugins.configuration.host_template (and
+# nginx's 16-normalize-plugins-enabled.envsh): `<prefix>{id}<suffix>.<parent>`.
+IDENTIFIER_PLACEHOLDER = "{id}"
+MAX_IDENTIFIER_LENGTH = 32
+TEMPLATE_PREFIX = re.compile(r"(?:[a-z0-9][a-z0-9-]*)?")
+TEMPLATE_SUFFIX = re.compile(r"(?:[a-z0-9-]*[a-z0-9])?")
+# The affix of the suggested flat template, {id}-app.<EpicStaff's parent domain>.
+SUGGESTED_TEMPLATE_SUFFIX = "-app"
 # The local host the plugin development guide uses: bare localhost is refused with plugins on.
 LOCAL_PLUGINS_HOST = {
     "NGINX_SERVER_NAME": "epicstaff.localhost",
@@ -442,24 +450,128 @@ def plugins_host_problem(public_url: str) -> str | None:
     return None
 
 
-def validate_plugins_domain(domain: str, public_url: str) -> str:
-    domain = domain.strip().lower().rstrip(".")
-    labels = domain.split(".")
-    if len(labels) < 2 or len(domain) > 253 or not all(map(DNS_LABEL.fullmatch, labels)):
-        raise ValueError("Enter a domain name such as plugins.example.com.")
-    if domain.endswith(".invalid"):
-        raise ValueError(f"{domain} is a placeholder: enter the real domain.")
+def parse_host_template(template: str) -> tuple[str, str, str]:
+    """`(prefix, suffix, parent)` of a plugin host template, or ValueError naming the rule."""
+    first_label, _, parent = template.partition(".")
+    if template.count(IDENTIFIER_PLACEHOLDER) != 1 or IDENTIFIER_PLACEHOLDER not in first_label:
+        raise ValueError("Put {id} once, in the first label, e.g. {id}-app.example.com.")
+    prefix, _, suffix = first_label.partition(IDENTIFIER_PLACEHOLDER)
+    parent_labels = parent.split(".")
+    if len(parent_labels) < 2 or not all(map(DNS_LABEL.fullmatch, parent_labels)):
+        raise ValueError("After the first label put a domain name such as example.com.")
+    if not TEMPLATE_PREFIX.fullmatch(prefix) or not TEMPLATE_SUFFIX.fullmatch(suffix):
+        raise ValueError(
+            "Around {id} use only letters, digits and hyphens, with no hyphen at either end."
+        )
+    longest_label = len(prefix) + MAX_IDENTIFIER_LENGTH + len(suffix)
+    if longest_label > 63 or longest_label + 1 + len(parent) > 253:
+        raise ValueError("Too long for a 32-character plugin identifier: shorten it.")
+    # Hyphens in a label's 3rd and 4th characters are reserved for xn-- names; see
+    # host_template._affixes_reserve_labels in django_app for why these are the cases.
+    if (
+        (len(prefix) >= 4 and prefix[2:4] == "--")
+        or len(prefix) == 1
+        or (not prefix and suffix.startswith("--"))
+    ):
+        raise ValueError(
+            "The text around {id} would make some hosts look like xn-- names: change it."
+        )
+    return prefix, suffix, parent
+
+
+def template_covers(prefix: str, suffix: str, parent: str, host: str) -> bool:
+    """Whether `host` is in the plugin zone (django_app's PluginHostTemplate.covers)."""
+    if not prefix and not suffix:
+        # Every name, even one with an empty label (`a..parent`, `.parent`).
+        return host == parent or host.endswith(f".{parent}")
+    if not host.endswith(f".{parent}"):
+        return False
+    label = host[: -len(parent) - 1].rsplit(".", 1)[-1]
+    return (
+        len(label) > len(prefix) + len(suffix)
+        and label.startswith(prefix)
+        and label.endswith(suffix)
+    )
+
+
+def shares_site(host: str, parent: str) -> bool:
+    """Whether `host` and `parent` end in the same domain of two or more labels (plugins.E014)."""
+    shared = 0
+    for host_label, parent_label in zip(
+        reversed(host.split(".")), reversed(parent.split(".")), strict=False
+    ):
+        if host_label != parent_label:
+            break
+        shared += 1
+    return shared >= 2
+
+
+def validate_plugins_host_template(template: str, public_url: str) -> str:
+    template = template.strip().lower().rstrip(".")
+    prefix, suffix, parent = parse_host_template(template)
+    if parent.endswith(".invalid"):
+        raise ValueError(f"{template} is a placeholder: enter the real one.")
     parts = urlsplit(public_url)
-    if parts.scheme != "https" and not domain.endswith(".localhost"):
-        raise ValueError("Over plain HTTP the plugin domain must end in .localhost.")
+    if parts.scheme != "https" and not parent.endswith(".localhost"):
+        raise ValueError("Over plain HTTP the plugin hosts must end in .localhost.")
     host = parts.hostname or ""
-    if host == domain or host.endswith(f".{domain}"):
+    if template_covers(prefix, suffix, parent, host):
         # A plugin identifier could then name EpicStaff's own host.
         raise ValueError(
-            f"{host} is under {domain}: use a domain beside it, such as plugins.example.com "
-            "for epicstaff.example.com."
+            f"{host} would be a plugin host: pick an affix EpicStaff's host does not have."
         )
-    return domain
+    if not shares_site(host, parent):
+        raise ValueError(
+            f"{host} and the plugin hosts are not one site: put them under EpicStaff's own "
+            f"domain, such as {suggested_plugins_host_template(public_url)}."
+        )
+    return template
+
+
+def suggested_plugins_parent(host: str) -> str:
+    """The domain the suggested template puts the plugins under, for EpicStaff at `host`.
+
+    Normally the domain EpicStaff's host is in: its host without the first label
+    (staff.acme.com: acme.com). Without the Public Suffix List that can be a shared suffix,
+    so EpicStaff's whole host is taken instead when it has two labels (acme.com,
+    epicstaff.localhost) or when dropping its first label leaves two labels the first of
+    which is three characters or fewer (acme.co.uk: co.uk, com.au), which is how most
+    country-code suffixes look. A longer shared suffix (myorg.github.io: github.io) still gets
+    through; `plugins_parent_note` asks the operator to check that case.
+    """
+    labels = host.split(".")
+    parent_labels = labels[1:]
+    if len(labels) <= 2 or (len(parent_labels) == 2 and len(parent_labels[0]) <= 3):
+        return host
+    return ".".join(parent_labels)
+
+
+def plugins_parent_note(public_url: str) -> str | None:
+    """A reminder when the suggestion may sit on a shared suffix the rule cannot see: the
+    suggested parent has two labels, taken from a three-label EpicStaff host."""
+    host = urlsplit(public_url).hostname or ""
+    parent = suggested_plugins_parent(host)
+    if host.count(".") != 2 or parent.count(".") != 1:
+        return None
+    return (
+        f"The suggestion puts the plugins under {parent}: it must be a domain you control, "
+        "not a shared suffix such as co.uk or github.io."
+    )
+
+
+def suggested_plugins_host_template(public_url: str) -> str:
+    """`{id}-app.<suggested_plugins_parent>`. When EpicStaff's own host has that shape
+    (shop-app.acme.com), the plugins get a parent of their own instead."""
+    host = urlsplit(public_url).hostname or ""
+    parent = suggested_plugins_parent(host)
+    if template_covers("", SUGGESTED_TEMPLATE_SUFFIX, parent, host):
+        return f"{IDENTIFIER_PLACEHOLDER}.plugins.{parent}"
+    return f"{IDENTIFIER_PLACEHOLDER}{SUGGESTED_TEMPLATE_SUFFIX}.{parent}"
+
+
+def plugin_zone_parent(template: str) -> str:
+    """The domain the plugin hosts' wildcard DNS record and certificate name: *.<this>."""
+    return template.partition(".")[2]
 
 
 def production_values(public_url: str, serving_mode: str, image_tag: str) -> dict[str, str]:
@@ -553,6 +665,7 @@ def update_env_file(
     already_set = set(SET_VARIABLE.findall(original))
     overrides = {
         **_split_audit_switch(original),
+        **carried_forward_values(read_env_values(original)),
         **worker_memory_values(read_env_values(original)),
         **(overrides or {}),
     }
@@ -594,6 +707,25 @@ def _split_audit_switch(env_text: str) -> dict[str, str]:
     if legacy_value is None:
         return {}
     return {SESSION_AUDIT_SWITCH: legacy_value}
+
+
+def converted_host_template(values: dict[str, str]) -> str | None:
+    """The template that keeps the plugin hosts of a file written before PLUGINS_HOST_TEMPLATE,
+    from its PLUGINS_BASE_DOMAIN: <id>.<that domain>. None without one."""
+    base_domain = values.get("PLUGINS_BASE_DOMAIN", "").strip()
+    return f"{IDENTIFIER_PLACEHOLDER}.{base_domain}" if base_domain else None
+
+
+def carried_forward_values(values: dict[str, str]) -> dict[str, str]:
+    """Values a new variable takes from the old one it replaces, instead of its default.
+
+    A server upgraded from a release with PLUGINS_BASE_DOMAIN keeps its plugin addresses:
+    plugins registered them with outside services.
+    """
+    template = converted_host_template(values)
+    if "PLUGINS_HOST_TEMPLATE" in values or template is None:
+        return {}
+    return {"PLUGINS_HOST_TEMPLATE": template}
 
 
 def read_env_values(text: str) -> dict[str, str]:
@@ -729,7 +861,7 @@ class Screen:
             if default is None:
                 print(style(question, BOLD))
             else:
-                shown = list(choices).index(default) + 1
+                shown = list(choices).index(default) + 1 if choices else default
                 print(f"{style(question, BOLD)} {style(f'Enter for {shown}', DIM)}")
             if choices:
                 for number, description in enumerate(choices.values(), start=1):
@@ -777,13 +909,21 @@ def ask_features(screen: Screen, current: dict[str, bool]) -> dict[str, bool]:
     }
 
 
-def ask_plugins_domain(screen: Screen, public_url: str) -> str:
-    return screen.ask(
-        "Plugin domain",
-        "Parent domain of the plugin hosts, served with a wildcard DNS record *.<domain>, "
-        "e.g. plugins.example.com for epicstaff.example.com",
-        validate=lambda domain: validate_plugins_domain(domain, public_url),
+def ask_plugins_host_template(screen: Screen, public_url: str) -> str:
+    suggestion = suggested_plugins_host_template(public_url)
+    note = plugins_parent_note(public_url)
+    if note:
+        screen.notes.append(note)
+    template = screen.ask(
+        "Plugin hosts",
+        "Where plugins are served, {id} standing for the plugin, e.g. "
+        f"{suggestion} or {{id}}.plugins.<domain>; pick an affix no other host of the zone uses",
+        validate=lambda template: validate_plugins_host_template(template, public_url),
+        default=suggestion,
     )
+    if note:
+        screen.notes.remove(note)
+    return template
 
 
 def plugins_allowed(screen: Screen, public_url: str) -> bool:
@@ -819,7 +959,7 @@ def ask_production_values(
     serving_mode = screen.ask(
         "Served", "How do users reach it?", choices=SERVING_MODE_CHOICES, validate=matching_mode
     )
-    enabled, plugins_domain = ask_production_features(screen, public_url)
+    enabled, plugins_host_template = ask_production_features(screen, public_url)
     image_tag = screen.ask(
         "Release", "Release tag to pull (IMAGE_TAG), e.g. v1.3.0", validate=validate_image_tag
     )
@@ -842,18 +982,20 @@ def ask_production_values(
             break
         # The wizard has no back step: ask the features and the size again, then fit again.
         del screen.notes[notes_before_sizing:]
-        enabled, plugins_domain = ask_production_features(screen, public_url)
+        enabled, plugins_host_template = ask_production_features(screen, public_url)
     values |= sized
-    if plugins_domain:
-        values["PLUGINS_BASE_DOMAIN"] = plugins_domain
+    if plugins_host_template:
+        values["PLUGINS_HOST_TEMPLATE"] = plugins_host_template
     return values, enabled, serving_mode
 
 
 def ask_production_features(screen: Screen, public_url: str) -> tuple[dict[str, bool], str | None]:
     enabled = ask_features(screen, {feature.flag: False for feature in FEATURES})
     enabled["PLUGINS_ENABLED"] = enabled["PLUGINS_ENABLED"] and plugins_allowed(screen, public_url)
-    plugins_domain = ask_plugins_domain(screen, public_url) if enabled["PLUGINS_ENABLED"] else None
-    return enabled, plugins_domain
+    plugins_host_template = (
+        ask_plugins_host_template(screen, public_url) if enabled["PLUGINS_ENABLED"] else None
+    )
+    return enabled, plugins_host_template
 
 
 def ask_server_size(
@@ -1235,10 +1377,10 @@ def create_env_file(
                 "If your load balancer adds X-Forwarded-For, set DJANGO_NUM_PROXIES=2 in the",
                 "file; otherwise login throttling treats every user as the balancer.",
             ]
-        plugins_domain = overrides.get("PLUGINS_BASE_DOMAIN", "")
-        if enabled["PLUGINS_ENABLED"] and not plugins_domain.endswith(".localhost"):
+        plugins_parent = plugin_zone_parent(overrides.get("PLUGINS_HOST_TEMPLATE", ""))
+        if enabled["PLUGINS_ENABLED"] and not plugins_parent.endswith(".localhost"):
             steps.append(
-                f"Point *.{plugins_domain} at this server (wildcard DNS record and certificate)."
+                f"Point *.{plugins_parent} at this server (wildcard DNS record and certificate)."
             )
         if overrides.get("DJANGO_LOG_LEVEL") == "DEBUG":
             steps.append(DEBUG_REMINDER)
@@ -1317,13 +1459,13 @@ def ask_changed_features(
         enabled["PLUGINS_ENABLED"] = plugins_allowed(screen, public_url)
     if enabled["PLUGINS_ENABLED"]:
         plugin_values |= missing_plugin_secrets(old)
-        old_domain = old.get("PLUGINS_BASE_DOMAIN", "")
+        old_template = old.get("PLUGINS_HOST_TEMPLATE") or converted_host_template(old)
         try:
-            domain = validate_plugins_domain(old_domain, public_url)
+            template = validate_plugins_host_template(old_template or "", public_url)
         except ValueError:
-            domain = ask_plugins_domain(screen, public_url)
-        if domain != old_domain:
-            plugin_values["PLUGINS_BASE_DOMAIN"] = domain
+            template = ask_plugins_host_template(screen, public_url)
+        if template != old.get("PLUGINS_HOST_TEMPLATE"):
+            plugin_values["PLUGINS_HOST_TEMPLATE"] = template
     return enabled, plugin_values
 
 

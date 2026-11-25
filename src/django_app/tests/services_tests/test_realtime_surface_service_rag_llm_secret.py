@@ -19,14 +19,13 @@ from agents.models.surface_models import (
     SurfaceNaiveSearchConfig,
 )
 
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel
 from tables.models.knowledge_models.collection_models import (
     BaseRagType,
     SourceCollection,
 )
 from tables.models.knowledge_models.graphrag_models import GraphRag
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
-from tables.models.llm_models import LLMConfig, LLMModel
 from rbac.models import Organization
 from tables.services.converter_service import ConverterService
 from tables.services.realtime_surface_service import RealtimeSurfaceService

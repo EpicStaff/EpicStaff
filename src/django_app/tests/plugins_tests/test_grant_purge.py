@@ -23,7 +23,8 @@ from plugins.models import (
     PluginState,
 )
 from rest_framework.test import APIClient
-from tables.models import DefaultModels, PythonNode, Session, StorageFile
+from tables.models import PythonNode, Session, StorageFile
+from ai_models.models import DefaultModels
 from tables.services.session_manager_service import SessionManagerService
 
 from tests.plugins_tests.suspension_helpers import agent, agent_node_flow, flow, llm_config, own, secret_row, set_state
@@ -78,7 +79,7 @@ def stopped_sessions(monkeypatch):
 @pytest.fixture
 def digest_setup(grant, acme):
     """Olga's Acme: the plugin's key, config, readme and flow, and her own digest flow."""
-    key = secret_row(acme, "Weather · LLM key")
+    key = secret_row(acme, "Weather - LLM key")
     summaries = llm_config(acme, "Weather summaries", api_key_secret=key)
     readme = StorageFile.objects.create(org=acme, path="weather/README.md", name="README.md", parent_path="weather/")
     forecast = flow(acme, "Weather forecast")
@@ -308,7 +309,7 @@ def test_a_purging_grant_refuses_runs_that_use_what_it_owns_until_they_are_gone(
     from plugins.runs.run_guard import PluginRunGuard
     from tables.services.run_admission import RunKind, RunSubject
 
-    secret = secret_row(acme, "Weather · LLM key")
+    secret = secret_row(acme, "Weather - LLM key")
     own(secret, grant)
     digest = flow(acme, "Daily digest")
     PythonNode.objects.get(graph=digest).python_code.secrets.set([secret])

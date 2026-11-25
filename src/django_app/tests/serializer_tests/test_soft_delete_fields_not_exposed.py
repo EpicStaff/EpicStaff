@@ -17,6 +17,7 @@ from tables.services.graph_bulk_save_service.saveables import DecisionTableNodeS
 
 _SERIALIZER_PACKAGES = (
     "tables.serializers",
+    "ai_models.serializers",
     "agents.serializers",
     "tables.import_export.serializers",
     "tables.graph_versioning",

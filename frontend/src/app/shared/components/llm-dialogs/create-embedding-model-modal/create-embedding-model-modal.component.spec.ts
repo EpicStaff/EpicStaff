@@ -14,29 +14,23 @@ const EDITED_MODEL: EmbeddingModel = {
     id: 12,
     name: 'gateway-embedder',
     predefined: false,
-    deployment: null,
-    base_url: null,
     embedding_provider: PROVIDER.id,
     is_visible: true,
     is_custom: true,
 };
 
-/** The 400 the backend sends for a new base URL on a model whose configs carry a secret, without Secrets "Use". */
-const SECRET_USE_REFUSAL = new HttpErrorResponse({
+/** The 400 the backend sends for a renamed model whose name the provider already has. */
+const DUPLICATE_NAME_REFUSAL = new HttpErrorResponse({
     status: 400,
     error: {
         status_code: 400,
         code: 'invalid',
-        message:
-            'base_url: Changing where this sends its secrets requires the "Use" permission on Secrets. ' +
-            'The existing value was left unchanged. Ask an organization admin to grant it.',
+        message: 'name: A model with this name already exists for this provider.',
     },
 });
 
 /** The refusal as the banner shows it: the field label in words, the backend's sentence unchanged. */
-const SHOWN_REFUSAL =
-    'Base URL: Changing where this sends its secrets requires the "Use" permission on Secrets. ' +
-    'The existing value was left unchanged. Ask an organization admin to grant it.';
+const SHOWN_REFUSAL = 'Name: A model with this name already exists for this provider.';
 
 // jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
 class ResizeObserverStub {
@@ -92,9 +86,9 @@ describe('CreateEmbeddingModelModalComponent save errors', () => {
     beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
     afterEach(() => vi.unstubAllGlobals());
 
-    it('shows the server message in the banner when saving a new base URL fails with 400', () => {
-        const { fixture, toastError } = render(EDITED_MODEL, undefined, () => throwError(() => SECRET_USE_REFUSAL));
-        fixture.componentInstance.form.patchValue({ baseUrl: 'https://proxy.example.com/v1' });
+    it('shows the server message in the banner when renaming fails with 400', () => {
+        const { fixture, toastError } = render(EDITED_MODEL, undefined, () => throwError(() => DUPLICATE_NAME_REFUSAL));
+        fixture.componentInstance.form.patchValue({ name: 'taken-name' });
 
         submit(fixture);
 
@@ -104,7 +98,7 @@ describe('CreateEmbeddingModelModalComponent save errors', () => {
     });
 
     it('shows the server message in the banner when creating fails with 400', () => {
-        const { fixture } = render(undefined, () => throwError(() => SECRET_USE_REFUSAL));
+        const { fixture } = render(undefined, () => throwError(() => DUPLICATE_NAME_REFUSAL));
         fixture.componentInstance.form.patchValue({ name: 'custom-model' });
 
         submit(fixture);
@@ -115,7 +109,7 @@ describe('CreateEmbeddingModelModalComponent save errors', () => {
     it('clears the banner when the form is submitted again', () => {
         const patchModel = vi
             .fn<Save>()
-            .mockReturnValueOnce(throwError(() => SECRET_USE_REFUSAL))
+            .mockReturnValueOnce(throwError(() => DUPLICATE_NAME_REFUSAL))
             .mockReturnValueOnce(NEVER);
         const { fixture } = render(EDITED_MODEL, undefined, patchModel);
         submit(fixture);

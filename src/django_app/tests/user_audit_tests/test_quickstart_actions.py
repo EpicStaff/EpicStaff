@@ -8,11 +8,9 @@ import pytest
 from rest_framework import status
 
 from rbac.models import OrganizationUser
-from tables.models.default_models import DefaultModels
-from tables.models.embedding_models import EmbeddingModel
-from tables.models.llm_models import LLMModel
-from tables.models.provider import Provider
-from tables.services.quickstart_service import QuickstartService
+from ai_models.models import DefaultModels, EmbeddingModel, LLMModel, Provider
+from ai_models.domain.specs import ModelKind
+from tables.services.quickstart_service import QuickstartError, QuickstartService
 from tables.services.secrets import secret_service
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -127,17 +125,18 @@ def test_quickstart_with_a_reused_secret_records_no_secret(
 
 
 def test_failed_quickstart_records_nothing(
-    admin_client, acme, sent_events, django_capture_on_commit_callbacks
+    admin_client, acme, sent_events, django_capture_on_commit_callbacks, monkeypatch
 ):
-    provider = Provider.objects.create(name="openai")
-    # Refused after the secret and the LLM model were created, so both are rolled back.
-    EmbeddingModel.objects.create(
-        name=QUICKSTART_MODELS["openai"]["embedding_model"],
-        embedding_provider=provider,
-        org=acme,
-        is_custom=True,
-        base_url="https://attacker.example",
-    )
+    _seed_built_in_models("openai")
+    resolve_model = QuickstartService._model
+
+    def refuse_the_embedding_model(self, kind, **kwargs):
+        if kind == ModelKind.EMBEDDING:
+            raise QuickstartError("No embedding model for this provider.")
+        return resolve_model(self, kind, **kwargs)
+
+    # Refused after the secret and the LLM config were created, so both are rolled back.
+    monkeypatch.setattr(QuickstartService, "_model", refuse_the_embedding_model)
 
     with django_capture_on_commit_callbacks(execute=True):
         response = admin_client.post(

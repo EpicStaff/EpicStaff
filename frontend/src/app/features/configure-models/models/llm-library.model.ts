@@ -6,7 +6,7 @@ import { RealtimeConfig, RealtimeProvider } from '../components/realtime-config-
 import { LlmLibrarySelectionKind } from '../utils/llm-library-bulk-delete.util';
 import { ProviderCreationOrder } from '../utils/llm-library-layout.util';
 
-/** A realtime (voice) provider of the LLM Library: its storage, and how its heading and deletes name it. */
+/** A realtime (voice) provider of the AI Models page: its storage, and how its heading and deletes name it. */
 export interface VoiceProvider {
     key: RealtimeProvider;
     /** The provider's name, as its group heading shows it. */
@@ -18,7 +18,7 @@ export interface VoiceProvider {
     } & BulkDeleteTarget;
 }
 
-/** What the LLM Library loads on its own, and so can fail to load and retry on its own. */
+/** What the AI Models page loads on its own, and so can fail to load and retry on its own. */
 export type LibraryLoadKey = 'llm' | 'embedding' | 'realtime' | 'transcription' | 'system_one' | RealtimeProvider;
 
 /** The collapsible sections of the page, in their order. */
@@ -62,8 +62,10 @@ export interface LibrarySection {
     errors: LibrarySectionError[];
     /** Provider groups packed into rows (see `packLlmLibraryRows`). */
     rows: LibraryProviderGroup[][];
-    /** The providers, comma-separated, as a collapsed heading lists them; empty for System One. */
+    /** The providers, comma-separated, as a section heading lists them. */
     providerList: string;
     /** Every card shown in the section, by selection key. */
     selectionKeys: string[];
+    /** How many of its cards need review. */
+    needsReviewCount: number;
 }

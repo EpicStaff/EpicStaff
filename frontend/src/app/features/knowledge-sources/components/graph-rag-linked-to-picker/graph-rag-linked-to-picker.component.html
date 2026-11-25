@@ -1,0 +1,131 @@
+<button
+    type="button"
+    class="linked-to-trigger"
+    cdkOverlayOrigin
+    #originOverlay="cdkOverlayOrigin"
+    [class.linked-to-trigger--open]="isOpen()"
+    aria-label="Filter by linked-to row"
+    aria-haspopup="dialog"
+    [attr.aria-expanded]="isOpen()"
+    (click)="toggle()"
+>
+    <app-svg-icon
+        icon="chain-link"
+        size="0.75rem"
+    />
+    <span class="linked-to-trigger__label">Linked to</span>
+    <app-svg-icon
+        class="chevron"
+        icon="chevron-down"
+        size="0.875rem"
+    />
+</button>
+
+<ng-template
+    cdkConnectedOverlay
+    [cdkConnectedOverlayOrigin]="originOverlay"
+    [cdkConnectedOverlayOpen]="isOpen()"
+    [cdkConnectedOverlayPositions]="overlayPositions"
+    [cdkConnectedOverlayScrollStrategy]="scrollStrategy"
+    [cdkConnectedOverlayHasBackdrop]="true"
+    cdkConnectedOverlayBackdropClass="transparent-backdrop"
+    (backdropClick)="close()"
+    (detach)="close()"
+    (overlayKeydown)="$event.key === 'Escape' && close()"
+>
+    <div
+        class="linked-to-popover"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+    >
+        @let state = activeState();
+
+        <div class="linked-to-popover__search">
+            <app-search
+                placeholder="Search..."
+                ariaLabel="Search linked-to rows"
+                [maxLength]="searchMaxLength"
+                [searchTerm]="state.searchTerm"
+                (searchTermChange)="onSearchInput($event)"
+            />
+        </div>
+
+        <div class="linked-to-popover__tabs-wrapper">
+            <div
+                class="linked-to-popover__tabs-row"
+                role="tablist"
+            >
+                @for (tab of visibleTabs(); track tab.type; let last = $last) {
+                    <button
+                        type="button"
+                        class="linked-to-popover__tab"
+                        [class.linked-to-popover__tab--active]="activeTab() === tab.type"
+                        role="tab"
+                        [id]="'linked-to-tab-' + tab.type"
+                        [attr.aria-selected]="activeTab() === tab.type"
+                        [attr.aria-controls]="'linked-to-panel-' + tab.type"
+                        (click)="selectTab(tab.type)"
+                    >
+                        {{ tab.label }}
+                    </button>
+                    @if (!last) {
+                        <span
+                            class="linked-to-popover__tab-separator"
+                            aria-hidden="true"
+                            >/</span
+                        >
+                    }
+                }
+            </div>
+        </div>
+
+        <div
+            class="linked-to-popover__body"
+            role="tabpanel"
+            [id]="'linked-to-panel-' + activeTab()"
+            [attr.aria-labelledby]="'linked-to-tab-' + activeTab()"
+        >
+            @if (state.status === 'loading' && state.rows.length === 0) {
+                <div class="linked-to-popover__state">
+                    <app-loading-spinner size="md" />
+                </div>
+            } @else if (state.status === 'error') {
+                <div class="linked-to-popover__state linked-to-popover__state--error">
+                    {{ state.errorMessage }}
+                </div>
+            } @else if (state.rows.length === 0) {
+                <div class="linked-to-popover__state">No rows</div>
+            } @else {
+                <ul
+                    class="linked-to-popover__list"
+                    role="listbox"
+                    (scroll)="onListScroll($event)"
+                >
+                    @for (row of state.rows; track row.id) {
+                        <li class="linked-to-popover__item">
+                            <button
+                                type="button"
+                                class="linked-to-popover__row"
+                                role="option"
+                                (click)="pick(row)"
+                            >
+                                <span
+                                    class="linked-to-popover__row-label"
+                                    [matTooltip]="row.label"
+                                    matTooltipPosition="above"
+                                    >{{ row.label }}</span
+                                >
+                                <span class="linked-to-popover__row-id">{{ row.id }}</span>
+                            </button>
+                        </li>
+                    }
+                    @if (state.hasMore && state.status === 'loading') {
+                        <li class="linked-to-popover__loading-more">
+                            <app-loading-spinner size="sm" />
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+</ng-template>

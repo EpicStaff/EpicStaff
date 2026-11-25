@@ -11,7 +11,8 @@ from rest_framework.test import APIClient
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
-from tables.models import Graph, LLMConfig, Secret, Session
+from tables.models import Graph, Secret, Session
+from ai_models.models import LLMConfig
 from tables.models.graph_models import ScheduleTriggerNode
 
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
@@ -108,7 +109,7 @@ def test_importing_a_flow_with_a_trigger_needs_flows_use(weather_client_without_
 
 
 def test_a_secret_is_created_and_its_value_never_returned(weather_client, acme):
-    response = weather_client.post("/api/secrets/", {"name": "Weather · LLM key", "value": "sk-weather-123"}, format="json")
+    response = weather_client.post("/api/secrets/", {"name": "Weather - LLM key", "value": "sk-weather-123"}, format="json")
 
     assert response.status_code == 201, response.content
     assert "value" not in response.json()

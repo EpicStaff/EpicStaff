@@ -34,19 +34,20 @@ import {
     tabOfSection,
 } from '../../utils/conversation-list-tab.util';
 import { ConversationDeskRules, deskRulesOf, visitorName } from '../../utils/conversation-row.util';
+import {
+    CONVERSATION_SECTIONS,
+    sectionHolds,
+    sectionOfConversation,
+    sectionView,
+} from '../../utils/conversation-section.util';
+import { CONVERSATION_SECTION_ICONS } from '../../utils/conversation-section-icon.util';
 import { WAIT_TICK_MS } from '../../utils/conversation-wait.util';
 import { tickingNow } from '../../utils/ticking-now.util';
 import { ConversationListTabsComponent } from '../conversation-list-tabs/conversation-list-tabs.component';
 import { ConversationListToolbarComponent } from '../conversation-list-toolbar/conversation-list-toolbar.component';
 import { ConversationRowComponent, ConversationRowMove } from '../conversation-row/conversation-row.component';
 import { ConversationSectionHeaderComponent } from '../conversation-section-header/conversation-section-header.component';
-import {
-    CONVERSATION_SECTIONS,
-    ConversationListQuery,
-    ConversationListStore,
-    listsSection,
-    sectionHolds,
-} from './conversation-list.store';
+import { ConversationListQuery, ConversationListStore, listsSection } from './conversation-list.store';
 import { ConversationListMotion } from './conversation-list-motion';
 
 // Relative times ("6m") move on without a reload.
@@ -61,9 +62,10 @@ export type ConversationLookup = ChatConversation | 'loading' | 'missing';
 
 /**
  * The conversations column: the Inbox / Bot Testing switch and a toolbar (search, Mine or New Test Chat) over
- * one scroll. Inbox has a section per inbox section (Waiting for a person, In progress, Closed, Bot); Bot Testing has
- * Bot and Closed, the open and the closed tests. Each sits under a sticky header that collapses it. Loads, pages as a
- * list's end scrolls into view, keeps the rows live, and moves the selection with ↑/↓ (one row is the Tab stop).
+ * one scroll. Inbox has a section per inbox section (Waiting for a person, In progress, Bot, Closed); Bot Testing has
+ * Tests and Closed, the open and the closed tests. Each sits under a sticky header that folds and opens it alone.
+ * Loads, pages as a list's end scrolls into view, keeps the rows live, and moves the selection with ↑/↓ (one row is
+ * the Tab stop).
  */
 @Component({
     selector: 'app-conversation-list',
@@ -211,6 +213,7 @@ export class ConversationListComponent {
                 ?.focus(),
     });
     protected readonly bodyIdPrefix = `conversation-list-${nextListId++}`;
+    protected readonly sectionIcons = CONVERSATION_SECTION_ICONS;
 
     private readonly permissionsService = inject(PermissionsService);
     private readonly profileService = inject(ProfileService);
@@ -250,14 +253,15 @@ export class ConversationListComponent {
 
     /**
      * What the column can say about a conversation the page was asked to open: its row once listed; `loading` while
-     * what it shows may still bring it; `missing` once that has loaded without it (or nothing is open to wait for).
+     * what it shows may still bring it; `missing` once that has loaded without it, a list that failed to load included
+     * (the page then fetches it by id), or when nothing is open to wait for.
      * Missing says nothing about why: Mine, a search, a folded section, the other tab or a page not fetched yet. Reads
      * signals only, so an effect that calls it follows the answer.
      */
     lookUp(id: string): ConversationLookup {
         const row = this.store.findRow(id);
         if (row) return row;
-        const isWaiting = !this.store.isLoaded() && this.store.view().some(({ isExpanded }) => isExpanded);
+        const isWaiting = !this.store.isSettled() && this.store.view().some(({ isExpanded }) => isExpanded);
         return isWaiting ? 'loading' : 'missing';
     }
 
@@ -270,7 +274,7 @@ export class ConversationListComponent {
      */
     revealConversation(conversation: ChatConversation): void {
         if (this.store.visibleRows().some((row) => row.id === conversation.id)) return;
-        const section = CONVERSATION_SECTIONS.find(({ id }) => sectionHolds(id, conversation, null))?.id;
+        const section = sectionOfConversation(conversation);
         if (!section) return;
         const tab = tabOfConversation(conversation);
         if (!this.showTab(tab)) return;
@@ -293,33 +297,28 @@ export class ConversationListComponent {
     }
 
     /**
-     * Collapsing a section whose header is stuck (the user is deep inside it) would leave that header far above the
-     * view, with the focus on it, and opening one folds the open one above it, which would pull the header out of view:
-     * the column scrolls so the header stays where it was pressed. Opened from the bottom, where a pinned section's
-     * header (Bot, Closed) waits while the section is below the view, the section comes up to the top instead: it would open out
-     * of sight.
+     * Folds or opens the section alone. Folding a section whose header is stuck (the user is deep inside it) would
+     * leave that header far above the view, with the focus on it: the column scrolls so the header stays where it was
+     * pressed. A pinned section's header (Bot, Closed) waits at the bottom while the section is below the view; pressed
+     * there, the section comes up to the top: opened if it was folded, as it would open out of sight, and left open if
+     * it was open, as the user went to it, not away from it. Only the opening is remembered.
      */
     protected toggle(section: ConversationListSection): void {
         const scroller = this.scroller().nativeElement;
         const sectionTop = this.sectionTopInScroller(section);
-        this.store.toggle(section);
-        if (sectionTop === null) return;
-        // The scroller's top padding is a header's height: past this, the header is pinned at the bottom, its own and
-        // the pinned ones under it.
-        const headerHeight = parseFloat(getComputedStyle(scroller).scrollPaddingTop) || 0;
-        const pinnedBelow = CONVERSATION_SECTIONS.find(({ id }) => id === section)?.pinnedBelow;
-        const pinnedFrom = scroller.clientHeight - ((pinnedBelow ?? 0) + 1) * headerHeight;
-        if (pinnedBelow !== undefined && sectionTop - scroller.scrollTop > pinnedFrom) {
-            afterNextRender(
-                () => {
-                    if (this.store.view().find((item) => item.section.id === section)?.isExpanded) {
-                        this.sectionElement(section)?.scrollIntoView({ block: 'start' });
-                    }
-                },
-                { injector: this.injector }
-            );
+        if (sectionTop !== null && this.isPinnedBelowView(section, sectionTop)) {
+            if (this.isExpanded(section)) {
+                this.sectionElement(section)?.scrollIntoView({ block: 'start' });
+                return;
+            }
+            this.store.toggle(section);
+            afterNextRender(() => this.sectionElement(section)?.scrollIntoView({ block: 'start' }), {
+                injector: this.injector,
+            });
             return;
         }
+        this.store.toggle(section);
+        if (sectionTop === null) return;
         const offsetInView = Math.max(0, sectionTop - scroller.scrollTop);
         afterNextRender(
             () => {
@@ -381,6 +380,23 @@ export class ConversationListComponent {
             this.sectionElements().find(({ nativeElement }) => sectionOf(nativeElement) === section)?.nativeElement ??
             null
         );
+    }
+
+    private isExpanded(section: ConversationListSection): boolean {
+        return this.store.view().some((item) => item.section.id === section && item.isExpanded);
+    }
+
+    // Whether a pinned section's header sits pinned at the column's bottom: the section starting at `sectionTop` (see
+    // `sectionTopInScroller`) is below the view.
+    private isPinnedBelowView(section: ConversationListSection, sectionTop: number): boolean {
+        const pinnedBelow = sectionView(section).pinnedBelow;
+        if (pinnedBelow === undefined) return false;
+        const scroller = this.scroller().nativeElement;
+        // The scroller's top padding is a header's height: past this, the header is pinned at the bottom, its own and
+        // the pinned ones under it.
+        const headerHeight = parseFloat(getComputedStyle(scroller).scrollPaddingTop) || 0;
+        const pinnedFrom = scroller.clientHeight - (pinnedBelow + 1) * headerHeight;
+        return sectionTop - scroller.scrollTop > pinnedFrom;
     }
 
     // Where the section starts in the scroller's content, in the units of `scrollTop`.

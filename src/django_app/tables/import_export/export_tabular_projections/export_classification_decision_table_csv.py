@@ -124,8 +124,8 @@ def export_condition_groups_csv(node: ClassificationDecisionTableNode) -> io.Str
                 [
                     config.custom_name,
                     config.model.name if config.model else "",
-                    config.temperature,
-                    config.max_tokens,
+                    config.parameters.get("temperature"),
+                    config.parameters.get("max_tokens"),
                 ]
             )
         write([])

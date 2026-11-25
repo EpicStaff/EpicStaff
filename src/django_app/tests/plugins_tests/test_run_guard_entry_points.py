@@ -100,7 +100,7 @@ def test_a_realtime_conversation_with_an_agent_using_the_plugin_s_config_is_refu
 
 
 def test_a_realtime_conversation_whose_voice_config_uses_the_plugin_s_secret_is_refused(grant, acme, olga):
-    key = secret_row(acme, "Weather · voice key")
+    key = secret_row(acme, "Weather - voice key")
     own(key, grant)
     voice = OpenAIRealtimeConfig.objects.create(org=acme, custom_name="Acme voice", api_key_secret=key)
     announcer = agent(acme, "announcer", llm_config=llm_config(acme, "Acme summaries"))
@@ -147,7 +147,7 @@ def test_running_the_code_of_a_node_of_the_plugin_s_flow_is_refused(grant, acme,
 
 
 def test_running_an_organization_tool_that_declares_the_plugin_s_secret_is_refused(grant, acme, olga, redis_client_mock):
-    secret = secret_row(acme, "Weather · LLM key")
+    secret = secret_row(acme, "Weather - LLM key")
     own(secret, grant)
     code = PythonCode.objects.create(code="def main(**kwargs):\n    return 1\n", entrypoint="main")
     code.secrets.set([secret])
@@ -163,7 +163,7 @@ def test_a_node_of_an_organization_flow_runs_when_its_own_code_uses_nothing_the_
     digest = flow(acme, "Daily digest")
     # Another node of the same flow uses the plugin's secret; a code run tests one node.
     other_code = PythonCode.objects.create(code="def main(**kwargs):\n    return 1\n", entrypoint="main")
-    secret = secret_row(acme, "Weather · LLM key")
+    secret = secret_row(acme, "Weather - LLM key")
     other_code.secrets.set([secret])
     own(secret, grant)
     PythonNode.objects.create(graph=digest, python_code=other_code, node_name="uses the key")

@@ -36,11 +36,24 @@
     }
     <div class="thread-header__row">
         @if (!isPhone()) {
-            <!-- Who the conversation is with, and which one it is: the visitor number is not unique, the id is. -->
-            <app-conversation-avatar
-                class="thread-header__avatar"
-                [conversation]="conversation()"
-            />
+            <!--
+                Who the conversation is with, and which one it is: the visitor number is not unique, the id is. The
+                avatar's corner has the icon of the section the list shows it in, as the list's row has it; announced
+                here, where nothing else says the section or who took the conversation.
+            -->
+            <span class="thread-header__picture">
+                <app-conversation-avatar
+                    class="thread-header__avatar"
+                    [conversation]="conversation()"
+                />
+                @if (section(); as conversationSection) {
+                    <app-conversation-section-badge
+                        [section]="conversationSection"
+                        [holder]="holderLabel()"
+                        [isAnnounced]="true"
+                    />
+                }
+            </span>
             <div class="thread-header__identity">
                 <div class="thread-header__name-line">
                     <span

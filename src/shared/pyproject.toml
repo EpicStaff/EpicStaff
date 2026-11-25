@@ -7,9 +7,9 @@ dependencies = [
 ]
 
 # Everything the suites under src/shared import. The libraries are the versions the
-# services and the tools' own venvs run (see the requirements.txt of each tool).
-# A tool is imported by its tests the way the sandbox would, so the modules a tool
-# lists in its requirements.txt have to be importable here too. The exception is
+# services and the sandbox's `builtin_tools` venv run (see SYSTEM_VENV_LIBS in
+# sandbox_new/manager/domain/models.py). A tool is imported by its tests the way the
+# sandbox would, so the modules a tool imports have to be importable here too. The exception is
 # sqlalchemy: the mysql and natural-language SQL tool tests skip themselves without
 # it, and with it natural_language_to_sql_tool would also need langchain_community,
 # so it stays out. postgresql_search_tool needs only psycopg and sqlparse, so its

@@ -13,6 +13,7 @@ from domain.enums import IdentityMode, Mode, Role, RunState, Stream
 from domain.models import Message
 from infrastructure.database.models import ConversationRow, VisitorTokenRow
 from litestar.testing import AsyncTestClient
+from loguru import logger
 from main import create_app
 from sqlalchemy import func, select, update
 from tests.factories import make_binding
@@ -200,6 +201,20 @@ async def test_flow_failure_is_503_and_releases_the_slot(client, binding, django
     assert (response.status_code, response.json()["code"]) == (503, "flow_unavailable")
     state = await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=headers)
     assert state.json()["state"] == "idle"
+
+
+async def test_a_refused_run_logs_its_status_and_none_of_djangos_answer(client, binding, django):
+    conversation_id, headers = await _create(client, binding)
+    django.run_session_response = (400, {"error": "Session aborted: code reads secret STRIPE_KEY"})
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="ERROR", format="{message}")
+    try:
+        response = await client.post(f"/chat/public/v1/conversations/{conversation_id}/messages", json={"content": "x"}, headers=headers)
+    finally:
+        logger.remove(sink_id)
+    assert (response.status_code, response.json()["code"]) == (503, "flow_unavailable")
+    assert f"run-session failed for conversation {conversation_id}: FlowStartError, HTTP 400" in [record.strip() for record in records]
+    assert not [record for record in records if "STRIPE_KEY" in record]
 
 
 async def test_per_ip_message_limit(settings, binding, django, redis_client):
@@ -400,9 +415,10 @@ async def test_chat_user_id_is_the_signed_sub_and_null_when_anonymous(client, bi
     assert [v["chat_user_id"] for v in _run_variables(django)] == ["customer-9", None]
 
 
-async def test_a_sub_longer_than_the_subject_column_is_an_invalid_identity(client, uow_factory, django):
+@pytest.mark.parametrize("sub", ["x" * 256, "customer\x00-9", "customer\ud800-9"], ids=["longer than the column", "NUL", "lone surrogate"])
+async def test_a_sub_the_subject_column_cannot_hold_is_an_invalid_identity(client, uow_factory, django, sub):
     signed = await _add_binding(uow_factory, django, identity_mode=IdentityMode.SIGNED, identity_secret="id-secret")
-    identity = jwt.encode({"sub": "x" * 256, "exp": int(time.time()) + 600}, "id-secret", algorithm="HS256")
+    identity = jwt.encode({"sub": sub, "exp": int(time.time()) + 600}, "id-secret", algorithm="HS256")
     response = await client.post("/chat/public/v1/conversations", json={"public_key": signed.public_key, "identity_token": identity}, headers={"Origin": ORIGIN})
     assert (response.status_code, response.json()["code"]) == (401, "invalid_identity")
 
@@ -480,6 +496,17 @@ async def test_nul_is_400_and_leaves_the_conversation_usable(client, binding, dj
     refused = await client.post(url, json=body, headers=headers)
     assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
     # Nothing was claimed: the next message runs instead of answering 409.
+    assert (await client.post(url, json={"content": "hello"}, headers=headers)).status_code == 202
+
+
+async def test_a_lone_surrogate_in_a_message_is_400_and_leaves_the_conversation_usable(client, binding, django):
+    # The body decoder refuses an unpaired "\ud800" escape, so it never reaches a text column.
+    conversation_id, headers = await _create(client, binding)
+    url = f"/chat/public/v1/conversations/{conversation_id}/messages"
+    body = json.dumps({"content": "hi\ud800"})
+    refused = await client.post(url, content=body, headers={**headers, "Content-Type": "application/json"})
+    assert (refused.status_code, refused.json()["code"]) == (400, "validation_error")
+    assert not _run_variables(django)
     assert (await client.post(url, json={"content": "hello"}, headers=headers)).status_code == 202
 
 

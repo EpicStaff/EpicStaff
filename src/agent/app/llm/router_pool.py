@@ -1,8 +1,7 @@
 """
 RouterPool: process-singleton pool of ``litellm.Router`` instances.
 
-Each unique (model, api_key, base_url, api_version, rpm) combination gets its
-own Router so LiteLLM's in-memory rpm counter accumulates correctly across
+Each unique (model, connection arguments, rpm) combination gets its own Router so LiteLLM's in-memory rpm counter accumulates correctly across
 calls sharing the same deployment config. Each Router holds a single deployment,
 so cooldowns are disabled — they provide no fallback benefit and would turn
 transient failures into a ~60 s "no deployments available" outage. Router
@@ -18,6 +17,10 @@ import json
 
 from litellm.router import Router
 
+CONNECTION_KEY = "connection"
+"""The model_config key holding the provider's connection arguments and main secret
+(`LLMConfigData.connection_kwargs()`), which go on the Router deployment."""
+
 
 class RouterPool:
     """Lazy-building pool of ``litellm.Router`` instances keyed by config hash.
@@ -31,13 +34,7 @@ class RouterPool:
         self._lock: asyncio.Lock = asyncio.Lock()
 
     def _key(self, model: str, model_config: dict, rpm: int | None) -> str:
-        payload = {
-            "model": model,
-            "api_key": model_config.get("api_key"),
-            "base_url": model_config.get("base_url"),
-            "api_version": model_config.get("api_version"),
-            "rpm": rpm,
-        }
+        payload = {"model": model, "connection": model_config.get(CONNECTION_KEY, {}), "rpm": rpm}
         return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
     async def get(self, model: str, model_config: dict, rpm: int | None) -> Router:
@@ -51,14 +48,7 @@ class RouterPool:
             if key in self._routers:
                 return self._routers[key]
 
-            litellm_params: dict = {
-                "model": model,
-                **{
-                    k: model_config[k]
-                    for k in ("api_key", "base_url", "api_version")
-                    if k in model_config
-                },
-            }
+            litellm_params: dict = {"model": model, **model_config.get(CONNECTION_KEY, {})}
 
             if rpm is not None:
                 litellm_params["rpm"] = rpm

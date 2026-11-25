@@ -93,7 +93,7 @@ The process gets exactly these variables; nothing is inherited from the node.
 | `EPICSTAFF_PLUGIN_RUNTIME_FILE` | `/run/es_plugins/<id>/runtime.json` |
 | `EPICSTAFF_API_URL` | EpicStaff's API as the plugin reaches it, the runtime file's `epicstaff_api_url` |
 | `EPICSTAFF_PUBLIC_URL` | EpicStaff's address in people's browsers, the runtime file's `epicstaff_public_url` |
-| `EPICSTAFF_PLUGIN_PUBLIC_URL` | The plugin's own public address, the runtime file's `public_url` |
+| `EPICSTAFF_PLUGIN_PUBLIC_URL` | The plugin's own public address, the runtime file's `public_url` when the process started. It keeps that value until the process restarts, also after the deployment changes domain; read `public_url` from the runtime file for the current one |
 | `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, `http_proxy` | `http://<id>:<password>@plugins_egress:3128`: the egress proxy, with the plugin's own credentials ([Call the internet from your backend](../how-to/outbound-hosts.md)) |
 | `NO_PROXY`, `no_proxy` | The host of `epicstaff_api_url`, then `localhost,127.0.0.1,::1`: reached directly, not through the proxy |
 | `DATABASE_URL` | With a `database` section only: `postgresql://<id_>_app:<password>@<host>:<port>/plugin_<id_>?application_name=<id>`, the plugin's own database as its app role ([Plugin database](database.md)) |
@@ -115,7 +115,7 @@ A JSON document at `EPICSTAFF_PLUGIN_RUNTIME_FILE`, readable only by the plugin'
   "format": 1,
   "plugin": { "identifier": "weather", "version": "0.2.0" },
   "issuer": "https://epicstaff.example.com",
-  "public_url": "https://weather.plugins.example.com",
+  "public_url": "https://weather-app.example.com",
   "epicstaff_public_url": "https://epicstaff.example.com",
   "epicstaff_api_url": "http://epicstaff-api:8081/api/",
   "settings": { "units": "metric" },
@@ -131,7 +131,7 @@ A JSON document at `EPICSTAFF_PLUGIN_RUNTIME_FILE`, readable only by the plugin'
 | `format` | `1` |
 | `plugin` | The plugin's id and the running version |
 | `issuer` | EpicStaff's public origin, the `iss` of every gateway context |
-| `public_url` | The plugin's own address. Build every external callback address (OAuth redirect URIs and the like) from it; operators keep it stable |
+| `public_url` | The plugin's own address, built from the deployment's `PLUGINS_HOST_TEMPLATE`, so it differs per deployment. Build every external callback address (OAuth redirect URIs and the like) from it. Read it here when you need it and never store it: if the deployment changes domain, the node rewrites this file with the new address without restarting the process, while `EPICSTAFF_PLUGIN_PUBLIC_URL` keeps the old one until a restart |
 | `epicstaff_public_url` | EpicStaff's address in people's browsers |
 | `epicstaff_api_url` | EpicStaff's API from inside the node. Only `/api/` is reachable there, without `/api/auth/` and `/api/admin/` |
 | `settings` | Every non-secret setting: its stored value, else its default. An optional setting with neither is left out |
@@ -144,9 +144,9 @@ Settings are deployment-wide: one value per plugin, set by a SuperAdmin on the p
 tab. Saving them restarts the process, so read them whenever you need them or once at start-up;
 both see the current values.
 
-The node rewrites the file atomically (a rename) when EpicStaff's signing keys change and when
-the plugin's service accounts change, without restarting the process. `RuntimeConfig` in the SDK
-notices the change and reads the file again. A newer EpicStaff may add fields; read the file
+The node rewrites the file atomically (a rename) when EpicStaff's signing keys change, when
+the plugin's service accounts change and when its public address changes, without restarting
+the process. `RuntimeConfig` in the SDK notices the change and reads the file again. A newer EpicStaff may add fields; read the file
 with the SDK, or ignore fields you do not know.
 
 ### Service accounts

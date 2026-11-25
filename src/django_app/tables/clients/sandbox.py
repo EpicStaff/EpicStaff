@@ -2,8 +2,8 @@
 
 django_app submits a code execution over HTTP (`POST /executions`) and receives
 its result back on the Redis result channel, unchanged. The request body mirrors
-the sandbox's own submit schema: the venv is addressed by `venv_id` (None means
-the sandbox's default venv), and the storage credentials django mints for the run
+the sandbox's own submit schema: the venv is addressed by `venv_id` or, for
+built-in code, by `system_venv` (neither means the sandbox's default venv), and the storage credentials django mints for the run
 are handed over here -- the sandbox mints none of its own and rejects a storage
 execution that arrives without them.
 """
@@ -59,6 +59,7 @@ def _submit_body(code_task_data: CodeTaskData) -> dict[str, Any]:
         "func_kwargs": code_task_data.func_kwargs or {},
         "secrets": code_task_data.secrets,
         "venv_id": code_task_data.venv_id,
+        "system_venv": code_task_data.system_venv,
         "use_storage": code_task_data.use_storage,
         "storage_allowed_paths": code_task_data.storage_allowed_paths or [],
         "storage_org_prefix": code_task_data.storage_org_prefix,

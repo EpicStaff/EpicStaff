@@ -24,8 +24,7 @@ def catalog_tool_path(tmp_path_factory) -> Path:
         '  description: "Catalog description."\n'
         '  args-schema: "args_schema.json"\n'
         '  code-file: "main.py"\n'
-        '  entrypoint: "main"\n'
-        '  requirements: "requirements.txt"\n',
+        '  entrypoint: "main"\n',
         encoding="utf-8",
     )
     (tool_path / "args_schema.json").write_text(

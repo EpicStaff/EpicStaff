@@ -12,13 +12,13 @@ from django.test.utils import CaptureQueriesContext
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from rest_framework.test import APIClient
-from tables.models import LLMConfig, McpTool, PythonCode
+from tables.models import McpTool, PythonCode
+from ai_models.models import LLMConfig, LLMModel
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     Graph,
     PythonNode,
 )
-from tables.models.llm_models import LLMModel
 from tables.services.secrets import secret_service
 
 DECLARING_CODE = 'def main(**kwargs):\n    return get_secret("USAGE_KEY")\n'

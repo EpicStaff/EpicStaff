@@ -139,6 +139,7 @@ async def test_submitted_body_is_the_intake_contract(executor, sandbox_intake):
         "func_kwargs": {"query": "hello"},
         "secrets": {"API_KEY": "sk-live-123"},
         "venv_id": 17,
+        "system_venv": None,
         "use_storage": False,
         "storage_allowed_paths": [],
         "storage_org_prefix": None,
@@ -155,6 +156,14 @@ async def test_venv_id_is_null_when_the_code_declares_none(executor, sandbox_int
     await executor.run_code(build_python_code_data(), inputs={})
 
     assert submitted_task(sandbox_intake)["venv_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_system_venv_reaches_the_sandbox(executor, sandbox_intake):
+    """A built-in tool names the sandbox's own venv instead of a venv id."""
+    await executor.run_code(build_python_code_data(system_venv="builtin_tools"), inputs={})
+
+    assert submitted_task(sandbox_intake)["system_venv"] == "builtin_tools"
 
 
 @pytest.mark.asyncio
