@@ -14,8 +14,10 @@ from src.shared.models.system_one import SystemOneConfigData
 
 __all__ = ["SecretDecryptionError", "decrypt_llm_data", "decrypt_system_one_config"]
 
-# Byte-identical to the producer's, in django_app tables/services/secrets/secret_resolver.py.
-_SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
+# Byte-identical to the producer's, in django_app utils/secret_marker.py.
+_SECRET_MARKER_RE = re.compile(
+    r"epicstaff_secret\(\s*((?!epicstaff_secret\()[^)\s](?:(?:(?!epicstaff_secret\()[^)])*[^)\s])?)\s*\)"
+)
 
 
 class SecretDecryptionError(Exception):

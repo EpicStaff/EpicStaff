@@ -10,9 +10,9 @@ from tables.services.secrets.exceptions import (
     SecretDecryptionError,
     SecretResolutionError,
 )
+from utils.secret_marker import SECRET_MARKER_PATTERN
 
-# Wire contract, duplicated per consumer (agent, realtime, knowledge, sandbox, webhook): no shared owner.
-_SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
+_SECRET_MARKER_RE = re.compile(SECRET_MARKER_PATTERN)
 
 _SECRET_ID_SUFFIX = "_secret_id"
 
