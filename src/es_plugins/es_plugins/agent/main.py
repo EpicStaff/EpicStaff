@@ -288,7 +288,7 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
     reconciler = Reconciler(services)
     watchdogs = [
         MemoryWatchdog(ProcessTable(), reconciler.supervisors),
-        SocketWatchdog(reconciler.supervisors),
+        SocketWatchdog(reconciler.supervisors, reserved_ports=ports.reserved_ports),
         DiskWatchdog(
             launcher,
             reconciler.controllers,

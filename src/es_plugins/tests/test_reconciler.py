@@ -6,10 +6,11 @@ recorded instead of run (it has its own tests).
 
 import asyncio
 import base64
-import errno
 import hashlib
 import json
+import os
 import socket
+import stat
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -103,16 +104,26 @@ def newer_package_bytes(tmp_path):
     return write_package(tmp_path / "weather-0.3.0.esplugin", files, version="0.3.0").read_bytes()
 
 
-def port_is_free(port: int) -> bool:
-    """Whether no socket listens on `port` (connections closing in TIME_WAIT do not count)."""
-    with socket.socket() as probe:
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+def port_is_held(port: int) -> bool:
+    """Whether the agent, this process, holds a TCP socket bound to `0.0.0.0:<port>`.
+
+    Probing with a bind cannot tell: the agent's sockets carry `SO_REUSEADDR`, so a probe with it
+    binds beside them, and one without it is refused by the TIME_WAITs the health checks leave.
+    """
+    for name in os.listdir("/proc/self/fd"):
         try:
-            probe.bind(("0.0.0.0", port))
-        except OSError as error:
-            assert error.errno == errno.EADDRINUSE
-            return False
-        return True
+            descriptor = int(name)
+            if not stat.S_ISSOCK(os.fstat(descriptor).st_mode):
+                continue
+            with socket.socket(fileno=os.dup(descriptor)) as candidate:
+                if candidate.type == socket.SOCK_STREAM and candidate.getsockname() == (
+                    "0.0.0.0",
+                    port,
+                ):
+                    return True
+        except OSError:
+            continue  # closed meanwhile, or the listing's own descriptor
+    return False
 
 
 class RecordingEgress(EgressPolicyWriter):
@@ -328,7 +339,7 @@ async def test_a_change_that_needs_a_new_process_restarts_it(
     if "runtime__port" in change:
         # The new process serves the new port; the agent still holds the old one.
         assert launcher.spawned[1]["environment"]["PORT"] == str(change["runtime__port"])
-        assert not port_is_free(desired.port)
+        assert port_is_held(desired.port)
     if "package" in change:
         assert reconciler.reports()[0].observed_version == "0.3.0"
         assert launcher.spawned[1]["argv"][0].endswith("/weather/0.3.0/bin/python")
@@ -361,7 +372,7 @@ async def test_the_agent_keeps_holding_a_port_after_its_placement_goes(node):
 
     await reconciler.apply(desired())
     await wait_until(lambda: running(reconciler))
-    assert not port_is_free(desired.port)
+    assert port_is_held(desired.port)
 
     await reconciler.apply(desired_state([]))
 
@@ -369,7 +380,7 @@ async def test_the_agent_keeps_holding_a_port_after_its_placement_goes(node):
     # that is given it.
     with pytest.raises(ConnectionRefusedError):
         socket.create_connection(("127.0.0.1", desired.port), timeout=5)
-    assert not port_is_free(desired.port)
+    assert port_is_held(desired.port)
 
 
 async def test_a_port_that_is_not_one_of_the_nodes_is_retried_and_nothing_is_installed(

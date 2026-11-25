@@ -549,8 +549,8 @@ connection over a limit is refused at once. The node's own connections are never
 
 A socket can still take a local port without `bind()`: a `listen()` on an unbound TCP socket, or a
 UDP socket that is connected and never sends. So the node checks every plugin's sockets once a
-second, and stops a plugin whose user has a TCP socket in LISTEN on any port, or holds more than
-1,280 network sockets in all (TCP connections it accepted on its own port do not count). Such a plugin stays stopped, with the reason on its Runtime tab, until a SuperAdmin
+second, and stops a plugin whose user has a TCP socket in LISTEN on any port, a TCP connection
+on another port of the node's range, or more than 1,280 network sockets in all (TCP connections it accepted on its own port do not count). Such a plugin stays stopped, with the reason on its Runtime tab, until a SuperAdmin
 restarts it (see [When a plugin does not run](#when-a-plugin-does-not-run)). Between two checks a
 plugin can still take ports for up to a second. UNIX sockets in the abstract namespace remain
 shared: every process in the container can reach one.
@@ -1049,9 +1049,11 @@ memory, the last error and, for a failed plugin, the end of its log.
 | `<project> <version> has no wheel for this node (its wheels are built for …)` | The package has no wheel of that project for this host's architecture. The publisher packs again for it (`epicstaff-plugin pack --download-wheels`, which by default packs for both `x86_64` and `aarch64`). |
 | `failed` after repeated restarts | The backend kept stopping: it was restarted ten times in a row without once staying healthy for a minute in between (the node waits 1 s before the first restart, doubling up to 5 minutes, so this takes at least 13.5 minutes). Read the log on the Runtime tab, fix the cause (often a setting), then press Restart. |
 | `it listened on TCP port … of its own; …` | The backend opened a server socket of its own. A plugin serves only on the socket the node hands it, so the node stopped it. The publisher must fix the backend; then press Restart. |
+| `it held a TCP connection on the node's port …, which is not its own; …` | The backend accepted a connection from another plugin's listening socket, which that plugin passed to it. The node stopped it; review both plugins before you press Restart. |
 | `it held … network sockets, more than the 1280 a plugin may; …` | The backend kept too many sockets open, often connections it never closes, so the node stopped it. Ask the publisher to reuse connections; press Restart to start it again. |
 | The backend exits at once with `Operation not permitted` or `Address already in use` in its log | It opens a server socket itself instead of serving on the socket the node hands it (`EPICSTAFF_PLUGIN_LISTEN_FD`, which `epicstaff-plugin` uses); no plugin may bind a socket, and every port of the node's range is the node's. The publisher must fix the backend. |
 | `port … is still in use by placement …` | The plugin got a port another plugin on the node is just giving up (EpicStaff moved them). The node tries again every 30 s; it passes once the other is stopped. |
+| `port … cannot listen: another socket listens on it, …` or `port … could not be bound again: …` | The plugin that had this port before passed its listening socket to another plugin on the node, which listens on it now. Nothing is routed to the port meanwhile, and the node stops a plugin that accepts a connection on it. The node tries again every 30 s. If it stays, restart the node (`docker compose restart es_plugins`): that ends every plugin process, and the copy with them. Review the plugin that had the port before: only its own process could pass the socket on. |
 | `port … is not one of this node's ports` | The node and django_app disagree about the port range: they are of different versions. Run the same version of both. |
 | `installing the plugin's requirements failed (exit 1):` followed by pip's last lines | The lock does not pin a requirement of one of the package's wheels, and the last lines name the package. The node installs a backend with pip's dependency resolution on. The publisher must add the requirement to the lock's source and pack again (`pack` checks this). |
 | `Backup … could not be reported to EpicStaff (…), so the node set it aside as ….unreportable; EpicStaff no longer lists it.` | The node could not describe one backup to EpicStaff, so it renamed the backup's files. See [Backups](#backups). |

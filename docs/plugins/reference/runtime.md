@@ -52,9 +52,18 @@ Outgoing connections are not affected, within the [connection limits](limits.md#
 plugin did not bind still takes a port, and so does a UDP socket that is connected and never
 sends. So the node stops a plugin whose user has a TCP socket in LISTEN on any port, or holds
 more than 1,280 network sockets, TCP and UDP together. TCP connections the plugin accepted on its
-own port do not count. The plugin's Runtime tab then gives the reason,
-"it listened on TCP port … of its own; …" or "it held … network sockets, more than the 1280 a
-plugin may; …", and the plugin stays stopped until a SuperAdmin restarts it.
+own port do not count. It also stops a plugin whose user holds a TCP connection on another
+port of the node's range: one accepted from a copy of another plugin's listening socket, passed
+to it over a UNIX socket. The plugin's Runtime tab then gives the reason,
+"it listened on TCP port … of its own; …", "it held a TCP connection on the node's port …, which
+is not its own; …" or "it held … network sockets, more than the 1280 a plugin may; …", and the
+plugin stays stopped until a SuperAdmin restarts it.
+
+**A listening socket serves one plugin only.** When a plugin leaves the node or is given another
+port, the node shuts its socket down and binds a fresh one for the next plugin given that port.
+A copy of the old socket that another process still holds cannot listen once the fresh one
+does. If that process makes its copy listen again before the next plugin starts, the next plugin
+waits, and starts once the copy is closed.
 
 `io_uring` is not available: `io_uring_setup`, `io_uring_enter` and `io_uring_register` answer
 `EPERM`, as do the System V IPC calls `shmget`, `msgget` and `semget`, and every system call

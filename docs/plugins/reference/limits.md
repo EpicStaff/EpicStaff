@@ -140,6 +140,7 @@ node limits each backend, by its Unix user:
 | Connections open to the egress proxy | 64 | Refused at once |
 | Network sockets held, TCP and UDP together (TCP connections it accepted on its own port do not count) | 1,280 | The plugin is stopped, within a second, until a SuperAdmin restarts it |
 | A TCP socket in LISTEN on any port | Not allowed: `bind()` is refused, and a `listen()` without it is caught | The plugin is stopped, within a second, until a SuperAdmin restarts it |
+| A TCP connection on another port of the node's range | Not allowed: accepted from a copy of another plugin's listening socket | The plugin is stopped, within a second, until a SuperAdmin restarts it |
 
 Closed connections stop counting at once. Reuse connections (an HTTP client with a connection
 pool, a database pool) rather than opening one per request. The node's own connections are not
