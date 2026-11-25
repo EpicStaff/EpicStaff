@@ -1273,6 +1273,26 @@ a grace period.
 
 ## Upgrading to this version
 
+**From a version where venvs and custom libraries were not a plugin's own, with plugins on.**
+Venvs and custom libraries a plugin creates are now its own: suspending it refuses runs of code
+in them, and deleting its data deletes them. Those it created before this version are matched to
+it by a migration that runs with the upgrade, nothing to do by hand. A venv or library has no
+field naming its creator plugin, so the migration matches each one to the plugin's activity event
+for the request that created it: the venv or library created without an author in the same
+organization, less than 2 seconds before the event, and after the previous such event of any
+plugin in that organization. A create request writes its event a few milliseconds after the venv
+or library, with no network call in between, so 2 seconds leaves room for a stalled database.
+When two were created in that time (two plugins at once, or the system API key while the plugin
+was creating one), it cannot tell which was the plugin's and leaves both as the organization's;
+Django's log at the upgrade says how many it left (`… create event(s) matched more than one
+binding`). One a plugin created through an import is never matched either. Such a venv or
+library stays after the plugin's data is deleted: delete it by hand if the organization does not
+use it. One wrong match is left: when the venv or library the plugin created has been deleted
+since, and the organization created one without an author (through the system API key, or by a
+person deleted since) in those 2 seconds, that one is matched to the plugin. Deleting the
+plugin's data then deletes it, unless code of the organization runs in it (a venv) or one of its
+venvs names it (a custom library): then it is handed over to the organization instead.
+
 **From v1.5.0.** `PLUGINS_HOST_TEMPLATE` replaces `PLUGINS_BASE_DOMAIN`, and `docker compose`
 requires it: without it, compose stops with `required variable PLUGINS_HOST_TEMPLATE is missing a
 value`. Before `docker compose up -d`, run `python scripts/envtool.py --update` (or `make
