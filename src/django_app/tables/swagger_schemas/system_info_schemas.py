@@ -1,5 +1,3 @@
-from drf_spectacular.utils import OpenApiResponse
-
 from tables.serializers.system_info_serializers import SystemInfoSerializer
 from tables.swagger_schemas.common_schemas import UNAUTHORIZED_401_RESPONSE
 
