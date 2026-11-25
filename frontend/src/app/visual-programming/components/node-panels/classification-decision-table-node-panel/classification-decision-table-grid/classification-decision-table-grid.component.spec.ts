@@ -1,7 +1,10 @@
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ColDef, ColGroupDef } from 'ag-grid-community';
+import { By } from '@angular/platform-browser';
+import { AgGridAngular } from 'ag-grid-angular';
+import { ColDef, ColGroupDef, Column, ColumnResizedEvent, GridApi, ISizeColumnsToFitParams } from 'ag-grid-community';
+import type { MockInstance } from 'vitest';
 
 import { ToastService } from '../../../../../services/notifications';
 import { ConditionGroup } from '../../../../core/models/decision-table.model';
@@ -422,6 +425,142 @@ describe(
                 await render();
 
                 expect(continueWidth()).toBe('100px');
+            });
+        });
+
+        /**
+         * jsdom lays nothing out, so ag-grid cannot actually fit the columns here; these tests
+         * check which columns the grid asks it to keep at their width when it fits them.
+         */
+        describe('fitting the columns to the grid after a hand resize', () => {
+            let api: GridApi;
+            let fitToWidth: MockInstance<GridApi['sizeColumnsToFit']>;
+
+            async function renderGrid(): Promise<void> {
+                await render();
+                api = fixture.debugElement.query(By.directive(AgGridAngular)).componentInstance.api;
+                fitToWidth = vi.spyOn(api, 'sizeColumnsToFit');
+            }
+
+            /** Drags `colId` to `width` with the resize handle: a finished resize from the UI. */
+            async function resizeByHand(colId: string, width: number): Promise<void> {
+                api.setColumnWidths([{ key: colId, newWidth: width }], true, 'uiColumnResized');
+                await settle();
+            }
+
+            /** The columns the last fit keeps, each with the min and max width it is held at. */
+            function keptColumns(): Record<string, [number | undefined, number | undefined]> {
+                const params = fitToWidth.mock.lastCall?.[0] as ISizeColumnsToFitParams | undefined;
+                return Object.fromEntries(
+                    (params?.columnLimits ?? []).map((limit) => [
+                        (limit.key as Column).getColId(),
+                        [limit.minWidth, limit.maxWidth],
+                    ])
+                );
+            }
+
+            it('keeps every column resized by hand, not only the last one', async () => {
+                await renderGrid();
+
+                await resizeByHand('group_name', 200);
+                await resizeByHand('route_code', 150);
+
+                expect(keptColumns()).toEqual({ group_name: [200, 200], route_code: [150, 150] });
+            });
+
+            it('does not keep a column that only flexed to make room for the resized one', async () => {
+                await renderGrid();
+                const groupName = api.getColumn('group_name')!;
+                const routeCode = api.getColumn('route_code')!;
+                api.setColumnWidths([{ key: groupName, newWidth: 200 }], false, 'uiColumnResized');
+
+                // jsdom has no width for flex columns to share, so ag-grid flexes none here; the
+                // event it sends when a resize makes a flex column give way is delivered by hand.
+                const resized: ColumnResizedEvent = {
+                    type: 'columnResized',
+                    api,
+                    context: undefined,
+                    source: 'uiColumnResized',
+                    finished: true,
+                    column: groupName,
+                    columns: [groupName, routeCode],
+                    flexColumns: [routeCode],
+                };
+                fixture.componentInstance.gridOptions.onColumnResized?.(resized);
+                await settle();
+
+                expect(keptColumns()).toEqual({ group_name: [200, 200] });
+            });
+
+            it('still keeps a hand-set width once the panel is opened again', async () => {
+                await renderGrid();
+                await resizeByHand('group_name', 200);
+                await vi.advanceTimersByTimeAsync(300);
+
+                await renderGrid();
+                await resizeByHand('route_code', 150);
+
+                expect(keptColumns()).toEqual({ group_name: [200, 200], route_code: [150, 150] });
+            });
+
+            it('keeps the hand-set widths when hiding a column frees space', async () => {
+                await renderGrid();
+                await resizeByHand('group_name', 200);
+
+                fixture.componentInstance.hideColumn('route_code');
+                await settle();
+
+                expect(keptColumns()).toEqual({ group_name: [200, 200] });
+            });
+
+            it('stretches all columns, hand-set ones too, once no other column could take the space', async () => {
+                await renderGrid();
+                const draggable = api.getAllDisplayedColumns().filter((column) => column.isResizable());
+                api.setColumnWidths(
+                    draggable.map((column) => ({ key: column, newWidth: column.getActualWidth() })),
+                    true,
+                    'uiColumnResized'
+                );
+                await settle();
+
+                expect(fitToWidth).toHaveBeenCalled();
+                expect(fitToWidth.mock.lastCall).toEqual([]);
+            });
+
+            describe('when showing a column again makes them wider than the grid', () => {
+                /** Hides Route Code, then narrows the table so it fits only without that column. */
+                async function hideRouteCodeAndNarrowTable(overflow: number): Promise<void> {
+                    fixture.componentInstance.hideColumn('route_code');
+                    await settle();
+                    const shownWidth = api
+                        .getAllDisplayedColumns()
+                        .reduce((sum, column) => sum + column.getActualWidth(), 0);
+                    setTableWidth(shownWidth + api.getColumn('route_code')!.getActualWidth() - overflow);
+                }
+
+                it('keeps the hand-set widths and shrinks the other columns', async () => {
+                    await renderGrid();
+                    await resizeByHand('group_name', 400);
+                    await hideRouteCodeAndNarrowTable(50);
+
+                    fixture.componentInstance.unhideColumn('route_code');
+                    await settle();
+
+                    expect(keptColumns()).toEqual({ group_name: [400, 400] });
+                });
+
+                it('shrinks all columns, hand-set ones too, once the hand-set ones alone overflow', async () => {
+                    await renderGrid();
+                    await resizeByHand('group_name', 400);
+                    fixture.componentInstance.hideColumn('route_code');
+                    await settle();
+                    setTableWidth(300);
+
+                    fixture.componentInstance.unhideColumn('route_code');
+                    await settle();
+
+                    expect(fitToWidth.mock.lastCall).toEqual([]);
+                });
             });
         });
 
