@@ -117,9 +117,8 @@ jobs:
 
           # crew, agent, plugin_sdk, es_plugins, plugins_egress, realtime,
           # webhook, knowledge_new and shared need no database and nothing from
-          # the filesystem beyond an interpreter (knowledge_new also bakes a
-          # tokenizer file, see its step in backend-tests), so
-          # one matrix job covers them all and this picks its legs. A new
+          # the filesystem beyond an interpreter, so one matrix job covers them
+          # all and this picks its legs. A new
           # service of that kind is not picked up by itself: add it to this
           # list. `filter` leaves $result set, so the array is built from the
           # same regex that writes each output rather than from a second copy
@@ -578,31 +577,6 @@ jobs:
       # rather than silently resolving to something the Docker build never saw.
       - name: Install ${{ matrix.service }} dependencies
         run: make uv-sync svc=${{ matrix.service }}
-
-      # knowledge_new's token chunker loads the gpt2 tokenizer from the file that
-      # its Dockerfile bakes into the image (KNOWLEDGE_TOKENIZER_PATH); the runner
-      # has no image, so bake the same file here. Cached on the lockfile, which
-      # pins the tokie version that writes it, so huggingface.co is reached only
-      # when that changes. The process environment wins over src/.env.
-      - name: Cache knowledge_new tokenizer
-        if: matrix.service == 'knowledge_new'
-        id: tokenizer-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ${{ runner.temp }}/tokenizer
-          key: tokenizer-gpt2-${{ runner.os }}-${{ hashFiles('src/knowledge_new/uv.lock') }}
-
-      - name: Bake knowledge_new tokenizer
-        if: matrix.service == 'knowledge_new' && steps.tokenizer-cache.outputs.cache-hit != 'true'
-        run: >-
-          mkdir -p "$RUNNER_TEMP/tokenizer" &&
-          src/knowledge_new/.venv/bin/python -c
-          "import sys; from tokie import Tokenizer; Tokenizer.from_pretrained('openai-community/gpt2').save(sys.argv[1])"
-          "$RUNNER_TEMP/tokenizer/gpt2.tkz"
-
-      - name: Point knowledge_new at the tokenizer
-        if: matrix.service == 'knowledge_new'
-        run: echo "KNOWLEDGE_TOKENIZER_PATH=$RUNNER_TEMP/tokenizer/gpt2.tkz" >> "$GITHUB_ENV"
 
       - name: Unit tests
         run: make ${{ matrix.service }}-tests

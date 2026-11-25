@@ -3923,9 +3923,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-11-19T12:45:06Z UTC -->
-<!-- commit: UNKNOWN -->
-<!-- lock-hashes: agent:fc6db491b10362f7, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:d70ae5876449fdea, django_app:a46a1a072518e92d, es_plugins:dbaccc6cdbe28892, foundation:eb9639484fc6d726, knowledge_new:fe6c346b612f027f, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:eacb693cf9accb5e, sandbox:117c57af453053a0, sandbox_new:a43e19009b028dcd, shared:65c1a59f70ec0dc0, webhook:be4edcbb5252064a -->
+<!-- generated: 2026-11-24T10:14:12Z UTC -->
+<!-- commit: a6769b4930ba65a7f753e33ef73b5ae9b02d34cf -->
+<!-- lock-hashes: agent:fc6db491b10362f7, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:d70ae5876449fdea, django_app:a46a1a072518e92d, es_plugins:dbaccc6cdbe28892, foundation:eb9639484fc6d726, knowledge_new:ff993b18fd54f3a2, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:eacb693cf9accb5e, sandbox:117c57af453053a0, sandbox_new:a43e19009b028dcd, shared:65c1a59f70ec0dc0, webhook:be4edcbb5252064a -->
 
 ## Backend (Python)
 
@@ -3935,19 +3935,19 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 
 | License | Packages |
 |---|---|
-| MIT License | 76 |
+| MIT License | 75 |
 | MIT | 74 |
 | BSD-3-Clause | 31 |
 | Apache Software License | 27 |
 | Apache-2.0 | 25 |
 | BSD License | 25 |
 | BSD-2-Clause | 6 |
-| Apache Software License; MIT License | 4 |
 | Apache License 2.0 | 3 |
 | Apache Software License; BSD License | 3 |
 | LGPL-3.0-only | 3 |
 | MIT AND PSF-2.0 | 3 |
 | 3-Clause BSD License | 2 |
+| Apache Software License; MIT License | 2 |
 | Apache-2.0 AND CNRI-Python | 2 |
 | BSD License; Public Domain | 2 |
 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | 2 |
@@ -3970,7 +3970,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | MPL-2.0 AND MIT | 1 |
 | PSF-2.0 | 1 |
 | The Unlicense (Unlicense) | 1 |
-| **Total** | **311** |
+| **Total** | **308** |
 
 ### Python package index
 
@@ -4023,8 +4023,6 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `channels_redis` | 4.3.0 | BSD | Copyright (c) Django Software Foundation and individual contributors. |
 | `charset-normalizer` | 3.4.7 | MIT | Copyright (c) 2025 TAHRI Ahmed R. |
 | `charset-normalizer` | 3.4.9 | MIT | Copyright (c) 2025 TAHRI Ahmed R. |
-| `chonkie` | 1.7.0 | MIT License | Copyright (c) 2025 Chonkie |
-| `chonkie-core` | 0.10.2 | Apache Software License; MIT License | Copyright (c) Bhavnick Minhas |
 | `click` | 8.4.2 | BSD-3-Clause | Copyright 2014 Pallets |
 | `click` | 8.5.0 | BSD-3-Clause | Copyright 2014 Pallets |
 | `cloudpathlib` | 0.24.0 | MIT License | Copyright (c) 2020 DrivenData Inc. |
@@ -4256,7 +4254,6 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `tiktoken` | 0.9.0 | MIT License | Copyright (c) 2022 OpenAI, Shantanu Jain |
 | `tokenizers` | 0.23.1 | Apache Software License | Copyright (c) Nicolas Patry <patry.nicolas@protonmail.com>, Anthony Moi <anthony@huggingface.co> |
 | `tokenizers` | 0.23.2 | Apache Software License | Copyright (c) Nicolas Patry <patry.nicolas@protonmail.com>, Anthony Moi <anthony@huggingface.co> |
-| `tokie` | 0.1.4 | Apache Software License; MIT License |  |
 | `toml` | 0.10.2 | MIT License | Copyright 2013-2019 William Pearson |
 | `tqdm` | 4.70.0 | MPL-2.0 AND MIT | Copyright (c) 2013 noamraph |
 | `truststore` | 0.10.4 | MIT | Copyright (c) 2022 Seth Michael Larson |
@@ -8630,49 +8627,6 @@ SOFTWARE.
 
 </details>
 
-> No NOTICE file shipped by upstream.
-
-#### chonkie@1.7.0
-
-- **License:** MIT License
-- **Author:** Bhavnick Minhas <bhavnick@chonkie.ai>, Shreyash Nigam <shreyash@chonkie.ai>
-
-<details><summary>License text</summary>
-
-<pre>
-MIT License
-
-Copyright (c) 2025 Chonkie
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-</pre>
-
-</details>
-
-> No NOTICE file shipped by upstream.
-
-#### chonkie-core@0.10.2
-
-- **License:** Apache Software License; MIT License
-- **Author:** Bhavnick Minhas
-
-> No LICENSE file shipped by upstream wheel.
 > No NOTICE file shipped by upstream.
 
 #### click@8.4.2
@@ -32156,14 +32110,6 @@ SOFTWARE.
 
 - **License:** Apache Software License
 - **Author:** Nicolas Patry <patry.nicolas@protonmail.com>, Anthony Moi <anthony@huggingface.co>
-
-> No LICENSE file shipped by upstream wheel.
-> No NOTICE file shipped by upstream.
-
-#### tokie@0.1.4
-
-- **License:** Apache Software License; MIT License
-- **Author:** UNKNOWN
 
 > No LICENSE file shipped by upstream wheel.
 > No NOTICE file shipped by upstream.
