@@ -148,9 +148,16 @@ def measure_plugin_data(
     return DiskUsage(tally.bytes, tally.files)
 
 
+def _shown(path: str) -> str:
+    # A name that is not UTF-8 decodes to surrogates (PEP 383), which no report can carry.
+    return os.fsencode(path).decode("utf-8", "backslashreplace")
+
+
 def _walk(directory: int, relative: str, depth: int, tally: _Tally) -> None:
     if depth >= MAX_DEPTH:
-        raise _UnmeasurableError(f"{relative} is nested deeper than {MAX_DEPTH} directories")
+        raise _UnmeasurableError(
+            f"{_shown(relative)} is nested deeper than {MAX_DEPTH} directories"
+        )
     subdirectories = []
     try:
         with os.scandir(directory) as entries:
@@ -163,7 +170,7 @@ def _walk(directory: int, relative: str, depth: int, tally: _Tally) -> None:
                 if stat.S_ISDIR(info.st_mode):
                     subdirectories.append(entry.name)
     except PermissionError:
-        raise _UnmeasurableError(f"{relative} cannot be read") from None
+        raise _UnmeasurableError(f"{_shown(relative)} cannot be read") from None
     for name in subdirectories:
         path = f"{relative}/{name}" if relative != "." else name
         try:
@@ -171,7 +178,7 @@ def _walk(directory: int, relative: str, depth: int, tally: _Tally) -> None:
         except (FileNotFoundError, NotADirectoryError):
             continue  # removed, or replaced by a file, while being scanned
         except PermissionError:
-            raise _UnmeasurableError(f"{path} cannot be read") from None
+            raise _UnmeasurableError(f"{_shown(path)} cannot be read") from None
         except OSError:
             continue  # replaced by a symlink (ELOOP): not followed
         try:

@@ -122,6 +122,19 @@ def test_nesting_deeper_than_the_scan_goes_makes_it_unmeasurable(
     assert usage.problem == "a/b/c is nested deeper than 3 directories"
 
 
+def test_a_directory_name_that_is_not_utf8_shows_its_bytes_in_the_problem(
+    tmp_path, no_processes, monkeypatch
+):
+    monkeypatch.setattr(disk_usage, "MAX_DEPTH", 2)
+    home = tmp_path / "home"
+    home.mkdir()
+    os.makedirs(os.path.join(os.fsencode(home), b"caf\xe9", b"\xff", b"deeper"))
+
+    usage = measure(home, **no_processes)
+
+    assert usage.problem == "caf\\xe9/\\xff is nested deeper than 2 directories"
+
+
 @pytest.mark.linux
 def test_a_deleted_file_a_process_of_the_uid_holds_open_counts(tmp_path):
     home = tmp_path / "home"

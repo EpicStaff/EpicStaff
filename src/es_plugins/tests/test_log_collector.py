@@ -73,6 +73,16 @@ async def test_the_tail_keeps_the_last_200_lines_of_at_most_1000_characters(tmp_
     assert collector.tail[-1] == "x" * MAX_LOG_LINE_LENGTH
 
 
+async def test_the_tail_drops_nul_which_the_report_cannot_store(tmp_path):
+    collector, _ = collector_in(tmp_path)
+
+    await feed(collector, b"a\x00b\n")
+    collector.close()
+
+    assert collector.tail == ["ab"]
+    assert (tmp_path / "logs" / "current.log").read_bytes() == b"a\x00b\n"
+
+
 async def test_the_tail_survives_a_restart_of_the_process(tmp_path):
     collector, _ = collector_in(tmp_path)
 

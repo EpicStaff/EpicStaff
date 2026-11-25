@@ -165,7 +165,9 @@ class LogCollector:
                 accepted.append(self._dropped_notice())
                 self._dropped = 0
             accepted.append(line)
-            self._tail.append(line.decode("utf-8", errors="replace")[:MAX_LOG_LINE_LENGTH])
+            # NUL dropped: Postgres cannot store it in the reported tail.
+            tail_line = line.decode("utf-8", errors="replace").replace("\x00", "")
+            self._tail.append(tail_line[:MAX_LOG_LINE_LENGTH])
         if not accepted:
             return
         # Off the event loop: a plugin that writes fast cannot block the agent's other work.

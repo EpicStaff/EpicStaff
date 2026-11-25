@@ -20,7 +20,7 @@ from plugins.models import (
 )
 from plugins.nodes.desired_state_builder import DesiredStateBuilder
 from rest_framework.test import APIClient
-from src.shared.models.plugin_nodes import DesiredState, database_names_for
+from src.shared.models.plugin_nodes import DesiredState, NodeReport, PlacementReport, database_names_for
 
 from tests.plugins_tests.conftest import mark_running, upload_file
 from tests.plugins_tests.package_builder import GEOCODING_HOST, TOKEN_SETTING, backend_manifest, build_package
@@ -539,6 +539,34 @@ def test_a_malformed_report_is_refused(plugin_node, node_client, change):
     assert response.status_code == 400
     assert response.json()["code"] == "invalid_node_report"
     assert all(error["loc"].startswith("report") for error in response.json()["errors"])
+
+
+def test_a_report_with_text_postgres_or_json_cannot_hold_is_stored_cleaned(backend_plugin, plugin_node, node_client):
+    placement = backend_plugin().placement
+    # Built as the node builds it: a NUL its log line carried, and a surrogate from a file name
+    # that is not UTF-8, which the disk measurement put in the error.
+    report = NodeReport(
+        format=1,
+        agent_version="0.1.0",
+        reported_at=timezone.now(),
+        placements=[
+            PlacementReport(
+                placement_id=placement.pk,
+                observed_state="failed",
+                health="failing",
+                restarts=1,
+                last_error="its disk use cannot be measured: \udcff cannot be read",
+                log_tail=["a\x00b", "fine"],
+            )
+        ],
+    )
+
+    response = node_client.post(REPORTS_URL, report.model_dump_json(), content_type="application/json")
+
+    assert response.status_code == 204
+    placement.refresh_from_db()
+    assert placement.log_tail == ["ab", "fine"]
+    assert placement.last_error == "its disk use cannot be measured: \ufffd cannot be read"
 
 
 def test_a_long_log_tail_is_refused(backend_plugin, plugin_node, node_client):
