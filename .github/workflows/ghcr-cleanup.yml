@@ -36,6 +36,20 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --quiet --require-hashes -r .github/requirements/requests.txt
 
+      # GITHUB_TOKEN may not list the organisation's packages, so the cleanup takes the
+      # images build-and-push.yml pushes: every compose service with a build section.
+      # Keep the profiles in step with build-and-push.yml.
+      - name: List the images the build pushes
+        shell: bash
+        run: |
+          python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
+          python scripts/envtool.py --dev
+          docker compose --env-file src/.env -f src/docker-compose.yaml \
+            --profile chat --profile plugins --profile auditor config --format json > "$RUNNER_TEMP/compose.json"
+          python .github/scripts/compose_matrix.py --compose-json "$RUNNER_TEMP/compose.json" \
+            --repo-root . --output-key unused \
+            | jq -r '"PACKAGES=" + ([.include[].service] | join(","))' >> "$GITHUB_ENV"
+
       - name: Clean up GHCR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
