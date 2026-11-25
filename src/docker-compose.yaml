@@ -620,7 +620,7 @@ services:
   storage:
     mem_limit: 256m
     pids_limit: 512
-    image: rustfs/rustfs:1.0.4@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
+    image: rustfs/rustfs:1.0.6@sha256:ee717072290bec9b11abfc0365f8310b00df1cd9b3639943edae47bdef05044a
     container_name: ${INSTANCE_PREFIX?}storage
     environment:
       RUSTFS_ACCESS_KEY: ${STORAGE_USER:?}
@@ -899,7 +899,7 @@ services:
     mem_limit: 128m
     pids_limit: 64
     container_name: ${INSTANCE_PREFIX?}mailpit
-    image: axllent/mailpit:v1.33.1@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
+    image: axllent/mailpit:v1.34.0@sha256:23a2ef85bc50853ab3093645d1d64679afd8887e89da5e48a88940c172591a4e
     profiles: ["dev"]
     ports:
       - "1025:1025"   # SMTP
