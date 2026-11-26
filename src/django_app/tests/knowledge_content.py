@@ -31,6 +31,9 @@ class _InMemoryObject:
     def write(self, data: bytes) -> None:
         self._files[self.key] = bytes(data)
 
+    def exist(self) -> bool:
+        return self.key in self._files
+
     def read(self) -> bytes:
         try:
             return self._files[self.key]

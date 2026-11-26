@@ -6,8 +6,10 @@ from tables.exceptions import (
     UploadRejectedException,
 )
 from tables.serializers.knowledge_serializers import (
+    DocumentContentUpdateSerializer,
     DocumentDetailSerializer,
     DocumentListSerializer,
+    DocumentTextSerializer,
     ImportFromStorageResponseSerializer,
     ImportFromStorageSerializer,
 )
@@ -45,6 +47,57 @@ DOCUMENTS_LIST_GET = {
                     status_codes=["404"],
                 )
             ],
+        ),
+    },
+}
+
+DOCUMENTS_CONTENT_GET = {
+    "summary": "Get the text of a document for editing",
+    "description": (
+        "Return a `txt`, `md`, `csv`, `json` or `html` document with its current text and "
+        "the `content_hash` of that same text, to send back when saving."
+    ),
+    "responses": {
+        200: DocumentTextSerializer(),
+        400: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="Not an editable document, or the file is not UTF-8 text.",
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        404: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="No such document, or its file is missing from storage.",
+        ),
+    },
+}
+
+DOCUMENTS_CONTENT_PUT = {
+    "summary": "Replace the text of a document",
+    "description": (
+        "Replace the content of a `txt`, `md`, `csv`, `json` or `html` document with the "
+        "UTF-8 text sent as `file`, and mark the RAGs that indexed it outdated. "
+        "`content_hash` is the version the editor opened; `scope` decides whether "
+        "documents of other collections that use the same file change too. Text equal to "
+        "the current content changes nothing."
+    ),
+    "request": {"multipart/form-data": DocumentContentUpdateSerializer},
+    "responses": {
+        200: DocumentDetailSerializer(),
+        400: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="Not an editable document, not UTF-8 text, invalid JSON or too large.",
+        ),
+        401: UNAUTHORIZED_401_RESPONSE,
+        404: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description="No such document, or its file is missing from storage.",
+        ),
+        409: OpenApiResponse(
+            response=OpenApiTypes.OBJECT,
+            description=(
+                "`content_hash_conflict`: the document changed after the editor opened; "
+                "`document_indexing_in_progress`: a document the edit reaches is being indexed."
+            ),
         ),
     },
 }

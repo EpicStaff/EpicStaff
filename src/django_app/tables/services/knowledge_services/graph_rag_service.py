@@ -8,6 +8,7 @@ from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models import UserAction
 from tables.clients import KnowledgeClient
 from tables.constants.knowledge_constants import (
+    DOCUMENT_CONTENT_CHANGED_REASON,
     GRAPHRAG_DEFAULT_CHUNK_OVERLAP,
     GRAPHRAG_DEFAULT_CHUNK_SIZE,
     GRAPHRAG_DEFAULT_CHUNK_STRATEGY,
@@ -422,6 +423,54 @@ class GraphRagService:
         )
 
         return {"graph_rag_id": graph_rag_id, "document_id": document_id}
+
+    @staticmethod
+    def mark_documents_content_changed(document_ids: list[int]) -> None:
+        """Outdate every indexed document of each graph that had indexed one of these documents.
+
+        A graph cannot drop one document's contribution, so its next run must rebuild it
+        from all of its documents, as after an indexed document is deleted.
+        """
+        rags = GraphRag.objects.filter(
+            graph_rag_documents__document_id__in=document_ids,
+            graph_rag_documents__status=GraphRagDocument.Status.COMPLETED,
+        ).distinct()
+        code, detail = DOCUMENT_CONTENT_CHANGED_REASON
+        for rag in rags:
+            GraphRagService._mark_completed_documents_outdated(rag)
+            rag.add_outdated_reason(code, detail)
+            rag.update_rag_status()
+            rag.save(update_fields=["outdated_reasons", "rag_status"])
+
+    @staticmethod
+    def lock_rags_of_documents(document_ids: list[int]) -> None:
+        """Lock the graph RAGs that index these documents until the transaction ends.
+
+        knowledge_new claims a run's documents and reads their files under the same row
+        lock, so once this returns a run has either recorded its documents and read the
+        files or waits for this transaction to finish.
+        """
+        rag_ids = GraphRagDocument.objects.filter(document_id__in=document_ids).values(
+            "graph_rag_id"
+        )
+        list(
+            GraphRag.objects.select_for_update()
+            .filter(pk__in=rag_ids)
+            .order_by("pk")
+            .values_list("pk", flat=True)
+        )
+
+    @staticmethod
+    def indexing_collection_names(document_ids: list[int]) -> set[str]:
+        """Return the names of the collections whose graph RAG is indexing one of these documents now."""
+        links = GraphRagDocument.objects.filter(document_id__in=document_ids).select_related(
+            "graph_rag__base_rag_type__source_collection"
+        )
+        return {
+            link.graph_rag.base_rag_type.source_collection.collection_name
+            for link in links
+            if link.graph_rag_document_id in link.graph_rag.indexing_document_config_ids
+        }
 
     @staticmethod
     def sync_status_after_document_removal(rag: GraphRag, indexed_document_deleted: bool) -> None:

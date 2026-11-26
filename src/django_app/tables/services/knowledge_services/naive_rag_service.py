@@ -6,6 +6,7 @@ from loguru import logger
 from src.shared.models import UserAction
 from src.shared.models.knowledge_new import ChunkingConfig
 from tables.constants.knowledge_constants import (
+    DOCUMENT_CONTENT_CHANGED_REASON,
     FILE_TYPE_SPECIFIC_STRATEGIES,
     MAX_CHUNK_REGEX_LENGTH,
     MAX_HEADERS_LEVEL,
@@ -718,6 +719,68 @@ class NaiveRagService:
                 extra=config.additional_params or {},
             )
             for config_id, config in configs.items()
+        }
+
+    @staticmethod
+    def mark_documents_content_changed(document_ids: list[int]) -> None:
+        """Outdate the indexed configs of documents whose content changed, and drop their previews.
+
+        Configs never indexed keep their status: the next run indexes them anyway. The
+        previews go for every config of these documents, because the indexer reuses a
+        stored preview while the chunking settings are unchanged and would embed the
+        old text.
+        """
+        configs = NaiveRagDocumentConfig.objects.filter(document_id__in=document_ids)
+        NaiveRagPreviewChunk.objects.filter(naive_rag_document_config__in=configs).delete()
+
+        code, detail = DOCUMENT_CONTENT_CHANGED_REASON
+        affected_rag_ids = set()
+        for config in configs.filter(
+            status=NaiveRagDocumentConfig.NaiveRagDocumentStatus.COMPLETED
+        ):
+            config.status = NaiveRagDocumentConfig.NaiveRagDocumentStatus.OUTDATED
+            config.add_outdated_reason(code, detail)
+            config.save(update_fields=["status", "outdated_reasons"])
+            affected_rag_ids.add(config.naive_rag_id)
+
+        for rag in NaiveRag.objects.filter(naive_rag_id__in=affected_rag_ids):
+            rag.add_outdated_reason(code, detail)
+            rag.update_rag_status()
+            rag.save(update_fields=["outdated_reasons", "rag_status"])
+
+    @staticmethod
+    def lock_rags_of_documents(document_ids: list[int]) -> None:
+        """Lock the naive RAGs that index these documents until the transaction ends.
+
+        knowledge_new claims a run's documents under the same row lock, so once this
+        returns a run has either recorded its documents in `indexing_document_config_ids`
+        or waits for this transaction to finish.
+        """
+        rag_ids = NaiveRagDocumentConfig.objects.filter(document_id__in=document_ids).values(
+            "naive_rag_id"
+        )
+        list(
+            NaiveRag.objects.select_for_update()
+            .filter(pk__in=rag_ids)
+            .order_by("pk")
+            .values_list("pk", flat=True)
+        )
+
+    @staticmethod
+    def indexing_collection_names(document_ids: list[int]) -> set[str]:
+        """Return the names of the collections whose naive RAG is indexing one of these documents now.
+
+        A document counts from the moment a run takes it, not only while it is being
+        processed: the run reads each file later, one by one.
+        """
+        configs = NaiveRagDocumentConfig.objects.filter(
+            document_id__in=document_ids
+        ).select_related("naive_rag__base_rag_type__source_collection")
+        return {
+            config.naive_rag.base_rag_type.source_collection.collection_name
+            for config in configs
+            if config.status == NaiveRagDocumentConfig.NaiveRagDocumentStatus.PROCESSING
+            or config.naive_rag_document_id in config.naive_rag.indexing_document_config_ids
         }
 
     @staticmethod

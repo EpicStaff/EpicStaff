@@ -28,6 +28,7 @@ from tables.models import DocumentMetadata, SourceCollection
 from tables.serializers.knowledge_serializers import (
     CopyDocumentsSerializer,
     DocumentBulkDeleteSerializer,
+    DocumentContentUpdateSerializer,
     DocumentDetailSerializer,
     DocumentListSerializer,
     DocumentMetadataSerializer,
@@ -44,6 +45,8 @@ from tables.services.storage_service import get_storage_manager
 from tables.swagger_schemas.knowledge_schemas.document_management_schemas import (
     COLLECTION_DOCUMENTS_LIST_GET,
     DOCUMENTS_BULK_DELETE_POST,
+    DOCUMENTS_CONTENT_GET,
+    DOCUMENTS_CONTENT_PUT,
     DOCUMENTS_COPY_POST,
     DOCUMENTS_DESTROY_DELETE,
     DOCUMENTS_DOWNLOAD_GET,
@@ -270,6 +273,8 @@ class DocumentViewSet(
         "preview": Permission.READ,
         "download": Permission.EXPORT,
         "copy": Permission.CREATE,
+        "content": Permission.READ,
+        "update_content": Permission.UPDATE,
     }
 
     def get_serializer_class(self):
@@ -279,6 +284,8 @@ class DocumentViewSet(
             return DocumentDetailSerializer
         elif self.action == "copy":
             return CopyDocumentsSerializer
+        elif self.action == "update_content":
+            return DocumentContentUpdateSerializer
         return DocumentMetadataSerializer
 
     @extend_schema(**DOCUMENTS_LIST_GET)
@@ -309,6 +316,38 @@ class DocumentViewSet(
         has no inline preview and is downloaded instead."""
         document = self.get_object()
         return build_preview_response(document)
+
+    @extend_schema(**DOCUMENTS_CONTENT_GET)
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="content",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def content(self, request, *args, **kwargs):
+        """Get a text document's text for editing; reading it needs only READ, like the preview."""
+        document = self.get_object()
+        document, text = DocumentManagementService.get_document_text(
+            document.document_id, org_id=self.get_active_org_id()
+        )
+        return Response({**DocumentDetailSerializer(document).data, "text": text})
+
+    @extend_schema(**DOCUMENTS_CONTENT_PUT)
+    @content.mapping.put
+    def update_content(self, request, *args, **kwargs):
+        """Replace a text document's content and outdate the RAGs that indexed it."""
+        document = self.get_object()
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        updated = DocumentManagementService.update_document_content(
+            document.document_id,
+            org_id=self.get_active_org_id(),
+            data=serializer.validated_data["file"].read(),
+            scope=serializer.validated_data["scope"],
+            expected_hash=serializer.validated_data["content_hash"],
+            user=request.user,
+        )
+        return Response(DocumentDetailSerializer(updated).data)
 
     @extend_schema(**DOCUMENTS_DESTROY_DELETE)
     def destroy(self, request, *args, **kwargs):

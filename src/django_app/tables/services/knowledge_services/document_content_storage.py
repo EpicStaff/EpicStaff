@@ -88,6 +88,18 @@ class DocumentContentStorage:
             raise StorageUnavailable() from error
 
     @staticmethod
+    def exists(object_key: str) -> bool:
+        """Return whether a file is stored under `object_key`.
+
+        Raises:
+            StorageUnavailable: Object storage could not be reached.
+        """
+        try:
+            return knowledge_bucket().object(object_key).exist()
+        except S3UnavailableError as error:
+            raise StorageUnavailable() from error
+
+    @staticmethod
     def delete_unreferenced_rows(content_ids: Iterable[int]) -> list[str]:
         """Delete the rows among `content_ids` no document refers to and return their keys.
 

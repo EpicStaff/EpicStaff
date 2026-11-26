@@ -480,6 +480,26 @@ class DocumentContentMissingException(CustomAPIExeption):
     default_code = "document_content_missing"
 
 
+class DocumentNotEditableException(CustomAPIExeption):
+    """The document's type or the new text cannot be saved as an edit."""
+
+    status_code = 400
+    default_code = "document_not_editable"
+
+
+class DocumentIndexingInProgressException(CustomAPIExeption):
+    """A document the edit would reach is being indexed."""
+
+    status_code = 409
+    default_code = "document_indexing_in_progress"
+
+    def __init__(self, collection_names: list[str]):
+        super().__init__(
+            "The document is being indexed in these collections: "
+            f"{', '.join(collection_names)}. Try again once indexing finishes."
+        )
+
+
 class InvalidCollectionIdException(DocumentUploadException):
     """Raised when collection_id parameter is invalid."""
 
