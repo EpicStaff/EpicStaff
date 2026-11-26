@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import errno
 import json
 import os
@@ -436,6 +437,54 @@ def test_killing_by_uid_reaches_children_that_left_the_session(layout):
     os.waitpid(pid, 0)
     assert outcome.remaining == ()
     assert table.living_pids_of_uid(PLUGIN_UID) == []
+
+
+@pytest.mark.root
+@pytest.mark.linux
+def test_killing_by_uid_reaches_threads_that_outlive_the_main_thread(layout):
+    setup = DirectorySetup(layout)
+    setup.prepare_tree()
+    setup.prepare_plugin("weather", PLUGIN_UID)
+    # glibc behaviour reproduced: pthread_exit on the main thread leaves the process as Z while threads run.
+    script = (
+        "import ctypes, threading, time\n"
+        "threading.Thread(target=time.sleep, args=(60,)).start()\n"
+        "ctypes.CDLL('libc.so.6').pthread_exit(None)\n"
+    )
+    pid = spawn_process(
+        SpawnSpec(
+            uid=PLUGIN_UID,
+            gid=PLUGIN_UID,
+            argv=[SYSTEM_PYTHON, "-c", script],
+            environment={},
+            working_directory=layout.plugin_home("weather"),
+        )
+    )
+    table = ProcessTable()
+    status_path = Path(f"/proc/{pid}/status")
+    try:
+        deadline = time.monotonic() + 5
+        while "State:\tZ" not in status_path.read_text() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert "State:\tZ" in status_path.read_text()
+        assert table.living_pids_of_uid(PLUGIN_UID) == [pid]
+
+        outcome = kill_uid(PLUGIN_UID, table, reap=lambda: None)
+
+        assert outcome.remaining == ()
+        assert table.living_pids_of_uid(PLUGIN_UID) == []
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                if os.waitpid(pid, os.WNOHANG)[0] == pid:
+                    break
+            except ChildProcessError:
+                break
+            time.sleep(0.05)
+    assert not status_path.exists()
 
 
 RENAME_TO_NON_UTF8 = (
