@@ -11,7 +11,9 @@ from ai_models.domain.value_types import ValueTypeRegistry
 _TOP_LEVEL_KEYS = frozenset(
     {"parameters", "hidden", "providers", "kind_parameters", "recommended_models"}
 )
-_CONTROLS = frozenset({"slider", "percent", "stepper", "toggle", "select", "chips", "json", "text"})
+_CONTROLS = frozenset(
+    {"slider", "percent", "stepper", "toggle", "select", "chips", "list", "json", "text"}
+)
 
 _PARAMETER_REQUIRED = frozenset({"value_type", "control", "label", "help_text", "group", "default"})
 _PARAMETER_OPTIONAL = {

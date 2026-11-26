@@ -1,5 +1,5 @@
 {
-  "litellm_version": "1.108.12",
+  "litellm_version": "1.108.1",
   "models": {
     "embedding": {
       "azure": {
@@ -8204,8 +8204,9 @@
           "options": {
             "reasoning_effort": [
               "none",
-              "high",
-              "max"
+              "low",
+              "medium",
+              "high"
             ]
           },
           "parameter_names": [
@@ -8214,7 +8215,6 @@
             "logprobs",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -8651,12 +8651,8 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
-              "minimal",
               "low",
-              "medium",
               "high",
-              "xhigh",
               "max"
             ]
           },
@@ -8666,7 +8662,6 @@
             "logprobs",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -9804,8 +9799,9 @@
           "options": {
             "reasoning_effort": [
               "none",
-              "high",
-              "max"
+              "low",
+              "medium",
+              "high"
             ]
           },
           "parameter_names": [
@@ -9814,7 +9810,6 @@
             "logprobs",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -9832,8 +9827,9 @@
           "options": {
             "reasoning_effort": [
               "none",
-              "high",
-              "max"
+              "low",
+              "medium",
+              "high"
             ]
           },
           "parameter_names": [
@@ -9842,7 +9838,6 @@
             "logprobs",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -10969,7 +10964,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -10985,7 +10979,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11001,7 +10994,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11027,7 +11019,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11053,7 +11044,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11079,7 +11069,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11105,7 +11094,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11131,7 +11119,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11157,7 +11144,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11183,7 +11169,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11209,7 +11194,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11225,7 +11209,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11241,7 +11224,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11257,7 +11239,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11283,7 +11264,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11309,7 +11289,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11335,7 +11314,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11361,7 +11339,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11387,7 +11364,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11403,7 +11379,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11429,7 +11404,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11455,7 +11429,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11481,7 +11454,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11507,7 +11479,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11523,7 +11494,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11542,7 +11512,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11558,7 +11527,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11584,7 +11552,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11610,7 +11577,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11636,7 +11602,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11662,7 +11627,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -11688,7 +11652,6 @@
             "frequency_penalty",
             "max_tokens",
             "presence_penalty",
-            "reasoning_effort",
             "seed",
             "stop",
             "temperature",
@@ -39998,34 +39961,6 @@
           ],
           "recommended": true
         },
-        "gemini/gemini-4-hydrogen": {
-          "deprecation_date": null,
-          "limits": {
-            "max_input_tokens": 1048576,
-            "max_output_tokens": 1048576
-          },
-          "options": {
-            "reasoning_effort": [
-              "none",
-              "low",
-              "medium",
-              "high",
-              "xhigh"
-            ]
-          },
-          "parameter_names": [
-            "frequency_penalty",
-            "logprobs",
-            "max_tokens",
-            "presence_penalty",
-            "reasoning_effort",
-            "seed",
-            "stop",
-            "temperature",
-            "top_p"
-          ],
-          "recommended": false
-        },
         "gemini/gemini-exp-1114": {
           "deprecation_date": null,
           "limits": {
@@ -66408,34 +66343,6 @@
           ],
           "recommended": false
         },
-        "vertex_ai/gemini-4-hydrogen": {
-          "deprecation_date": null,
-          "limits": {
-            "max_input_tokens": 1048576,
-            "max_output_tokens": 1048576
-          },
-          "options": {
-            "reasoning_effort": [
-              "none",
-              "low",
-              "medium",
-              "high",
-              "xhigh"
-            ]
-          },
-          "parameter_names": [
-            "logprobs",
-            "max_tokens",
-            "reasoning_effort",
-            "seed",
-            "stop",
-            "temperature",
-            "top_k",
-            "top_logprobs",
-            "top_p"
-          ],
-          "recommended": false
-        },
         "vertex_ai/gemini-omni-1.1-flash": {
           "deprecation_date": null,
           "limits": {},
@@ -71703,7 +71610,7 @@
       "value_type": "integer"
     },
     "stop": {
-      "control": "chips",
+      "control": "list",
       "default": null,
       "draft": false,
       "group": "output",

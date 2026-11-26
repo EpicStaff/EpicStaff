@@ -557,7 +557,6 @@ $group-gutter-width: 28px;
         .ag-cell.cell-required-invalid {
             border: 1px solid var(--red-450-alpha-95) !important;
             box-shadow: inset 0 0 0 1px var(--red-450-alpha-35) !important;
-            border-radius: 6px;
         }
 
         .ag-header-cell-resize::after {

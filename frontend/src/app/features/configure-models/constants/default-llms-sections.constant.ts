@@ -14,7 +14,7 @@ export const DEFAULT_LLMS_SECTIONS: DefaultLlmsSection[] = [
                 description:
                     'Assigns the default LLM agent and ensures its operation; if necessary, the model can be customized for each agent individually.',
                 selectLabel: 'Select LLM from Library',
-                icon: 'agent',
+                icon: 'agent-llm',
                 configType: ModelTypes.LLM,
             },
             {
