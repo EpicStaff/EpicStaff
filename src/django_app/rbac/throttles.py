@@ -1,3 +1,5 @@
+import hashlib
+
 from rest_framework.throttling import AnonRateThrottle, SimpleRateThrottle
 
 
@@ -14,12 +16,18 @@ def _submitted_account(request, view) -> str:
     return raw.lower().strip() if isinstance(raw, str) else ""
 
 
+def _account_bucket(account: str) -> str:
+    """Fixed-size cache ident for an account, whatever length the caller sent."""
+    return hashlib.sha256(account.encode()).hexdigest()
+
+
 class LoginThrottle(SimpleRateThrottle):
     """
     Throttle for credential-accepting endpoints (LoginView, SwaggerTokenView,
     PasswordChangeRequestView).
 
-    Bucket key is the composite `<ip>|<email>`, so one account can't be
+    Bucket key is the composite `<ip>|<email>` (the email part is its SHA-256,
+    so the key size is fixed whatever the caller sends), so one account can't be
     guessed at from one IP past the configured rate, and a user locked out by
     their own typos doesn't lock out everyone else behind the same NAT. Rate
     is driven by the `login` scope (default 5/min, env var
@@ -39,7 +47,7 @@ class LoginThrottle(SimpleRateThrottle):
     def get_cache_key(self, request, view):
         email = _submitted_account(request, view)
         ip = self.get_ident(request)
-        ident = f"{ip}|{email}" if email else ip
+        ident = f"{ip}|{_account_bucket(email)}" if email else ip
         return self.cache_format % {"scope": self.scope, "ident": ident}
 
 
@@ -94,14 +102,18 @@ class LoginAccountThrottle(SimpleRateThrottle):
         email = _submitted_account(request, view)
         if not email:
             return None
-        return self.cache_format % {"scope": self.scope, "ident": email}
+        return self.cache_format % {
+            "scope": self.scope,
+            "ident": _account_bucket(email),
+        }
 
 
 class PasswordResetRequestThrottle(SimpleRateThrottle):
     """
     Throttle for POST /api/auth/password-reset/request/.
 
-    Bucket key is `<ip>|<email-lowercased>`, so one mailbox cannot be
+    Bucket key is `<ip>|<email-lowercased>` (the email part is its SHA-256, so
+    the key size is fixed whatever the caller sends), so one mailbox cannot be
     flooded with reset emails from one IP. Rate is driven by the
     `password_reset_request` scope (default 5/hour, env var
     `DJANGO_PASSWORD_RESET_REQUEST_THROTTLE_RATE`).
@@ -114,10 +126,9 @@ class PasswordResetRequestThrottle(SimpleRateThrottle):
     scope = "password_reset_request"
 
     def get_cache_key(self, request, view):
-        raw = request.data.get("email") or ""
-        email = raw.lower().strip() if isinstance(raw, str) else ""
+        email = _submitted_account(request, view)
         ip = self.get_ident(request)
-        ident = f"{ip}|{email}" if email else ip
+        ident = f"{ip}|{_account_bucket(email)}" if email else ip
         return self.cache_format % {"scope": self.scope, "ident": ident}
 
 

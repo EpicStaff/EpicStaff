@@ -439,6 +439,7 @@ class PasswordResetRequestView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
     throttle_classes = [PasswordResetRequestThrottle, PasswordResetRequestIpThrottle]
+    throttle_account_field = "email"
 
     _validator = AuthValidationService()
     _service = PasswordRecoveryService()
