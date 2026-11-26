@@ -1,10 +1,18 @@
 from django.db import transaction
 from proxies.sandbox.models import SandboxVenvBinding
+from rbac.access.principals import is_personal_or_system_api_key
+from rbac.access.resolver import resolve_request_permissions
 from rbac.authorship import (
     AuthorStampingSerializerMixin,
     AuthorSummarySerializerMixin,
     LastEditFieldsSerializerMixin,
 )
+from rbac.exceptions import (
+    OrganizationNotFoundError,
+    OrgContextRequiredError,
+    OrgMembershipRequiredError,
+)
+from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import (
     OrgScopedPrimaryKeyRelatedField,
     OrgScopedUniqueTogetherValidator,
@@ -40,7 +48,10 @@ from tables.services.copy_services.helpers import (
     apply_python_code_fields,
     create_python_code,
 )
+from tables.services.secrets.exceptions import SecretUseDeniedError
 from tables.services.secrets.parse_code import parse_secret_names
+from tables.services.secrets.request_actor import actor_from_request
+from tables.services.secrets.secret_use_checks import check_python_code_secret_selection
 from tables.validators.execution_timeout_validator import normalize_execution_timeout
 from tables.validators.python_code_tool_config_validator import (
     PythonCodeToolConfigValidator,
@@ -134,11 +145,38 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
         parsed = parse_secret_names(code=code)
         undeclared = parsed - declared
         if undeclared:
+            if "secrets" in attrs:
+                self._refuse_a_selection_the_caller_may_not_make(attrs)
             raise serializers.ValidationError(
                 {"secret_ids": self._undeclared_message(undeclared=undeclared, declared=declared)}
             )
 
         return attrs
+
+    def _refuse_a_selection_the_caller_may_not_make(self, attrs) -> None:
+        """Refuse a secret selection the caller may not make, before its names are echoed.
+
+        The undeclared-secret message lists the selected secrets by name, and the
+        secrets:USE check of the write would only run after validation. Without this,
+        a caller lacking USE could send one secret id at a time and read each name back.
+        A caller allowed to make the selection learns nothing new from it: once saved,
+        the names come back in the `secrets` read field. Run only on that error path, so
+        a valid write is not checked twice. Reported as the write's own check reports
+        it, under `secret_ids`.
+
+        Raises:
+            ValidationError: The selection needs secrets:USE and the caller lacks it,
+                or the caller is a pinned-org principal that may not reference it.
+        """
+        try:
+            check_python_code_secret_selection(
+                actor_from_request(self.context.get("request")),
+                self._current_python_code(),
+                attrs,
+                field_path=("secret_ids",),
+            )
+        except SecretUseDeniedError as denial:
+            raise serializers.ValidationError(denial.field_errors()) from denial
 
     def _undeclared_message(self, *, undeclared: set[str], declared: set[str]) -> str:
         """Name what is wrong and list what would work."""
@@ -146,24 +184,42 @@ class PythonCodeSerializer(ContentHashWritableMixin, serializers.ModelSerializer
         # word itself differently between runs.
         calls = ", ".join(f'get_secret("{name}")' for name in sorted(undeclared))
         selected = ", ".join(sorted(declared)) or "none"
-        available = ", ".join(self._available_secret_names()) or "none"
+        available_names = self._listable_secret_names()
+        # Left out, not shown as "none", when the caller may not list the org's secrets
+        # (`_listable_secret_names`): the names are not theirs to learn, and "none"
+        # would be false.
+        available = (
+            ""
+            if available_names is None
+            else f"Available in this organization: {', '.join(available_names) or 'none'}. "
+        )
         return (
             f"Code calls {calls} but "
             f"{'those secrets are' if len(undeclared) > 1 else 'that secret is'} "
             f"not selected for this node. Selected: {selected}. "
-            f"Available in this organization: {available}. "
+            f"{available}"
             "Select them under Secrets, or remove the calls."
         )
 
-    def _available_secret_names(self) -> list[str]:
-        """The active org's secret names, or empty when they cannot be determined."""
+    def _listable_secret_names(self) -> list[str] | None:
+        """The active org's secret names, or None when the caller may not list them.
+
+        Gated like the secrets list endpoint: personal and system API keys are refused
+        there, and the caller needs secrets READ. So this error message reveals no name
+        the caller could not already read there.
+        """
         request = self.context.get("request")
         if request is None:
-            return []
+            return None
+        if is_personal_or_system_api_key(request):
+            return None
         try:
-            org_id = resolve_active_org_id(request=request)
-        except Exception:
-            return []
+            permissions = resolve_request_permissions(request)
+        except (OrgContextRequiredError, OrgMembershipRequiredError, OrganizationNotFoundError):
+            return None
+        if not permissions.can(ResourceType.SECRETS, Permission.READ):
+            return None
+        org_id = resolve_active_org_id(request=request)
         return sorted(Secret.objects.filter(org_id=org_id).values_list("name", flat=True))
 
 

@@ -6,7 +6,7 @@ from rbac.access.cross_org_resolver import (
     CrossOrgPermissionResolver,
 )
 from rbac.access.org_context import OrgContextService, cache_active_org_id
-from rbac.access.principals import is_plugin_credential
+from rbac.access.principals import is_personal_or_system_api_key, is_plugin_credential
 from rbac.access.resolver import PermissionResolver
 from rbac.models import ApiKey
 
@@ -156,7 +156,7 @@ class DenyPersonalAndSystemApiKeys(BasePermission):
     message = "API keys cannot be used on this endpoint. Authenticate with a user session (JWT)."
 
     def has_permission(self, request, view):
-        return not isinstance(request.auth, ApiKey)
+        return not is_personal_or_system_api_key(request)
 
 
 class DenyApiKeyAuth(BasePermission):
