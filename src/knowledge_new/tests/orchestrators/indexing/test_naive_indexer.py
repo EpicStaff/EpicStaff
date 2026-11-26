@@ -587,6 +587,22 @@ async def test_cancelled_run_records_tokens_consumed_so_far(embedding_api):
     assert run.embedding_tokens == 10
 
 
+async def test_json_document_with_a_byte_order_mark_is_indexed(embedding_api):
+    """Windows editors may start a UTF-8 file with a byte order mark; the JSON stays valid."""
+    document = _document(
+        1,
+        name="doc.json",
+        content=b'\xef\xbb\xbf{"greeting": "hello"}',
+        config=ChunkingConfig(chunk_strategy=ChunkStrategyEnum.JSON, chunk_size=50, chunk_overlap=0),
+    )
+    repo = FakeNaiveRagRepo(documents=[document], rag=_new_rag())
+
+    await _index(repo, 1)
+
+    assert document.status == DocumentStatusEnum.COMPLETED
+    assert repo.saved_indexed_chunks
+
+
 async def test_document_whose_file_is_missing_fails_alone(embedding_api):
     missing = _document(1)
     del _STORED_FILES[missing.content_key]
