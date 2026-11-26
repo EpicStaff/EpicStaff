@@ -8,8 +8,8 @@ name: Licence scan
 #
 # It emails only when something is wrong: a package outside the policy, or a
 # scan that could not finish (a broken scan must not read as a clean one).
-# The alert job still runs every day to refresh and test its Gmail credential,
-# so a dead credential turns the run red long before an alert depends on it.
+# The alert job still runs every day and logs in to the mail server, so a
+# broken login turns the run red long before an alert depends on it.
 on:
   schedule:
     - cron: '0 6 * * *'
@@ -93,7 +93,7 @@ jobs:
           retention-days: 7
 
   # A separate job on a fresh runner: the scan above installs and runs every
-  # shipped Python package, and the Gmail credential must never share a runner
+  # shipped Python package, and the mailbox password must never share a runner
   # with that code. Only this job sees the secrets; the license-alerts
   # environment limits them to main.
   alert:
@@ -103,7 +103,7 @@ jobs:
     environment: license-alerts
     permissions:
       contents: read
-      # The issue below is the second channel: it reaches people when Gmail cannot.
+      # The issue below is the second channel: it reaches people when email cannot.
       issues: write
     steps:
       - name: Checkout
@@ -117,9 +117,6 @@ jobs:
         with:
           python-version: '3.12.10'
 
-      - name: Install alert dependencies
-        run: python -m pip install --require-hashes -r .github/requirements/google-drive.txt
-
       # Absent when the scan broke before writing anything; the alert says so.
       - name: Fetch the report
         if: needs.scan.result != 'success'
@@ -131,14 +128,14 @@ jobs:
 
       # Recipients are a secret, not a variable: the runner prints a step's env
       # in the public log and masks only secrets.
-      - name: Check the Gmail credential and email any problem
+      - name: Check the mailbox login and email any problem
         run: |
           cat report/license-report.txt report/frontend-notices.log > alert.txt 2>/dev/null || true
           python .github/scripts/send_license_alert.py
         env:
-          LICENSE_ALERT_OAUTH_CLIENT_ID: ${{ secrets.LICENSE_ALERT_OAUTH_CLIENT_ID }}
-          LICENSE_ALERT_OAUTH_CLIENT_SECRET: ${{ secrets.LICENSE_ALERT_OAUTH_CLIENT_SECRET }}
-          LICENSE_ALERT_OAUTH_REFRESH_TOKEN: ${{ secrets.LICENSE_ALERT_OAUTH_REFRESH_TOKEN }}
+          LICENSE_ALERT_SMTP_HOST: ${{ secrets.LICENSE_ALERT_SMTP_HOST }}
+          LICENSE_ALERT_SMTP_USER: ${{ secrets.LICENSE_ALERT_SMTP_USER }}
+          LICENSE_ALERT_SMTP_PASSWORD: ${{ secrets.LICENSE_ALERT_SMTP_PASSWORD }}
           LICENSE_ALERT_RECIPIENTS: ${{ secrets.LICENSE_ALERT_RECIPIENTS }}
           SCAN_RESULT: ${{ needs.scan.result }}
           REPORT_PATH: alert.txt
@@ -171,7 +168,7 @@ jobs:
 
           Failed run: $RUN_URL
 
-          The run log names the cause. Usually the Gmail credential stopped working (the alert mailbox's password changed or its access was revoked): sign in as the alert mailbox again and replace \`LICENSE_ALERT_OAUTH_REFRESH_TOKEN\` in the \`license-alerts\` environment. This issue closes itself on the next healthy run.")
+          The run log names the cause. Usually the alert mailbox's password changed, or the mail server stopped accepting the login: update \`LICENSE_ALERT_SMTP_PASSWORD\` in the \`license-alerts\` environment. This issue closes itself on the next healthy run.")
           number="${url##*/}"
           echo "Opened issue #$number."
           for login in ${ASSIGNEES//,/ }; do
