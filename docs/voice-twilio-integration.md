@@ -201,7 +201,7 @@ Created once per call/conversation; captures the agent's config at session start
 | `file_size` | nullable |
 | `created_at` | auto_now_add |
 
-Only the realtime service creates recordings: `POST /conversation-recordings/` requires the SYSTEM API key, and any other caller (a JWT session or a USER API key) gets 403. The file must be a WAV of at most `DJANGO_MAX_VOICE_RECORDING_SIZE` (default `22mb`), or the API answers 400. realtime reads the same variable and caps each call direction's audio at that size less the 44-byte WAV header (`MAX_RECORDING_AUDIO_BYTES` in `src/realtime/core/config.py`), so its file always fits. At the default, that is about 48 minutes of 8 kHz µ-law audio per direction.
+Only the realtime service creates recordings: `POST /conversation-recordings/` requires the SYSTEM API key, and any other caller (a JWT session or a USER API key) gets 403. The file must be a WAV of at most `MAX_VOICE_RECORDING_SIZE` (default `22mb`), or the API answers 400. realtime reads the same variable and caps each call direction's audio at that size less the 44-byte WAV header (`MAX_RECORDING_AUDIO_BYTES` in `src/realtime/core/config.py`), so its file always fits. At the default, that is about 48 minutes of 8 kHz µ-law audio per direction.
 
 The file lives on django_app's media volume exactly as long as its row: deleting a recording, directly, through its chat or with its organization, removes the file once the deletion commits (`tables/signals/conversation_recording_signals.py`). No URL serves the media volume, not even with `DJANGO_DEBUG` on.
 
@@ -464,7 +464,7 @@ When the AI provider emits `input_audio_buffer.speech_started` (OpenAI) or `inte
 
 On WebSocket close `VoiceCallService`:
 1. Records `end_reason` (`completed` / `cancelled` / `error`).
-2. Builds inbound and outbound µ-law WAV files from the accumulated audio buffers (`_build_ulaw_wav`). Each direction stops buffering at `MAX_RECORDING_AUDIO_BYTES`, so its WAV is at most `DJANGO_MAX_VOICE_RECORDING_SIZE`, with one warning; the rest of that direction is not recorded.
+2. Builds inbound and outbound µ-law WAV files from the accumulated audio buffers (`_build_ulaw_wav`). Each direction stops buffering at `MAX_RECORDING_AUDIO_BYTES`, so its WAV is at most `MAX_VOICE_RECORDING_SIZE`, with one warning; the rest of that direction is not recorded.
 3. **POST `/conversation-recordings/`** for each file (with `connection_key`).
 4. **POST `/realtime-agent-chats/end/`** with `duration_seconds` and `end_reason`.
 

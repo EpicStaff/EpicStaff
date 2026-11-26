@@ -1,6 +1,6 @@
 """A recording cut at realtime's cap is exactly the file size django_app accepts.
 
-Both services read DJANGO_MAX_VOICE_RECORDING_SIZE; realtime leaves room for the WAV header
+Both services read MAX_VOICE_RECORDING_SIZE; realtime leaves room for the WAV header
 that `_build_ulaw_wav` writes, since django_app limits the whole file.
 """
 
