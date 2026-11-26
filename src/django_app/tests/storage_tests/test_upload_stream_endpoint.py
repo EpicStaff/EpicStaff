@@ -59,6 +59,40 @@ async def _post(client, query, *, token=None, org_id=None, body=b"x", headers=No
     )
 
 
+async def _call_application(path: str, *, headers=(), body=b"x", query=b"filename=a.txt"):
+    """POST `path` through the whole ASGI application, spelled exactly as given: httpx
+    would resolve a `/./` segment before sending, and a proxy forwards it untouched."""
+    from django_app.asgi import application
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "root_path": "",
+        "query_string": query,
+        "headers": [(b"host", b"test"), *headers],
+        "client": ("127.0.0.1", 50000),
+        "server": ("test", 80),
+    }
+    sent = []
+
+    async def _send(message):
+        sent.append(message)
+
+    await application(
+        scope,
+        _receive_from({"type": "http.request", "body": body, "more_body": False}),
+        _send,
+    )
+    start = next(message for message in sent if message["type"] == "http.response.start")
+    response_headers = {name.decode().lower(): value.decode() for name, value in start["headers"]}
+    return start["status"], response_headers, _status_and_body(sent)[1]
+
+
 @pytest.fixture
 def storage(monkeypatch, fake_backend):
     """The in-memory store every upload in the test goes to."""
@@ -98,6 +132,31 @@ async def test_a_plain_file_is_stored_end_to_end(org_user, storage):
     }
     assert storage._objects[f"org_{org_user.org_id}/docs/note.txt"][0] == b"hello streaming world"
     assert (await StorageFile.objects.aget(org_id=org_user.org_id, path="docs/note.txt")).size == 21
+
+
+@override_settings(ORG_STORAGE_QUOTA=10**9, MAX_STREAM_UPLOAD_FILE_SIZE=None)
+async def test_a_file_uploaded_through_a_doubled_slash_is_stored_end_to_end(org_user, storage):
+    # nginx routes `//` to the upload location and forwards it as sent
+    token = await _token(org_user)
+
+    status_code, _, body = await _call_application(
+        "/api/storage//upload/stream",
+        headers=[
+            (b"authorization", f"Bearer {token}".encode()),
+            (b"x-organization-id", str(org_user.org_id).encode()),
+        ],
+        body=b"hello streaming world",
+        query=b"path=docs&filename=note.txt",
+    )
+
+    assert status_code == 200, body
+    assert body == {
+        "status": "DONE",
+        "path": "docs/note.txt",
+        "size": 21,
+        "recycle_bin_purged": [],
+    }
+    assert storage._objects[f"org_{org_user.org_id}/docs/note.txt"][0] == b"hello streaming world"
 
 
 @override_settings(ORG_STORAGE_QUOTA=10**9)
@@ -308,6 +367,20 @@ async def test_an_anonymous_upload_is_a_401_in_the_error_envelope():
     assert set(response.json()) == {"status_code", "code", "message"}
     assert response.json()["status_code"] == 401
     assert response.headers["www-authenticate"] == "Bearer"
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/api/storage//upload/stream", "/api/storage/upload/./stream", "//api/storage/upload/stream"],
+)
+async def test_an_anonymous_upload_through_another_spelling_of_the_path_is_the_same_401(path):
+    # a spelling that missed the raw app would reach Django's handler, which spools the body
+    # to disk before it answers 404
+    status_code, headers, body = await _call_application(path)
+
+    assert status_code == 401
+    assert set(body) == {"status_code", "code", "message"}
+    assert headers["www-authenticate"] == "Bearer"
 
 
 async def test_a_viewer_without_files_create_is_denied(viewer_org_user):
