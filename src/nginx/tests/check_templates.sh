@@ -1052,6 +1052,10 @@ if expect_valid "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=150mb is accepted"; then
     "location = /api/graphs/import-jobs/" "location = /api/source-collections/import-jobs/" \
     "location = /api/agent-definitions/import-jobs/" \
     "client_max_body_size 157286400;" "error_page 413 = @knowledge_archive_too_large;"
+  # nginx forwards the original URI, not the normalised one it chose the location by.
+  expect_directives "the unlimited upload location refuses any spelling of its path but the exact one" \
+    "location = /api/storage/upload/stream" \
+    'if ($request_uri !~ "^/api/storage/upload/stream(\?|$)")'
 fi
 if expect_valid "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE=' 1.5 GB ' is accepted" \
   "DJANGO_MAX_KNOWLEDGE_ARCHIVE_SIZE= 1.5 GB "; then

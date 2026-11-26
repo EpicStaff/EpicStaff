@@ -390,6 +390,23 @@ async def test_an_anonymous_upload_is_refused(acme, backend, enqueued, temp_file
     await _no_job_left(backend, temp_files)
 
 
+@pytest.mark.parametrize("path", [FLOWS, COLLECTIONS, AGENTS])
+async def test_an_anonymous_upload_to_a_doubled_slash_spelling_is_refused_by_the_upload_app(
+    acme, backend, enqueued, temp_files, path
+):
+    # nginx routes `//` to the import-job location and forwards it as sent; the upload app
+    # answers 401 itself rather than Django's handler spooling the body and answering 404
+    from django_app.asgi import application
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=application), base_url="http://test"
+    ) as client:
+        response = await client.post(path.replace("/api/", "/api//", 1), content=b"PK")
+
+    assert response.status_code == 401, response.text
+    await _no_job_left(backend, temp_files)
+
+
 async def test_only_post_is_served(custom_role_user, acme, backend, enqueued, temp_files):
     from django_app.asgi import application
 

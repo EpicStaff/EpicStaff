@@ -158,6 +158,11 @@ server {
     }
 
     location = /api/storage/upload/stream {
+        # nginx picks this location from the normalised URI (`//`, `/./` resolved) but forwards the
+        # original, so any other spelling is refused here, before an unlimited body is read.
+        if ($request_uri !~ "^/api/storage/upload/stream(\?|$)") {
+            return 404;
+        }
         # On least_conn backend_server, not backend_stream_server: an upload streams bytes the
         # whole time, so counting it as load is accurate, unlike an idle websocket or SSE
         # stream. Its own gate (UploadAdmission) bounds how many run.

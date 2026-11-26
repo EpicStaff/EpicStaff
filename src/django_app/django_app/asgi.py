@@ -61,11 +61,31 @@ raw_http_apps = {
 }
 
 
+def canonical_path(path: str) -> str:
+    """The path as nginx normalises it to choose a location: runs of `/` merged, `.` and `..`
+    segments resolved, a trailing `/` kept. nginx forwards the original spelling, so a request
+    for `//api/x` reaches here as sent; the raw apps are looked up by this form so that no
+    spelling nginx routes to a raw upload location falls through to Django's body-spooling handler."""
+    resolved: list[str] = []
+    for segment in path.split("/"):
+        if segment in ("", "."):
+            continue
+        if segment == "..":
+            if resolved:
+                resolved.pop()
+            continue
+        resolved.append(segment)
+    last_segment = path.rsplit("/", 1)[-1]
+    keeps_trailing_slash = last_segment in ("", ".", "..") and bool(resolved)
+    return "/" + "/".join(resolved) + ("/" if keeps_trailing_slash else "")
+
+
 async def http_dispatcher(scope, receive, send):
-    raw_app = raw_http_apps.get(scope.get("path"))
+    canonical = canonical_path(scope.get("path") or "")
+    raw_app = raw_http_apps.get(canonical)
     # OPTIONS stays with Django so corsheaders answers the preflight.
     if raw_app is not None and scope.get("method") != "OPTIONS":
-        await raw_app(scope, receive, send)
+        await raw_app({**scope, "path": canonical}, receive, send)
         return
     await django_asgi_app(scope, receive, send)
 
