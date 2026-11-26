@@ -13,6 +13,14 @@ class Migration(migrations.Migration):
         ),
         migrations.AlterField(
             model_name="documentcontent",
+            name="content_hash",
+            field=models.CharField(
+                help_text="SHA-256 of the stored file's bytes, as hex.",
+                max_length=64,
+            ),
+        ),
+        migrations.AlterField(
+            model_name="documentcontent",
             name="object_key",
             field=models.CharField(
                 help_text="Key of the stored file in the knowledge bucket.",

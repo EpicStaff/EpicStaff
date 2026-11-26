@@ -45,7 +45,7 @@ class _InMemoryObject:
 
 def stored_document_content(data: bytes, *, org_id: int = 0) -> DocumentContent:
     """Store `data` in the test knowledge bucket and create the row pointing at it."""
-    return DocumentContent.objects.create(object_key=DocumentContentStorage.write(org_id, data))
+    return DocumentContentStorage.create(org_id, data)
 
 
 def stored_document_bytes(document: DocumentMetadata) -> bytes:

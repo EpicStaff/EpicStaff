@@ -156,6 +156,9 @@ class DocumentContent(models.Model):
     object_key = models.CharField(
         max_length=512, unique=True, help_text="Key of the stored file in the knowledge bucket."
     )
+    content_hash = models.CharField(
+        max_length=64, help_text="SHA-256 of the stored file's bytes, as hex."
+    )
 
     def __str__(self):
         return f"Content {self.content_id}"

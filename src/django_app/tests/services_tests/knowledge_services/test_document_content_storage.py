@@ -4,10 +4,13 @@ A file is removed only after the transaction that removed the last document poin
 it commits, so the tests run the commit callbacks.
 """
 
+import hashlib
+
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
 from tables.models import DocumentContent, DocumentMetadata
+from tables.services.knowledge_services.document_content_storage import DocumentContentStorage
 from tables.services.knowledge_services.document_management_service import (
     DocumentManagementService,
 )
@@ -40,6 +43,18 @@ class TestUpload:
         object_key = document.document_content.object_key
         assert object_key.startswith(f"documents/org_{source_collection.org_id}/")
         assert knowledge_bucket.files[object_key] == b"plain notes"
+        assert document.document_content.content_hash == hashlib.sha256(b"plain notes").hexdigest()
+
+    def test_a_row_that_cannot_be_created_leaves_no_file(self, knowledge_bucket, monkeypatch):
+        def refuse(**kwargs):
+            raise RuntimeError("database went away")
+
+        monkeypatch.setattr(DocumentContent.objects, "create", refuse)
+
+        with pytest.raises(RuntimeError):
+            DocumentContentStorage.create(1, b"data")
+
+        assert knowledge_bucket.files == {}
 
     def test_a_failed_upload_leaves_no_files_behind(
         self, source_collection, knowledge_bucket, monkeypatch

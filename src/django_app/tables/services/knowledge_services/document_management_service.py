@@ -196,8 +196,7 @@ class DocumentManagementService:
         Raises:
             StorageUnavailable: Object storage could not be reached.
         """
-        object_key = DocumentContentStorage.write(org_id, uploaded_file.read())
-        return DocumentContent.objects.create(object_key=object_key)
+        return DocumentContentStorage.create(org_id, uploaded_file.read())
 
     @staticmethod
     @transaction.atomic

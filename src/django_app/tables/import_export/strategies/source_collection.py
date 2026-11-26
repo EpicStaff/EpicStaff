@@ -453,9 +453,9 @@ class SourceCollectionStrategy(EntityImportExportStrategy):
                 raise invalid_archive(str(error.detail)) from error
             if entry["content_path"] is not None:
                 with archive.open_member(entry["content_path"]) as member:
-                    object_key = DocumentContentStorage.write(collection.org_id, member.read())
-                created_object_keys.append(object_key)
-                content_id = DocumentContent.objects.create(object_key=object_key).pk
+                    content = DocumentContentStorage.create(collection.org_id, member.read())
+                created_object_keys.append(content.object_key)
+                content_id = content.pk
             rows.append(
                 (
                     entry["id"],

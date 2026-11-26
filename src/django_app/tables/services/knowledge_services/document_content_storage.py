@@ -1,3 +1,4 @@
+import hashlib
 from collections.abc import Iterable
 from functools import cache
 from uuid import uuid4
@@ -52,6 +53,24 @@ class DocumentContentStorage:
         except S3UnavailableError as error:
             raise StorageUnavailable() from error
         return object_key
+
+    @staticmethod
+    def create(org_id: int, data: bytes) -> DocumentContent:
+        """Store `data` and create the content row pointing at it, with the bytes' SHA-256.
+
+        If the row cannot be created, the file just written is deleted again.
+
+        Raises:
+            StorageUnavailable: Object storage could not be reached.
+        """
+        object_key = DocumentContentStorage.write(org_id, data)
+        try:
+            return DocumentContent.objects.create(
+                object_key=object_key, content_hash=hashlib.sha256(data).hexdigest()
+            )
+        except Exception:
+            DocumentContentStorage.delete([object_key])
+            raise
 
     @staticmethod
     def read(object_key: str) -> bytes:

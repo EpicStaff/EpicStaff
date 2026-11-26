@@ -8,9 +8,14 @@ its key is overwritten, not duplicated.
 Content that no document of a collection refers to has no organization to file it under;
 it is skipped here and removed by the next migration.
 
+Each file's SHA-256 is taken from the same bytes, so no later pass over every file is
+needed to fill `content_hash`.
+
 Going back copies the bytes from the bucket into the column again and leaves the stored
 files in place.
 """
+
+import hashlib
 
 from django.db import migrations
 from loguru import logger
@@ -54,9 +59,12 @@ def move_content_to_object_storage(apps, schema_editor):
                 .values_list("content", flat=True)
                 .get()
             )
+            data = bytes(data)
             object_key = f"documents/org_{org_id}/migrated-{content_id}"
-            bucket.object(object_key).write(bytes(data))
-            document_content_model.objects.filter(pk=content_id).update(object_key=object_key)
+            bucket.object(object_key).write(data)
+            document_content_model.objects.filter(pk=content_id).update(
+                object_key=object_key, content_hash=hashlib.sha256(data).hexdigest()
+            )
             moved_count += 1
         logger.info(
             "Moved {} of {} document contents to object storage",

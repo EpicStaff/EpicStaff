@@ -17,6 +17,15 @@ class Migration(migrations.Migration):
                 unique=True,
             ),
         ),
+        migrations.AddField(
+            model_name="documentcontent",
+            name="content_hash",
+            field=models.CharField(
+                help_text="SHA-256 of the stored file's bytes, as hex.",
+                max_length=64,
+                null=True,
+            ),
+        ),
         # Nullable from here on, so going back past 0300 can add the column again to a
         # table that has rows; going back past this migration requires the bytes again.
         migrations.AlterField(

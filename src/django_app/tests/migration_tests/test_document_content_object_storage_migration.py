@@ -4,6 +4,8 @@ Content no document of a collection refers to is not moved: 0299 deletes it toge
 with documents outside every collection.
 """
 
+import hashlib
+
 import pytest
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
@@ -53,6 +55,7 @@ def test_bytes_move_to_the_bucket_and_back(knowledge_bucket):
         moved = new_content_model.objects.get(pk=stored.pk)
         assert moved.object_key == f"documents/org_{organization.pk}/migrated-{stored.pk}"
         assert knowledge_bucket.files == {moved.object_key: b"hello"}
+        assert moved.content_hash == hashlib.sha256(b"hello").hexdigest()
         assert not new_content_model.objects.filter(pk__in=[unreferenced.pk, outside.pk]).exists()
         assert not new_apps.get_model("tables", "DocumentMetadata").objects.filter(
             pk=outside_document.pk
