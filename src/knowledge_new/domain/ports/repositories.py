@@ -27,11 +27,14 @@ class AbstractNaiveRagRepository(abc.ABC):
     """Abstract repository for naive RAG persistence operations."""
 
     @abc.abstractmethod
-    async def get_rag(self, rag_id: int) -> Rag | None:
+    async def get_rag(self, rag_id: int, *, for_update: bool = False) -> Rag | None:
         """Return the `Rag` aggregate identified by `rag_id`, or `None` if not found.
 
         Args:
             rag_id: Primary key of the RAG collection.
+            for_update: Lock the RAG row until the transaction ends. A run claims its
+                documents under this lock, and django_app takes the same lock before it
+                changes a document's file, so neither sees the other half done.
         """
 
     @abc.abstractmethod
@@ -159,11 +162,14 @@ class AbstractNaiveRagRepository(abc.ABC):
 
 class AbstractGraphRagRepository(abc.ABC):
     @abc.abstractmethod
-    async def get_rag(self, rag_id: int) -> Rag | None:
+    async def get_rag(self, rag_id: int, *, for_update: bool = False) -> Rag | None:
         """Return the `Rag` aggregate identified by `rag_id`, or `None` if not found.
 
         Args:
             rag_id: Primary key of the RAG collection.
+            for_update: Lock the RAG row until the transaction ends. A run claims its
+                documents under this lock, and django_app takes the same lock before it
+                changes a document's file, so neither sees the other half done.
         """
 
     @abc.abstractmethod

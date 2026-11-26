@@ -36,25 +36,34 @@ from loguru import logger
 
 class GraphIndexOrchestrator(AbstractIndexOrchestrator):
     async def on_execute(self, command: RunIndex):
-        async with self.uow:
-            rag = await self._get_rag_under_uow(command.rag_id)
-            documents = await self._get_documents_under_uow(rag.id, command.document_ids)
-
+        # Claim the documents: load them, read their files and record them as taken by
+        # this run in one transaction under the RAG row lock. A reindex also reads
+        # documents the run does not take, and an edit may replace their files once the
+        # claim commits, so the files are read before it does. A run that cannot start
+        # (no config, a secret that fails to decrypt) fails before it claims anything.
+        # Document statuses change only when the run finishes.
         is_update_run = False
         target_slot = None
-        if rag.status == IndexStatusEnum.COMPLETED:
-            if self._has_indexed_document(documents):
-                logger.debug("REINDEX")
-                documents += await self._get_indexed_documents_excluding(
-                    rag.id, command.document_ids
-                )
-                target_slot = SlotEnum.A if rag.slot == SlotEnum.B else SlotEnum.B
-                self.state["target_slot"] = target_slot
-            else:
-                is_update_run = True
+        async with self.uow:
+            rag = await self._get_rag_under_uow(command.rag_id, for_update=True)
+            documents = await self._get_documents_under_uow(rag.id, command.document_ids)
+            if rag.status == IndexStatusEnum.COMPLETED:
+                if self._has_indexed_document(documents):
+                    logger.debug("REINDEX")
+                    documents += await self.uow.graph_rag_repo.get_indexed_documents_excluding(
+                        rag_id=rag.id, ids=command.document_ids
+                    )
+                    target_slot = SlotEnum.A if rag.slot == SlotEnum.B else SlotEnum.B
+                    self.state["target_slot"] = target_slot
+                else:
+                    is_update_run = True
+            secrets = open_sealed_secrets(command, self.cryptographer)
+            config = await self._get_config_under_uow(rag.id, target_slot)
+            text_documents = await self._read_texts(documents)
+            rag.mark_as_processing(command.document_ids)
+            await self.uow.graph_rag_repo.update_rag(rag)
+            await self.uow.commit()
 
-        secrets = open_sealed_secrets(command, self.cryptographer)
-        config = await self._get_config_under_uow(rag.id, target_slot)
         embedding_model = config.embedding_models["default_embedding_model"]
         completion_model = config.completion_models["default_completion_model"]
         embedding_arguments = embedding_call_arguments(command.embedding_parameters)
@@ -77,11 +86,6 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             rag.id,
             [(completion_model, completion_arguments), (embedding_model, embedding_arguments)],
         )
-
-        text_documents = await self._read_texts(documents)
-
-        rag.mark_as_processing(command.document_ids)
-        await self._update_rag(rag)
 
         input_documents = pandas.DataFrame(data=[asdict(d) for d in text_documents])
         input_documents["human_readable_id"] = input_documents.index
@@ -136,16 +140,15 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             if target_slot:
                 await self._clear_slot_storage(rag.id, target_slot)
 
-    async def _get_rag_under_uow(self, rag_id: int) -> Rag:
-        rag = await self.uow.graph_rag_repo.get_rag(rag_id=rag_id)
+    async def _get_rag_under_uow(self, rag_id: int, *, for_update: bool = False) -> Rag:
+        rag = await self.uow.graph_rag_repo.get_rag(rag_id=rag_id, for_update=for_update)
         if rag is None:
             raise RagNotFoundError(rag_id=rag_id)
         self.state["rag"] = rag
         return rag
 
     async def _get_config_under_uow(self, rag_id: int, slot: SlotEnum) -> GraphRagConfig:
-        async with self.uow:
-            config = await self.uow.graph_rag_repo.get_config(rag_id=rag_id, slot=slot)
+        config = await self.uow.graph_rag_repo.get_config(rag_id=rag_id, slot=slot)
         if not config:
             raise GraphRagConfigNotFoundError(rag_id=rag_id)
         return config
@@ -202,12 +205,6 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
         if not documents:
             raise DocumentNotFoundError(f"No Document found for RAG(id={rag_id}).")
         return documents
-
-    async def _get_indexed_documents_excluding(self, rag_id: int, ids: frozenset[int]):
-        async with self.uow:
-            return await self.uow.graph_rag_repo.get_indexed_documents_excluding(
-                rag_id=rag_id, ids=ids
-            )
 
     async def _update_rag(self, rag: Rag):
         async with self.uow:

@@ -28,15 +28,19 @@ from loguru import logger
 
 class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
     async def on_execute(self, command: RunIndex) -> None:
+        # Claim the documents: load them and record them as taken by this run in one
+        # transaction under the RAG row lock, so an edit of their files either waits for
+        # the claim or is refused because of it. Their own statuses change only once
+        # each file is processed.
         async with self.uow:
-            rag = await self._get_rag_under_uow(command.rag_id)
+            rag = await self._get_rag_under_uow(command.rag_id, for_update=True)
             # After the RAG is loaded, so a secret that fails to decrypt fails the RAG.
             secrets = open_sealed_secrets(command, self.cryptographer)
             embedder = await self._get_embedder_under_uow(rag.id, secrets)
             documents = await self._get_documents_under_uow(rag.id, command.document_ids)
-
-        rag.mark_as_processing(command.document_ids)
-        await self._update_rag(rag)
+            rag.mark_as_processing(command.document_ids)
+            await self.uow.naive_rag_repo.update_rag(rag=rag)
+            await self.uow.commit()
 
         usage = self.state["usage"] = UsageTally()
         for document in documents:
@@ -146,8 +150,8 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
             await self._update_rag(rag)
             await self._record_usage(rag.id)
 
-    async def _get_rag_under_uow(self, rag_id: int) -> Rag:
-        rag = await self.uow.naive_rag_repo.get_rag(rag_id=rag_id)
+    async def _get_rag_under_uow(self, rag_id: int, *, for_update: bool = False) -> Rag:
+        rag = await self.uow.naive_rag_repo.get_rag(rag_id=rag_id, for_update=for_update)
         if rag is None:
             raise RagNotFoundError(rag_id=rag_id)
         self.state["rag"] = rag

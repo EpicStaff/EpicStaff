@@ -128,8 +128,11 @@ class FakeGraphRagRepo:
         self.build_index_call_count: int = 0
         self._document_statuses: dict[int, str] = dict(other_document_statuses or {})
         self.get_config_calls: list[tuple[int, SlotEnum | None]] = []
+        # What the run did, in order, with the unit of work's begin/commit/end.
+        self.events: list = []
 
-    async def get_rag(self, rag_id: int) -> Rag | None:
+    async def get_rag(self, rag_id: int, *, for_update: bool = False) -> Rag | None:
+        self.events.append(("get_rag", for_update))
         if self._get_rag_raises is not None:
             raise self._get_rag_raises
         return self._rag
@@ -158,6 +161,7 @@ class FakeGraphRagRepo:
         return [d for d in self._documents if d.id not in ids]
 
     async def update_rag(self, rag: Rag) -> None:
+        self.events.append(("update_rag", rag.status, frozenset(rag.indexing_document_ids)))
         if not self.rag_status_log or self.rag_status_log[-1] != rag.status:
             self.rag_status_log.append(rag.status)
         self.rag_slot_log.append(rag.slot)
@@ -168,6 +172,7 @@ class FakeGraphRagRepo:
         ids: frozenset[int],
         status: Literal["new", "completed", "failed"],
     ) -> None:
+        self.events.append(("update_status_of_documents", status))
         self.status_updates.append((frozenset(ids), status))
         for doc_id in ids:
             self._document_statuses[doc_id] = status
@@ -189,13 +194,15 @@ class FakeUoW:
         self.graph_rag_repo = repo
 
     async def __aenter__(self):
+        self.graph_rag_repo.events.append("begin")
         return self
 
     async def __aexit__(self, *exc):
+        self.graph_rag_repo.events.append("end")
         return False
 
     async def commit(self):
-        pass
+        self.graph_rag_repo.events.append("commit")
 
 
 async def test_index_builds_the_graph_from_the_documents_and_completes_the_rag(monkeypatch):
@@ -231,6 +238,36 @@ async def test_index_builds_the_graph_from_the_documents_and_completes_the_rag(m
     assert row_ids == {"1", "2"}
     row_texts = set(df["text"].tolist())
     assert row_texts == {"first document text", "second document text"}
+
+
+async def test_reindex_claims_its_documents_and_reads_every_file_in_one_transaction(
+    monkeypatch,
+):
+    """Files of documents the run reads but does not take are read before the claim commits.
+
+    Once it commits, an edit in django_app may replace those files.
+    """
+    _rag, _config, repo, uow, request = _make_full_reindex_setup()
+    _make_slot_monkeypatches(monkeypatch)
+
+    async def fake_build_index(**kwargs):
+        return [_result("extract_graph")]
+
+    monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
+    reader = FakeDocumentContentReader(_STORED_FILES, events=repo.events)
+
+    await GraphIndexOrchestrator(uow, CRYPTOGRAPHER, reader).execute(request)
+
+    claim = repo.events[: repo.events.index("end") + 1]
+    assert claim == [
+        "begin",
+        ("get_rag", True),
+        "read",
+        "read",
+        ("update_rag", IndexStatusEnum.PROCESSING, frozenset({10})),
+        "commit",
+        "end",
+    ]
 
 
 @pytest.mark.parametrize(

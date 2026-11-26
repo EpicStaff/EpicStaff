@@ -60,6 +60,8 @@ class FakeNaiveRagRepo:
         self.rag_status_log: list[IndexStatusEnum] = []
         self.saved_indexed_chunks: list[tuple[int, list[IndexedChunk]]] = []
         self.usage_runs: list[IndexingRunUsage] = []
+        # What the run did, in order, with the unit of work's begin/commit/end.
+        self.events: list = []
 
     async def add_indexing_usage(self, rag_id: int, run: IndexingRunUsage) -> None:
         self.usage_runs.append(run)
@@ -67,12 +69,14 @@ class FakeNaiveRagRepo:
     async def get_embedding_config(self, rag_id: int) -> EmbeddingConfig | None:
         return self._embedding_config
 
-    async def get_rag(self, rag_id: int) -> Rag | None:
+    async def get_rag(self, rag_id: int, *, for_update: bool = False) -> Rag | None:
+        self.events.append(("get_rag", for_update))
         if self._get_rag_raises is not None:
             raise self._get_rag_raises
         return self._rag
 
     async def update_rag(self, rag: Rag) -> None:
+        self.events.append(("update_rag", rag.status, frozenset(rag.indexing_document_ids)))
         if not self.rag_status_log or self.rag_status_log[-1] != rag.status:
             self.rag_status_log.append(rag.status)
 
@@ -91,6 +95,7 @@ class FakeNaiveRagRepo:
         return any(d.status == DocumentStatusEnum.OUTDATED for d in self._documents)
 
     async def update_document(self, rag_id: int, document: Document) -> None:
+        self.events.append(("update_document", document.status))
         self.doc_status_log.append(document.status)
 
     async def save_indexed_chunks(self, document_id: int, chunks: list[IndexedChunk]) -> None:
@@ -102,13 +107,15 @@ class FakeUoW:
         self.naive_rag_repo = repo
 
     async def __aenter__(self):
+        self.naive_rag_repo.events.append("begin")
         return self
 
     async def __aexit__(self, *exc):
+        self.naive_rag_repo.events.append("end")
         return False
 
     async def commit(self):
-        pass
+        self.naive_rag_repo.events.append("commit")
 
 
 def _provider_response(prompt_tokens: int | None = None):
@@ -601,6 +608,30 @@ async def test_json_document_with_a_byte_order_mark_is_indexed(embedding_api):
 
     assert document.status == DocumentStatusEnum.COMPLETED
     assert repo.saved_indexed_chunks
+
+
+async def test_run_claims_its_documents_in_one_transaction_before_reading_files(
+    embedding_api,
+):
+    """An edit of a file in django_app takes the RAG row lock too, so it waits for the claim or sees it."""
+    repo = FakeNaiveRagRepo(documents=[_document(1), _document(2)], rag=_new_rag())
+
+    await _index(
+        repo, 1, 2, content_reader=FakeDocumentContentReader(_STORED_FILES, events=repo.events)
+    )
+
+    claim = repo.events[: repo.events.index("end") + 1]
+    assert claim == [
+        "begin",
+        ("get_rag", True),
+        ("update_rag", IndexStatusEnum.PROCESSING, frozenset({1, 2})),
+        "commit",
+        "end",
+    ]
+    # Documents turn processing one by one, when their files are read, not at the claim.
+    first_document_update = repo.events.index(("update_document", DocumentStatusEnum.PROCESSING))
+    assert first_document_update > len(claim)
+    assert repo.events.index("read") > first_document_update
 
 
 async def test_document_whose_file_is_missing_fails_alone(embedding_api):

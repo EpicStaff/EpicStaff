@@ -27,10 +27,11 @@ from sqlalchemy.orm import joinedload
 
 
 class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphRagRepository):
-    async def get_rag(self, rag_id: int) -> Rag | None:
-        result = await self._session.execute(
-            select(GraphRag).where(GraphRag.graph_rag_id == rag_id)
-        )
+    async def get_rag(self, rag_id: int, *, for_update: bool = False) -> Rag | None:
+        statement = select(GraphRag).where(GraphRag.graph_rag_id == rag_id)
+        if for_update:
+            statement = statement.with_for_update()
+        result = await self._session.execute(statement)
         if (data := result.scalar_one_or_none()) is not None:
             return graph_rag_orm_to_rag(data)
         return None
