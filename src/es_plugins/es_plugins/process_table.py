@@ -55,13 +55,13 @@ class ProcessTable:
         return totals
 
     def _read_status(self, pid: int) -> ProcessEntry | None:
-        try:
-            with open(self._proc_root / str(pid) / "status", encoding="utf-8") as status_file:
-                text = status_file.read()
-        except (FileNotFoundError, ProcessLookupError):
+        text = _read_status_text(self._proc_root / str(pid) / "status")
+        if text is None:
             return None
         fields = {}
-        for line in text.splitlines():
+        # Only "\n" separates the kernel's lines: `splitlines` would also split a process name
+        # at "\x1c" or "\x85", which the kernel leaves unescaped, and let it forge a field.
+        for line in text.split("\n"):
             name, separator, value = line.partition(":")
             if separator:
                 fields[name] = value.strip()
@@ -73,6 +73,20 @@ class ProcessTable:
             rss_kib=_resident_kib(fields),
             zombie=fields.get("State", "").startswith("Z"),
         )
+
+
+def _read_status_text(path: Path) -> str | None:
+    """A status file's text, or None when the process is gone.
+
+    A process names itself (`prctl(PR_SET_NAME)`) with any bytes and the kernel prints them raw
+    on the `Name:` line, so the file is not always UTF-8. The fields read here are ASCII, so
+    undecodable bytes are replaced rather than hiding the process from the scan.
+    """
+    try:
+        with open(path, encoding="utf-8", errors="replace") as status_file:
+            return status_file.read()
+    except (FileNotFoundError, ProcessLookupError):
+        return None
 
 
 def _resident_kib(fields: dict[str, str]) -> int:
