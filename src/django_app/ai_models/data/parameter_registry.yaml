@@ -180,7 +180,7 @@ parameters:
     limit_from: max_input_tokens
   stop:
     value_type: text_list
-    control: chips
+    control: list
     label: Stop sequences
     help_text: The model stops generating when it produces one of these.
     group: output

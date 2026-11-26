@@ -17,7 +17,7 @@ _DRAFT_CONTROLS = {
     "boolean": "toggle",
     "choice": "select",
     "text": "text",
-    "text_list": "chips",
+    "text_list": "list",
     "json": "json",
 }
 
