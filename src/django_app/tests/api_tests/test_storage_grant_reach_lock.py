@@ -97,6 +97,27 @@ def test_renaming_a_venv_that_ticked_code_runs_in_needs_no_boxes_but_its_librari
 
 
 @pytest.mark.django_db
+@pytest.mark.parametrize("stored_is_custom", [True, False])
+def test_flipping_where_a_library_comes_from_is_a_change_the_boxes_guard(
+    stored_is_custom, flow, venv, editor, admin_client, upstream
+):
+    PythonNode.objects.create(
+        graph=flow, python_code=PythonCode.objects.create(code="x", venv=venv), **RW_GRANT
+    )
+    stored = [{"name": "requests", "version": "2.32.3", "is_custom": stored_is_custom}]
+    flipped = [{**stored[0], "is_custom": not stored_is_custom}]
+
+    with patch("proxies.sandbox.services.VenvService.retrieve", return_value={"libs": stored}):
+        refused = editor.patch(f"/api/venvs/{venv.pk}/", {"libs": flipped}, format="json")
+        allowed = admin_client.patch(f"/api/venvs/{venv.pk}/", {"libs": flipped}, format="json")
+
+    assert refused.status_code == status.HTTP_403_FORBIDDEN
+    assert refused.data["message"] == READ_AND_WRITE
+    assert allowed.status_code == status.HTTP_200_OK, allowed.content
+    assert upstream.call_count == 1
+
+
+@pytest.mark.django_db
 def test_each_code_slot_of_a_classification_table_locks_its_venv_by_its_own_boxes(
     flow, venv, editor, upstream
 ):
