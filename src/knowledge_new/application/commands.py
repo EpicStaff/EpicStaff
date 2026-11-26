@@ -1,11 +1,13 @@
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from typing import Any
 
 from application.graph_index_read_limits import (
     GRAPH_TABLE_DEFAULT_PAGE,
     GRAPH_TABLE_DEFAULT_PAGE_SIZE,
     GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
 )
+from domain.enums import GraphOutputTableEnum, GraphTableSearchScope
 from domain.models import ChunkingConfig, SearchConfig
 
 __all__ = [
@@ -39,9 +41,14 @@ class RunIndex(Command):
     # Provider keys stay out of repr, so logging a command never writes them in cleartext.
     embedding_api_key: str = field(repr=False)
     llm_api_key: str | None = field(default=None, repr=False)
-    # Resolved header values can carry credentials; repr=False keeps them out of logs.
+    # Resolved header and connection values can carry credentials; repr=False keeps them
+    # out of logs. Connection arguments arrive under their LiteLLM names.
     embedding_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
     llm_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
+    embedding_connection: dict[str, str] = field(default_factory=dict, repr=False)
+    embedding_parameters: dict[str, Any] = field(default_factory=dict)
+    llm_connection: dict[str, str] = field(default_factory=dict, repr=False)
+    llm_parameters: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -52,9 +59,14 @@ class RunSearch(Command):
     # Provider keys stay out of repr, so logging a command never writes them in cleartext.
     embedding_api_key: str = field(repr=False)
     llm_api_key: str | None = field(default=None, repr=False)
-    # Resolved header values can carry credentials; repr=False keeps them out of logs.
+    # Resolved header and connection values can carry credentials; repr=False keeps them
+    # out of logs. Connection arguments arrive under their LiteLLM names.
     embedding_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
     llm_extra_headers: dict[str, str] = field(default_factory=dict, repr=False)
+    embedding_connection: dict[str, str] = field(default_factory=dict, repr=False)
+    embedding_parameters: dict[str, Any] = field(default_factory=dict)
+    llm_connection: dict[str, str] = field(default_factory=dict, repr=False)
+    llm_parameters: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -76,9 +88,26 @@ class GetMetrics(Command):
 
 @dataclass(frozen=True)
 class GetGraphVisualization(Command):
+    """Request for one page of a paginated graph visualization.
+
+    The pool the slice is taken from is `max_entities * page_count` top entities; the
+    response returns the `page`-th slice of that pool and its share of the pool's edges.
+    The default (page=0, page_count=1) reproduces a single whole-pool request.
+    """
+
     rag_id: int
     max_entities: int = GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES
     search: str | None = None
+    page: int = 0
+    page_count: int = 1
+
+    def __post_init__(self) -> None:
+        if self.page_count < 1:
+            raise ValueError("page_count must be at least 1.")
+        if self.page < 0 or self.page >= self.page_count:
+            raise ValueError(
+                f"page must be in [0, page_count) (got page={self.page}, page_count={self.page_count})."
+            )
 
 
 @dataclass(frozen=True)
@@ -88,10 +117,24 @@ class GetGraphTableData(Command):
     page: int = GRAPH_TABLE_DEFAULT_PAGE
     page_size: int = GRAPH_TABLE_DEFAULT_PAGE_SIZE
     search: str | None = None
+    # Which columns `search` matches against. `ALL` (default) keeps the main table's
+    # behaviour — any user-facing column. `IDENTITY` narrows to id + the per-table label
+    # column(s), used by the linked-to picker so the list is not polluted by body-text hits.
+    search_scope: GraphTableSearchScope = GraphTableSearchScope.ALL
     # Optional exact-match filter on a single column. Both filter_column and
     # filter_value must be set together; the match is applied before `search`.
     filter_column: str | None = None
     filter_value: str | None = None
+    # Optional graph-relation filter: keep rows linked to a row of another table.
+    # Both parts must be sent together; the relation is resolved through the graph
+    # index. Only pairs listed in link_resolver.ALLOWED_PAIRS are supported — every
+    # other (subject, target) pair raises UnsupportedError (400).
+    linked_to_type: GraphOutputTableEnum | None = None
+    linked_to_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if (self.linked_to_type is None) != (self.linked_to_id is None):
+            raise ValueError("linked_to_type and linked_to_id must be set together.")
 
 
 @dataclass(frozen=True)

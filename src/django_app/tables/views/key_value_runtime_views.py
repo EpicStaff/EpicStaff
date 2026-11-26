@@ -23,6 +23,7 @@ class KeyValueRuntimeAPIView(APIView):
     the org scoping itself: org comes from the session, never from the caller."""
 
     permission_classes = [IsSystemApiKeyAuthenticated]
+    uses_organization_context = False
     service = KeyValueTableService()
 
     @not_a_user_change

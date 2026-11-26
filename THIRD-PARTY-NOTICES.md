@@ -12,7 +12,7 @@ The EpicStaff project itself is licensed under the terms found in [LICENSE](./LI
 
 <!-- BEGIN GENERATED: frontend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: Wed, 11 Nov 2026 08:25:03 GMT -->
+<!-- generated: 2026-11-20T15:11:03Z UTC -->
 <!-- commit: 042e01bd097a98bb7ce60bdbb4635d0d37845a26 -->
 <!-- package-lock.json sha256: d7c8adf8cadb653b -->
 
@@ -3923,9 +3923,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-11-18T16:47:29Z UTC -->
-<!-- commit: 7152070ff9b544bd0af0aaf5fc1facf8602f2f39 -->
-<!-- lock-hashes: agent:0c689df76182ac6e, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:cda89198106b5fd2, django_app:2dab19b63cdf77d8, es_plugins:dbaccc6cdbe28892, foundation:eb9639484fc6d726, knowledge_new:7a6820ead7c8032f, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:eacb693cf9accb5e, sandbox:117c57af453053a0, sandbox_new:a43e19009b028dcd, shared:4fe7d63d599aa036, webhook:be4edcbb5252064a -->
+<!-- generated: 2026-11-26T13:20:04Z UTC -->
+<!-- commit: 1f23de097bfb7ebd5b3a9590635f62a70bd478fe -->
+<!-- lock-hashes: agent:fc6db491b10362f7, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:d70ae5876449fdea, django_app:a46a1a072518e92d, es_plugins:dbaccc6cdbe28892, foundation:eb9639484fc6d726, knowledge_new:52b034c6d59b3142, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:eacb693cf9accb5e, sandbox:117c57af453053a0, sandbox_new:a43e19009b028dcd, shared:65c1a59f70ec0dc0, webhook:be4edcbb5252064a -->
 
 ## Backend (Python)
 
@@ -3935,42 +3935,38 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 
 | License | Packages |
 |---|---|
-| MIT License | 76 |
+| MIT License | 75 |
 | MIT | 74 |
-| BSD-3-Clause | 31 |
+| BSD-3-Clause | 55 |
 | Apache Software License | 27 |
 | Apache-2.0 | 25 |
-| BSD License | 25 |
-| BSD-2-Clause | 6 |
-| Apache Software License; MIT License | 4 |
+| BSD-2-Clause | 10 |
+| LGPL-3.0-only | 4 |
 | Apache License 2.0 | 3 |
-| Apache Software License; BSD License | 3 |
-| LGPL-3.0-only | 3 |
+| Apache-2.0 OR BSD-2-Clause | 3 |
 | MIT AND PSF-2.0 | 3 |
 | 3-Clause BSD License | 2 |
+| Apache Software License; MIT License | 2 |
 | Apache-2.0 AND CNRI-Python | 2 |
-| BSD License; Public Domain | 2 |
 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | 2 |
 | ISC | 2 |
 | ISC License (ISCL) | 2 |
 | Mozilla Public License 2.0 (MPL 2.0) | 2 |
 | Python Software Foundation License | 2 |
+| (Apache-2.0 OR BSD-3-Clause) AND BSD-3-Clause AND Apache-2.0 AND MIT AND BSD-2-Clause AND Zlib AND libpng-2.0 AND libtiff AND FTL AND IJG AND Unicode-3.0 | 1 |
 | Apache 2.0 | 1 |
+| Apache-2.0 AND BSD-3-Clause | 1 |
 | Apache-2.0 AND MIT | 1 |
-| Apache-2.0 OR BSD-2-Clause | 1 |
 | Apache-2.0 OR BSD-3-Clause | 1 |
 | Apache-2.0 OR MIT | 1 |
-| BSD | 1 |
 | BSD 3-Clause OR Apache-2.0 | 1 |
-| BSD-3-Clause, Apache-2.0, dependency licenses | 1 |
-| GNU Library or Lesser General Public License (LGPL) | 1 |
 | MIT-0 | 1 |
 | MIT-CMU | 1 |
 | MPL-2.0 AND (Apache-2.0 OR MIT) | 1 |
 | MPL-2.0 AND MIT | 1 |
 | PSF-2.0 | 1 |
 | The Unlicense (Unlicense) | 1 |
-| **Total** | **311** |
+| **Total** | **308** |
 
 ### Python package index
 
@@ -3991,12 +3987,12 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `argon2-cffi` | 23.1.0 | MIT | Copyright (c) 2015 Hynek Schlawack and the argon2-cffi contributors |
 | `argon2-cffi-bindings` | 25.1.0 | MIT | Copyright (c) 2021 Hynek Schlawack |
 | `argon2-cffi-bindings` | 26.1.0 | MIT | Copyright (c) 2021 Hynek Schlawack and the argon2-cffi-bindings contributors |
-| `asgiref` | 3.12.1 | BSD License | Copyright (c) Django Software Foundation and individual contributors. |
+| `asgiref` | 3.12.1 | BSD-3-Clause | Copyright (c) Django Software Foundation and individual contributors. |
 | `asttokens` | 2.4.1 | Apache 2.0 | copyright notice that is included in or attached to the work |
 | `asyncpg` | 0.30.0 | Apache Software License | Copyright (C) 2016-present the asyncpg authors and contributors. |
 | `asyncpg` | 0.32.0 | Apache-2.0 | Copyright (C) 2016-present the asyncpg authors and contributors. |
 | `attrs` | 26.1.0 | MIT | Copyright (c) 2015 Hynek Schlawack and the attrs contributors |
-| `Authlib` | 1.7.2 | BSD License | Copyright (c) 2017, Hsiaoming Yang |
+| `Authlib` | 1.7.2 | BSD-3-Clause | Copyright (c) 2017, Hsiaoming Yang |
 | `azure-core` | 1.41.0 | MIT | Copyright (c) Microsoft Corporation. |
 | `azure-cosmos` | 4.16.3 | MIT License | Copyright (c) Microsoft Corporation. |
 | `azure-identity` | 1.25.3 | MIT | Copyright (c) Microsoft Corporation. |
@@ -4006,7 +4002,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `beartype` | 0.22.9 | MIT License | Copyright (c) 2014-2025 Beartype authors. |
 | `beautifulsoup4` | 4.15.0 | MIT License | Copyright (c) Leonard Richardson |
 | `black` | 26.10.1 | MIT | Copyright (c) 2018 Łukasz Langa |
-| `blis` | 1.3.3 | BSD License | copyright info. All parties provide their portions of the code under the |
+| `blis` | 1.3.3 | BSD-3-Clause | copyright info. All parties provide their portions of the code under the |
 | `boto3` | 1.43.111 | Apache-2.0 | copyright notice that is included in or attached to the work |
 | `boto3` | 1.43.125 | Apache-2.0 | copyright notice that is included in or attached to the work |
 | `boto3-stubs` | 1.43.111 | MIT | Copyright (c) 2026 Vlad Emelianov |
@@ -4019,16 +4015,14 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `catalogue` | 2.0.10 | MIT License | Copyright (c) 2019 ExplosionAI GmbH |
 | `certifi` | 2026.10.23 | Mozilla Public License 2.0 (MPL 2.0) | Copyright (c) Kenneth Reitz |
 | `cffi` | 2.1.1 | MIT-0 | Copyright (c) Armin Rigo, Maciej Fijalkowski |
-| `channels` | 4.3.2 | BSD License | Copyright (c) Django Software Foundation and individual contributors. |
-| `channels_redis` | 4.3.0 | BSD | Copyright (c) Django Software Foundation and individual contributors. |
+| `channels` | 4.3.2 | BSD-3-Clause | Copyright (c) Django Software Foundation and individual contributors. |
+| `channels_redis` | 4.3.0 | BSD-3-Clause | Copyright (c) Django Software Foundation and individual contributors. |
 | `charset-normalizer` | 3.4.7 | MIT | Copyright (c) 2025 TAHRI Ahmed R. |
 | `charset-normalizer` | 3.4.9 | MIT | Copyright (c) 2025 TAHRI Ahmed R. |
-| `chonkie` | 1.7.0 | MIT License | Copyright (c) 2025 Chonkie |
-| `chonkie-core` | 0.10.2 | Apache Software License; MIT License | Copyright (c) Bhavnick Minhas |
 | `click` | 8.4.2 | BSD-3-Clause | Copyright 2014 Pallets |
 | `click` | 8.5.0 | BSD-3-Clause | Copyright 2014 Pallets |
 | `cloudpathlib` | 0.24.0 | MIT License | Copyright (c) 2020 DrivenData Inc. |
-| `colorama` | 0.4.6 | BSD License | Copyright (c) 2010 Jonathan Hartley |
+| `colorama` | 0.4.6 | BSD-3-Clause | Copyright (c) 2010 Jonathan Hartley |
 | `coloredlogs` | 15.0.1 | MIT License | Copyright (c) 2020 Peter Odding |
 | `confection` | 1.3.3 | MIT License | Copyright (c) 2019 ExplosionAI GmbH |
 | `cryptography` | 50.0.1 | Apache-2.0 OR BSD-3-Clause | Copyright (c) The Python Cryptographic Authority and individual contributors <cryptography-dev@python.org> |
@@ -4040,10 +4034,10 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `distro` | 1.9.0 | Apache Software License | copyright notice that is included in or attached to the work |
 | `Django` | 5.1.14 | BSD-3-Clause | Copyright (c) Django Software Foundation and individual contributors. |
 | `django-cors-headers` | 4.6.0 | MIT License | Copyright (c) 2017 Otto Yiu (https://ottoyiu.com) and other contributors. |
-| `django-filter` | 24.3 | BSD License | Copyright (c) Alex Gaynor and individual contributors. |
+| `django-filter` | 24.3 | BSD-3-Clause | Copyright (c) Alex Gaynor and individual contributors. |
 | `django-health-check` | 3.18.3 | MIT License | Copyright (C) 2011-2019 Kristian Øllegaard and contributors |
-| `django-redis` | 5.4.0 | BSD License | Copyright (c) 2011-2016 Andrey Antukh <niwi@niwi.nz> |
-| `django-storages` | 1.14.6 | BSD License | Copyright (c) 2008 - 2023, Josh Schneier, David Larlet, et al. |
+| `django-redis` | 5.4.0 | BSD-3-Clause | Copyright (c) 2011-2016 Andrey Antukh <niwi@niwi.nz> |
+| `django-storages` | 1.14.6 | BSD-3-Clause | Copyright (c) 2008 - 2023, Josh Schneier, David Larlet, et al. |
 | `djangorestframework` | 3.17.2 | BSD-3-Clause | Copyright © 2011-present, [Encode OSS Ltd](https://www.encode.io/). |
 | `djangorestframework_simplejwt` | 5.4.0 | MIT License | Copyright 2017 David Sanders |
 | `dnspython` | 2.8.0 | ISC License (ISCL) | Copyright (C) Dnspython Contributors |
@@ -4051,7 +4045,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `docstring_parser` | 0.18.0 | MIT License | Copyright (c) 2018 Marcin Kurczewski |
 | `drf-spectacular` | 0.29.0 | BSD-3-Clause | Copyright © 2011-present, Encode OSS Ltd. |
 | `email-validator` | 2.3.0 | The Unlicense (Unlicense) | copyright law. |
-| `Events` | 0.5 | BSD License | Copyright (c) 2017 by Nicola Iarocci and contributors.  See AUTHORS |
+| `Events` | 0.5 | BSD-3-Clause | Copyright (c) 2017 by Nicola Iarocci and contributors.  See AUTHORS |
 | `exceptiongroup` | 1.3.1 | MIT License | Copyright (c) 2022 Alex Grönholm |
 | `executing` | 2.2.1 | MIT License | Copyright (c) 2019 Alex Hall |
 | `Faker` | 40.36.0 | MIT License | Copyright (c) 2012 Daniele Faraglia |
@@ -4060,7 +4054,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `fastapi` | 0.141.1 | MIT | Copyright (c) 2018 Sebastián Ramírez |
 | `fastmcp` | 4.1.6 | Apache-2.0 | copyright notice that is included in or attached to the work |
 | `fastmcp-slim` | 4.1.6 | Apache-2.0 | Copyright (c) Jeremiah Lowin, Nate Nowack |
-| `fastuuid` | 0.14.0 | BSD License | Copyright (c) 2019, Omer Katz |
+| `fastuuid` | 0.14.0 | BSD-3-Clause | Copyright (c) 2019, Omer Katz |
 | `filelock` | 3.32.2 | MIT | Copyright (c) 2025 Bernát Gábor and contributors |
 | `filelock` | 3.32.5 | MIT | Copyright (c) 2025 Bernát Gábor and contributors |
 | `flatbuffers` | 25.12.19 | Apache Software License | Copyright (c) Derek Bailey |
@@ -4090,7 +4084,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `httpcore2` | 2.12.0 | BSD-3-Clause | Copyright © 2026 to present Pydantic Services Inc. and individual contributors. |
 | `httpcore2` | 2.16.0 | BSD-3-Clause | Copyright © 2026 to present Pydantic Services Inc. and individual contributors. |
 | `httptools` | 0.8.0 | MIT | Copyright (c) 2015 MagicStack Inc.  http://magic.io |
-| `httpx` | 0.28.1 | BSD License | Copyright © 2019, [Encode OSS Ltd](https://www.encode.io/). |
+| `httpx` | 0.28.1 | BSD-3-Clause | Copyright © 2019, [Encode OSS Ltd](https://www.encode.io/). |
 | `httpx2` | 2.12.0 | BSD-3-Clause | Copyright © 2026 to present Pydantic Services Inc. and individual contributors. |
 | `httpx2` | 2.16.0 | BSD-3-Clause | Copyright © 2026 to present Pydantic Services Inc. and individual contributors. |
 | `huggingface_hub` | 1.26.0 | Apache Software License | copyright notice that is included in or attached to the work |
@@ -4101,15 +4095,15 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `importlib_metadata` | 8.7.1 | Apache-2.0 | Copyright 2025 [name of copyright owner] |
 | `importlib_metadata` | 8.9.0 | Apache-2.0 | Copyright 2026 [name of copyright owner] |
 | `inflection` | 0.5.1 | MIT License | Copyright (C) 2012-2020 Janne Vanhala |
-| `isodate` | 0.7.2 | BSD License | Copyright (c) 2021, Hugo van Kemenade and contributors |
-| `Jinja2` | 3.1.6 | BSD License | Copyright 2007 Pallets |
+| `isodate` | 0.7.2 | BSD-3-Clause | Copyright (c) 2021, Hugo van Kemenade and contributors |
+| `Jinja2` | 3.1.6 | BSD-3-Clause | Copyright 2007 Pallets |
 | `jiter` | 0.16.0 | MIT | Copyright (c) 2022 to present Samuel Colvin |
 | `jmespath` | 1.1.0 | MIT License | Copyright (c) 2013 Amazon.com, Inc. or its affiliates.  All Rights Reserved |
 | `joblib` | 1.5.3 | BSD-3-Clause | Copyright (c) 2008-2021, The joblib developers. |
-| `joserfc` | 1.7.5 | BSD License | Copyright (c) 2023, Hsiaoming Yang |
+| `joserfc` | 1.7.5 | BSD-3-Clause | Copyright (c) 2023, Hsiaoming Yang |
 | `json_repair` | 0.61.7 | MIT | Copyright (c) 2023 Stefano Baccianella |
-| `jsonpatch` | 1.33 | BSD License | Copyright (c) 2011 Stefan Kögl <stefan@skoegl.net> |
-| `jsonpointer` | 3.1.1 | BSD License | Copyright (c) 2011 Stefan Kögl <stefan@skoegl.net> |
+| `jsonpatch` | 1.33 | BSD-3-Clause | Copyright (c) 2011 Stefan Kögl <stefan@skoegl.net> |
+| `jsonpointer` | 3.1.1 | BSD-3-Clause | Copyright (c) 2011 Stefan Kögl <stefan@skoegl.net> |
 | `jsonref` | 1.1.0 | MIT | Copyright (C) 2013 Chase Sterling |
 | `jsonschema` | 4.25.1 | MIT | Copyright (c) 2013 Julian Berman |
 | `jsonschema` | 4.26.0 | MIT | Copyright (c) 2013 Julian Berman |
@@ -4128,7 +4122,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `langgraph-sdk` | 0.4.4 | MIT | Copyright (c) 2024 LangChain, Inc. |
 | `langsmith` | 0.10.15 | MIT | Copyright (c) LangChain <support@langchain.dev> |
 | `langsmith` | 0.12.2 | MIT | Copyright (c) LangChain <support@langchain.dev> |
-| `litellm` | 1.108.1 | MIT | Copyright (c) 2023 Berri AI |
+| `litellm` | 1.108.12 | MIT | Copyright (c) 2023 Berri AI |
 | `litestar` | 2.24.0 | MIT License | Copyright (c) 2021, 2022, 2023, 2024, 2025, 2026 Litestar Org. |
 | `litestar-htmx` | 0.5.0 | MIT License | Copyright (c) 2021, 2022, 2023, 2024 Litestar Org. |
 | `loguru` | 0.7.2 | MIT License | Copyright (c) 2017 |
@@ -4145,7 +4139,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `mcp-types` | 2.3.0 | MIT License | Copyright (c) 2024 Anthropic, PBC |
 | `mdurl` | 0.1.2 | MIT License | Copyright (c) 2015 Vitaly Puzrin, Alex Kocharin. |
 | `miniopy-async` | 1.23.6 | Apache Software License | copyright notice that is included in or attached to the work |
-| `mpmath` | 1.3.0 | BSD License | Copyright (c) 2005-2021 Fredrik Johansson and mpmath contributors |
+| `mpmath` | 1.3.0 | BSD-3-Clause | Copyright (c) 2005-2021 Fredrik Johansson and mpmath contributors |
 | `msal` | 1.37.0 | MIT License | Copyright (c) Microsoft Corporation. |
 | `msal-extensions` | 1.3.1 | MIT License | Copyright (c) Microsoft Corporation. All rights reserved. |
 | `msgpack` | 1.2.2 | Apache-2.0 | Copyright (C) 2008-2011 INADA Naoki <songofacandy@gmail.com> |
@@ -4159,10 +4153,10 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `multipart` | 2.0.1 | MIT License | Copyright (c) 2010-2026, Marcel Hellkamp |
 | `murmurhash` | 1.0.15 | MIT License | Copyright (C) 2016 ExplosionAI GmbH, 2014-2015 Matthew Honnibal, 2016 spaCy GmbH |
 | `mypy_extensions` | 1.1.0 | MIT | Copyright (c) 2016-2017 Jukka Lehtosalo and contributors |
-| `nest-asyncio2` | 1.7.2 | BSD License | Copyright (c) 2018-2020, Ewald de Wit |
+| `nest-asyncio2` | 1.7.2 | BSD-2-Clause | Copyright (c) 2018-2020, Ewald de Wit |
 | `networkx` | 3.6.1 | BSD-3-Clause | Copyright (c) 2004-2025, NetworkX Developers |
 | `nltk` | 3.10.1 | Apache Software License | copyright notice that is included in or attached to the work |
-| `numpy` | 1.26.4 | BSD License | Copyright (c) 2005-2023, NumPy Developers. |
+| `numpy` | 1.26.4 | BSD-3-Clause | Copyright (c) 2005-2023, NumPy Developers. |
 | `numpy` | 2.5.1 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | Copyright (c) 2005-2025, NumPy Developers. |
 | `numpy` | 2.5.3 | BSD-3-Clause AND 0BSD AND MIT AND Zlib AND CC0-1.0 | Copyright (c) 2005-2025, NumPy Developers. |
 | `onnxruntime` | 1.20.1 | MIT License | Copyright (c) Microsoft Corporation |
@@ -4174,15 +4168,15 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `opentelemetry-api` | 1.44.0 | Apache-2.0 | copyright notice that is included in or attached to the work |
 | `orjson` | 3.12.0 | MPL-2.0 AND (Apache-2.0 OR MIT) | copyright notice that is included in or attached to the work |
 | `ormsgpack` | 1.12.2 | Apache-2.0 OR MIT | copyright notice that is included in or attached to the work |
-| `packaging` | 24.0 | Apache Software License; BSD License | Copyright (c) Donald Stufft <donald@stufft.io> |
-| `packaging` | 25.0 | Apache Software License; BSD License | Copyright (c) Donald Stufft <donald@stufft.io> |
+| `packaging` | 24.0 | Apache-2.0 OR BSD-2-Clause | Copyright (c) Donald Stufft <donald@stufft.io> |
+| `packaging` | 25.0 | Apache-2.0 OR BSD-2-Clause | Copyright (c) Donald Stufft <donald@stufft.io> |
 | `packaging` | 26.3 | Apache-2.0 OR BSD-2-Clause | Copyright (c) Donald Stufft <donald@stufft.io> |
-| `pandas` | 3.0.5 | BSD License | Copyright (c) 2008-2011, AQR Capital Management, LLC, Lambda Foundry, Inc. and PyData Development Team |
+| `pandas` | 3.0.5 | BSD-3-Clause | Copyright (c) 2008-2011, AQR Capital Management, LLC, Lambda Foundry, Inc. and PyData Development Team |
 | `pathable` | 0.6.0 | Apache Software License | copyright notice that is included in or attached to the work |
 | `pathspec` | 1.1.1 | Mozilla Public License 2.0 (MPL 2.0) | Copyright (c) "Caleb P. Burns" <cpburnz@gmail.com> |
 | `pdfminer.six` | 20260107 | MIT | Copyright (c) 2004-2016  Yusuke Shinyama <yusuke at shinyama dot jp> |
 | `pdfplumber` | 0.11.10 | MIT License | Copyright (c) 2015, Jeremy Singer-Vine |
-| `Pebble` | 5.2.3 | GNU Library or Lesser General Public License (LGPL) | Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/> |
+| `Pebble` | 5.2.3 | LGPL-3.0-only | Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/> |
 | `pgvector` | 0.3.6 | MIT | Copyright (c) 2021-2024 Andrew Kane |
 | `pgvector` | 0.4.2 | MIT | Copyright (c) 2021-2025 Andrew Kane |
 | `piccolo` | 1.36.0 | MIT License | Copyright (c) 2018 Daniel Townsend |
@@ -4201,11 +4195,11 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `py-key-value-aio` | 0.4.5 | Apache-2.0 | copyright notice that is included in or attached to the work |
 | `pyarrow` | 25.0.0 | Apache-2.0 | copyright notice that is included in or attached to the work |
 | `pyasn1` | 0.6.4 | BSD-2-Clause | Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com> |
-| `pyasn1_modules` | 0.4.2 | BSD License | Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com> |
+| `pyasn1_modules` | 0.4.2 | BSD-2-Clause | Copyright (c) 2005-2020, Ilya Etingof <etingof@gmail.com> |
 | `pycparser` | 3.0 | BSD-3-Clause | Copyright (c) 2008-2022, Eli Bendersky |
 | `pycparser` | 3.12 | BSD-3-Clause | Copyright (c) 2008-2027, Eli Bendersky |
-| `pycryptodome` | 3.23.0 | BSD License; Public Domain | Copyright (c) Helder Eijs |
-| `pycryptodome` | 3.24.1 | BSD License; Public Domain | Copyright (c) Helder Eijs |
+| `pycryptodome` | 3.23.0 | BSD-2-Clause | Copyright (c) Helder Eijs |
+| `pycryptodome` | 3.24.1 | BSD-2-Clause | Copyright (c) Helder Eijs |
 | `pydantic` | 2.13.4 | MIT | Copyright (c) 2017 to present Pydantic Services Inc. and individual contributors. |
 | `pydantic-settings` | 2.15.0 | MIT | Copyright (c) 2022 Samuel Colvin and other contributors |
 | `pydantic_core` | 2.46.4 | MIT | Copyright (c) 2022 Samuel Colvin |
@@ -4213,9 +4207,9 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `Pygments` | 2.21.0 | BSD-2-Clause | Copyright (c) 2006-2022 by the respective authors (see AUTHORS file). |
 | `PyJWT` | 2.15.1 | MIT | Copyright (c) 2015-2022 José Padilla |
 | `pyngrok` | 7.4.1 | MIT | Copyright (c) 2018-2025 Alex Laird |
-| `pypdfium2` | 5.12.1 | BSD-3-Clause, Apache-2.0, dependency licenses | Copyright (c) pypdfium2-team |
-| `pyperclip` | 1.11.0 | BSD License | Copyright (c) 2014, Al Sweigart |
-| `python-dateutil` | 2.9.0.post0 | Apache Software License; BSD License | Copyright 2017- Paul Ganssle <paul@ganssle.io> |
+| `pypdfium2` | 5.12.1 | (Apache-2.0 OR BSD-3-Clause) AND BSD-3-Clause AND Apache-2.0 AND MIT AND BSD-2-Clause AND Zlib AND libpng-2.0 AND libtiff AND FTL AND IJG AND Unicode-3.0 | Copyright (c) pypdfium2-team |
+| `pyperclip` | 1.11.0 | BSD-3-Clause | Copyright (c) 2014, Al Sweigart |
+| `python-dateutil` | 2.9.0.post0 | Apache-2.0 AND BSD-3-Clause | Copyright 2017- Paul Ganssle <paul@ganssle.io> |
 | `python-docx` | 1.2.0 | MIT License | Copyright (c) 2013 Steve Canny, https://github.com/scanny |
 | `python-dotenv` | 1.2.2 | BSD-3-Clause | Copyright (c) 2014, Saurabh Kumar (python-dotenv), 2013, Ted Tieken (django-dotenv-rw), 2013, Jacob Kaplan-Moss (django-dotenv) |
 | `python-multipart` | 0.0.32 | Apache-2.0 | copyright notice that is included in or attached to the work |
@@ -4242,11 +4236,11 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `spacy-legacy` | 3.0.12 | MIT License | Copyright (c) 2021 ExplosionAI GmbH |
 | `spacy-loggers` | 1.0.5 | MIT | Copyright (c) 2021 ExplosionAI GmbH |
 | `SQLAlchemy` | 2.0.51 | MIT | Copyright 2005-2026 SQLAlchemy authors and contributors <see AUTHORS file>. |
-| `sqlparse` | 0.6.0 | BSD License | Copyright (c) 2016, Andi Albrecht <albrecht.andi@gmail.com> |
+| `sqlparse` | 0.6.0 | BSD-3-Clause | Copyright (c) 2016, Andi Albrecht <albrecht.andi@gmail.com> |
 | `srsly` | 2.5.3 | MIT License | Copyright (C) 2018 ExplosionAI UG (haftungsbeschränkt) |
 | `sse-starlette` | 3.4.11 | BSD-3-Clause | Copyright © 2020, [sysid](https://sysid.github.io/). |
 | `starlette` | 1.6.0 | BSD-3-Clause | Copyright © 2018, [Encode OSS Ltd](https://www.encode.io/). |
-| `sympy` | 1.14.0 | BSD License | Copyright (c) 2006-2023 SymPy Development Team |
+| `sympy` | 1.14.0 | BSD-3-Clause | Copyright (c) 2006-2023 SymPy Development Team |
 | `targ` | 0.7.0 | MIT License | Copyright (c) 2020 piccolo-orm |
 | `tenacity` | 9.1.4 | Apache Software License | copyright notice that is included in or attached to the work |
 | `textblob` | 0.20.1 | MIT | Copyright Steven Loria and contributors |
@@ -4256,7 +4250,6 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `tiktoken` | 0.9.0 | MIT License | Copyright (c) 2022 OpenAI, Shantanu Jain |
 | `tokenizers` | 0.23.1 | Apache Software License | Copyright (c) Nicolas Patry <patry.nicolas@protonmail.com>, Anthony Moi <anthony@huggingface.co> |
 | `tokenizers` | 0.23.2 | Apache Software License | Copyright (c) Nicolas Patry <patry.nicolas@protonmail.com>, Anthony Moi <anthony@huggingface.co> |
-| `tokie` | 0.1.4 | Apache Software License; MIT License |  |
 | `toml` | 0.10.2 | MIT License | Copyright 2013-2019 William Pearson |
 | `tqdm` | 4.70.0 | MPL-2.0 AND MIT | Copyright (c) 2013 noamraph |
 | `truststore` | 0.10.4 | MIT | Copyright (c) 2022 Seth Michael Larson |
@@ -4277,7 +4270,7 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `wasabi` | 1.1.3 | MIT | Copyright (C) 2018 Ines Montani |
 | `watchfiles` | 1.2.0 | MIT License | Copyright (c) 2017 to present Samuel Colvin |
 | `weasel` | 1.0.0 | MIT License | Copyright (C) 2022 ExplosionAI GmbH |
-| `websockets` | 13.1 | BSD License | Copyright (c) Aymeric Augustin and contributors |
+| `websockets` | 13.1 | BSD-3-Clause | Copyright (c) Aymeric Augustin and contributors |
 | `websockets` | 16.0 | BSD-3-Clause | Copyright (c) Aymeric Augustin and contributors |
 | `websockets` | 16.1.1 | BSD-3-Clause | Copyright (c) Aymeric Augustin and contributors |
 | `websockets` | 17.1 | BSD-3-Clause | Copyright (c) Aymeric Augustin and contributors |
@@ -5789,7 +5782,7 @@ SOFTWARE.
 
 #### asgiref@3.12.1
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Django Software Foundation
 
 <details><summary>License text</summary>
@@ -6516,7 +6509,7 @@ SOFTWARE.
 
 #### Authlib@1.7.2
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Hsiaoming Yang <me@lepture.com>
 
 <details><summary>License text</summary>
@@ -7064,7 +7057,7 @@ SOFTWARE.
 
 #### blis@1.3.3
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Matthew Honnibal
 
 <details><summary>License text</summary>
@@ -8482,7 +8475,7 @@ documentation is licensed as follows:
 
 #### channels@4.3.2
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Django Software Foundation
 
 <details><summary>License text</summary>
@@ -8523,7 +8516,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #### channels_redis@4.3.0
 
-- **License:** BSD
+- **License:** BSD-3-Clause
 - **Author:** Django Software Foundation
 
 <details><summary>License text</summary>
@@ -8630,49 +8623,6 @@ SOFTWARE.
 
 </details>
 
-> No NOTICE file shipped by upstream.
-
-#### chonkie@1.7.0
-
-- **License:** MIT License
-- **Author:** Bhavnick Minhas <bhavnick@chonkie.ai>, Shreyash Nigam <shreyash@chonkie.ai>
-
-<details><summary>License text</summary>
-
-<pre>
-MIT License
-
-Copyright (c) 2025 Chonkie
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-</pre>
-
-</details>
-
-> No NOTICE file shipped by upstream.
-
-#### chonkie-core@0.10.2
-
-- **License:** Apache Software License; MIT License
-- **Author:** Bhavnick Minhas
-
-> No LICENSE file shipped by upstream wheel.
 > No NOTICE file shipped by upstream.
 
 #### click@8.4.2
@@ -8796,7 +8746,7 @@ SOFTWARE.
 
 #### colorama@0.4.6
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Jonathan Hartley <tartley@tartley.com>
 
 <details><summary>License text</summary>
@@ -9776,7 +9726,7 @@ SOFTWARE.
 
 #### django-filter@24.3
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Alex Gaynor <alex.gaynor@gmail.com>
 
 <details><summary>License text</summary>
@@ -9835,7 +9785,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 #### django-redis@5.4.0
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Andrei Antoukh
 
 <details><summary>License text</summary>
@@ -9875,7 +9825,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #### django-storages@1.14.6
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Josh Schneier <josh.schneier@gmail.com>
 
 <details><summary>License text</summary>
@@ -10171,7 +10121,7 @@ For more information, please refer to &lt;https://unlicense.org/&gt;
 
 #### Events@0.5
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Nicola Iarocci
 
 <details><summary>License text</summary>
@@ -10697,7 +10647,7 @@ Apache License
 
 #### fastuuid@0.14.0
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** UNKNOWN
 
 <details><summary>License text</summary>
@@ -13072,7 +13022,7 @@ THE SOFTWARE.
 
 #### httpx@0.28.1
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Tom Christie <tom@tomchristie.com>
 
 <details><summary>License text</summary>
@@ -13903,7 +13853,7 @@ SOFTWARE.
 
 #### isodate@0.7.2
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Gerhard Weis
 
 <details><summary>License text</summary>
@@ -13943,7 +13893,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #### Jinja2@3.1.6
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** UNKNOWN
 
 <details><summary>License text</summary>
@@ -14098,7 +14048,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #### joserfc@1.7.5
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Hsiaoming Yang <me@lepture.com>
 
 <details><summary>License text</summary>
@@ -14175,7 +14125,7 @@ SOFTWARE.
 
 #### jsonpatch@1.33
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Stefan Kögl
 
 <details><summary>License text</summary>
@@ -14200,7 +14150,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 
 #### jsonpointer@3.1.1
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Stefan Kögl
 
 <details><summary>License text</summary>
@@ -15086,7 +15036,7 @@ SOFTWARE.
 > No LICENSE file shipped by upstream wheel.
 > No NOTICE file shipped by upstream.
 
-#### litellm@1.108.1
+#### litellm@1.108.12
 
 - **License:** MIT
 - **Author:** BerriAI
@@ -15834,7 +15784,7 @@ Apache License
 
 #### mpmath@1.3.0
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Fredrik Johansson
 
 <details><summary>License text</summary>
@@ -16871,7 +16821,7 @@ DEALINGS IN THE SOFTWARE.
 
 #### nest-asyncio2@1.7.2
 
-- **License:** BSD License
+- **License:** BSD-2-Clause
 - **Author:** Ewald R. de Wit
 
 <details><summary>License text</summary>
@@ -17176,7 +17126,7 @@ Apache License
 
 #### numpy@1.26.4
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Travis E. Oliphant et al.
 
 <details><summary>License text</summary>
@@ -21639,7 +21589,7 @@ limitations under the License.
 
 #### packaging@24.0
 
-- **License:** Apache Software License; BSD License
+- **License:** Apache-2.0 OR BSD-2-Clause
 - **Author:** Donald Stufft <donald@stufft.io>
 
 <details><summary>License text</summary>
@@ -21656,7 +21606,7 @@ under the terms of *both* these licenses.
 
 #### packaging@25.0
 
-- **License:** Apache Software License; BSD License
+- **License:** Apache-2.0 OR BSD-2-Clause
 - **Author:** Donald Stufft <donald@stufft.io>
 
 <details><summary>License text</summary>
@@ -21690,7 +21640,7 @@ under the terms of *both* these licenses.
 
 #### pandas@3.0.5
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** The Pandas Development Team <pandas-dev@python.org>
 
 <details><summary>License text</summary>
@@ -23437,7 +23387,7 @@ SOFTWARE.
 
 #### Pebble@5.2.3
 
-- **License:** GNU Library or Lesser General Public License (LGPL)
+- **License:** LGPL-3.0-only
 - **Author:** Matteo Cafasso
 
 <details><summary>License text</summary>
@@ -29004,7 +28954,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 #### pyasn1_modules@0.4.2
 
-- **License:** BSD License
+- **License:** BSD-2-Clause
 - **Author:** Ilya Etingof
 
 <details><summary>License text</summary>
@@ -29124,7 +29074,7 @@ OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #### pycryptodome@3.23.0
 
-- **License:** BSD License; Public Domain
+- **License:** BSD-2-Clause
 - **Author:** Helder Eijs
 
 <details><summary>License text</summary>
@@ -29199,7 +29149,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #### pycryptodome@3.24.1
 
-- **License:** BSD License; Public Domain
+- **License:** BSD-2-Clause
 - **Author:** Helder Eijs
 
 <details><summary>License text</summary>
@@ -29527,7 +29477,7 @@ SOFTWARE.
 
 #### pypdfium2@5.12.1
 
-- **License:** BSD-3-Clause, Apache-2.0, dependency licenses
+- **License:** (Apache-2.0 OR BSD-3-Clause) AND BSD-3-Clause AND Apache-2.0 AND MIT AND BSD-2-Clause AND Zlib AND libpng-2.0 AND libtiff AND FTL AND IJG AND Unicode-3.0
 - **Author:** pypdfium2-team
 
 > No LICENSE file shipped by upstream wheel.
@@ -29535,7 +29485,7 @@ SOFTWARE.
 
 #### pyperclip@1.11.0
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Al Sweigart <al@inventwithpython.com>
 
 <details><summary>License text</summary>
@@ -29576,7 +29526,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #### python-dateutil@2.9.0.post0
 
-- **License:** Apache Software License; BSD License
+- **License:** Apache-2.0 AND BSD-3-Clause
 - **Author:** Gustavo Niemeyer
 
 <details><summary>License text</summary>
@@ -31400,7 +31350,7 @@ SOFTWARE.
 
 #### sqlparse@0.6.0
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Andi Albrecht <albrecht.andi@gmail.com>
 
 <details><summary>License text</summary>
@@ -31556,7 +31506,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #### sympy@1.14.0
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** SymPy development team
 
 <details><summary>License text</summary>
@@ -32156,14 +32106,6 @@ SOFTWARE.
 
 - **License:** Apache Software License
 - **Author:** Nicolas Patry <patry.nicolas@protonmail.com>, Anthony Moi <anthony@huggingface.co>
-
-> No LICENSE file shipped by upstream wheel.
-> No NOTICE file shipped by upstream.
-
-#### tokie@0.1.4
-
-- **License:** Apache Software License; MIT License
-- **Author:** UNKNOWN
 
 > No LICENSE file shipped by upstream wheel.
 > No NOTICE file shipped by upstream.
@@ -33330,7 +33272,7 @@ THE SOFTWARE.
 
 #### websockets@13.1
 
-- **License:** BSD License
+- **License:** BSD-3-Clause
 - **Author:** Aymeric Augustin <aymeric.augustin@m4x.org>
 
 <details><summary>License text</summary>
@@ -33922,7 +33864,7 @@ npm install
 node scripts/generate-third-party-notices.mjs
 ```
 
-The generator reads the production tree from `package-lock.json` and each installed package's own `package.json`; it downloads and runs no third-party tool. It stops, naming the package, when a licence is missing, not an SPDX expression, or uses an identifier outside its reviewed list. It rewrites ONLY the `frontend` region of this file.
+The generator reads the production tree from `package-lock.json` and each installed package's own `package.json`; it downloads and runs no third-party tool. It stops, naming the package, when a licence is missing, not an SPDX expression, or uses an identifier outside `scripts/license-policy.json`. It rewrites ONLY the `frontend` region of this file.
 
 ### What the frontend refresh covers
 
@@ -33940,7 +33882,11 @@ python scripts/generate-python-notices.py
 
 **Run it on Linux**, the platform CI and the shipped images use. The output depends on the platform it runs on: the script records what is actually installed in each service's venv, so on Windows Linux-only packages (such as `uvloop`) drop out, Windows-only ones appear, and a wheel whose metadata lists its files with Windows-style paths can lose its licence text. `--check` compares only the lockfile hashes, so it does not catch a file generated on Windows. On Windows, run it in WSL or a Linux container against a separate copy of the repository, not your working tree: the script syncs every `src/*/.venv` and would replace your Windows venvs.
 
-Stdlib only. For each service it syncs `src/<service>/.venv` from the lockfile (dev and test groups excluded), installs `pip-licenses` into it for the scan and removes it afterwards. `uv` must be on `PATH`. It rewrites ONLY the `backend` region of this file.
+Stdlib only. For each service it syncs `src/<service>/.venv` from the lockfile (dev and test groups excluded), installs `pip-licenses` into it for the scan and removes it afterwards. `uv` must be on `PATH`. It stops without writing when a service cannot be scanned. It rewrites ONLY the `backend` region of this file.
+
+### Licence policy
+
+After regenerating either half, run `node scripts/check-licenses.mjs`. It checks every package listed in this file against `scripts/license-policy.json` and names each one whose licence we may not ship; a pull request that fails it cannot merge, and a daily run on `main` (`.github/workflows/license-scan.yml`) emails the team when it finds one. A Python package whose metadata names no clear SPDX licence is pinned in `SPDX_OVERRIDES` in `scripts/generate-python-notices.py` after reading the licence text it ships.
 
 ## Manual overrides applied
 

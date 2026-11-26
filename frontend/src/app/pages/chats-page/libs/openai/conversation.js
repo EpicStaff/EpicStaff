@@ -11,6 +11,31 @@ import { RealtimeUtils } from "./utils.js";
  */
 
 /**
+ * The realtime service wraps every tool result sent to the model in an
+ * untrusted-data envelope: {"type": "tool_result", "note": ..., "content": ...}.
+ * The user only needs the content; any other output is shown as is.
+ * @param {string} output
+ * @returns {string}
+ */
+function unwrapToolResult(output) {
+  let envelope;
+  try {
+    envelope = JSON.parse(output);
+  } catch {
+    return output;
+  }
+  if (
+    envelope !== null &&
+    typeof envelope === "object" &&
+    envelope.type === "tool_result" &&
+    typeof envelope.content === "string"
+  ) {
+    return envelope.content;
+  }
+  return output;
+}
+
+/**
  * RealtimeConversation holds conversation history
  * and performs event validation for RealtimeAPI
  * @class
@@ -72,7 +97,7 @@ export class RealtimeConversation {
         newItem.status = "in_progress";
       } else if (newItem.type === "function_call_output") {
         newItem.status = "completed";
-        newItem.formatted.output = newItem.output;
+        newItem.formatted.output = unwrapToolResult(newItem.output);
       }
       return { item: newItem, delta: null };
     },

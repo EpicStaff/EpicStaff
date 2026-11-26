@@ -23,9 +23,10 @@ import { ChatDesksStorageService } from '../../services/chat-desks-storage.servi
 import { ChatInboxStreamService } from '../../services/chat-inbox-stream.service';
 import { ConversationListPreferencesService } from '../../services/conversation-list-preferences.service';
 import { ConversationListSection } from '../../utils/conversation-list-tab.util';
+import { CONVERSATION_SECTIONS } from '../../utils/conversation-section.util';
 import { SEARCH_DEBOUNCE_MS } from '../conversation-list-toolbar/conversation-list-toolbar.component';
 import { ConversationListComponent } from './conversation-list.component';
-import { CONVERSATION_SECTIONS, ConversationListStore } from './conversation-list.store';
+import { ConversationListStore } from './conversation-list.store';
 
 const PREFERENCES_KEY = 'chat:conversationList';
 
@@ -223,8 +224,8 @@ describe('ConversationListComponent', () => {
         )!;
     const sectionLabels = (): string[] => text('.conversation-section-header__label');
     // Remembered per browser, and as the column shows them.
-    const rememberedSection = (): ChatInboxSection | null =>
-        TestBed.inject(ConversationListPreferencesService).expanded();
+    const rememberedSections = (): readonly ConversationListSection[] =>
+        TestBed.inject(ConversationListPreferencesService).openSections();
     const expandedSections = (): ConversationListSection[] =>
         store()
             .view()
@@ -281,7 +282,7 @@ describe('ConversationListComponent', () => {
         answerNextLoad(pages, listedSections());
     }
 
-    /** Opens every Inbox section for this column, beside the remembered one. */
+    /** Opens every Inbox section for this column, beside the remembered ones. */
     function showEverySection(): void {
         for (const section of ['waiting', 'in_progress', 'bot', 'closed'] as const) store().openForColumn(section);
         fixture.detectChanges();
@@ -324,15 +325,9 @@ describe('ConversationListComponent', () => {
         fixture.detectChanges();
     }
 
-    beforeEach(() => {
-        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
-        vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
-        IntersectionObserverStub.instances = [];
-        vi.clearAllMocks();
-        localStorage.clear();
-        nextPages = {};
-        serverDesks = [];
-        waitingCount.set(0);
+    /** A fresh column, in a fresh module: it reads what this browser remembers anew. */
+    function createColumn(): void {
+        TestBed.resetTestingModule();
         TestBed.configureTestingModule({
             imports: [ConversationListComponent],
             providers: [
@@ -347,6 +342,24 @@ describe('ConversationListComponent', () => {
         TestBed.inject(ActiveOrgService).set(1);
         fixture = TestBed.createComponent(ConversationListComponent);
         fixture.detectChanges();
+    }
+
+    beforeEach(() => {
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
+        IntersectionObserverStub.instances = [];
+        vi.clearAllMocks();
+        localStorage.clear();
+        nextPages = {};
+        serverDesks = [];
+        waitingCount.set(0);
+        // Most specs start from a user who keeps only Waiting open, and only Tests on Bot Testing: one list to answer
+        // per tab. Every section is open by default (see `sections open by default`).
+        localStorage.setItem(
+            PREFERENCES_KEY,
+            JSON.stringify({ openSections: ['waiting'], openTestingSections: ['test_open'] })
+        );
+        createColumn();
     });
 
     afterEach(() => {
@@ -368,7 +381,7 @@ describe('ConversationListComponent', () => {
             expect(scrolling).toEqual([scrollers[0]]);
         });
 
-        it('lists Waiting for a person, In progress, Bot and Closed in that order on Inbox, only Waiting open', () => {
+        it('lists Waiting for a person, In progress, Bot and Closed in that order on Inbox, only the remembered one open', () => {
             expect(tabButton('Inbox').getAttribute('aria-pressed')).toBe('true');
             expect(text('.conversation-section-header__label')).toEqual([
                 'Waiting for a person',
@@ -446,32 +459,96 @@ describe('ConversationListComponent', () => {
         });
     });
 
-    describe('one section open at a time', () => {
-        it('opens a folded section from its header as the only open one, and remembers it per browser', () => {
-            toggle('Bot');
-            expect(headerStates()).toEqual(['false', 'false', 'true', 'false']);
-            expect(text('.conversation-row__preview')).toEqual(['hello']);
-            expect(rememberedSection()).toBe('bot');
-
-            fixture = TestBed.createComponent(ConversationListComponent);
-            fixture.detectChanges();
-            expect(headerStates()).toEqual(['false', 'false', 'true', 'false']);
-
-            toggle('In progress');
-            expect(headerStates()).toEqual(['false', 'true', 'false', 'false']);
-            expect(rememberedSection()).toBe('in_progress');
+    describe('sections open by default', () => {
+        beforeEach(() => {
+            localStorage.clear();
+            chatApi.getConversations.mockClear();
+            createColumn();
         });
 
-        it('folds the open section from its header, leaving none open, and remembers that too', () => {
-            toggle('Waiting for a person');
-            expect(headerStates()).toEqual(['false', 'false', 'false', 'false']);
-            expect(rememberedSection()).toBeNull();
+        it('opens every Inbox section and loads each of their lists', () => {
+            expect(headerStates()).toEqual(['true', 'true', 'true', 'true']);
+            expect(requestedSections()).toEqual(['waiting', 'in_progress', 'closed', 'bot']);
+            expect(text('.conversation-row__preview')).toEqual(['hello']);
+        });
+
+        it('opens both Bot Testing sections, which load their shared list once', () => {
+            switchTab('Bot Testing');
+            expect(headerStates()).toEqual(['true', 'true']);
+            expect(requestedSections().filter((section) => section === 'test')).toEqual(['test']);
+        });
+
+        it('opens every section for a column remembered when one section was open at a time', () => {
+            localStorage.setItem(PREFERENCES_KEY, JSON.stringify({ expanded: 'bot', testingExpanded: 'test_closed' }));
+            createColumn();
+            expect(headerStates()).toEqual(['true', 'true', 'true', 'true']);
+            switchTab('Bot Testing');
+            expect(headerStates()).toEqual(['true', 'true']);
+        });
+
+        it("pages each open section's list under its own end, several at once", () => {
+            reloadWith({
+                waiting: page([handedOff('h-1', '2026-10-10T08:00:00Z')], 'waiting-2'),
+                in_progress: page([answered('p-1', '2026-10-10T09:00:00Z')], 'in-progress-2'),
+                closed: page([], 'closed-2'),
+                bot: page([row({ id: 'c-1' })], 'bot-2'),
+            });
+            expect(sentinels()).toEqual(['waiting', 'in_progress', 'bot', 'closed']);
 
             chatApi.getConversations.mockClear();
-            fixture = TestBed.createComponent(ConversationListComponent);
-            fixture.detectChanges();
+            scrollToEndOf('in_progress');
+            scrollToEndOf('closed');
+            expect(sentParams()).toEqual([
+                listParams('in_progress', { cursor: 'in-progress-2' }),
+                listParams('closed', { cursor: 'closed-2' }),
+            ]);
+        });
+    });
+
+    describe('each section opens and folds alone', () => {
+        it('opens a folded section from its header beside the open ones, and remembers them per browser', () => {
+            toggle('Bot');
+            expect(headerStates()).toEqual(['true', 'false', 'true', 'false']);
+            expect(text('.conversation-row__preview')).toEqual(['hello']);
+            expect(rememberedSections()).toEqual(['waiting', 'bot']);
+
+            createColumn();
+            expect(headerStates()).toEqual(['true', 'false', 'true', 'false']);
+
+            toggle('In progress');
+            expect(headerStates()).toEqual(['true', 'true', 'true', 'false']);
+            expect(rememberedSections()).toEqual(['waiting', 'in_progress', 'bot']);
+        });
+
+        it('folds one section from its header, the others staying open, and remembers it', () => {
+            toggle('Bot');
+            toggle('Waiting for a person');
+            expect(headerStates()).toEqual(['false', 'false', 'true', 'false']);
+            expect(rememberedSections()).toEqual(['bot']);
+        });
+
+        it('folds the last open section, leaving none open, and remembers that too', () => {
+            toggle('Waiting for a person');
+            expect(headerStates()).toEqual(['false', 'false', 'false', 'false']);
+            expect(rememberedSections()).toEqual([]);
+
+            chatApi.getConversations.mockClear();
+            createColumn();
             expect(headerStates()).toEqual(['false', 'false', 'false', 'false']);
             expect(chatApi.getConversations).not.toHaveBeenCalled();
+        });
+
+        it('remembers the sections of each tab apart', () => {
+            switchTab('Bot Testing');
+            toggle('Closed');
+            expect(headerStates()).toEqual(['true', 'true']);
+            toggle('Tests');
+            expect(headerStates()).toEqual(['false', 'true']);
+            expect(TestBed.inject(ConversationListPreferencesService).openTestingSections()).toEqual(['test_closed']);
+
+            switchTab('Inbox');
+            expect(headerStates()).toEqual(['true', 'false', 'false', 'false']);
+            expect(rememberedSections()).toEqual(['waiting']);
         });
 
         it('never requests a folded section, and loads it when it is opened', () => {
@@ -485,13 +562,14 @@ describe('ConversationListComponent', () => {
             chatApi.getConversations.mockClear();
             readyEpoch.update((value) => value + 1);
             fixture.detectChanges();
-            expect(requestedSections()).toEqual(['in_progress']);
+            expect(requestedSections()).toEqual(['waiting', 'in_progress']);
         });
 
         it('does not request a section again when it is opened again for the same desk', () => {
             toggle('In progress');
             toggle('In progress');
             toggle('In progress');
+            toggle('Waiting for a person');
             toggle('Waiting for a person');
             expect(requestedSections()).toEqual(['waiting', 'in_progress']);
         });
@@ -511,25 +589,11 @@ describe('ConversationListComponent', () => {
                 if (key === PREFERENCES_KEY) throw new Error('denied');
                 setItem.call(this, key, value);
             });
-            TestBed.resetTestingModule();
-            TestBed.configureTestingModule({
-                imports: [ConversationListComponent],
-                providers: [
-                    { provide: ChatApiService, useValue: chatApi },
-                    { provide: ChatInboxStreamService, useValue: chatInboxStream },
-                    { provide: PermissionsService, useValue: permissions },
-                    { provide: ConfirmationDialogService, useValue: { confirm: vi.fn() } },
-                    { provide: ToastService, useValue: { error: vi.fn() } },
-                    { provide: ProfileService, useValue: { currentUserSignal: signal({ id: 3 }) } },
-                ],
-            });
-            TestBed.inject(ActiveOrgService).set(1);
-            fixture = TestBed.createComponent(ConversationListComponent);
-            fixture.detectChanges();
-            expect(headerButton('Closed').getAttribute('aria-expanded')).toBe('false');
+            createColumn();
+            expect(headerButton('Closed').getAttribute('aria-expanded')).toBe('true');
 
             toggle('Closed');
-            expect(headerButton('Closed').getAttribute('aria-expanded')).toBe('true');
+            expect(headerButton('Closed').getAttribute('aria-expanded')).toBe('false');
             switchTab('Bot Testing');
             expect(tabButton('Bot Testing').getAttribute('aria-pressed')).toBe('true');
         });
@@ -538,9 +602,14 @@ describe('ConversationListComponent', () => {
             let scroller: HTMLElement;
             let botTop: number;
 
-            /** The column, 600px tall, is scrolled `scrollTop` down; the Bot section starts at `sectionTopOnScreen`. */
+            /**
+             * The column, 600px tall from 100px down the screen, with 40px headers, is scrolled `scrollTop` down; the
+             * Bot section starts at `sectionTopOnScreen`.
+             */
             function scrolledWithBotAt(sectionTopOnScreen: number, scrollTop = 500): void {
                 scroller = host().querySelector<HTMLElement>('.conversation-list__scroller')!;
+                // The stylesheet's header height, which jsdom does not apply.
+                scroller.style.setProperty('scroll-padding-top', '40px');
                 const botStart = host().querySelector<HTMLElement>(
                     '.conversation-list__section-start[data-section="bot"]'
                 )!;
@@ -571,21 +640,22 @@ describe('ConversationListComponent', () => {
                 scrolledWithBotAt(150);
                 toggle('Bot');
                 await fixture.whenStable();
+                expect(headerButton('Bot').getAttribute('aria-expanded')).toBe('false');
                 expect(scroller.scrollTop).toBe(500);
             });
 
-            it('keeps an opened header where it was pressed while the open section above it folds', async () => {
+            it('keeps an opened header where it was pressed when what is above it moves', async () => {
                 scrolledWithBotAt(400, 1000);
                 headerButton('Bot').click();
                 botTop = -500;
                 fixture.detectChanges();
                 await fixture.whenStable();
 
-                expect(headerStates()).toEqual(['false', 'false', 'true', 'false']);
+                expect(headerStates()).toEqual(['true', 'false', 'true', 'false']);
                 expect(scroller.scrollTop).toBe(100);
             });
 
-            describe('a pinned header pressed at the bottom, its section below the view', () => {
+            describe('a pinned header pressed at the bottom', () => {
                 let scrolled: Element[];
 
                 beforeEach(() => {
@@ -608,15 +678,35 @@ describe('ConversationListComponent', () => {
                     expect(scroller.scrollTop).toBe(500);
                 });
 
-                it('scrolls nowhere as it folds', async () => {
+                // Bot's header is pinned above Closed's: the bottom 80px of the 600px column, from 520px in view down.
+                it.each([
+                    { where: 'below the view', offsetInView: 650 },
+                    { where: 'in the pinned header under its own', offsetInView: 590 },
+                    { where: 'at the top of its own pinned header', offsetInView: 521 },
+                ])(
+                    'brings an open section starting $where up to the top instead of folding it, remembering nothing',
+                    async ({ offsetInView }) => {
+                        await openBot();
+                        scrolledWithBotAt(100 + offsetInView);
+                        toggle('Bot');
+                        await fixture.whenStable();
+
+                        expect(headerButton('Bot').getAttribute('aria-expanded')).toBe('true');
+                        expect(scrolled.map((element) => (element as HTMLElement).dataset['section'])).toEqual(['bot']);
+                        expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
+                        expect(rememberedSections()).toEqual(['waiting', 'bot']);
+                    }
+                );
+
+                it('folds an open section starting just above the pinned headers: its header is not pinned', async () => {
                     await openBot();
-                    scrolledWithBotAt(750);
+                    scrolledWithBotAt(100 + 520);
                     toggle('Bot');
                     await fixture.whenStable();
 
                     expect(headerButton('Bot').getAttribute('aria-expanded')).toBe('false');
                     expect(scrolled).toEqual([]);
-                    expect(scroller.scrollTop).toBe(500);
+                    expect(rememberedSections()).toEqual(['waiting']);
                 });
             });
         });
@@ -635,7 +725,7 @@ describe('ConversationListComponent', () => {
                 expect(expandedSections()).toEqual(['test_open']);
                 expect(sectionLabels()).toEqual(['Tests', 'Closed']);
                 expect(TestBed.inject(ConversationListPreferencesService).tab()).toBe('inbox');
-                expect(rememberedSection()).toBe('waiting');
+                expect(rememberedSections()).toEqual(['waiting']);
                 expect(chatApi.getConversations).toHaveBeenLastCalledWith(listParams('test'));
                 expect(scrolled.map((element) => (element as HTMLElement).dataset['section'])).toEqual(['test_open']);
                 expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'start' });
@@ -979,13 +1069,16 @@ describe('ConversationListComponent', () => {
             expect(ids('bot')).toEqual(['c-1']);
         });
 
-        it('reloads the open section when the desk changes, and forgets what a folded one had loaded', () => {
+        it('reloads the open sections when the desk changes, and forgets what a folded one had loaded', () => {
             toggle('In progress');
             chatApi.getConversations.mockClear();
             scopeTo('b-2');
-            expect(sentParams()).toEqual([listParams('in_progress', { binding: 'b-2' })]);
+            expect(sentParams()).toEqual([
+                listParams('waiting', { binding: 'b-2' }),
+                listParams('in_progress', { binding: 'b-2' }),
+            ]);
 
-            toggle('Waiting for a person');
+            toggle('In progress');
             chatApi.getConversations.mockClear();
             scopeTo('b-3');
             expect(sentParams()).toEqual([listParams('waiting', { binding: 'b-3' })]);
@@ -1082,10 +1175,9 @@ describe('ConversationListComponent', () => {
             expect(sectionLabels()).toEqual(['Tests', 'Closed']);
             expect(shownIn('test_open')).toEqual(['t-open']);
 
-            answerNextLoad({ test: tests() }, ['test_closed']);
             toggle('Closed');
             expect(shownIn('test_closed')).toEqual(['t-closed']);
-            expect(shownIn('test_open')).toEqual([]);
+            expect(shownIn('test_open')).toEqual(['t-open']);
 
             switchTab('Inbox');
             expect(host().querySelector('[data-id="t-open"], [data-id="t-closed"]')).toBeNull();
@@ -1109,7 +1201,7 @@ describe('ConversationListComponent', () => {
                 expect(expandedSections()).toEqual(['waiting', 'in_progress', 'bot', 'closed']);
                 expect(sentParams()).toContainEqual(listParams('closed', { q: '12' }));
                 expect(ids('closed')).toEqual(['x-1']);
-                expect(rememberedSection()).toBe('waiting');
+                expect(rememberedSections()).toEqual(['waiting']);
 
                 answerNextSearch({});
                 typeSearch('123');
@@ -1140,21 +1232,21 @@ describe('ConversationListComponent', () => {
 
                 toggle('Waiting for a person');
                 expect(expandedSections()).not.toContain('waiting');
-                expect(rememberedSection()).toBe('waiting');
+                expect(rememberedSections()).toEqual(['waiting']);
 
                 typeSearch('');
                 expect(expandedSections()).toEqual(['waiting']);
-                expect(rememberedSection()).toBe('waiting');
+                expect(rememberedSections()).toEqual(['waiting']);
             });
 
-            it('folds back to the section the user keeps open', () => {
+            it('folds back to the sections the user keeps open', () => {
                 chatApi.getConversations.mockReturnValueOnce(page([]));
                 toggle('Closed');
                 answerNextSearch({});
                 typeSearch('12');
                 settle();
                 typeSearch('');
-                expect(expandedSections()).toEqual(['closed']);
+                expect(expandedSections()).toEqual(['waiting', 'closed']);
             });
         });
     });
@@ -1455,6 +1547,7 @@ describe('ConversationListComponent', () => {
 
             toggle('In progress');
             expect(text('.conversation-list__section-empty .conversation-list__empty-title')).toEqual([
+                'Nobody is waiting for you',
                 'None of yours in progress',
             ]);
         });
@@ -1645,13 +1738,16 @@ describe('ConversationListComponent', () => {
             expect(animations).toEqual([]);
         });
 
-        it('moves nothing when another section opens and the open one folds: neither fades nor slides', async () => {
+        it('moves nothing when a section opens or folds: neither fades nor slides', async () => {
             reloadWith({ waiting: page([handedOff('h-1', '2026-10-10T08:00:00Z')]) });
             await render();
             positions.set('h-1', 0);
 
             toggle('Bot');
             positions.set('c-1', 40);
+            await render();
+            toggle('Waiting for a person');
+            positions.set('c-1', 0);
             await render();
 
             expect(host().querySelector('[data-id="h-1"]')).toBeNull();
@@ -1957,9 +2053,28 @@ describe('ConversationListComponent', () => {
             expect(lookUp('c-5')).toEqual(expect.objectContaining({ id: 'c-5' }));
         });
 
-        it('keeps saying loading while a section failed: an id it lacks may just not have arrived', () => {
-            reloadWith({ waiting: throwError(() => new HttpErrorResponse({ status: 500 })) });
+        it('says missing once a section failed: nothing more is coming, so the page asks the server by id', () => {
+            showEverySection();
+            const bot$ = new Subject<ChatConversationPage>();
+            reloadWith({ waiting: throwError(() => new HttpErrorResponse({ status: 500 })), bot: bot$ });
             expect(lookUp('c-404')).toBe('loading');
+
+            bot$.next({ results: [], next_cursor: null });
+            fixture.detectChanges();
+            expect(lookUp('c-404')).toBe('missing');
+        });
+
+        it('waits again for a failed section opened anew, which asks for it again', () => {
+            reloadWith({ waiting: throwError(() => new HttpErrorResponse({ status: 500 })) });
+            toggle('Waiting for a person');
+            const waiting$ = new Subject<ChatConversationPage>();
+            answerNextLoad({ waiting: waiting$ }, ['waiting']);
+            toggle('Waiting for a person');
+            expect(lookUp('c-5')).toBe('loading');
+
+            waiting$.next({ results: [handedOff('c-5', '2026-10-10T08:00:00Z')], next_cursor: null });
+            fixture.detectChanges();
+            expect(lookUp('c-5')).toEqual(expect.objectContaining({ id: 'c-5' }));
         });
 
         it('says missing once what it shows has loaded without it, whatever keeps it out', () => {
@@ -2023,20 +2138,23 @@ describe('ConversationListComponent', () => {
             fixture.componentInstance.revealConversation(row({ id: 'c-1' }));
             fixture.detectChanges();
 
-            expect(rememberedSection()).toBe('closed');
+            expect(rememberedSections()).toEqual(['waiting', 'closed']);
             expect(TestBed.inject(ConversationListPreferencesService).isMineOnly()).toBe(true);
         });
 
-        it('ends the openings for the column at a press on a header: an open section folds alone, a folded one opens alone', () => {
+        it('ends an opening for the column when its section is folded; a press on another header keeps the rest', () => {
             showEverySection();
 
             toggle('Closed');
             expect(expandedSections()).toEqual(['waiting', 'in_progress', 'bot']);
-            expect(rememberedSection()).toBe('waiting');
+            expect(rememberedSections()).toEqual(['waiting']);
 
             toggle('Closed');
-            expect(expandedSections()).toEqual(['closed']);
-            expect(rememberedSection()).toBe('closed');
+            expect(expandedSections()).toEqual(['waiting', 'in_progress', 'bot', 'closed']);
+            expect(rememberedSections()).toEqual(['waiting', 'closed']);
+
+            createColumn();
+            expect(expandedSections()).toEqual(['waiting', 'closed']);
         });
 
         it("focuses a conversation's row, or the row Tab lands on once that one is gone", () => {

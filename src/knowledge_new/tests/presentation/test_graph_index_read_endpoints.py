@@ -6,12 +6,13 @@ repository is faked and points at a temporary directory of parquet files.
 
 import pandas
 import pytest
+from application.graph_index_read_limits import GRAPH_VISUALIZATION_MAX_MAX_ENTITIES
 from application.ports import AbstractUnitOfWork
 from litestar import Litestar
 from litestar.di import Provide
 from litestar.testing import TestClient
 from presentation.rest.controllers import rag as rag_controller
-from presentation.rest.controllers.rag import RagController
+from presentation.rest.controllers.rag import GraphRagReadController, RagController
 from presentation.rest.error_handlers import get_error_handlers
 
 from tests.orchestrators.graph_output_fakes import FakeGraphRagRepo, write_table
@@ -36,7 +37,7 @@ class _FileStorageUow(AbstractUnitOfWork):
 
 def _client_for(repo: FakeGraphRagRepo):
     app = Litestar(
-        route_handlers=[RagController],
+        route_handlers=[RagController, GraphRagReadController],
         signature_types=[AbstractUnitOfWork],
         dependencies={"uow": Provide(lambda: _FileStorageUow(repo), sync_to_thread=False)},
         exception_handlers=get_error_handlers(),
@@ -123,13 +124,32 @@ def test_visualization_applies_the_default_of_two_hundred_entities(client, tmp_p
     assert len(response.json()["entities"]) == 200
 
 
-def test_visualization_has_no_upper_cap_on_max_entities(client, tmp_path):
-    _write_graph(tmp_path, 250)
+def test_visualization_caps_at_max_max_entities(client, tmp_path):
+    # The controller declares `le=GRAPH_VISUALIZATION_MAX_MAX_ENTITIES` on max_entities,
+    # so anything above it must be rejected as a 400 validation error — the browser
+    # cannot ask the server to render an arbitrarily large graph.
+    _write_graph(tmp_path, 10)
 
-    response = client.get("/rags/graph/1/visualization/", params={"max_entities": 5000})
+    response = client.get(
+        "/rags/graph/1/visualization/",
+        params={"max_entities": GRAPH_VISUALIZATION_MAX_MAX_ENTITIES + 1},
+    )
+
+    assert response.status_code == 400
+
+
+def test_visualization_accepts_max_entities_at_the_cap(client, tmp_path):
+    # Boundary is inclusive — `le=` in Litestar's Parameter means ≤. One past is a 400
+    # (covered above); exactly the cap is accepted.
+    _write_graph(tmp_path, 10)
+
+    response = client.get(
+        "/rags/graph/1/visualization/",
+        params={"max_entities": GRAPH_VISUALIZATION_MAX_MAX_ENTITIES},
+    )
 
     assert response.status_code == 200
-    assert len(response.json()["entities"]) == 250
+    assert len(response.json()["entities"]) == 10
 
 
 @pytest.mark.parametrize(
@@ -191,3 +211,65 @@ def test_unknown_table_answers_400(client):
 
     assert response.status_code == 400
     assert response.json()["code"] == "unsupported"
+
+
+def test_forbidden_link_pair_answers_400(client, tmp_path):
+    # relationships ↔ relationships is one of the matrix's forbidden same-table pairs.
+    write_table(
+        tmp_path,
+        "entities",
+        pandas.DataFrame(
+            {"id": ["e0"], "title": ["Alpha"], "description": ["a"], "degree": [0]}
+        ),
+    )
+    write_table(
+        tmp_path,
+        "relationships",
+        pandas.DataFrame(
+            {"id": ["r0"], "source": ["Alpha"], "target": ["Beta"], "weight": [1.0]}
+        ),
+    )
+
+    response = client.get(
+        "/rags/graph/1/tables/relationships/",
+        params={"linked_to_type": "relationships", "linked_to_id": "r0"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "unsupported"
+
+
+def test_table_link_pairs_returns_static_matrix(client):
+    # The matrix is per-service, not per-rag — the endpoint sits at the literal
+    # `/rags/graph/` prefix without a rag id, so no graph needs to be written.
+    response = client.get("/rags/graph/table-link-pairs/")
+
+    assert response.status_code == 200
+    body = response.json()
+    # Every subject key is a known table, and every target is too.
+    known_tables = {
+        "entities",
+        "relationships",
+        "communities",
+        "community_reports",
+        "text_units",
+        "documents",
+        "covariates",
+    }
+    assert set(body) == known_tables
+    for subject, targets in body.items():
+        assert set(targets).issubset(known_tables)
+    # Spot checks: the three same-table forbidden pairs really are absent.
+    assert "relationships" not in body["relationships"]
+    assert "text_units" not in body["text_units"]
+    assert "documents" not in body["documents"]
+    # And the headline fix: entities → entities is allowed again.
+    assert "entities" in body["entities"]
+    # The body is a module-level constant per deploy — the response advertises it as
+    # cacheable so the browser stops re-hitting it every time the picker opens.
+    # `private` because the endpoint is behind org-level auth: a shared cache must
+    # not pool responses across principals.
+    cache_control = response.headers.get("cache-control", "")
+    assert "private" in cache_control
+    assert "public" not in cache_control
+    assert "max-age=3600" in cache_control

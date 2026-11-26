@@ -28,6 +28,7 @@
         @for (item of store.view(); track item.section.id) {
             @let section = item.section;
             @let state = item.state;
+            @let icon = sectionIcons[section.id];
             <!-- The last two (Bot or Tests, and Closed) are pinned: their headers stay at the bottom, stacked, while the sections are below. -->
             <section
                 class="conversation-list__section"
@@ -45,9 +46,9 @@
                 <app-conversation-section-header
                     class="conversation-list__section-header"
                     [label]="section.label"
-                    [icon]="section.icon"
-                    [iconSize]="section.iconSize"
-                    [iconColor]="section.iconColor"
+                    [icon]="icon.icon"
+                    [iconSize]="icon.size"
+                    [iconColor]="icon.color"
                     [isExpanded]="item.isExpanded"
                     [controlsId]="sectionBodyId(section.id)"
                     [count]="section.id === 'waiting' ? waitingCount() : null"
@@ -96,6 +97,7 @@
                                             >
                                                 <app-conversation-row
                                                     [conversation]="conversation"
+                                                    [section]="section.id"
                                                     [now]="section.id === 'waiting' ? waitNow() : now()"
                                                     [deskName]="deskNames()?.get(conversation.binding_id) ?? null"
                                                     [rules]="deskRules().get(conversation.binding_id) ?? null"
@@ -133,7 +135,7 @@
                                     }
                                 </div>
                             }
-                            <!-- A list pages under the last open section showing it (see the store's `view`). -->
+                            <!-- A list pages under the last section shown from it, while that one is open (see the store's `view`). -->
                             @if (item.pagesList && state.nextCursor && !state.isLoading) {
                                 <div
                                     #sentinel

@@ -1,6 +1,7 @@
 from collections.abc import Callable
 from datetime import datetime, timedelta
 
+from common.logging import error_summary
 from domain.enums import TERMINAL_RUN_STATUSES
 from domain.errors import RunNotFoundError
 from domain.models import Conversation
@@ -83,7 +84,11 @@ class Reconciler:
                     conversation.id, conversation.active_run_id
                 )
             except Exception as error:  # one bad conversation must not stop the loop
-                logger.error("Release of conversation {} failed: {}", conversation.id, error)
+                # Never the error's text: a failed write's error can quote what it wrote
+                # (message text, a desk's identity secret). The same holds for the loops below.
+                logger.error(
+                    "Release of conversation {} failed: {}", conversation.id, error_summary(error)
+                )
         for conversation, session_id in stale:
             try:
                 resolved += await self._resolve(conversation, session_id, now)
@@ -92,7 +97,7 @@ class Reconciler:
                     "Reconcile of conversation {} (session {}) failed: {}",
                     conversation.id,
                     session_id,
-                    error,
+                    error_summary(error),
                 )
         await self._apply_inactivity_rules(now)
         return resolved
@@ -110,7 +115,9 @@ class Reconciler:
             try:
                 handed_back += await self._timers.hand_back(conversation_id, now)
             except Exception as error:  # one bad conversation must not stop the loop
-                logger.error("Hand-back of conversation {} failed: {}", conversation_id, error)
+                logger.error(
+                    "Hand-back of conversation {} failed: {}", conversation_id, error_summary(error)
+                )
         async with self._uow() as uow:
             idle = await uow.conversations.inactive_past_close_after(now, self._timer_batch)
         closed = 0
@@ -118,7 +125,11 @@ class Reconciler:
             try:
                 closed += await self._timers.close_inactive(conversation_id, now)
             except Exception as error:  # one bad conversation must not stop the loop
-                logger.error("Idle close of conversation {} failed: {}", conversation_id, error)
+                logger.error(
+                    "Idle close of conversation {} failed: {}",
+                    conversation_id,
+                    error_summary(error),
+                )
         if handed_back or closed:
             logger.info(
                 "Handed {} unanswered conversations back to the bot; closed {} idle ones",

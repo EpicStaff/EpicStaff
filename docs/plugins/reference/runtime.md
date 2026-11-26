@@ -52,15 +52,26 @@ Outgoing connections are not affected, within the [connection limits](limits.md#
 plugin did not bind still takes a port, and so does a UDP socket that is connected and never
 sends. So the node stops a plugin whose user has a TCP socket in LISTEN on any port, or holds
 more than 1,280 network sockets, TCP and UDP together. TCP connections the plugin accepted on its
-own port do not count. The plugin's Runtime tab then gives the reason,
-"it listened on TCP port … of its own; …" or "it held … network sockets, more than the 1280 a
-plugin may; …", and the plugin stays stopped until a SuperAdmin restarts it.
+own port do not count. It also stops a plugin whose user holds a TCP connection on another
+port of the node's range: one accepted from a copy of another plugin's listening socket, passed
+to it over a UNIX socket. The plugin's Runtime tab then gives the reason,
+"it listened on TCP port … of its own; …", "it held a TCP connection on the node's port …, which
+is not its own; …" or "it held … network sockets, more than the 1280 a plugin may; …", and the
+plugin stays stopped until a SuperAdmin restarts it.
+
+**A listening socket serves one plugin only.** When a plugin leaves the node or is given another
+port, the node shuts its socket down and binds a fresh one for the next plugin given that port.
+A copy of the old socket that another process still holds cannot listen once the fresh one
+does. If that process makes its copy listen again before the next plugin starts, the next plugin
+waits, and starts once the copy is closed.
 
 `io_uring` is not available: `io_uring_setup`, `io_uring_enter` and `io_uring_register` answer
 `EPERM`, as do the System V IPC calls `shmget`, `msgget` and `semget`, and every system call
 made through a 32-bit ABI. So do `unshare`, `setns`, `keyctl`, `add_key`, `request_key`, `bpf`,
 `perf_event_open` and `userfaultfd`, and `clone` with any namespace flag. `clone3` answers
 `ENOSYS`, and glibc then falls back to `clone`, so threads and child processes work.
+`memfd_create` and `memfd_secret` answer `ENOSYS` too, as on a kernel without them: put such data
+in a file under your TMPDIR, where it counts against your disk cap.
 
 So your lock must pin `uvicorn` and `epicstaff-plugin` (upload refuses a lock without them), and
 your app must be an ASGI app: FastAPI, Starlette, Litestar, Django's ASGI handler and so on.
@@ -93,7 +104,7 @@ The process gets exactly these variables; nothing is inherited from the node.
 | `EPICSTAFF_PLUGIN_RUNTIME_FILE` | `/run/es_plugins/<id>/runtime.json` |
 | `EPICSTAFF_API_URL` | EpicStaff's API as the plugin reaches it, the runtime file's `epicstaff_api_url` |
 | `EPICSTAFF_PUBLIC_URL` | EpicStaff's address in people's browsers, the runtime file's `epicstaff_public_url` |
-| `EPICSTAFF_PLUGIN_PUBLIC_URL` | The plugin's own public address, the runtime file's `public_url` |
+| `EPICSTAFF_PLUGIN_PUBLIC_URL` | The plugin's own public address, the runtime file's `public_url` when the process started. It keeps that value until the process restarts, also after the deployment changes domain; read `public_url` from the runtime file for the current one |
 | `HTTPS_PROXY`, `https_proxy`, `HTTP_PROXY`, `http_proxy` | `http://<id>:<password>@plugins_egress:3128`: the egress proxy, with the plugin's own credentials ([Call the internet from your backend](../how-to/outbound-hosts.md)) |
 | `NO_PROXY`, `no_proxy` | The host of `epicstaff_api_url`, then `localhost,127.0.0.1,::1`: reached directly, not through the proxy |
 | `DATABASE_URL` | With a `database` section only: `postgresql://<id_>_app:<password>@<host>:<port>/plugin_<id_>?application_name=<id>`, the plugin's own database as its app role ([Plugin database](database.md)) |
@@ -115,7 +126,7 @@ A JSON document at `EPICSTAFF_PLUGIN_RUNTIME_FILE`, readable only by the plugin'
   "format": 1,
   "plugin": { "identifier": "weather", "version": "0.2.0" },
   "issuer": "https://epicstaff.example.com",
-  "public_url": "https://weather.plugins.example.com",
+  "public_url": "https://weather-app.example.com",
   "epicstaff_public_url": "https://epicstaff.example.com",
   "epicstaff_api_url": "http://epicstaff-api:8081/api/",
   "settings": { "units": "metric" },
@@ -131,7 +142,7 @@ A JSON document at `EPICSTAFF_PLUGIN_RUNTIME_FILE`, readable only by the plugin'
 | `format` | `1` |
 | `plugin` | The plugin's id and the running version |
 | `issuer` | EpicStaff's public origin, the `iss` of every gateway context |
-| `public_url` | The plugin's own address. Build every external callback address (OAuth redirect URIs and the like) from it; operators keep it stable |
+| `public_url` | The plugin's own address, built from the deployment's `PLUGINS_HOST_TEMPLATE`, so it differs per deployment. Build every external callback address (OAuth redirect URIs and the like) from it. Read it here when you need it and never store it: if the deployment changes domain, the node rewrites this file with the new address without restarting the process, while `EPICSTAFF_PLUGIN_PUBLIC_URL` keeps the old one until a restart |
 | `epicstaff_public_url` | EpicStaff's address in people's browsers |
 | `epicstaff_api_url` | EpicStaff's API from inside the node. Only `/api/` is reachable there, without `/api/auth/` and `/api/admin/` |
 | `settings` | Every non-secret setting: its stored value, else its default. An optional setting with neither is left out |
@@ -144,9 +155,9 @@ Settings are deployment-wide: one value per plugin, set by a SuperAdmin on the p
 tab. Saving them restarts the process, so read them whenever you need them or once at start-up;
 both see the current values.
 
-The node rewrites the file atomically (a rename) when EpicStaff's signing keys change and when
-the plugin's service accounts change, without restarting the process. `RuntimeConfig` in the SDK
-notices the change and reads the file again. A newer EpicStaff may add fields; read the file
+The node rewrites the file atomically (a rename) when EpicStaff's signing keys change, when
+the plugin's service accounts change and when its public address changes, without restarting
+the process. `RuntimeConfig` in the SDK notices the change and reads the file again. A newer EpicStaff may add fields; read the file
 with the SDK, or ignore fields you do not know.
 
 ### Service accounts
@@ -231,12 +242,12 @@ Hence two rules:
 
 ## Limits
 
-The node caps the memory of all processes of the plugin's user together, and runs them at the
-CPU priority the plugin's limits give. Above the cap it stops every process of the plugin and
-restarts it. The cap counts the resident memory of those processes: memory a plugin holds in a
-memory file (`memfd_create`) or a tmpfs is not counted, though the node's own memory limit still
-bounds it. [Limits](limits.md) gives the details, including by how much the memory cap can be
-overshot.
+The node caps the memory of all processes of the plugin's user together, and runs them at the CPU
+priority the plugin's limits give. Above the cap it stops every process of the plugin and restarts
+it. The cap counts the resident memory of those processes, and a plugin cannot keep memory outside
+that count: `memfd_create` and `memfd_secret` answer `ENOSYS`, and it cannot create files on the
+container's tmpfs mounts (`/tmp`, `/dev/shm`, `/run`). [Limits](limits.md) gives the details,
+including by how much the memory cap can be overshot.
 
 ## A development backend
 

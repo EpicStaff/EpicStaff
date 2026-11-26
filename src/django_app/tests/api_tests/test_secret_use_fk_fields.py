@@ -4,8 +4,8 @@ import pytest
 from rest_framework.test import APIClient
 
 from rbac.models import Organization
-from tables.models import EmbeddingConfig, LLMConfig, SystemOneConfig
-from tables.models.embedding_models import EmbeddingModel
+from tables.models import SystemOneConfig
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     Graph,
@@ -14,7 +14,6 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
 )
 from tables.models.llm_models import (
-    LLMModel,
     RealtimeConfig,
     RealtimeModel,
     RealtimeTranscriptionConfig,

@@ -20,12 +20,15 @@ import {
     primaryConversationAction,
 } from '../../utils/conversation-actions.util';
 import { isClosed } from '../../utils/conversation-close.util';
-import { deskRulesOf, operatorName, visitorName, waitDuration } from '../../utils/conversation-row.util';
+import { holderName } from '../../utils/conversation-holder.util';
+import { deskRulesOf, visitorName, waitDuration } from '../../utils/conversation-row.util';
+import { sectionOfConversation } from '../../utils/conversation-section.util';
 import { isWaitingForPerson, isWaitOverdue, WAIT_OVERDUE_NOTE, WAIT_TICK_MS } from '../../utils/conversation-wait.util';
 import { tickingNow } from '../../utils/ticking-now.util';
 import { ChatActionMenuComponent, ChatActionMenuItem } from '../chat-action-menu/chat-action-menu.component';
 import { ChatUsageRingComponent } from '../chat-usage-ring/chat-usage-ring.component';
 import { ConversationAvatarComponent } from '../conversation-avatar/conversation-avatar.component';
+import { ConversationSectionBadgeComponent } from '../conversation-section-badge/conversation-section-badge.component';
 
 /** The ⋯ menu's actions: the conversation's own, and Copy Visitor ID (the header's own, as it changes nothing). */
 type ThreadMenuAction = ConversationAction | 'copy-visitor-id';
@@ -40,7 +43,8 @@ interface ThreadWait {
 }
 
 /**
- * The open conversation's header. On desktop one row: the visitor's avatar; their name, then how long they have waited
+ * The open conversation's header. On desktop one row: the visitor's avatar, with its section's badge as the list's
+ * row has it; their name, then how long they have waited
  * for a person (while they do, as the list's row says it), over the conversation's path (Bot, or Bot / Human with an
  * operator) and its id, which copies; at the end the main action, today's usage against its desk's limits and the ⋯
  * menu. On phones it is also the thread screen's nav bar: Back to the list, the visitor and the ⋯ menu, with the mode
@@ -56,6 +60,7 @@ interface ThreadWait {
         ChatActionMenuComponent,
         ChatUsageRingComponent,
         ConversationAvatarComponent,
+        ConversationSectionBadgeComponent,
     ],
     templateUrl: './chat-thread-header.component.html',
     styleUrl: './chat-thread-header.component.scss',
@@ -81,15 +86,15 @@ export class ChatThreadHeaderComponent {
         const title = this.listTitle();
         return title ? `Back to ${title}` : 'Back';
     });
-    // Who holds the open conversation, for the phone's mode pill tooltip: "you", their name or "Operator #7"; null
-    // while nobody does, and once it is closed.
-    readonly holderLabel = computed(() => {
-        const conversation = this.conversation();
-        const operatorId = conversation.assigned_operator_id ?? null;
-        if (operatorId === null || isClosed(conversation)) return null;
-        if (operatorId === this.profileService.currentUserSignal()?.id) return 'you';
-        return operatorName(operatorId, conversation.assigned_operator_name ?? null);
-    });
+    // Who holds the open conversation, for the section badge's and the phone's mode pill tooltips: "you", their name or
+    // "Operator #7", as the list's row names them (see `holderName`).
+    readonly holderLabel = computed(() =>
+        holderName(this.conversation(), this.profileService.currentUserSignal()?.id ?? null)
+    );
+    /**
+     * The section the list shows the conversation in, for the badge on the avatar; null (no badge) when it is in none.
+     */
+    readonly section = computed(() => sectionOfConversation(this.conversation()));
     /**
      * Why the visitor was handed to a person, while that still matters: not back with the bot, not closed. A line under
      * the row on phones; in the wait chip's tooltip on desktop.
@@ -141,9 +146,9 @@ export class ChatThreadHeaderComponent {
     /** The main action, a button before the usage (see `primaryConversationAction`): on Support, for any holder. */
     readonly primaryAction = computed(() => primaryConversationAction(this.actionContext()));
     /**
-     * The ⋯ menu: the conversation's other actions (see `conversationMenuItems`), then Copy Visitor ID. Copy Visitor ID
-     * is there on any conversation, open or closed, and needs no chats use: it changes nothing. So the menu is never
-     * empty.
+     * The ⋯ menu: the conversation's other actions (see `conversationMenuItems`), then Copy Visitor ID. Copy Visitor
+     * ID is there on any conversation, open or closed, and needs no chats use: it changes nothing. So the menu is
+     * never empty.
      */
     readonly conversationMenuItems = computed((): ChatActionMenuItem<ThreadMenuAction>[] => [
         ...conversationMenuItems(this.actionContext()),

@@ -14,14 +14,14 @@ from tables.models.base_models import (
 
 class DefaultCrewConfig(DefaultBaseModel):
     embedding_config = models.ForeignKey(
-        "EmbeddingConfig",
+        "ai_models.EmbeddingConfig",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         default=None,
     )
     manager_llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -51,14 +51,14 @@ class DefaultAgentConfig(DefaultBaseModel):
     default_temperature = models.FloatField(default=0.8, null=False)
 
     llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         related_name="default_agent_config",
         null=True,
         default=None,
     )
     fcm_llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         related_name="default_agent_fcm_config",
         null=True,
@@ -98,14 +98,14 @@ class Agent(OrgScopedModel, AbstractDefaultFillableModel):
     )
 
     llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         related_name="llm_agents",
         default=None,
     )
     fcm_llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         related_name="fcm_agents",
@@ -261,7 +261,7 @@ class Crew(OrgScopedModel, AbstractDefaultFillableModel):
     process = models.CharField(max_length=255, choices=Process.choices, default=Process.SEQUENTIAL)
     memory = models.BooleanField(null=True, default=None)
     memory_llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -269,14 +269,14 @@ class Crew(OrgScopedModel, AbstractDefaultFillableModel):
         related_name="memory_llm_config",
     )
     embedding_config = models.ForeignKey(
-        "EmbeddingConfig",
+        "ai_models.EmbeddingConfig",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         default=None,
     )
     manager_llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -289,7 +289,7 @@ class Crew(OrgScopedModel, AbstractDefaultFillableModel):
     full_output = models.BooleanField(default=False)
     planning = models.BooleanField(default=False)
     planning_llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         default=None,
         blank=True,
         null=True,
@@ -345,14 +345,14 @@ class TemplateAgent(models.Model):
     max_iter = models.IntegerField(default=25)
 
     llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         related_name="llm_template_agents",
         default=None,
     )
     fcm_llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         on_delete=models.SET_NULL,
         null=True,
         related_name="fcm_template_agents",

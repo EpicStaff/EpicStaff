@@ -2,7 +2,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from tables.models import SourceCollection
-from tables.models.embedding_models import EmbeddingConfig
+from ai_models.models import EmbeddingConfig
 from tables.models.knowledge_models import (
     BaseRagType,
     NaiveRag,

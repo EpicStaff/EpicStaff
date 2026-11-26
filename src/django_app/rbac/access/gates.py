@@ -27,26 +27,6 @@ class IsSuperadmin(BasePermission):
         return bool(user and user.is_authenticated and getattr(user, "is_superadmin", False))
 
 
-class IsSuperadminOrReadOnly(BasePermission):
-    """Authenticated users may read (safe methods); only superadmins may write.
-
-    Method-based companion to `SuperadminWriteMixin` for **global** resources
-    exposed as plain APIViews (default-* config singletons, voice/Twilio
-    settings) where there is no DRF `action`. Reads stay open to any
-    authenticated user; create/update/delete require `is_superadmin`.
-    """
-
-    message = "Superadmin privileges are required to modify this resource."
-
-    def has_permission(self, request, view):
-        user = getattr(request, "user", None)
-        if not (user and user.is_authenticated):
-            return False
-        if request.method in SAFE_METHODS:
-            return True
-        return bool(getattr(user, "is_superadmin", False))
-
-
 class BaseRbacPermission(BasePermission):
     """Shared skeleton for RBAC verb gates (Template Method).
 
@@ -120,8 +100,10 @@ class HasOrgPermission(BaseRbacPermission):
 
         if not effective.can(resource_type, required):
             resource_str = resource_type if isinstance(resource_type, str) else resource_type.value
-            action_name = getattr(view, "action", None)
-            self.message = f"You do not have permission to {action_name} {resource_str}."
+            # Name the missing permission, not the DRF action (`usage`, `partial_update`).
+            # `can` passes on any bit of `required`, so a combined requirement reads as alternatives.
+            verbs = " or ".join(permission.name.lower() for permission in required)
+            self.message = f"You do not have permission to {verbs} {resource_str}."
             return False
         return True
 

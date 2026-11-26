@@ -214,6 +214,19 @@ class TestUpdateDocumentConfig:
                 data={"chunk_strategy": "json"},
             )
 
+    def test_zero_rows_in_chunk_raises_and_keeps_stored_params(self, naive_rag, document_metadata):
+        config = make_naive_rag_config(naive_rag, document_metadata, S.NEW)
+
+        with pytest.raises(InvalidChunkParametersException):
+            NaiveRagService.update_document_config(
+                config_id=config.naive_rag_document_id,
+                naive_rag_id=naive_rag.naive_rag_id,
+                data={"additional_params": {"csv": {"rows_in_chunk": 0}}},
+            )
+
+        config.refresh_from_db()
+        assert config.additional_params == {}
+
     def test_no_op_update_does_not_change_status(self, naive_rag, document_metadata):
         config = make_naive_rag_config(naive_rag, document_metadata, S.COMPLETED)
         original_status = config.status
@@ -226,6 +239,68 @@ class TestUpdateDocumentConfig:
 
         config.refresh_from_db()
         assert config.status == original_status
+
+
+class TestValidateAdditionalParams:
+    @pytest.mark.parametrize(
+        "additional_params",
+        [
+            {},
+            {"unrelated": 1},
+            {"csv": {}},
+            {"csv": {"rows_in_chunk": 1}},
+            {"csv": {"rows_in_chunk": 10000, "headers_level": 0}},
+            {"csv": {"headers_level": 100}},
+            {"character": {}},
+            {"character": {"regex": None}},
+            {"character": {"regex": ""}},
+            {"character": {"regex": "a" * 256}},
+            {"csv": {"rows_in_chunk": 5}, "character": {"regex": ","}, "markdown": {"x": 1}},
+        ],
+    )
+    def test_valid_params_are_accepted(self, additional_params):
+        NaiveRagService.validate_additional_params(additional_params)
+
+    @pytest.mark.parametrize(
+        ("additional_params", "field"),
+        [
+            ({"csv": {"rows_in_chunk": 0}}, "additional_params.csv.rows_in_chunk"),
+            ({"csv": {"rows_in_chunk": -1}}, "additional_params.csv.rows_in_chunk"),
+            ({"csv": {"rows_in_chunk": 10001}}, "additional_params.csv.rows_in_chunk"),
+            ({"csv": {"rows_in_chunk": True}}, "additional_params.csv.rows_in_chunk"),
+            ({"csv": {"rows_in_chunk": "10"}}, "additional_params.csv.rows_in_chunk"),
+            ({"csv": {"rows_in_chunk": 2.5}}, "additional_params.csv.rows_in_chunk"),
+            ({"csv": {"rows_in_chunk": None}}, "additional_params.csv.rows_in_chunk"),
+            ({"csv": {"headers_level": -1}}, "additional_params.csv.headers_level"),
+            ({"csv": {"headers_level": 101}}, "additional_params.csv.headers_level"),
+            ({"csv": {"headers_level": False}}, "additional_params.csv.headers_level"),
+            ({"csv": 5}, "additional_params.csv"),
+            ({"csv": None}, "additional_params.csv"),
+            ({"character": 5}, "additional_params.character"),
+            ({"character": None}, "additional_params.character"),
+            ({"character": {"regex": 5}}, "additional_params.character.regex"),
+            ({"character": {"regex": ["a"]}}, "additional_params.character.regex"),
+            ({"character": {"regex": "a" * 257}}, "additional_params.character.regex"),
+            ([1, 2], "additional_params"),
+        ],
+    )
+    def test_invalid_params_are_rejected_naming_the_field(self, additional_params, field):
+        with pytest.raises(InvalidChunkParametersException) as raised:
+            NaiveRagService.validate_additional_params(additional_params)
+
+        assert [error["field"] for error in raised.value.errors] == [field]
+
+    def test_every_invalid_parameter_is_reported(self):
+        with pytest.raises(InvalidChunkParametersException) as raised:
+            NaiveRagService.validate_additional_params(
+                {"csv": {"rows_in_chunk": 0, "headers_level": -1}, "character": {"regex": 1}}
+            )
+
+        assert [error["field"] for error in raised.value.errors] == [
+            "additional_params.csv.rows_in_chunk",
+            "additional_params.csv.headers_level",
+            "additional_params.character.regex",
+        ]
 
 
 # ---------------------------------------------------------------------------

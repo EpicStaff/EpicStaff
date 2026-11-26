@@ -88,8 +88,8 @@ def next_copy_name(
             transaction ends (other rows a restore brings back), so they count as taken.
         case_insensitive_names: The model's names are unique regardless of case, so
             "report" counts as taking "Report".
-        slug_names: The names are identifiers without spaces or "#" (webhook paths):
-            a clash gets "-N" (ensure_unique_slug) instead of " #N".
+        slug_names: The names can't hold "#" (webhook paths, secret names): a clash
+            gets "-N" (ensure_unique_slug) instead of " #N".
         global_names: The names are unique across all organizations (webhook paths),
             so every org's rows count as taken and the lock isn't per org.
     """

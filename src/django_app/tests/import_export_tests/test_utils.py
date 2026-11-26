@@ -1,5 +1,7 @@
-import pytest
+import time
 from copy import deepcopy
+
+import pytest
 
 from rest_framework.exceptions import ValidationError
 
@@ -10,6 +12,7 @@ from tables.models import McpTool
 from tables.import_export.constants import OWNED_SURFACE_ENTRIES_KEY
 from tables.import_export.enums import EntityType
 from tables.import_export.utils import (
+    clean_base_name,
     compared_values,
     ensure_unique_identifier,
     ensure_unique_slug,
@@ -19,6 +22,58 @@ from tables.import_export.utils import (
     import_values,
     nest_owned_surface_entries,
 )
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("Tool", "Tool"),
+        ("Tool #2", "Tool"),
+        ("Tool#2", "Tool"),
+        ("Tool # 2", "Tool"),
+        ("Tool   #2", "Tool"),
+        ("  Tool #2  ", "Tool"),
+        ("  Tool  ", "Tool"),
+        ("Tool #12345", "Tool"),
+        ("Tool\t#\t2", "Tool"),
+        ("My Tool #2", "My Tool"),
+        ("A #1 #2", "A #1"),
+        ("#2", "#2"),
+        ("  #2", "#2"),
+        ("Tool #", "Tool #"),
+        ("Tool #x", "Tool #x"),
+        ("Tool #2a", "Tool #2a"),
+        ("Tool #2 3", "Tool #2 3"),
+        ("Tool #-2", "Tool #-2"),
+        ("Tool 2", "Tool 2"),
+        ("Line one\nLine two #2", "Line one\nLine two #2"),
+        ("Line one\rLine two #2", "Line one\rLine two"),
+        ("Tool\n#2", "Tool"),
+        ("Tool #\u00b2", "Tool #\u00b2"),
+        ("Tool #\u0663", "Tool"),
+        ("", ""),
+    ],
+)
+def test_clean_base_name_strips_only_a_trailing_number_suffix(name, expected):
+    assert clean_base_name(name) == expected
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        pytest.param("a" + " " * 20_000 + "b", id="no-hash"),
+        pytest.param("a" + " " * 20_000 + "#", id="hash-without-number"),
+        pytest.param("a" + " " * 5_000 + "#" + " " * 5_000 + "b", id="hash-then-letter"),
+    ],
+)
+def test_clean_base_name_runs_in_linear_time_on_long_inner_whitespace(name):
+    # Sized so the former quadratic regex took about a second per case.
+    started = time.perf_counter()
+
+    result = clean_base_name(name)
+
+    assert time.perf_counter() - started < 0.1
+    assert result == name
 
 
 @pytest.mark.parametrize(

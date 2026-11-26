@@ -26,7 +26,11 @@ class NaiveSearchOrchestrator(AbstractSearchOrchestrator):
 
         secrets = open_sealed_secrets(command, self.cryptographer)
         embedding_config = embedding_config.model_copy(
-            update={"extra_headers": secrets.embedding_extra_headers}
+            update={
+                "extra_headers": secrets.embedding_extra_headers,
+                "connection": secrets.embedding_connection,
+                "parameters": command.embedding_parameters,
+            }
         )
         embedder = build_embedder(
             embedding_config.provider, secrets.embedding_api_key, embedding_config

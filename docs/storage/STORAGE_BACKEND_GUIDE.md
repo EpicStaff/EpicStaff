@@ -16,7 +16,7 @@ RustFS starts automatically as a core service (compose service name `storage`). 
 docker compose up
 ```
 
-The `storage-init` service creates the bucket on first start. The RustFS web console is disabled (`RUSTFS_CONSOLE_ENABLE=false`), because the service is reachable from `sandbox-network`.
+The `storage-init` service creates the bucket on first start. The RustFS web console is disabled (`RUSTFS_CONSOLE_ENABLE=false`), because the service is reachable from `sandbox-worker-network`.
 
 ---
 
@@ -364,6 +364,14 @@ RustFS implements a MinIO-compatible Admin API with the following confirmed diff
 
 ## Service Account Credential Management
 
+### Org-level storage users and startup repair
+
+Every organization owns one long-lived storage IAM user. Its access key is derived from the org id (`org<id>storageuser`, `storage_credentials/resource_names.py`), and its secret is stored encrypted as a `Secret(system=True)`. Provisioning (`OrgStorageProvisioningService.provision_for_organization`) calls `user_add`, which resets the secret if the user already exists.
+
+On every start, `backfill_org_storage_credentials` (run by `src/django_app/entrypoint.sh`) provisions orgs that have no stored secret and checks each stored key with one signed request: one attempt, a 5-second timeout. It re-provisions an org only when the server answers `SignatureDoesNotMatch` or `InvalidAccessKeyId`. If the server does not answer, it leaves the keys alone and stops checking the remaining orgs. The summary line counts `provisioned`, `repaired`, `skipped`, `unverified` and `failed`. A failing org never fails the command.
+
+**Not supported: two live databases sharing one storage server.** If two installations (for example a restored copy next to the original, or a test database pointed at the same storage) provision the same org ids against one storage server, they share access keys. Each start then re-provisions the org and rotates the other installation's secret, so runs needing storage fail on the other side with `temporary_credential_issue_error`. IAM users are server-wide, so a separate bucket does not help: give each database its own storage server. Per-installation access keys are a separate follow-up and are not implemented.
+
 ### Temporary credential lifecycle
 
 All minting happens in `django_app`, via the `storage_credentials` app
@@ -393,6 +401,9 @@ Minting itself (`_mint_and_persist()`):
   (`scope_validator.py`), which fails closed on an empty, malformed, or
   org-escaping path list. This is what stops a session from ever being handed
   a credential wider than the union of its own nodes' declared paths.
+  `build_temporary_policy` also refuses any path containing `*`, `?` or `${`:
+  IAM reads them as wildcards or a policy variable, so a folder named `*`
+  would grant the whole org prefix. A bare `$` is allowed.
 - Calls `create_service_account()` with that policy and an expiration derived
   from `STORAGE_TEMP_CREDENTIALS_TTL_HOURS` (default 24h; `<= 0` means no
   expiration — the `expiration` argument is omitted from the request

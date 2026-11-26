@@ -384,7 +384,9 @@ async def run_prompt_row_and_capture_acompletion_kwargs(
 async def test_prompt_llm_call_forwards_reasoning_effort(monkeypatch):
     call_kwargs = await run_prompt_row_and_capture_acompletion_kwargs(
         monkeypatch,
-        LLMConfigData(model="gpt-5-mini", reasoning_effort="high", temperature=0.2),
+        LLMConfigData(
+            model="gpt-5-mini", parameters={"reasoning_effort": "high", "temperature": 0.2}
+        ),
     )
 
     assert call_kwargs["reasoning_effort"] == "high"
@@ -422,7 +424,8 @@ async def test_prompt_llm_call_drops_sampling_params_anthropic_rejects_with_thin
     call_kwargs = await run_prompt_row_and_capture_acompletion_kwargs(
         monkeypatch,
         LLMConfigData(
-            model="claude-sonnet-4-6", temperature=0.5, top_p=0.9, reasoning_effort="high"
+            model="claude-sonnet-4-6",
+            parameters={"temperature": 0.5, "top_p": 0.9, "reasoning_effort": "high"},
         ),
         provider="anthropic",
     )

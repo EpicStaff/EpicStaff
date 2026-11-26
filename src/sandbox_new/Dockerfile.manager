@@ -43,6 +43,46 @@ RUN cd /app/src/sandbox && uv sync --frozen --no-install-project --all-groups --
 COPY ./sandbox_new/ /app/src/sandbox/
 COPY ./shared /app/src/shared
 
+# Wheelhouse of the shared packages every venv gets (PREDEFINED_VENV_PACKAGES),
+# so the manager installs them at runtime offline and without running any build
+# backend. Our own packages are built here (UV_NO_BUILD is lifted for that step
+# only); their third-party dependencies are downloaded as wheels pinned by hash
+# in predefined-requirements.txt. The final offline install into a throwaway
+# venv fails the image build when the wheelhouse misses a dependency, e.g. a
+# shared package gained one and predefined-requirements.txt was not regenerated
+# (`make uv-lock-predefined`).
+# Stale setuptools build/ and egg-info dirs from a local checkout are removed
+# first: setuptools would package files left in build/ into the wheel.
+RUN for package in dotdict epicstaff_secrets epicstaff_common epicstaff_storage; do \
+        rm -rf "/app/src/shared/$package/build" "/app/src/shared/$package"/*.egg-info \
+        && UV_NO_BUILD=false uv build --wheel --no-config --no-progress \
+            --out-dir /app/src/sandbox/predefined_wheelhouse "/app/src/shared/$package" \
+        || exit 1; \
+    done \
+    && pip download --no-cache-dir --no-deps --only-binary=:all: --require-hashes \
+        -r /app/src/sandbox/predefined-requirements.txt \
+        -d /app/src/sandbox/predefined_wheelhouse \
+    && uv venv --no-config /tmp/predefined_check \
+    && uv pip install --no-config --no-progress --offline --no-index --no-build \
+        --find-links /app/src/sandbox/predefined_wheelhouse \
+        --python /tmp/predefined_check/bin/python \
+        dotdict epicstaff-secrets epicstaff-common epicstaff-storage \
+    && rm -rf /tmp/predefined_check
+
+# Wheelhouse of the libraries of the sandbox's own venvs (SYSTEM_VENV_LIBS). The manager
+# builds those venvs at startup and does not start while one fails, so a sandbox with no
+# internet needs every wheel they install already in the image. Downloaded as wheels
+# pinned by hash in system-venv-requirements/ (`make uv-lock-system-venvs`). The check then
+# builds each system venv from this wheelhouse alone, through the manager's own UVProvider,
+# and fails the image build when a pin in SYSTEM_VENV_LIBS changed without a new lock.
+RUN for lock in /app/src/sandbox/system-venv-requirements/*.txt; do \
+        pip download --no-cache-dir --no-deps --only-binary=:all: --require-hashes \
+            -r "$lock" -d /app/src/sandbox/system_wheelhouse \
+        || exit 1; \
+    done \
+    && cd /app/src/sandbox \
+    && /app/src/.venv/bin/python system_venv_wheelhouse.py check /app/src/sandbox/system_wheelhouse
+
 # --- Stage 2: Runtime ---
 FROM python:3.12.10-slim@sha256:fd95fa221297a88e1cf49c55ec1828edd7c5a428187e67b5d1805692d11588db AS runtime
 

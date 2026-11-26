@@ -233,10 +233,12 @@ describe('CreateCustomToolDialogComponent execution timeout', () => {
         expect(dialogRef.close).not.toHaveBeenCalled();
     });
 
-    it('shows the timeout of a built-in tool read-only', () => {
+    it('shows the timeout of a built-in tool read-only, as plain text', () => {
         open({ ...STORED_TOOL, built_in: true });
 
-        expect(timeoutInput()?.disabled).toBe(true);
+        const field = (fixture.nativeElement as HTMLElement).querySelector('app-execution-timeout-field');
+        expect(timeoutInput()).toBeNull();
+        expect(field?.querySelector('.execution-timeout__readonly-value')?.textContent?.trim()).toBe('00:05:00');
     });
 
     it('opens without the field when the limits cannot be loaded, and keeps the stored timeout on save', () => {

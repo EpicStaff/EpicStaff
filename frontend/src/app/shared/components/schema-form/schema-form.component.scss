@@ -1,0 +1,114 @@
+@use '../../../../styles/slider-stepper';
+
+// The reset button (28px) and the gap that keeps it off the label and the slider's value box.
+$reset-size: 28px;
+$reset-gap: 8px;
+
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.schema-form {
+    &__group {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    &__group-title {
+        margin: 0;
+        color: var(--color-text-primary);
+    }
+
+    // The reset button is laid over the label line, so showing it moves and shrinks nothing. The room it needs is
+    // kept on every label line, whether or not it shows.
+    &__field {
+        position: relative;
+
+        ::ng-deep :is(.tooltip-label-container, .label-container) {
+            padding-right: $reset-size + $reset-gap;
+        }
+
+        // A slider's label line holds its value box on the right: the room is kept left of it, on the label itself
+        // (padding there would push an optional slider's on/off switch away from its label).
+        ::ng-deep .slider-stepper__label-group {
+            margin-right: $reset-gap + $reset-size + $reset-gap;
+
+            .tooltip-label-container {
+                padding-right: 0;
+            }
+        }
+    }
+
+    &__reset {
+        position: absolute;
+        // The middle of a label line: a body-text line, as every control sets its label.
+        top: calc(var(--text-body-size) * var(--text-body-line-height) / 2);
+        right: 0;
+        // A flex host keeps the inline button from adding a line box below it.
+        display: flex;
+        transform: translateY(-50%);
+    }
+
+    // A stepper takes half the width, as a lone stepper in a small dialog does. Its reset sits beside its input row,
+    // as high as it, however many lines the label wraps to, so the label line keeps no room for the button. The
+    // stepper's parts are laid out on the field's own grid (the hosts around them step aside); an empty row is 0 high.
+    &__field[data-widget='stepper'] {
+        display: grid;
+        grid-template-areas:
+            'label .'
+            'control reset'
+            'stepper-error .'
+            'field-error field-error';
+        grid-template-columns: 50% auto;
+        justify-content: start;
+        column-gap: $reset-gap;
+
+        ::ng-deep :is(app-schema-field, app-number-stepper, .number-stepper) {
+            display: contents;
+        }
+
+        ::ng-deep app-tooltip {
+            grid-area: label;
+        }
+
+        ::ng-deep .number-stepper__control {
+            grid-area: control;
+        }
+
+        ::ng-deep .number-stepper__error {
+            grid-area: stepper-error;
+        }
+
+        // The gap the schema-field host kept above it.
+        ::ng-deep .schema-field__error {
+            grid-area: field-error;
+            margin-top: 8px;
+        }
+
+        ::ng-deep .tooltip-label-container {
+            padding-right: 0;
+        }
+
+        .schema-form__reset {
+            position: static;
+            grid-area: reset;
+            align-self: center;
+            transform: none;
+
+            ::ng-deep .activate-btn {
+                width: slider-stepper.$number-stepper-md-height;
+                height: slider-stepper.$number-stepper-md-height;
+            }
+        }
+    }
+
+    // A slider's label line is as high as its value box: the button is centred on it, left of the value box.
+    &__field:is([data-widget='slider'], [data-widget='percent']) &__reset {
+        top: calc((slider-stepper.$value-box-height - $reset-size) / 2);
+        right: slider-stepper.$value-box-width + $reset-gap;
+        transform: none;
+    }
+}

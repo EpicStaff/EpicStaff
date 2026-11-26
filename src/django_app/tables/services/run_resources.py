@@ -5,16 +5,17 @@ touches. A `FollowField` row follows a forward FK, O2O or auto-through M2M by id
 target's recycle-bin state, because a run would use the target or fail on it. A
 `FollowChildren` row follows the live rows of a child model (its default manager) whose FK
 points at a reached row, as a run reads them. A `FollowSecretMarkers` row follows the
-`epicstaff_secret(<name>)` markers of a header field by name, to the secret a run resolves for
-it. The walk is deliberately broad: an agent counts with both LLM configs, all its default
+`epicstaff_secret(<name>)` markers of a header or connection field by name, to the secret a
+run resolves for it. The walk is deliberately broad: an agent counts with both LLM configs, all its default
 surfaces and its voice configs, a collection with every RAG's embedder and LLM, and an
 attached folder with every file under it. Over-counting shows in what a suspension stops;
 a missed reference would let a run use something it should not.
 
 Adding a reference (a new node type, a new FK on a model the walk reaches, a new child row):
 add a `FollowField` or `FollowChildren` row, or an entry in `RUN_REFERENCE_EXEMPTIONS` or
-`RUN_TRAVERSAL_STOPS` with the reason it is not followed. A new header field a run resolves
-markers in (a field whose name ends in `extra_headers`) gets a `FollowSecretMarkers` row.
+`RUN_TRAVERSAL_STOPS` with the reason it is not followed. A new field a run resolves markers
+in (a field whose name ends in `extra_headers` or `connection`) gets a `FollowSecretMarkers`
+row.
 `tests/plugins_tests/test_run_resource_collector_coverage.py` fails until one is added.
 """
 
@@ -79,7 +80,7 @@ class FollowChildren:
 
 @dataclass(frozen=True)
 class FollowSecretMarkers:
-    """Follow the `epicstaff_secret(<name>)` markers in the header field `field` of `model`.
+    """Follow the `epicstaff_secret(<name>)` markers in the dict field `field` of `model`.
 
     A marker binds by name when a run starts, not by id when it is written: the run sends the
     live secret of that name in its organization (`SecretResolver.resolve_named`). So a marker
@@ -205,6 +206,9 @@ RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
     # Tools and code.
     FollowField("tables.PythonCodeTool", "python_code"),
     FollowField("tables.PythonCode", "secrets"),
+    # The venv the code runs in. Its custom libraries are not reached: a venv names them
+    # inside the sandbox, by name, with no link in this database for the walk to follow.
+    FollowField("tables.PythonCode", "venv"),
     FollowField("tables.McpTool", "auth_secret"),
     # Knowledge: every RAG of a collection, not only the one a node picks.
     FollowChildren("tables.BaseRagType", "source_collection"),
@@ -214,12 +218,12 @@ RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
     FollowField("tables.GraphRag", "embedder"),
     FollowField("tables.GraphRag", "llm"),
     # Model configs.
-    FollowField("tables.LLMConfig", "model"),
-    FollowField("tables.LLMConfig", "api_key_secret"),
+    FollowField("ai_models.LLMConfig", "model"),
+    FollowField("ai_models.LLMConfig", "api_key_secret"),
     FollowField("tables.SystemOneConfig", "api_key_secret"),
     FollowField("tables.SystemOneConfig", "llm_config"),
-    FollowField("tables.EmbeddingConfig", "model"),
-    FollowField("tables.EmbeddingConfig", "api_key_secret"),
+    FollowField("ai_models.EmbeddingConfig", "model"),
+    FollowField("ai_models.EmbeddingConfig", "api_key_secret"),
     # Webhooks.
     FollowChildren("tables.WebhookTriggerAuth", "trigger"),
     FollowField("tables.WebhookTriggerAuth", "secret"),
@@ -233,11 +237,13 @@ RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
     FollowField("tables.TwilioChannel", "webhook_trigger"),
 )
 
-# Every header field whose markers a run resolves (`SecretResolver` fills each payload field
-# whose name ends in `extra_headers` from these).
+# Every field whose markers a run resolves (`SecretResolver` fills each payload field whose
+# name ends in `extra_headers` or `connection` from these).
 RUN_SECRET_MARKERS: tuple[FollowSecretMarkers, ...] = (
-    FollowSecretMarkers("tables.LLMConfig", "extra_headers"),
-    FollowSecretMarkers("tables.EmbeddingConfig", "extra_headers"),
+    FollowSecretMarkers("ai_models.LLMConfig", "extra_headers"),
+    FollowSecretMarkers("ai_models.LLMConfig", "connection"),
+    FollowSecretMarkers("ai_models.EmbeddingConfig", "extra_headers"),
+    FollowSecretMarkers("ai_models.EmbeddingConfig", "connection"),
 )
 
 # Forward references of a model the walk reaches that it does not follow: (model, field).
@@ -298,6 +304,8 @@ RUN_START_MODELS: Mapping[RunKind, str] = MappingProxyType(
         RunKind.REALTIME: "agents.AgentDefinition",
         RunKind.VOICE_CHANNEL: "tables.RealtimeChannel",
         RunKind.CODE: "tables.PythonCode",
+        RunKind.LLM_CONFIG: "ai_models.LLMConfig",
+        RunKind.EMBEDDING_CONFIG: "ai_models.EmbeddingConfig",
     }
 )
 
@@ -631,7 +639,7 @@ class _Walk:
 
     Passes go model by model in the plan's order and query a model's newly reached rows
     together, so the number of queries depends on the table and on how often references
-    lead back to an earlier model, never on how many rows there are. A row's header markers
+    lead back to an earlier model, never on how many rows there are. A row's markers
     are read in the same query as its other fields, and the names found are looked up once
     the passes reach nothing more: one query for every name of every row.
     """

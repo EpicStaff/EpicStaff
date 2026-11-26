@@ -87,9 +87,10 @@ process running under the plugin's Unix user**: the server process and anything 
 including processes it detached. It counts each process's anonymous and shared pages
 (`RssAnon + RssShmem`), not the interpreter and libraries each process maps from disk, so a
 forked worker is not charged again for the code it shares with its parent. Copy-on-write pages
-a worker has written to count in that worker. Memory a plugin keeps in a file in memory that no
-process maps (a `memfd`, for example) is not counted here, only in the node's
-`ES_PLUGINS_MEMORY`; and `/dev/shm` is read-only, so plugins have no POSIX shared memory, which
+a worker has written to count in that worker. Files that live only in memory are not available,
+so no memory escapes this count: `memfd_create` and `memfd_secret` answer `ENOSYS`, as on a kernel
+without them, and a library then falls back to a file, which counts against the disk cap; and
+`/dev/shm` is read-only, so plugins have no POSIX shared memory, which
 `multiprocessing.shared_memory` and `multiprocessing`'s locks, queues and pools need. When the
 sum is above the effective `memory_mb`,
 the node kills every process of that user and starts the plugin again, waiting longer after each
@@ -103,12 +104,28 @@ in between is marked failed and stays stopped until a SuperAdmin restarts it fro
 ## Disk
 
 The operator caps the disk every plugin backend's own files may use, the same for every plugin:
-`ES_PLUGINS_DISK_MB_PER_PLUGIN` (2048 MiB by default) and `ES_PLUGINS_FILES_PER_PLUGIN`
-(100,000 files, directories and links). Every 30 seconds the plugin node measures the plugin's
-HOME, its TMPDIR included, and the deleted files its processes still hold open. A plugin above
-either cap is stopped and marked failed at once, without restarts, and stays stopped until a
-SuperAdmin restarts it from the Runtime tab after space was freed. Keep caches small and
-delete temporary files when done.
+`ES_PLUGINS_DISK_MB_PER_PLUGIN` (2048 MiB by default) and `ES_PLUGINS_FILES_PER_PLUGIN` (100,000
+files, directories and links). Every 30 seconds the plugin node measures the plugin's HOME, its
+TMPDIR included, and the deleted files its processes still hold open. A plugin that keeps a deleted
+file of its HOME only mapped (`mmap`), with no descriptor open on it, is stopped as one whose disk
+use cannot be measured: the node cannot see that file's size, and one mapped page keeps all of it on
+disk. Keep a file open for as long as it is mapped (Python's `mmap` does this by itself, unless you
+pass `trackfd=False`), or delete it only after unmapping it. It measures at once, without waiting
+for the 30 seconds, when the node's free disk space falls fast (by 256 MiB or 10,000 inodes since
+the last measurement) or falls below the node's floor. A plugin above either cap is stopped and
+marked failed at once, without restarts, and stays stopped until a SuperAdmin restarts it from the
+Runtime tab after space was freed. Keep caches small and delete temporary files when done.
+
+No single file can grow past `ES_PLUGINS_DISK_MB_PER_PLUGIN`: a write beyond it fails with `EFBIG`
+("File too large"). The limit is on the file's size, not on what it takes on disk, so extending a
+file past it with `ftruncate`, `fallocate` or a write at a far offset fails too, even for a sparse
+file. Your Python process gets the error; a child it starts with `subprocess` is killed instead
+(`SIGXFSZ`), since `subprocess` gives children that signal's default action. The cap on the whole
+HOME is a soft cap, like the memory cap: between two measurements a plugin can write past it by
+about 256 MiB, plus what it writes in the second before the node notices and during the measurement
+itself. When other plugins free space at the same time, the fall the node sees is smaller, and a
+plugin can write past its cap for up to the 30 seconds. A hard cap would need file system quotas,
+which the plugin node does not use.
 
 ## Connections
 
@@ -123,6 +140,7 @@ node limits each backend, by its Unix user:
 | Connections open to the egress proxy | 64 | Refused at once |
 | Network sockets held, TCP and UDP together (TCP connections it accepted on its own port do not count) | 1,280 | The plugin is stopped, within a second, until a SuperAdmin restarts it |
 | A TCP socket in LISTEN on any port | Not allowed: `bind()` is refused, and a `listen()` without it is caught | The plugin is stopped, within a second, until a SuperAdmin restarts it |
+| A TCP connection on another port of the node's range | Not allowed: accepted from a copy of another plugin's listening socket | The plugin is stopped, within a second, until a SuperAdmin restarts it |
 
 Closed connections stop counting at once. Reuse connections (an HTTP client with a connection
 pool, a database pool) rather than opening one per request. The node's own connections are not

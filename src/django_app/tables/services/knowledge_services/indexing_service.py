@@ -1,5 +1,13 @@
 from typing import Any
 
+from ai_models.services.config_parameters import (
+    embedding_config_parameters,
+    llm_config_parameters,
+)
+from ai_models.services.connection_arguments import (
+    embedding_config_connection,
+    llm_config_connection,
+)
 from django.db import transaction
 from loguru import logger
 from tables.exceptions import (
@@ -16,6 +24,7 @@ from tables.models.knowledge_models import (
     GraphRagDocument,
     NaiveRag,
 )
+from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
 
 
 class IndexingService:
@@ -30,13 +39,18 @@ class IndexingService:
 
     @staticmethod
     @transaction.atomic
-    def validate_and_prepare_indexing(rag_id: int, rag_type: str) -> dict[str, Any]:
+    def validate_and_prepare_indexing(rag_id: int, rag_type: str, org_id: int) -> dict[str, Any]:
         """
         Validates RAG configuration and prepares data for indexing.
 
+        Indexing calls the embedder, and a GraphRAG's LLM, as a run would, so it is admitted
+        like one before the caller resolves any of their keys.
+
         Args:
-            rag_id: The primary key of the specific RAG implementation
+            rag_id: The primary key of the specific RAG implementation. The caller has
+                already checked that it belongs to `org_id`.
             rag_type: The type of RAG ("naive" or "graph")
+            org_id: The organization the indexing runs in.
 
         Returns:
             Dict containing:
@@ -44,13 +58,25 @@ class IndexingService:
                 - rag_type: str
                 - collection_id: int
                 - base_rag_type_id: int
+                - embedder_id: int, the EmbeddingConfig the indexing calls
+                - llm_id: int | None, the LLMConfig a GraphRAG indexing calls
+                - the API key secret ids and extra headers of both
+
+        Raises:
+            RunAdmissionRefusedError: The embedder or the LLM may not be called now.
         """
         if rag_type == "naive":
-            return IndexingService._prepare_naive_rag_indexing(rag_id)
+            indexing_data = IndexingService._prepare_naive_rag_indexing(rag_id)
         elif rag_type == "graph":
-            return IndexingService._prepare_graph_rag_indexing(rag_id)
+            indexing_data = IndexingService._prepare_graph_rag_indexing(rag_id)
         else:
             raise RagException(f"Unknown rag_type: {rag_type}")
+        assert_run_admitted(
+            RunSubject(RunKind.EMBEDDING_CONFIG, indexing_data["embedder_id"], org_id)
+        )
+        if indexing_data["llm_id"] is not None:
+            assert_run_admitted(RunSubject(RunKind.LLM_CONFIG, indexing_data["llm_id"], org_id))
+        return indexing_data
 
     @staticmethod
     def _prepare_naive_rag_indexing(naive_rag_id: int) -> dict[str, Any]:
@@ -66,7 +92,9 @@ class IndexingService:
         # Get NaiveRag instance
         try:
             naive_rag = NaiveRag.objects.select_related(
-                "base_rag_type", "base_rag_type__source_collection", "embedder"
+                "base_rag_type",
+                "base_rag_type__source_collection",
+                "embedder__model__embedding_provider",
             ).get(naive_rag_id=naive_rag_id)
         except NaiveRag.DoesNotExist as e:
             raise NaiveRagNotFoundException(naive_rag_id) from e
@@ -109,10 +137,16 @@ class IndexingService:
             "rag_type": "naive",
             "collection_id": collection.collection_id,
             "base_rag_type_id": base_rag_type.rag_type_id,
+            "embedder_id": naive_rag.embedder_id,
+            "llm_id": None,
             "embedder_api_key_secret_id": naive_rag.embedder.api_key_secret_id,
             "llm_api_key_secret_id": None,
             "embedder_extra_headers": naive_rag.embedder.extra_headers,
             "llm_extra_headers": None,
+            "embedder_connection": embedding_config_connection(naive_rag.embedder),
+            "embedder_parameters": embedding_config_parameters(naive_rag.embedder),
+            "llm_connection": None,
+            "llm_parameters": None,
         }
 
     @staticmethod
@@ -131,8 +165,8 @@ class IndexingService:
             graph_rag = GraphRag.objects.select_related(
                 "base_rag_type",
                 "base_rag_type__source_collection",
-                "embedder",
-                "llm",
+                "embedder__model__embedding_provider",
+                "llm__model__llm_provider",
                 "index_config",
             ).get(graph_rag_id=graph_rag_id)
         except GraphRag.DoesNotExist as e:
@@ -191,10 +225,16 @@ class IndexingService:
             "rag_type": "graph",
             "collection_id": collection.collection_id,
             "base_rag_type_id": base_rag_type.rag_type_id,
+            "embedder_id": graph_rag.embedder_id,
+            "llm_id": graph_rag.llm_id,
             "embedder_api_key_secret_id": graph_rag.embedder.api_key_secret_id,
             "llm_api_key_secret_id": graph_rag.llm.api_key_secret_id,
             "embedder_extra_headers": graph_rag.embedder.extra_headers,
             "llm_extra_headers": graph_rag.llm.extra_headers,
+            "embedder_connection": embedding_config_connection(graph_rag.embedder),
+            "embedder_parameters": embedding_config_parameters(graph_rag.embedder),
+            "llm_connection": llm_config_connection(graph_rag.llm),
+            "llm_parameters": llm_config_parameters(graph_rag.llm),
         }
 
     @staticmethod

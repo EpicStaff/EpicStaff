@@ -34,6 +34,7 @@ from tables.services.run_resources import (
     FollowField,
     unqueried_child_references,
 )
+from tables.services.secrets.secret_resolver import _MARKER_FIELD_SUFFIXES
 
 GRAPH = "tables.Graph"
 
@@ -392,18 +393,19 @@ def _walk_models_of(references) -> set[str]:
     )
 
 
-def test_every_header_field_of_a_walk_model_has_its_markers_followed():
-    # The resolver fills markers in every payload field whose name ends in `extra_headers`.
+def test_every_marker_field_of_a_walk_model_has_its_markers_followed():
+    # The resolver fills markers in every payload field whose name ends in one of its suffixes.
     walk_models = _walk_models_of(RUN_REFERENCES)
-    header_fields = {
+    marker_fields = {
         (model._meta.label, field.name)
         for model in apps.get_models()
         if model._meta.label in walk_models
         for field in model._meta.concrete_fields
-        if field.name.endswith("extra_headers")
+        if field.name.endswith(_MARKER_FIELD_SUFFIXES)
     }
 
-    assert header_fields == {(row.model, row.field) for row in RUN_SECRET_MARKERS}
+    assert {("ai_models.LLMConfig", "connection"), ("ai_models.EmbeddingConfig", "connection")} <= marker_fields
+    assert marker_fields == {(row.model, row.field) for row in RUN_SECRET_MARKERS}
 
 
 def test_every_marker_row_is_a_json_field_of_a_row_that_belongs_to_an_organization():

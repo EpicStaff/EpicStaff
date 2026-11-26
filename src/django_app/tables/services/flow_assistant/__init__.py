@@ -15,7 +15,7 @@ from .helpers import (
     request_cancel,
 )
 from .output_schema import FLOW_ASSISTANT_OUTPUT_SCHEMA
-from .partial_json import extract_message_field, try_parse_full
+from .partial_json import MessageFieldStream, extract_message_field, try_parse_full
 from .service import (
     FlowAssistantService,
     LLMConfigInvalidError,
@@ -45,6 +45,7 @@ __all__ = [
     "FlowAssistantService",
     "LLMConfigInvalidError",
     "LLMConfigMissingError",
+    "MessageFieldStream",
     "_clear_cancel_flag",
     "_derive_title",
     "_is_cancel_requested",

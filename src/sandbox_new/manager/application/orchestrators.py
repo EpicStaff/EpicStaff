@@ -30,7 +30,13 @@ from manager.application.ports import (
     AbstractUVProvider,
 )
 from manager.application.registry import ExecutionRegistry
-from manager.domain.enums import ExecutionStatus, VenvOrder, VenvStatus, WheelOffer, WheelStatus
+from manager.domain.enums import (
+    ExecutionStatus,
+    VenvOrder,
+    VenvStatus,
+    WheelOffer,
+    WheelStatus,
+)
 from manager.domain.errors import (
     BaseError,
     CustomLibraryInUseError,
@@ -40,6 +46,8 @@ from manager.domain.errors import (
     CustomLibraryNotPublishedError,
     CustomLibraryStillBuildingError,
     SecretNotDecryptableError,
+    SystemVenvNotFoundError,
+    SystemVenvProtectedError,
     UnsupportedUploadError,
     UVBuildError,
     VenvNotFoundError,
@@ -51,7 +59,9 @@ from manager.domain.errors import (
     WheelVersionTakenError,
 )
 from manager.domain.models import (
+    DEFAULT_SYSTEM_KEY,
     SOURCE_ARCHIVE_SUFFIXES,
+    SYSTEM_VENV_LIBS,
     WHEEL_SUFFIX,
     CustomLibrary,
     Job,
@@ -89,10 +99,6 @@ class VenvCRUDOrchestrator:
     def __init__(self, uow: AbstractUnitOfWork):
         self.uow = uow
 
-    async def retrieve_default(self) -> Venv | None:
-        async with self.uow:
-            return await self.uow.venv_repo.retrieve_default()
-
     async def list(
         self,
         *,
@@ -118,25 +124,68 @@ class VenvCRUDOrchestrator:
             raise VenvNotFoundError(venv_id=id)
         return venv
 
-    async def create(self, name: str, libs: List[Library]) -> Venv:
-        venv = Venv(name=name, libs=libs)
+    async def create(self, name: str, libs: List[Library], scope: str | None = None) -> Venv:
+        venv = Venv(name=name, libs=libs, scope=scope)
         async with self.uow:
             venv = await self.uow.venv_repo.create(venv)
             await self.uow.commit()
         logger.info("Declared venv {} ({}) with {} libraries", venv.id, venv.name, len(venv.libs))
         return venv
 
-    async def update(self, id: int, name: str | None, libs: List[Library] | None) -> Venv:
+    async def declare_system(self, system_key: str) -> Venv:
+        """Store the system venv of this key with the libraries the sandbox pins for it.
+
+        A stored one is declared again, to be rebuilt, when its libraries no longer
+        match the pins or its last build failed; otherwise it is left as it is, so a
+        restart does not rebuild a working venv.
+        """
+        libs = SYSTEM_VENV_LIBS[system_key]
+        async with self.uow:
+            venv = await self.uow.venv_repo.retrieve_by_system_key(system_key)
+            if venv is None:
+                venv = await self.uow.venv_repo.create(
+                    Venv(name=system_key, libs=libs, system_key=system_key)
+                )
+            elif venv.status is VenvStatus.FAILED or not _same_pins(venv.libs, libs):
+                venv.set_libs(libs)
+                venv = await self.uow.venv_repo.update(venv)
+            else:
+                return venv
+            await self.uow.commit()
+        logger.info("Declared the {} venv {}", system_key, venv.id)
+        return venv
+
+    async def update(
+        self,
+        id: int,
+        name: str | None,
+        libs: List[Library] | None,
+        scope: str | None = None,
+    ) -> Venv:
+        """Rename the venv, replace its libraries, move it to a scope, or any of these.
+
+        A new scope changes where its custom libraries are looked up, not what was
+        built, so it alone does not send the venv back to be built.
+
+        Raises:
+            VenvNotFoundError: No venv with this id.
+            SystemVenvProtectedError: The venv is built by the sandbox itself.
+        """
         async with self.uow:
             venv = await self.uow.venv_repo.retrieve(id=id)
             if venv is None:
                 raise VenvNotFoundError(venv_id=id)
+            if venv.system_key is not None:
+                raise SystemVenvProtectedError(venv_id=id)
 
             if name is not None and venv.name != name:
                 venv.rename(name)
 
             if libs is not None:
                 venv.set_libs(libs)
+
+            if scope is not None:
+                venv.set_scope(scope)
 
             venv = await self.uow.venv_repo.update(venv)
             await self.uow.commit()
@@ -145,13 +194,28 @@ class VenvCRUDOrchestrator:
         return venv
 
     async def remove(self, id: int):
+        """Delete the venv.
+
+        Raises:
+            VenvNotFoundError: No venv with this id.
+            SystemVenvProtectedError: The venv is built by the sandbox itself.
+        """
         async with self.uow:
             venv = await self.uow.venv_repo.retrieve(id=id)
             if venv is None:
                 raise VenvNotFoundError(venv_id=id)
+            if venv.system_key is not None:
+                raise SystemVenvProtectedError(venv_id=id)
             await self.uow.venv_repo.remove(venv)
             await self.uow.commit()
         logger.info("Removed venv {}", id)
+
+
+def _same_pins(stored: list[Library], pinned: list[Library]) -> bool:
+    """Compare what was asked for, ignoring the versions a build stamps on `stored`."""
+    return [(library.name, library.specification) for library in stored] == [
+        (library.name, library.specification) for library in pinned
+    ]
 
 
 class VenvBuildOrchestrator:
@@ -220,7 +284,7 @@ class VenvBuildOrchestrator:
 
         async with self.uow:
             libraries = await self.uow.custom_library_repo.list_by_names(
-                [entry.name for entry in entries]
+                venv.scope, [entry.name for entry in entries]
             )
             wheels = await self.uow.wheel_repo.list_by_library_ids(
                 [library.id for library in libraries]
@@ -258,6 +322,27 @@ class VenvBuildOrchestrator:
             (directory / wheel.wheel_filename).write_bytes(content)
         return directory
 
+    async def prepare(self, venv: Venv) -> Venv:
+        """Build the venv unless it is built, and return it as it now stands.
+
+        A built one is not rebuilt, which would download its libraries again, but it
+        gets this image's predefined packages: they may have changed with the image,
+        and installing them needs no index.
+        """
+        venv_path = settings.VENVS_DIR / f"venv-{venv.hash}"
+        if venv.status is VenvStatus.COMPLETED and venv_path.exists():
+            await self._install_predefined(venv_path)
+            return venv
+        await self.build(venv)
+        return await self._retrieve(venv.id)
+
+    async def _install_predefined(self, venv_path: Path) -> None:
+        await self.uv_provider.install_local(
+            venv_path,
+            *settings.PREDEFINED_VENV_PACKAGES,
+            wheelhouse=settings.PREDEFINED_WHEELHOUSE_DIR,
+        )
+
     async def _build(self, venv: Venv, custom_wheels: list[Wheel]) -> Venv:
         staging_path = settings.VENV_STAGING_DIR / f"venv-{venv.id}"
         if staging_path.exists():
@@ -268,8 +353,15 @@ class VenvBuildOrchestrator:
         # The wheelhouse lives only for this build, and is deliberately not cached: a
         # cache would be another place a deleted wheel could still be installed from.
         with tempfile.TemporaryDirectory() as workspace:
-            wheelhouse = await self._fill_wheelhouse(custom_wheels, Path(workspace))
-            await self.uv_provider.apply(staging_path, *libs, wheelhouse=wheelhouse)
+            if venv.system_key is not None:
+                # Built at startup, which must succeed without the internet: the image
+                # carries every wheel a system venv needs.
+                await self.uv_provider.apply(
+                    staging_path, *libs, wheelhouse=settings.SYSTEM_WHEELHOUSE_DIR, offline=True
+                )
+            else:
+                wheelhouse = await self._fill_wheelhouse(custom_wheels, Path(workspace))
+                await self.uv_provider.apply(staging_path, *libs, wheelhouse=wheelhouse)
             # Held, not applied yet: stamping the libraries is what the user sees as the
             # outcome of the build, so it must not survive a step below that fails.
             resolved_versions = self.uv_provider.read_resolved_versions(staging_path)
@@ -288,7 +380,7 @@ class VenvBuildOrchestrator:
         # Mandatory shared packages (dotdict, epicstaff_secrets, ...) go into every venv
         # -- freshly built or reused -- so existing venvs also pick them up on the next
         # build. They are intentionally kept out of venv.libs.
-        await self.uv_provider.install_local(venv_path, *settings.PREDEFINED_VENV_PACKAGES)
+        await self._install_predefined(venv_path)
 
         venv.apply_resolved_versions(resolved_versions)
         return venv
@@ -314,10 +406,10 @@ class VenvBuildOrchestrator:
 class JobOrchestrator:
     """Accepts code-execution submissions and gets them to the worker.
 
-    Resolves the job's venv (by id, or the default when none is given), then: a
-    COMPLETED venv dispatches now; a venv still building holds until it is done; a
-    FAILED venv reports a failed result to the consumer (the job cannot run, but the
-    caller still gets an outcome). Jobs are never persisted; holding is in RAM.
+    Resolves the job's venv (by id, by `system_venv`, or the default when neither is
+    given), then: a COMPLETED venv dispatches now; a venv still building holds until it
+    is done; a FAILED venv reports a failed result to the consumer (the job cannot run,
+    but the caller still gets an outcome). Jobs are never persisted; holding is in RAM.
 
     The readiness gate lives only here: the dispatcher is a dumb transport adapter,
     so this is the single place that decides dispatch vs hold vs fail by venv status.
@@ -381,6 +473,7 @@ class JobOrchestrator:
         storage_credentials: StorageCredentials | None,
         timeout: float | None,
         reply_to_crew_channel: bool,
+        system_venv: str | None = None,
     ) -> ExecutionStatus:
         """Accept a submission, or answer for the one already accepted under its id.
 
@@ -394,7 +487,9 @@ class JobOrchestrator:
             Where the execution is now.
 
         Raises:
-            VenvNotFoundError: `venv_id` names no venv, or there is no default venv.
+            VenvNotFoundError: `venv_id` names no venv.
+            SystemVenvNotFoundError: `system_venv`, or the default key when neither is
+                given, names no venv the sandbox owns.
             SandboxOverloadedError: The sandbox cannot take the job now, or the first
                 submission of this id is still being admitted.
             SecretNotDecryptableError: A secret value is not a transport ciphertext
@@ -412,7 +507,7 @@ class JobOrchestrator:
         # Reserved before the first await, so a concurrent re-POST sees the id as known.
         self.registry.reserve(execution_id)
         try:
-            venv = await self._resolve_venv(venv_id)
+            venv = await self._resolve_venv(venv_id, system_venv)
             if venv.status is not VenvStatus.FAILED:
                 self.intake_gate.admit(
                     execution_id, will_be_held=venv.status is not VenvStatus.COMPLETED
@@ -536,14 +631,19 @@ class JobOrchestrator:
             reply_to_crew_channel=job.reply_to_crew_channel,
         )
 
-    async def _resolve_venv(self, venv_id: int | None) -> Venv:
-        async with self.uow:
-            if venv_id is not None:
+    async def _resolve_venv(self, venv_id: int | None, system_venv: str | None) -> Venv:
+        if venv_id is not None:
+            async with self.uow:
                 venv = await self.uow.venv_repo.retrieve(venv_id)
-            else:
-                venv = await self.uow.venv_repo.retrieve_default()
+            if venv is None:
+                raise VenvNotFoundError(venv_id=venv_id)
+            return venv
+
+        system_key = system_venv or DEFAULT_SYSTEM_KEY
+        async with self.uow:
+            venv = await self.uow.venv_repo.retrieve_by_system_key(system_key)
         if venv is None:
-            raise VenvNotFoundError(venv_id=venv_id)
+            raise SystemVenvNotFoundError(system_key=system_key)
         return venv
 
 
@@ -588,26 +688,26 @@ class CustomLibraryCRUDOrchestrator:
             obj = await self._retrieve(id)
             return obj, await self.uow.wheel_repo.list(id)
 
-    async def create(self, name: str | None) -> CustomLibrary:
+    async def create(self, name: str | None, scope: str | None = None) -> CustomLibrary:
         """Create a library, named or not.
 
         Raises:
-            CustomLibraryNameTakenError: Some library already has this name.
+            CustomLibraryNameTakenError: Some library of this scope already has this name.
         """
-        obj = CustomLibrary(name=name)
+        obj = CustomLibrary(name=name, scope=scope)
         async with self.uow:
             # Against `obj.name`, not `name`: the domain canonicalizes on construction,
             # and it is the canonical spelling that has to be unique. An unnamed library
             # never clashes with anything -- the partial unique index does not even
             # look at a null name -- so there is nothing to check for one.
             if obj.name is not None:
-                await self._reject_taken_name(obj.name)
+                await self._reject_taken_name(obj.scope, obj.name)
             obj = await self.uow.custom_library_repo.create(obj)
             await self.uow.commit()
         logger.info("Created custom library {} ({})", obj.id, obj.name or "unnamed")
         return obj
 
-    async def create_for(self, filename: str) -> CustomLibrary:
+    async def create_for(self, filename: str, scope: str | None = None) -> CustomLibrary:
         """Create a library for an upload: a wheel names it at once, no name ever
         typed; a source archive's distribution is not known until it builds, so it
         starts unnamed and a later build names it.
@@ -618,12 +718,30 @@ class CustomLibraryCRUDOrchestrator:
             CustomLibraryNameTakenError: A wheel's name is already another library's.
         """
         if not filename.lower().endswith(WHEEL_SUFFIX):
-            return await self.create(None)
+            return await self.create(None, scope)
         try:
             name, _, _, _ = parse_wheel_filename(filename)
         except InvalidWheelFilename as error:
             raise UnsupportedUploadError(str(error)) from error
-        return await self.create(str(name))
+        return await self.create(str(name), scope)
+
+    async def update(self, id: int, scope: str) -> CustomLibrary:
+        """Move the library to a scope.
+
+        Raises:
+            CustomLibraryNotFoundError: No library with this id.
+            CustomLibraryNameTakenError: Another library of that scope has this name.
+        """
+        async with self.uow:
+            obj = await self._retrieve(id)
+            if obj.scope != scope:
+                if obj.name is not None:
+                    await self._reject_taken_name(scope, obj.name)
+                obj.set_scope(scope)
+                obj = await self.uow.custom_library_repo.update(obj)
+                await self.uow.commit()
+                logger.info("Moved custom library {} to scope {}", id, scope)
+        return obj
 
     async def remove(self, id: int):
         """Mark the library and every wheel of it deleted.
@@ -637,7 +755,7 @@ class CustomLibraryCRUDOrchestrator:
 
             # Refused rather than cascaded: a venv naming a library that is gone would
             # fail on its next build, and its author never asked for that.
-            users = await self.uow.venv_repo.list_using_custom_library(obj.name)
+            users = await self.uow.venv_repo.list_using_custom_library(obj.scope, obj.name)
             if users:
                 raise CustomLibraryInUseError(custom_library_id=id, venv_count=len(users))
 
@@ -661,16 +779,17 @@ class CustomLibraryCRUDOrchestrator:
             raise CustomLibraryNotFoundError(custom_library_id=id)
         return obj
 
-    async def _reject_taken_name(self, name: str):
-        """Refuse a canonical name another library already answers to.
+    async def _reject_taken_name(self, scope: str | None, name: str):
+        """Refuse a canonical name another library of this scope already answers to.
 
         The partial unique index is what actually enforces this; the lookup is here so
         that the ordinary case is a 409 naming the library rather than a failed write.
 
         Raises:
-            CustomLibraryNameTakenError: Some other library already has this name.
+            CustomLibraryNameTakenError: Some other library of this scope already has
+                this name.
         """
-        if await self.uow.custom_library_repo.retrieve_by_name(name) is not None:
+        if await self.uow.custom_library_repo.retrieve_by_name(scope, name) is not None:
             raise CustomLibraryNameTakenError(name=name)
 
 
@@ -831,7 +950,10 @@ class WheelCRUDOrchestrator:
         """
         if library.name is None:
             library.assign_name(name)
-            if await self.uow.custom_library_repo.retrieve_by_name(library.name) is not None:
+            if (
+                await self.uow.custom_library_repo.retrieve_by_name(library.scope, library.name)
+                is not None
+            ):
                 raise CustomLibraryNameTakenError(name=library.name)
             await self.uow.custom_library_repo.update(library)
             return
@@ -905,7 +1027,9 @@ class WheelCRUDOrchestrator:
         library = await self._retrieve_library(library_id)
         users = [
             venv
-            for venv in await self.uow.venv_repo.list_using_custom_library(library.name)
+            for venv in await self.uow.venv_repo.list_using_custom_library(
+                library.scope, library.name
+            )
             if venv.pins_custom_library(library.name, obj.version)
         ]
         if users:
@@ -1014,7 +1138,9 @@ class WheelBuildOrchestrator:
                 if library.name is None:
                     library.assign_name(name)
                     if (
-                        await self.uow.custom_library_repo.retrieve_by_name(library.name)
+                        await self.uow.custom_library_repo.retrieve_by_name(
+                            library.scope, library.name
+                        )
                         is not None
                     ):
                         raise CustomLibraryNameTakenError(name=library.name)

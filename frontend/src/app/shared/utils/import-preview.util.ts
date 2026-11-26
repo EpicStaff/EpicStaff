@@ -13,10 +13,22 @@ export interface ImportFileEntity {
 
 export type ImportFileData = Record<string, ImportFileEntity[]>;
 
+/**
+ * The file field an entity type is named by, where it is not `name`. Mirrors the field a backend import/export
+ * strategy's `get_preview_data` returns as `name` when that name is a single file field, so the review lists such an
+ * entity under the name the import result will. Names composed from several fields are not mirrored.
+ */
 const ENTITY_NAME_KEY: Record<string, string> = {
     Agent: 'role',
+    ElevenLabsRealtimeConfig: 'custom_name',
+    EmbeddingConfig: 'custom_name',
+    GeminiRealtimeConfig: 'custom_name',
     LLMConfig: 'custom_name',
+    OpenAIRealtimeConfig: 'custom_name',
     RealtimeConfig: 'custom_name',
+    RealtimeTranscriptionConfig: 'custom_name',
+    SourceCollection: 'collection_name',
+    SystemOneConfig: 'custom_name',
     WebhookTrigger: 'path',
 };
 
@@ -34,6 +46,18 @@ const ENTITY_FILE_FIELDS: Record<string, string[]> = {
 
 const SKIPPED_KEYS = new Set(['main_entity', 'version']);
 
+/**
+ * A field of an entity in the file. Export version 6 keeps a config's settings (`temperature`, `max_tokens`, …) under
+ * `parameters`; older files keep them flat, and both still import.
+ */
+function fileFieldValue(entity: ImportFileEntity, field: string): JsonValue | undefined {
+    const value = entity[field];
+    if (value !== undefined) return value;
+    const parameters = entity['parameters'];
+    if (parameters === null || typeof parameters !== 'object' || Array.isArray(parameters)) return undefined;
+    return parameters[field];
+}
+
 export function buildPreviewImportResult(fileData: ImportFileData): ImportResult {
     const result: ImportResult = {};
 
@@ -46,7 +70,7 @@ export function buildPreviewImportResult(fileData: ImportFileData): ImportResult
         const items: ImportResultItem[] = entities.map((entity, index) => {
             const extra: JsonObject = {};
             for (const field of extraFields) {
-                const val = entity[field];
+                const val = fileFieldValue(entity, field);
                 if (val !== undefined) extra[field] = val;
             }
             return {
@@ -92,7 +116,7 @@ export function enrichImportResult(result: ImportResult, fileData: ImportFileDat
                 if (!source) return item;
                 const extra: JsonObject = {};
                 for (const field of fields) {
-                    const val = source[field];
+                    const val = fileFieldValue(source, field);
                     if (val !== undefined) extra[field] = val;
                 }
                 return { ...item, ...extra };

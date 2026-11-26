@@ -4,7 +4,7 @@ from importlib import import_module
 from importlib.metadata import distributions
 from typing import Literal
 
-from infrastructure.naive.chunkers.strategies.token_chunker import load_gpt2_tokenizer
+from infrastructure.naive.chunkers.strategies.token_chunker import load_token_encoding
 from infrastructure.processing_run import (
     create_process_pool,
     get_process_pool,
@@ -96,11 +96,11 @@ def preload_graphrag_modules():
 
 @on_startup
 def preload_token_chunker_tokenizer():
-    """Move first-request latency to startup by loading the GPT-2 tokenizer."""
+    """Move first-request latency to startup by loading the token chunker's encoding."""
     try:
-        load_gpt2_tokenizer()
+        load_token_encoding()
     except Exception as error:
-        logger.warning("GPT-2 tokenizer preload failed, will load lazily: {}", error)
+        logger.warning("Token chunker encoding preload failed, will load lazily: {}", error)
 
 
 @on_startup

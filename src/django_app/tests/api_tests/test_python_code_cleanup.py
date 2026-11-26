@@ -17,8 +17,11 @@ Covers:
   deleted until the last owner is gone.
 """
 
+from contextlib import contextmanager
+
 import pytest
 from django.db import transaction
+from django.db.models.signals import pre_save
 from django.urls import reverse
 from rest_framework import status
 
@@ -29,6 +32,9 @@ from tables.models.graph_models import (
     WebhookTriggerNode,
 )
 from tables.models.python_models import PythonCode, PythonCodeResult, PythonCodeTool
+from tables.serializers.model_serializers.node_serializers.flow_control_serializers import (
+    ClassificationDecisionTableNodeSerializer,
+)
 from tables.models.webhook_models import (
     NgrokWebhookConfig,
     ProviderType,
@@ -446,3 +452,84 @@ def test_signal_pending_buffer_rearms_after_transaction_rollback(
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
     assert not PythonCode.objects.filter(id=surviving_python_code.id).exists()
+
+
+# ---------------------------------------------------------------------------
+# Creating a node with its code is one transaction: code without its owner is
+# never visible, so a reclaim of ownerless code (the plugin purge deletes it
+# with its venv) cannot delete code whose node is still being inserted.
+# ---------------------------------------------------------------------------
+
+
+class _NodeInsertFailed(Exception):
+    pass
+
+
+_NODES_CREATED_WITH_CODE = {
+    "python node": (
+        "pythonnode-list",
+        PythonNode,
+        {"node_name": "Forecast", "python_code": _PYTHON_CODE_DATA},
+    ),
+    "webhook trigger node": (
+        "webhooktriggernode-list",
+        WebhookTriggerNode,
+        {"node_name": "Forecast hook", "python_code": _PYTHON_CODE_DATA, "metadata": {}},
+    ),
+    "classification decision table node": (
+        "classificationdecisiontablenode-list",
+        ClassificationDecisionTableNode,
+        {
+            "node_name": "Forecast table",
+            "pre_python_code": _PYTHON_CODE_DATA,
+            "post_python_code": _PYTHON_CODE_DATA,
+            "condition_groups": [],
+        },
+    ),
+}
+
+
+@contextmanager
+def _node_insert_failing(model):
+    def fail_the_node_insert(**kwargs):
+        raise _NodeInsertFailed()
+
+    pre_save.connect(fail_the_node_insert, sender=model, dispatch_uid="fail-node-insert")
+    try:
+        yield
+    finally:
+        pre_save.disconnect(sender=model, dispatch_uid="fail-node-insert")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("node", list(_NODES_CREATED_WITH_CODE))
+def test_a_node_whose_insert_fails_leaves_none_of_its_python_code(auth_client, graph, node):
+    list_route, model, payload = _NODES_CREATED_WITH_CODE[node]
+    code_before = PythonCode.objects.count()
+
+    with _node_insert_failing(model), pytest.raises(_NodeInsertFailed):
+        auth_client.post(reverse(list_route), {"graph": graph.id, **payload}, format="json")
+
+    assert PythonCode.objects.count() == code_before
+    assert not model.objects.filter(graph=graph).exists()
+
+
+@pytest.mark.django_db
+def test_a_decision_table_node_whose_insert_fails_leaves_none_of_its_python_code_without_an_outer_transaction(
+    graph,
+):
+    # Its viewset and the bulk save open a transaction around the serializer; the
+    # serializer's own keeps the code with its node for any other caller.
+    code_before = PythonCode.objects.count()
+
+    with _node_insert_failing(ClassificationDecisionTableNode), pytest.raises(_NodeInsertFailed):
+        ClassificationDecisionTableNodeSerializer().create(
+            {
+                "graph": graph,
+                "node_name": "Forecast table",
+                "pre_python_code": {"code": "def main(): return 1", "entrypoint": "main"},
+                "post_python_code": {"code": "def main(): return 2", "entrypoint": "main"},
+            }
+        )
+
+    assert PythonCode.objects.count() == code_before

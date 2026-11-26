@@ -789,7 +789,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         this.flowDiffState.setMissingReferenceNodeIds(this.missingReferenceNodeIds());
         this.applyIncomingFlowState(this.flowState);
         if (this.initialNodeId) {
-            this.openNodePanel(this.initialNodeId);
+            this.sidePanelService.setSelectedNodeId(this.initialNodeId);
         }
     }
 
@@ -811,7 +811,7 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
             }
         }
         if (changes['initialNodeId'] && changes['initialNodeId'].currentValue) {
-            this.openNodePanel(changes['initialNodeId'].currentValue);
+            this.sidePanelService.setSelectedNodeId(changes['initialNodeId'].currentValue);
         }
         if (changes['isSaving'] && changes['isSaving'].currentValue === true) {
             this.onCloseContextMenu();

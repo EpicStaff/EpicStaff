@@ -1,14 +1,17 @@
 from importlib import import_module
 
 import pytest
-from django.apps import apps as django_apps
 from django.db import connection
+from django.db.migrations.loader import MigrationLoader
 from rbac.models import Organization
-from tables.models.default_models import DefaultModels
-from tables.models.embedding_models import EmbeddingConfig
-from tables.models.llm_models import LLMConfig
+from ai_models.models import DefaultModels, EmbeddingConfig, LLMConfig
 
 split_migration = import_module("tables.migrations.0253_split_defaultmodels_per_org")
+
+
+def _apps_before_split():
+    # The migration names its models by their tables app label of the time.
+    return MigrationLoader(connection).project_state(("tables", "0252_defaultmodels_org")).apps
 
 
 @pytest.fixture
@@ -38,7 +41,7 @@ def test_split_gives_each_owning_org_a_row_with_only_its_own_configs(
         project_manager_llm_config=llm_config_b,
     )
 
-    split_migration.split_defaultmodels_per_org(django_apps, None)
+    split_migration.split_defaultmodels_per_org(_apps_before_split(), None)
 
     assert not DefaultModels.objects.filter(pk=legacy_row.pk, org__isnull=True).exists()
     assert DefaultModels.objects.count() == 2
@@ -58,7 +61,7 @@ def test_split_drops_an_ownerless_row_that_references_no_config(
 ):
     DefaultModels.objects.create(org=None)
 
-    split_migration.split_defaultmodels_per_org(django_apps, None)
+    split_migration.split_defaultmodels_per_org(_apps_before_split(), None)
 
     assert not DefaultModels.objects.exists()
 
@@ -69,7 +72,7 @@ def test_split_leaves_org_owned_rows_untouched_when_no_ownerless_row_exists():
     llm_config = LLMConfig.objects.create(custom_name="llm", org=org)
     owned_row = DefaultModels.objects.create(org=org, agent_llm_config=llm_config)
 
-    split_migration.split_defaultmodels_per_org(django_apps, None)
+    split_migration.split_defaultmodels_per_org(_apps_before_split(), None)
 
     assert list(DefaultModels.objects.values_list("pk", "org_id", "agent_llm_config_id")) == [
         (owned_row.pk, org.id, llm_config.id)

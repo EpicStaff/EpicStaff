@@ -3,12 +3,12 @@ from django.urls import reverse
 from rest_framework import status
 
 from rbac.identity.api_keys.principals import SystemServicePrincipal
-from tables.models import LLMConfig, LLMModel, Provider
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
 from tables.models.llm_models import SystemOneConfig
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
 from tables.models.secret_models import Secret
 from tables.services.quickstart_service import QuickstartService
+from tests.ai_models_tests.builtin_models import seed_builtin_models
 from tables.services.secrets import secret_service
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -57,7 +57,7 @@ def test_quickstart_authors_every_created_row_with_acting_user(
 
 @pytest.mark.django_db
 def test_quickstart_authors_gemini_realtime_config_with_acting_user(acme, admin_acme):
-    Provider.objects.create(name="gemini")
+    seed_builtin_models()
 
     result = QuickstartService().quickstart(
         provider="gemini", api_key="sk-test", org_id=acme.id, user=admin_acme
@@ -139,7 +139,7 @@ def test_openai_quickstart_creates_one_system_one_config_sharing_the_bundle_secr
 
 @pytest.mark.django_db
 def test_non_openai_quickstart_creates_no_system_one_config(acme, admin_acme):
-    Provider.objects.create(name="gemini")
+    seed_builtin_models()
 
     result = QuickstartService().quickstart(
         provider="gemini", api_key="sk-test", org_id=acme.id, user=admin_acme

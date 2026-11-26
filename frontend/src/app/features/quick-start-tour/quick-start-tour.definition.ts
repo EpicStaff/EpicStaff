@@ -22,7 +22,7 @@ const RESULT_CONTENT: Record<QuickStartResultStatus, TourContent> = {
     activated: {
         title: 'You’re all set',
         body: [
-            'Review or change your models any time under Settings → Default LLMs.',
+            'Review or change your models any time under Settings → AI Models.',
             'You can replay this tour from Help in the sidebar.',
         ],
     },

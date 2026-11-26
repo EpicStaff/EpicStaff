@@ -179,12 +179,65 @@ async def test_without_schema_sends_no_response_format_and_only_user_message(
 async def test_sampling_params_follow_the_routed_provider(
     mock_completion, provider, model, expected_sampling
 ):
-    llm = LLMData(provider=provider, config=LLMConfigData(model=model, temperature=0.5, top_p=0.9))
+    llm = LLMData(
+        provider=provider,
+        config=LLMConfigData(model=model, parameters={"temperature": 0.5, "top_p": 0.9}),
+    )
 
     await run_prompt(llm, {})
 
     call_kwargs = mock_completion.call_args.kwargs
     assert {key: call_kwargs[key] for key in ("temperature", "top_p") if key in call_kwargs} == expected_sampling
+
+
+@pytest.mark.asyncio
+async def test_connection_arguments_and_the_main_secret_are_sent_to_the_provider(mock_completion):
+    llm = LLMData(
+        provider="bedrock",
+        config=LLMConfigData(
+            model="anthropic.claude-v2",
+            api_key=TEST_SECRETS_CRYPTOGRAPHER.encrypt("bedrock-key"),
+            connection={
+                "aws_region_name": "eu-west-1",
+                "api_base": "https://gateway.example",
+                "aws_secret_access_key": (
+                    f"epicstaff_secret({TEST_SECRETS_CRYPTOGRAPHER.encrypt('aws-secret')})"
+                ),
+            },
+        ),
+    )
+
+    await run_prompt(llm, {})
+
+    call_kwargs = mock_completion.call_args.kwargs
+    assert call_kwargs["model"] == "bedrock/anthropic.claude-v2"
+    connection_keys = ("aws_region_name", "api_base", "aws_secret_access_key", "api_key")
+    assert {key: call_kwargs.get(key) for key in connection_keys} == {
+        "aws_region_name": "eu-west-1",
+        "api_base": "https://gateway.example",
+        "aws_secret_access_key": "aws-secret",
+        "api_key": "bedrock-key",
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "provider, expected_model", [("openai", "gpt-4o-mini"), ("azure", "azure/my-deployment")]
+)
+async def test_deployment_id_reaches_the_provider_only_as_the_azure_model(
+    mock_completion, provider, expected_model
+):
+    # litellm sends any call carrying a deployment_id to Azure.
+    llm = LLMData(
+        provider=provider,
+        config=LLMConfigData(model="gpt-4o-mini", connection={"deployment_id": "my-deployment"}),
+    )
+
+    await run_prompt(llm, {})
+
+    call_kwargs = mock_completion.call_args.kwargs
+    assert call_kwargs["model"] == expected_model
+    assert "deployment_id" not in call_kwargs
 
 
 @pytest.mark.asyncio

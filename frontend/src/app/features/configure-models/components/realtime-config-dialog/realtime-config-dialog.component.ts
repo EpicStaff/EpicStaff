@@ -11,10 +11,10 @@ import {
     RealtimeProvider,
 } from '../realtime-config-form/realtime-config-form.component';
 
-/** Edits `config`; its provider stays fixed. New voice configs are created from "Add Configuration". */
+/** Edits `config`, its provider fixed; a null `config` creates one, starting at `provider`. */
 export interface RealtimeConfigDialogData {
     provider: RealtimeProvider;
-    config: RealtimeConfig;
+    config: RealtimeConfig | null;
 }
 
 @Component({
@@ -34,10 +34,14 @@ export class RealtimeConfigDialogComponent implements OnInit {
     private readonly form = viewChild(RealtimeConfigFormComponent);
 
     protected readonly isSaving = computed(() => this.form()?.isSubmitting() ?? false);
-    protected readonly saveLabel = computed(() => (this.isSaving() ? 'Saving…' : 'Save Changes'));
     protected readonly saveError = computed(() => this.form()?.errorMessage() ?? null);
 
     protected readonly data = inject<RealtimeConfigDialogData>(DIALOG_DATA);
+    protected readonly title = `${this.data.config ? 'Edit' : 'Add'} Voice Configuration`;
+    protected readonly saveLabel = computed(() => {
+        if (this.isSaving()) return 'Saving…';
+        return this.data.config ? 'Save Changes' : 'Add Voice';
+    });
 
     private readonly dialogRef = inject(DialogRef);
     private readonly destroyRef = inject(DestroyRef);

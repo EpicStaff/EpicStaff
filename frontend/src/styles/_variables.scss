@@ -21,7 +21,6 @@
     --purple-410: #8b83ff; // classification-decision-table-node-panel accent text
     --purple-412: #8b85ff; // flow-assistant _ep-tokens link-hover color
     --purple-415: #716bff; // default-llms-card/llm-library-card add-button hover
-    --purple-620: #5a52e0; // llm-library-section add-button hover
     --purple-495: #6b6eff; // configure-models provider-btn "active" state (distinct from --accent-color)
     --purple-440: #a89fff; // expression-builder editor caret color
     --purple-430: #7a6fff; // classification-decision-table-node-panel button hover
@@ -69,7 +68,7 @@
     --graphite-900: #212325;
     --graphite-875: #1e1e1e;
     --graphite-878: #1e1e20; // value-preview-tooltip background
-    --graphite-872: #1e1f21; // conversation-row holder badge border
+    --graphite-872: #1e1f21; // conversation section badge border (list rows, thread header)
     --graphite-875-alpha-40: rgba(30, 30, 30, 0.4);
     --graphite-875-alpha-92: rgba(30, 30, 30, 0.92);
     --graphite-850: #222225;
@@ -305,7 +304,6 @@
     --green-alpha-18: rgba(42, 186, 107, 0.18);
     --yellow-500: #ffcf00;
     --yellow-alpha-6: rgba(255, 207, 0, 0.06);
-    --yellow-alpha-8: rgba(255, 207, 0, 0.08);
     --yellow-alpha-30: rgba(255, 207, 0, 0.3);
     --amber-400: #e0a83a;
     --amber-450: #ffb400; // unsaved-changes-dialog warning icon
@@ -339,10 +337,8 @@
     --crimson-500-alpha-10: rgba(239, 68, 68, 0.1);
     --crimson-500-alpha-20: rgba(239, 68, 68, 0.2);
     --crimson-600-alpha-30: rgba(220, 53, 69, 0.3);
-    --amber-620: #f59e0b; // graph-messages "reconnecting" status
-    --amber-620-alpha-10: rgba(245, 158, 11, 0.1);
+    --amber-620: #f59e0b; // classification-dt-message prompt accent
     --amber-620-alpha-15: rgba(245, 158, 11, 0.15);
-    --amber-620-alpha-20: rgba(245, 158, 11, 0.2);
     --red-390: #f87171; // flow-visual-programming restore-warning-btn text (Tailwind red-400)
     --red-400: #ff6b6b;
     --red-400-alpha-5: rgba(255, 107, 107, 0.05);
@@ -397,7 +393,6 @@
     --terracotta-500: #ce9178; // expression-editor family "string" syntax-highlight color (VS Code Dark+)
     --umber-950: #0a0808; // flow-session-status-badge "stopped" background base
     --umber-950-alpha-18: rgba(10, 8, 8, 0.18);
-    --umber-800: #332c27; // conversation-row holder badge background
     --red-550: #e63838; // danger hover
     --red-600: #dc5b60;
     --red-700: #b32b36;
@@ -500,8 +495,6 @@
     --orange-600-alpha-40: rgba(255, 165, 0, 0.4);
     --orange-600-alpha-60: rgba(255, 165, 0, 0.6);
     --orange-600-alpha-70: rgba(255, 165, 0, 0.7);
-    --amber-600: #ffb300; // graph-rag-configuration warning accent
-    --amber-600-alpha-8: rgba(255, 179, 0, 0.08);
     --amber-600-alpha-30: rgba(255, 179, 0, 0.3);
 
     // ------------------------------------------------------------------
@@ -552,9 +545,9 @@
     --color-surface-card: var(--graphite-825);
     --color-chat-test-visitor-bubble: var(--fog-alpha-16); // the visitor's message in a test conversation
     --color-drag-drop-active: var(--black-alpha-28);
-    // The badge of whoever holds a conversation, on the corner of the visitor's avatar; its border cuts it out of it.
-    --color-holder-badge-background: var(--umber-800);
-    --color-holder-badge-border: var(--graphite-872);
+    // The ring of a conversation's section badge, on the corner of the visitor's avatar: the row's background, so it
+    // cuts the badge out of the avatar. The badge's fill is its section's colour, faintly, over it.
+    --color-section-badge-border: var(--graphite-872);
 
     // ------------------------------------------------------------------
     // SEMANTIC — interactive (accent, buttons)
@@ -610,6 +603,7 @@
     // ------------------------------------------------------------------
     --success-color: var(--green-500);
     --color-warning: var(--amber-500);
+    --color-warning-background: var(--amber-alpha-8);
     --color-status-error: var(--red-500);
     --color-status-error-subtle: var(--red-alpha-15);
     --color-status-error-hover: var(--red-alpha-25);
@@ -801,7 +795,7 @@
     --white-alpha-10: rgba(15, 23, 42, 0.1);
 
     // Explicit semantic exceptions
-    --color-holder-badge-border: var(--color-background-body);
+    --color-section-badge-border: var(--color-background-body);
     --color-text-secondary: #64748b;
     --color-text-subtle: rgba(15, 23, 42, 0.7);
     --color-input-text-placeholder: #94a3b8;

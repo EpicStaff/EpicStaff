@@ -241,11 +241,13 @@ def test_generation_params_except_stop_reach_the_request():
     client = make_client(
         "openai",
         "o3-mini",
-        reasoning_effort="high",
-        stop=["END"],
-        logit_bias={50256: -100.0},
-        temperature=0.2,
-        seed=7,
+        parameters={
+            "reasoning_effort": "high",
+            "stop": ["END"],
+            "logit_bias": {"50256": -100.0},
+            "temperature": 0.2,
+            "seed": 7,
+        },
     )
 
     kwargs = sent_request(client, MESSAGES, [])
@@ -253,7 +255,7 @@ def test_generation_params_except_stop_reach_the_request():
     assert kwargs["reasoning_effort"] == "high"
     # The config's stop sequences are agent-oriented and could cut the JSON reply.
     assert "stop" not in kwargs
-    assert kwargs["logit_bias"] == {50256: -100.0}
+    assert kwargs["logit_bias"] == {"50256": -100.0}
     assert kwargs["temperature"] == 0.2
     assert kwargs["seed"] == 7
 
@@ -273,7 +275,9 @@ def test_generation_params_except_stop_reach_the_request():
 )
 def test_sampling_params_follow_the_routed_provider(provider_name, model_name, expected_sampling):
     client = make_client(
-        provider_name, model_name, temperature=0.5, top_p=0.9, reasoning_effort="high"
+        provider_name,
+        model_name,
+        parameters={"temperature": 0.5, "top_p": 0.9, "reasoning_effort": "high"},
     )
 
     kwargs = sent_request(client, MESSAGES, [])
@@ -291,25 +295,47 @@ def test_unset_reasoning_effort_sends_no_key():
 
 
 def test_azure_model_string_uses_the_deployment_id():
-    client = make_client("azure", "o3-mini", deployment_id="my-o3-deployment")
+    client = make_client("azure", "o3-mini", connection={"deployment_id": "my-o3-deployment"})
 
-    assert sent_request(client, MESSAGES, [])["model"] == "azure/my-o3-deployment"
+    kwargs = sent_request(client, MESSAGES, [])
+
+    assert kwargs["model"] == "azure/my-o3-deployment"
+    assert "deployment_id" not in kwargs
 
 
 def test_transport_fields_come_from_the_config():
     client = make_client(
         "azure",
         "gpt-4o",
-        base_url="https://example.openai.azure.com",
-        api_version="2024-10-21",
+        connection={"api_base": "https://example.openai.azure.com", "api_version": "2024-10-21"},
         extra_headers={"X-Trace": "1"},
     )
 
     kwargs = sent_request(client, MESSAGES, [])
 
-    assert kwargs["base_url"] == "https://example.openai.azure.com"
+    assert kwargs["api_base"] == "https://example.openai.azure.com"
     assert kwargs["api_version"] == "2024-10-21"
     assert kwargs["extra_headers"] == {"X-Trace": "1"}
+
+
+@pytest.mark.parametrize(
+    ("main_secret_argument", "api_key", "expected"),
+    [
+        ("api_key", "sk-1", {"api_key": "sk-1"}),
+        ("vertex_credentials", "{}", {"vertex_credentials": "{}"}),
+        ("api_key", None, {}),
+    ],
+)
+def test_the_resolved_key_is_sent_as_the_provider_s_main_secret(main_secret_argument, api_key, expected):
+    client = LiteLLMClient(
+        LLMConfigData(model="gpt-4o", main_secret_argument=main_secret_argument),
+        provider_name="openai",
+        api_key=api_key,
+    )
+
+    kwargs = sent_request(client, MESSAGES, [])
+
+    assert {name: kwargs[name] for name in ("api_key", "vertex_credentials") if name in kwargs} == expected
 
 
 def test_provider_less_model_uses_the_bare_model_name():

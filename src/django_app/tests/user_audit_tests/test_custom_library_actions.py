@@ -39,7 +39,7 @@ class FakeLibrarySandbox:
     def __exit__(self, *exc_info):
         return False
 
-    def create(self, file) -> dict:
+    def create(self, file, scope=None) -> dict:
         self._next_id += 1
         library = {"id": self._next_id, "name": file.name.split("-", 1)[0]}
         self.libraries[self._next_id] = library

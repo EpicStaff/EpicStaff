@@ -12,7 +12,13 @@ class AbstractUVProvider(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    async def apply(cls, venv_path: Path, *libs: LibraryString, wheelhouse: Path | None = None):
+    async def apply(
+        cls,
+        venv_path: Path,
+        *libs: LibraryString,
+        wheelhouse: Path | None = None,
+        offline: bool = False,
+    ):
         """Resolve `libs` into a lock file and install them into the venv.
 
         Args:
@@ -20,12 +26,21 @@ class AbstractUVProvider(abc.ABC):
             libs: One requirement per entry, written as a package index would read it.
             wheelhouse: A directory of wheels to resolve against as well as the package
                 index, for libraries this installation stores itself and no index has.
+            offline: Resolve and install from `wheelhouse` alone, without the package
+                index or the network.
         """
 
     @classmethod
     @abc.abstractmethod
-    async def install_local(cls, venv_path: Path, *packages: Path):
-        """Install local source packages (by directory path) into the venv."""
+    async def install_local(cls, venv_path: Path, *packages: str, wheelhouse: Path):
+        """Install `packages` into the venv from `wheelhouse` alone, without the network.
+
+        Args:
+            venv_path: The venv to install into.
+            packages: Distribution names, each with its wheel in `wheelhouse`.
+            wheelhouse: A directory holding the wheels of `packages` and of all their
+                dependencies; a missing one fails the install instead of being fetched.
+        """
 
     @classmethod
     @abc.abstractmethod

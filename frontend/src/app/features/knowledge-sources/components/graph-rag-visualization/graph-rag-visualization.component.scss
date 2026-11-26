@@ -75,6 +75,9 @@
     }
 
     // --- Left sidebar (overlay) ---
+    // overflow: visible so the Fit-to-view button, translated past the right edge, sits on the canvas
+    // instead of being clipped. The sidebar body has its own overflow-y, and filter labels ellipsis-truncate,
+    // so nothing inside the sidebar relies on this container to clip.
     &__sidebar {
         position: absolute;
         top: 0;
@@ -84,8 +87,41 @@
         flex-direction: column;
         background-color: var(--color-sidenav-background);
         border-right: 1px solid var(--color-divider-subtle);
-        overflow: hidden;
+        overflow: visible;
         z-index: 10;
+    }
+
+    // Lives in the sidebar's DOM tree but is pushed past its right edge to float over the canvas.
+    &__fit-button {
+        appearance: none;
+        position: absolute;
+        top: 5px;
+        right: 2px;
+        transform: translateX(calc(100% + 8px));
+        display: inline-flex;
+        align-items: center;
+        padding: 0 1rem;
+        height: 28px;
+        border: 1px solid var(--color-divider-subtle);
+        border-radius: 4px;
+        background-color: var(--color-nodes-background);
+        color: var(--color-ks-transparent-text-80);
+        font-family: inherit;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        cursor: pointer;
+        white-space: nowrap;
+        z-index: 10;
+
+        &:hover:not(:disabled) {
+            background-color: var(--color-ks-hover-row);
+        }
+
+        &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     }
 
     &__sidebar-body {
@@ -197,19 +233,24 @@
         height: 100%;
     }
 
+    // Same dark pill shape as the always-on labels (sprite labels), but with an accent-purple border
+    // and text so hover + selected stand out against the regular white-bordered labels around them.
     &__hover-tooltip {
         position: absolute;
         transform: translate(-50%, -100%);
         padding: 4px 10px;
-        border-radius: 6px;
-        background-color: color-mix(in srgb, var(--accent-color) 80%, transparent);
-        color: var(--color-text-primary);
+        border: 2px solid var(--accent-color);
+        border-radius: 999px;
+        background-color: var(--tooltip-bg);
+        color: var(--accent-color);
         font-size: var(--text-body-size);
-        font-weight: var(--text-body-weight);
+        font-weight: 600;
         line-height: var(--text-body-line-height);
         white-space: nowrap;
         pointer-events: none;
-        z-index: 20;
+        // Below the overlaid sidebars (z-index: 10) so a tooltip whose node projects under a
+        // sidebar is hidden by it instead of covering its contents.
+        z-index: 1;
     }
 
     // --- Detail panel (right overlay sidebar) ---
@@ -250,6 +291,8 @@
         z-index: 1;
 
         app-button {
+            width: 28px;
+            height: 28px;
             flex-shrink: 0;
         }
     }
@@ -260,6 +303,13 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+    }
+
+    &__detail-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
     }
 
     &__detail-body {
@@ -288,7 +338,10 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
-        padding-top: 16px;
+        // Pull the section out to the panel edges so the top divider spans full width,
+        // then restore the inner horizontal padding the body otherwise provides.
+        margin: 0 -16px;
+        padding: 16px 16px 0 16px;
         border-top: 1px solid var(--color-divider-subtle);
     }
 

@@ -31,6 +31,10 @@ class McpToolData(BaseModel):
     """URL of the remote MCP server (SSE). Required."""
     tool_name: str
 
+    name: str | None = None
+    """The tool's name in EpicStaff, unique where `tool_name` (the server's) may not be.
+    The agent shows it to the model when another tool already has `tool_name`."""
+
     timeout: float | None = 30
     """Request timeout in seconds. Recommended to set."""
 
@@ -53,9 +57,12 @@ class McpToolData(BaseModel):
 class PythonCodeData(StorageScopedData):
     code: str
     entrypoint: str
-    # The venv this code runs in; None means the sandbox's default venv. The venv
-    # is the only place libraries come from, so there is nothing else to declare.
+    # The venv this code runs in; None, with no `system_venv` either, means the
+    # sandbox's default venv. The venv is the only place libraries come from, so there
+    # is nothing else to declare.
     venv_id: int | None = None
+    # Set by a built-in node instead of `venv_id`: the sandbox's own venv for that node.
+    system_venv: str | None = None
     global_kwargs: dict[str, Any] | None = None
     execution_timeout: int | None = None
     """Seconds a single run of this code may take. None makes the sandbox apply
@@ -161,8 +168,11 @@ class CodeResultData(BaseModel):
 
 
 class CodeTaskData(StorageScopedData):
-    # The venv this code runs in; None means the sandbox's default venv.
+    # The venv this code runs in; None, with no `system_venv` either, means the
+    # sandbox's default venv.
     venv_id: int | None = None
+    # Set instead of `venv_id` for built-in code: the sandbox's own venv for it.
+    system_venv: str | None = None
     code: str
     execution_id: str
     entrypoint: str

@@ -202,7 +202,7 @@ smoke_plugins() {
   local token
   token=$(superadmin_token)
   remember_secret "$token"
-  SMOKE_ADMIN_TOKEN=$token EPICSTAFF_URL=$epicstaff_url PLUGINS_BASE_DOMAIN=$PLUGINS_BASE_DOMAIN \
+  SMOKE_ADMIN_TOKEN=$token EPICSTAFF_URL=$epicstaff_url PLUGINS_HOST_TEMPLATE=$PLUGINS_HOST_TEMPLATE \
     PLUGIN_IDENTIFIER=$plugin PLUGINS_MAX_PACKAGE_MB=$PLUGINS_MAX_PACKAGE_MB \
     bash "$nginx_tests/plugins_smoke.sh"
 }
@@ -225,7 +225,7 @@ smoke_suspend() {
     bash "$nginx_tests/suspend_smoke.sh"
 }
 smoke_development() {
-  SMOKE_BASE_URL=$epicstaff_url SMOKE_PLUGINS_BASE_DOMAIN=$PLUGINS_BASE_DOMAIN SMOKE_PLUGIN=$plugin \
+  SMOKE_BASE_URL=$epicstaff_url SMOKE_PLUGINS_HOST_TEMPLATE=$PLUGINS_HOST_TEMPLATE SMOKE_PLUGIN=$plugin \
     SMOKE_ORG_ID=$(stack_value organizations.a.id) SMOKE_SUPERADMIN_EMAIL=$E2E_SUPERADMIN_EMAIL \
     SMOKE_SUPERADMIN_PASSWORD=$E2E_SUPERADMIN_PASSWORD SMOKE_DEV_API_PORT=$PLUGINS_DEV_API_PORT \
     SMOKE_NODE_KEY=$PLUGINS_NODE_KEY \
@@ -234,7 +234,7 @@ smoke_development() {
 smoke_upgrade() {
   local plugin_uid
   plugin_uid=$(docker exec -u root "$(compose ps -q es_plugins)" stat -c %u "/var/lib/es_plugins/data/$plugin")
-  SMOKE_BASE_URL=$epicstaff_url SMOKE_PLUGINS_BASE_DOMAIN=$PLUGINS_BASE_DOMAIN SMOKE_PLUGIN=$plugin \
+  SMOKE_BASE_URL=$epicstaff_url SMOKE_PLUGINS_HOST_TEMPLATE=$PLUGINS_HOST_TEMPLATE SMOKE_PLUGIN=$plugin \
     SMOKE_ORG_ID=$(stack_value organizations.a.id) SMOKE_SAMPLE_DIR=$sample SMOKE_SDK_WHEEL=$sdk_wheel \
     SMOKE_PLUGIN_UID=$plugin_uid SMOKE_SUPERADMIN_EMAIL=$E2E_SUPERADMIN_EMAIL \
     SMOKE_SUPERADMIN_PASSWORD=$E2E_SUPERADMIN_PASSWORD SMOKE_MEMBER_EMAIL=$(stack_value people.ada.email) \
@@ -242,7 +242,7 @@ smoke_upgrade() {
     bash "$nginx_tests/upgrade_smoke.sh" --yes
 }
 smoke_purge() {
-  SMOKE_BASE_URL=$epicstaff_url SMOKE_PLUGINS_BASE_DOMAIN=$PLUGINS_BASE_DOMAIN SMOKE_PLUGIN=$plugin \
+  SMOKE_BASE_URL=$epicstaff_url SMOKE_PLUGINS_HOST_TEMPLATE=$PLUGINS_HOST_TEMPLATE SMOKE_PLUGIN=$plugin \
     SMOKE_ORG_ID=$(stack_value organizations.a.id) SMOKE_ORG_NAME=$(stack_value organizations.a.name) \
     SMOKE_SUPERADMIN_EMAIL=$E2E_SUPERADMIN_EMAIL SMOKE_SUPERADMIN_PASSWORD=$E2E_SUPERADMIN_PASSWORD \
     bash "$nginx_tests/purge_smoke.sh" --yes
@@ -357,7 +357,7 @@ export PLUGINS_ENABLED=${PLUGINS_ENABLED:-true}
 export NGINX_SERVER_NAME=${NGINX_SERVER_NAME:-epicstaff.localhost}
 export NGINX_SSL_MODE=${NGINX_SSL_MODE:-off}
 export DJANGO_FRONTEND_BASE_URL=${DJANGO_FRONTEND_BASE_URL:-http://epicstaff.localhost}
-export PLUGINS_BASE_DOMAIN=${PLUGINS_BASE_DOMAIN:-plugins.epicstaff.localhost}
+export PLUGINS_HOST_TEMPLATE=${PLUGINS_HOST_TEMPLATE:-\{id\}.plugins.epicstaff.localhost}
 export DJANGO_REFRESH_COOKIE_SECURE=${DJANGO_REFRESH_COOKIE_SECURE:-false}
 export PLUGINS_DEV_API_PORT=${PLUGINS_DEV_API_PORT:-8082}
 export DJANGO_LOGIN_THROTTLE_RATE=${DJANGO_LOGIN_THROTTLE_RATE:-100/min}
@@ -383,7 +383,8 @@ E2E_SUPERADMIN_PASSWORD="$(random_secret | cut -c1-32)Aa"
 remember_secret "$E2E_SUPERADMIN_PASSWORD"
 export E2E_SUPERADMIN_PASSWORD
 epicstaff_url=${DJANGO_FRONTEND_BASE_URL%/}
-plugin_url="${epicstaff_url%%://*}://$plugin.$PLUGINS_BASE_DOMAIN"
+plugin_host=${PLUGINS_HOST_TEMPLATE/\{id\}/$plugin}
+plugin_url="${epicstaff_url%%://*}://$plugin_host"
 
 # The run's signing key, the only one the stack trusts.
 (cd "$repository" && uv run --frozen --project src/plugin_sdk epicstaff-plugin keygen --out "$work/e2e-signing") \
@@ -441,12 +442,12 @@ echo "Compose project $project, image tag $IMAGE_TAG, plugins subnet $PLUGINS_NE
 begin_stage names
 epicstaff_host=${epicstaff_url#*://}
 epicstaff_host=${epicstaff_host%%[:/]*}
-for host_name in "$epicstaff_host" "$plugin.$PLUGINS_BASE_DOMAIN"; do
+for host_name in "$epicstaff_host" "$plugin_host"; do
   address=$(python3 -c 'import socket, sys; print(socket.gethostbyname(sys.argv[1]))' "$host_name" 2> /dev/null || true)
   if [ "$address" != 127.0.0.1 ]; then
     echo "$host_name resolves to ${address:-nothing}, not 127.0.0.1. Add this line to /etc/hosts:" >&2
-    echo "  127.0.0.1 $epicstaff_host $plugin.$PLUGINS_BASE_DOMAIN" >&2
-    echo "for example: echo '127.0.0.1 $epicstaff_host $plugin.$PLUGINS_BASE_DOMAIN' | sudo tee -a /etc/hosts" >&2
+    echo "  127.0.0.1 $epicstaff_host $plugin_host" >&2
+    echo "for example: echo '127.0.0.1 $epicstaff_host $plugin_host' | sudo tee -a /etc/hosts" >&2
     fail_run "$host_name does not resolve to this machine"
   fi
   echo "$host_name resolves to 127.0.0.1"

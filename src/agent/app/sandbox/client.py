@@ -136,6 +136,7 @@ class SandboxClient:
                     func_kwargs=task.func_kwargs or {},
                     secrets=task.secrets,
                     venv_id=task.venv_id,
+                    system_venv=task.system_venv,
                     use_storage=task.use_storage,
                     storage_allowed_paths=task.storage_allowed_paths or [],
                     storage_org_prefix=task.storage_org_prefix,
@@ -209,7 +210,9 @@ class SandboxClient:
             logger.error(
                 "SandboxClient reader loop failed: error={}", format_exception_for_log(error)
             )
-            connection_error = ConnectionError(f"SandboxClient reader loop failed: {error}")
+            # The pending submits hand this text to the model as their tool result, so it
+            # names the failure without the cause: a Redis error quotes the host and port.
+            connection_error = ConnectionError("SandboxClient result listener failed")
 
             for future in self._pending.values():
                 if not future.done():

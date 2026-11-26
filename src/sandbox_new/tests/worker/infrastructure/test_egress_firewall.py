@@ -1,5 +1,6 @@
-"""Coverage for egress_firewall: the iptables-restore input it builds, the
-resolv.conf parsing behind its DNS carve-out, and how apply() reports failure.
+"""Coverage for egress_firewall: the iptables-restore input it builds -- with the
+internet open or blocked --, the resolv.conf parsing behind its DNS carve-out, and how
+apply() reports failure.
 
 No real iptables: `subprocess.run` and `socket.getaddrinfo` are faked so the
 tests run unprivileged on any host.
@@ -21,6 +22,9 @@ from worker.infrastructure.isolation.egress_firewall import (
 )
 
 
+CATCH_ALL_REJECT = "-A SANDBOX_EGRESS -j REJECT --reject-with icmp-admin-prohibited"
+
+
 @pytest.fixture(autouse=True)
 def firewall_not_applied(monkeypatch):
     monkeypatch.setattr(egress_firewall, "_active_carve_outs", None)
@@ -32,12 +36,14 @@ class TestBuildIpv4Rules:
             uid=1000,
             nameservers=("10.89.0.1",),
             storage_endpoints=(("172.20.0.5", 9000),),
+            block_internet=False,
         )
 
         assert rules == (
             "*filter\n"
             ":SANDBOX_EGRESS - [0:0]\n"
             "-A OUTPUT -m owner --uid-owner 1000 -j SANDBOX_EGRESS\n"
+            "-A SANDBOX_EGRESS -o lo -j ACCEPT\n"
             "-A SANDBOX_EGRESS -d 10.89.0.1/32 -p udp --dport 53 -j ACCEPT\n"
             "-A SANDBOX_EGRESS -d 10.89.0.1/32 -p tcp --dport 53 -j ACCEPT\n"
             "-A SANDBOX_EGRESS -d 172.20.0.5/32 -p tcp --dport 9000 -j ACCEPT\n"
@@ -55,23 +61,55 @@ class TestBuildIpv4Rules:
             "COMMIT\n"
         )
 
-    def test_every_accept_precedes_every_reject(self):
+    @pytest.mark.parametrize("block_internet", [False, True])
+    def test_every_accept_precedes_every_reject(self, block_internet):
         lines = build_ipv4_rules(
             uid=1000,
             nameservers=("10.89.0.1", "192.168.1.1"),
             storage_endpoints=(("172.20.0.5", 9000), ("10.0.0.7", 9000)),
+            block_internet=block_internet,
         ).splitlines()
 
         accept_indexes = [index for index, line in enumerate(lines) if line.endswith("ACCEPT")]
         reject_indexes = [index for index, line in enumerate(lines) if "-j REJECT" in line]
-        assert len(accept_indexes) == 6
+        assert len(accept_indexes) == 7
         assert max(accept_indexes) < min(reject_indexes)
 
-    def test_loopback_is_not_blocked(self):
-        rules = build_ipv4_rules(uid=1000, nameservers=("127.0.0.11",), storage_endpoints=())
+    @pytest.mark.parametrize("block_internet", [False, True])
+    def test_loopback_is_not_blocked(self, block_internet):
+        """Docker's DNS on 127.0.0.11 is DNATed to a random port, so only a loopback
+        ACCEPT ahead of every REJECT keeps name resolution working."""
+        lines = build_ipv4_rules(
+            uid=1000,
+            nameservers=("127.0.0.11",),
+            storage_endpoints=(),
+            block_internet=block_internet,
+        ).splitlines()
 
-        assert "127.0.0.0/8" not in rules
-        assert "127.0.0.11/32 -p udp --dport 53 -j ACCEPT" in rules
+        assert "127.0.0.0/8" not in "\n".join(lines)
+        first_reject = min(index for index, line in enumerate(lines) if "-j REJECT" in line)
+        assert lines.index("-A SANDBOX_EGRESS -o lo -j ACCEPT") < first_reject
+
+    def test_blocking_the_internet_ends_the_chain_with_a_reject_of_everything_else(self):
+        lines = build_ipv4_rules(
+            uid=1000,
+            nameservers=("127.0.0.11",),
+            storage_endpoints=(("172.20.0.5", 9000),),
+            block_internet=True,
+        ).splitlines()
+
+        assert lines[-2:] == [CATCH_ALL_REJECT, "COMMIT"]
+        assert lines.count(CATCH_ALL_REJECT) == 1
+
+    def test_an_open_internet_has_no_reject_of_everything_else(self):
+        rules = build_ipv4_rules(
+            uid=1000,
+            nameservers=("127.0.0.11",),
+            storage_endpoints=(("172.20.0.5", 9000),),
+            block_internet=False,
+        )
+
+        assert CATCH_ALL_REJECT not in rules.splitlines()
 
 
 def test_build_ipv6_rules_rejects_all_non_loopback_traffic_of_uid():
@@ -150,7 +188,7 @@ class TestApply:
     def test_installs_both_rulesets_and_marks_active(self, monkeypatch, firewall_host):
         fake = _install_fake_restore(monkeypatch, _FakeRestore())
 
-        egress_firewall.apply(1000)
+        egress_firewall.apply(1000, block_internet=False)
 
         assert fake.calls == [
             (
@@ -159,6 +197,7 @@ class TestApply:
                     uid=1000,
                     nameservers=("10.89.0.1",),
                     storage_endpoints=(("172.20.0.5", 9000),),
+                    block_internet=False,
                 ),
             ),
             ("ip6tables-restore", build_ipv6_rules(uid=1000)),
@@ -168,11 +207,22 @@ class TestApply:
             nameservers=("10.89.0.1",), storage_endpoints=(("172.20.0.5", 9000),)
         )
 
+    @pytest.mark.parametrize("block_internet", [False, True])
+    def test_the_installed_ruleset_blocks_the_internet_only_when_asked(
+        self, monkeypatch, firewall_host, block_internet
+    ):
+        fake = _install_fake_restore(monkeypatch, _FakeRestore())
+
+        egress_firewall.apply(1000, block_internet=block_internet)
+
+        ipv4_rules = fake.calls[0][1].splitlines()
+        assert (CATCH_ALL_REJECT in ipv4_rules) is block_internet
+
     def test_skips_ip6tables_without_ipv6_in_the_netns(self, monkeypatch, firewall_host: Path):
         firewall_host.unlink()
         fake = _install_fake_restore(monkeypatch, _FakeRestore())
 
-        egress_firewall.apply(1000)
+        egress_firewall.apply(1000, block_internet=False)
 
         assert [command for command, _ in fake.calls] == ["iptables-restore"]
         assert egress_firewall.is_active()
@@ -186,7 +236,7 @@ class TestApply:
         monkeypatch.setattr(egress_firewall.socket, "getaddrinfo", _unresolvable)
         fake = _install_fake_restore(monkeypatch, _FakeRestore())
 
-        egress_firewall.apply(1000)
+        egress_firewall.apply(1000, block_internet=False)
 
         assert "--dport 9000" not in fake.calls[0][1]
         assert egress_firewall.active_carve_outs().storage_endpoints == ()
@@ -200,7 +250,7 @@ class TestApply:
         )
 
         with pytest.raises(EgressFirewallUnavailableError, match="iptables-restore could not be run"):
-            egress_firewall.apply(1000)
+            egress_firewall.apply(1000, block_internet=False)
 
         assert not egress_firewall.is_active()
 
@@ -217,7 +267,7 @@ class TestApply:
         _install_fake_restore(monkeypatch, _FakeRestore("ip6tables-restore", error))
 
         with pytest.raises(EgressFirewallUnavailableError) as raised:
-            egress_firewall.apply(1000)
+            egress_firewall.apply(1000, block_internet=False)
 
         assert "ip6tables-restore exited with 2" in str(raised.value)
         assert "Permission denied (you must be root)" in str(raised.value)

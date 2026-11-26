@@ -1,7 +1,8 @@
 from typing import Any, Literal
 
 from django.db import models, transaction
-from django.db.models import Avg, Count, Prefetch
+from django.db.models import Avg, Count, OuterRef, Prefetch, Subquery
+from django.db.models.functions import Coalesce
 from loguru import logger
 from rbac.authorship import record_last_edit, resolve_author
 from src.shared.enums.knowledge_new import RAGStrategy
@@ -27,6 +28,7 @@ from tables.models.knowledge_models import GraphRag, GraphRagIndexConfig, NaiveR
 from tables.models.knowledge_models.naive_rag_models import (
     NaiveRagChunk,
     NaiveRagDocumentConfig,
+    NaiveRagEmbedding,
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
@@ -483,6 +485,31 @@ class CollectionManagementService:
         return new_collection
 
     @staticmethod
+    def naive_rag_count_annotations() -> dict[str, Any]:
+        """Return the count annotations for a ``NaiveRag`` queryset.
+
+        Chunks and embeddings are counted in correlated subqueries, so the outer
+        query never joins both: that join would multiply their rows per document
+        config. ``all_objects`` makes the counts include soft-deleted (binned) rows.
+        """
+
+        def count_per_naive_rag(model: type[models.Model]) -> Coalesce:
+            per_rag = (
+                model.all_objects.filter(naive_rag_document_config__naive_rag=OuterRef("pk"))
+                .order_by()
+                .values("naive_rag_document_config__naive_rag")
+                .annotate(count=Count("pk"))
+                .values("count")
+            )
+            return Coalesce(Subquery(per_rag), 0)
+
+        return {
+            "document_configs_count": Count("naive_rag_configs", distinct=True),
+            "chunks_count": count_per_naive_rag(NaiveRagChunk),
+            "embeddings_count": count_per_naive_rag(NaiveRagEmbedding),
+        }
+
+    @staticmethod
     def rag_configurations_prefetch():
         """Prefetch chain for the full RAG summary; spread into
         ``queryset.prefetch_related(*...())``.
@@ -492,9 +519,7 @@ class CollectionManagementService:
         summary builder never loads those rows.
         """
         naive_rag_qs = NaiveRag.objects.select_related("embedder").annotate(
-            document_configs_count=Count("naive_rag_configs", distinct=True),
-            chunks_count=Count("naive_rag_configs__chunks", distinct=True),
-            embeddings_count=Count("naive_rag_configs__embeddings", distinct=True),
+            **CollectionManagementService.naive_rag_count_annotations()
         )
         graph_rag_qs = GraphRag.objects.select_related("embedder", "llm").annotate(
             documents_count=Count("graph_rag_documents")

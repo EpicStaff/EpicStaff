@@ -3,18 +3,18 @@
 A row that references a secret also says where its value goes, so on top of secrets:USE
 a pinned-org principal may reference only the secrets it may reference
 (`PinnedOrgPrincipal.may_reference_secrets`), may not let a header marker bind to any
-other secret when work it starts resolves the marker, and never sets where a model sends
-requests. People are not limited by any of these rules.
+other secret when work it starts resolves the marker, and never sets where a model
+configuration sends requests. People are not limited by any of these rules.
 
-`SecretUseService` applies the reference rules to every write it checks; the run-start
-and endpoint rules are called by their own write points.
+`SecretUseService` applies the reference rules to every write it checks, and the run-start
+rule is called where work starts. The endpoint rule guards a config's `connection` and
+lives in `secret_use_checks`, which the API and the import both run.
 """
 
 from rbac.access.principals import is_pinned_org_principal, is_plugin_credential
 from tables.models import Secret
 from tables.services.secrets.exceptions import (
     IncompletePluginCredentialError,
-    ModelEndpointNotSettableError,
     SecretMarkerNotReferenceableError,
 )
 from utils.logger import logger
@@ -24,10 +24,6 @@ NOT_REFERENCEABLE = (
     "This credential can reference only secrets it created, so it cannot save a row "
     "that references any other secret."
 )
-
-# The fields that decide where a model sends requests, beyond the provider's vendor host.
-LLM_MODEL_ENDPOINT_FIELDS = ("base_url", "deployment_id")
-EMBEDDING_MODEL_ENDPOINT_FIELDS = ("base_url", "deployment")
 
 
 def pinned_principal_of_user(user):
@@ -101,39 +97,6 @@ def assert_may_resolve_markers(*, principal, names) -> None:
         raise SecretMarkerNotReferenceableError()
 
 
-def assert_endpoints_untouched(*, principal, instance, values, fields) -> None:
-    """Keep a pinned-org principal from deciding where any model sends requests.
-
-    A config sends its key to the endpoint of the model it points at (an LLM model's
-    `base_url`, an Azure `deployment_id`), and a person's config may come to use any model
-    of the organization: quickstart reuses one by name, and a person can pick one. So a
-    pinned-org principal never sets or changes a model's endpoint fields, on its own rows
-    or the organization's, on create or on update. The model's name and provider only
-    choose between vendor hosts and stay editable.
-
-    Nothing happens for a person (`principal` None). A field the write leaves out, or
-    sends unchanged, never counts; on a new row (`instance` None) any non-empty value
-    does.
-
-    Args:
-        values: The write's values, keyed by model attribute names.
-        fields: Sources of the fields that decide where the model sends requests.
-
-    Raises:
-        ModelEndpointNotSettableError: Names each endpoint field the write would change.
-    """
-    if principal is None:
-        return
-    changed = tuple(
-        source
-        for source in fields
-        if source in values
-        and _endpoint_value(values[source]) != _endpoint_value(getattr(instance, source, None))
-    )
-    if changed:
-        raise ModelEndpointNotSettableError(fields=changed)
-
-
 def _refuse_incomplete_principal(user) -> None:
     logger.error(
         "A plugin credential's user ({}) does not implement PinnedOrgPrincipal; its write "
@@ -141,8 +104,3 @@ def _refuse_incomplete_principal(user) -> None:
         type(user).__name__,
     )
     raise IncompletePluginCredentialError()
-
-
-def _endpoint_value(value):
-    # An empty value and no value both mean the provider's default endpoint.
-    return value or None

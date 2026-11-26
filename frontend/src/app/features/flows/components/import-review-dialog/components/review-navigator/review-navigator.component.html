@@ -84,24 +84,28 @@
                         class="code-editor-python-icon"
                     ></app-svg-icon>
                     <span class="code-editor-title">Python Editor</span>
-                    <span class="code-editor-subtitle">
-                        {{ entry.code.entrypoint }}() — {{ librariesCount(entry.code) }} libraries
-                    </span>
+                    @if (entry.code.entrypoint) {
+                        <span class="code-editor-subtitle">
+                            {{ entry.code.entrypoint }}() — {{ librariesCount(entry.code) }} libraries
+                        </span>
+                    }
                 </div>
                 <div class="code-editor-header-actions">
-                    <button
-                        type="button"
-                        class="code-editor-icon-btn"
-                        aria-label="What am I looking at?"
-                        matTooltip="File details"
-                        matTooltipPosition="above"
-                        (click)="openFileDetails(entry)"
-                    >
-                        <app-svg-icon
-                            icon="editor-help"
-                            size="12px"
-                        ></app-svg-icon>
-                    </button>
+                    @if (entry.code.entrypoint) {
+                        <button
+                            type="button"
+                            class="code-editor-icon-btn"
+                            aria-label="What am I looking at?"
+                            matTooltip="File details"
+                            matTooltipPosition="above"
+                            (click)="openFileDetails(entry)"
+                        >
+                            <app-svg-icon
+                                icon="editor-help"
+                                size="12px"
+                            ></app-svg-icon>
+                        </button>
+                    }
                     <button
                         type="button"
                         class="code-editor-icon-btn"

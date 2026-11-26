@@ -102,6 +102,8 @@ services:
   # The volumes may be in use (an up against a running stack): -ignore_readdir_race keeps a
   # file deleted mid-walk from failing the run and blocking the dependents.
   volume-permissions:
+    mem_limit: 64m
+    pids_limit: 64
     logging: *bounded-logs
     restart: "no"
     image: ghcr.io/epicstaff/django_app:${IMAGE_TAG:?}
@@ -124,6 +126,9 @@ services:
               -ignore_readdir_race, "(", "!", -uid, "1000", -o, "!", -gid, "1000", ")", -exec, chown, -h, "1000:1000", "{}", "+"]
 
   django_app:
+    mem_limit: ${DJANGO_MEMORY:?}
+    pids_limit: 1024
+    cpus: ${DJANGO_CPUS:?}
     <<: *hardened
     logging: *bounded-logs
     restart: unless-stopped
@@ -238,7 +243,7 @@ services:
       AUDIT_JWT_SECRET: ${AUDIT_JWT_SECRET:?}
 
       PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
-      PLUGINS_BASE_DOMAIN: ${PLUGINS_BASE_DOMAIN:?}
+      PLUGINS_HOST_TEMPLATE: ${PLUGINS_HOST_TEMPLATE:?}
       PLUGINS_TRUSTED_SIGNING_KEYS: ${PLUGINS_TRUSTED_SIGNING_KEYS:?}
       PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
       PLUGINS_GRACE_PERIOD_DAYS: ${PLUGINS_GRACE_PERIOD_DAYS:?}
@@ -272,6 +277,7 @@ services:
         aliases:
           - djangoapp
           - django
+      sandbox-producer-network: {}
     depends_on:
       volume-permissions:
         condition: service_completed_successfully
@@ -290,6 +296,8 @@ services:
       retries: 100
 
   realtime:
+    mem_limit: 256m
+    pids_limit: 256
     <<: *hardened
     tmpfs:
       - /tmp:size=64m
@@ -325,6 +333,7 @@ services:
       REALTIME_CODE_RESULT_TIMEOUT: ${REALTIME_CODE_RESULT_TIMEOUT:?}
     networks:
       - backend-network
+      - sandbox-producer-network
     depends_on:
       crewdb:
         condition: service_healthy
@@ -338,6 +347,8 @@ services:
         condition: service_started
 
   manager:
+    mem_limit: 128m
+    pids_limit: 128
     <<: *hardened
     tmpfs:
       - /tmp:size=64m
@@ -383,6 +394,9 @@ services:
         condition: service_healthy
 
   crewdb:
+    mem_limit: ${CREWDB_MEMORY:?}
+    pids_limit: 512
+    cpus: ${CREWDB_CPUS:?}
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/crewdb:${IMAGE_TAG:?}
@@ -420,6 +434,7 @@ services:
       - crew_pgdata:/var/lib/postgresql/data
     networks:
       - backend-network
+      - sandbox-producer-network
     healthcheck:
       test: >
         bash -c '
@@ -432,14 +447,18 @@ services:
       start_period: 15s
 
   redis:
+    mem_limit: ${REDIS_MEMORY:?}
+    pids_limit: 1024
+    cpus: ${REDIS_CPUS:?}
     image: redis:8.10.3@sha256:1f88291b4c57bdf249f02eb085a8669889b2d2954e91d4de5118a5da6b78dd53
     container_name: ${INSTANCE_PREFIX?}redis
     logging: *bounded-logs
     restart: unless-stopped
     networks:
-      # Deliberately NOT on sandbox-network: that network carries the worker that runs
+      # Deliberately NOT on sandbox-worker-network: that network carries the worker that runs
       # user code, and nothing on it needs Redis (the legacy sandbox's pub/sub did).
       - backend-network
+      - sandbox-producer-network
     volumes:
       - ./redis.conf:/usr/local/etc/redis/redis.conf:ro
       - redis_data:/data
@@ -451,13 +470,26 @@ services:
     # limit. The password reaches redis-server as config on stdin (the trailing "-"), never as
     # an argument: every user on the host can read process arguments, and redis-server only
     # hides its own once it has started. sed escapes \ and " for the quoted config values.
+    # maxmemory is 75% of this container's own memory limit (REDIS_MEMORY, read from the cgroup:
+    # v2, then v1), with noeviction: once full, Redis refuses writes with an error instead of
+    # growing until the kernel kills it and every organization's sessions and pub/sub drop. With
+    # no limit ("max", v1's near-2^63 "unlimited", or no readable file) it sets no maxmemory.
     command:
       - sh
       - -c
       - |
         password=$$(printf '%s' "$$REDIS_PASSWORD" | sed 's/[\\"]/\\&/g')
-        printf 'requirepass "%s"\nuser "%s" on ">%s" ~* &* +@all\n' "$$password" "$$REDIS_USER" "$$password" |
-          redis-server /usr/local/etc/redis/redis.conf --port "$$REDIS_PORT" -
+        limit=$$(cat /sys/fs/cgroup/memory.max 2>/dev/null || cat /sys/fs/cgroup/memory/memory.limit_in_bytes 2>/dev/null)
+        maxmemory=
+        case "$$limit" in
+          '' | *[!0-9]*) ;;
+          *) if [ "$$limit" -lt 1152921504606846976 ]; then maxmemory=$$((limit / 4 * 3)); fi ;;
+        esac
+        {
+          printf 'requirepass "%s"\nuser "%s" on ">%s" ~* &* +@all\n' "$$password" "$$REDIS_USER" "$$password"
+          if [ -n "$$maxmemory" ]; then printf 'maxmemory %s\n' "$$maxmemory"; fi
+          printf 'maxmemory-policy noeviction\n'
+        } | redis-server /usr/local/etc/redis/redis.conf --port "$$REDIS_PORT" -
     healthcheck:
       # redis-cli reads the password from REDISCLI_AUTH: on a command line (-a) every user on the
       # host could read it in the process list.
@@ -468,6 +500,9 @@ services:
       start_period: 5s
 
   crew:
+    mem_limit: ${CREW_MEMORY:?}
+    pids_limit: 1024
+    cpus: ${CREW_CPUS:?}
     <<: *hardened
     tmpfs:
       - /tmp:size=64m
@@ -485,6 +520,8 @@ services:
       DEFAULT_RAG_SEARCH_TIMEOUT: ${DEFAULT_RAG_SEARCH_TIMEOUT:?}
       NAIVE_RAG_SEARCH_TIMEOUT: ${NAIVE_RAG_SEARCH_TIMEOUT:?}
       GRAPH_RAG_SEARCH_TIMEOUT: ${GRAPH_RAG_SEARCH_TIMEOUT:?}
+      KNOWLEDGE_HOST: ${KNOWLEDGE_HOST:?}
+      KNOWLEDGE_PORT: ${KNOWLEDGE_PORT:?}
       CREW_LLM_HEADERS: ${CREW_LLM_HEADERS:?}
       CREW_REMEMBERED_OUTPUTS_TTL: ${CREW_REMEMBERED_OUTPUTS_TTL:?}
       AGENT_REQUEST_STREAM: ${AGENT_REQUEST_STREAM:?}
@@ -506,6 +543,7 @@ services:
       CREW_SANDBOX_TIMEOUT: ${CREW_SANDBOX_TIMEOUT:?}
     networks:
       - backend-network
+      - sandbox-producer-network
     tty: true
     stdin_open: true
     depends_on:
@@ -580,6 +618,8 @@ services:
   #       condition: service_started
 
   storage:
+    mem_limit: 256m
+    pids_limit: 512
     image: rustfs/rustfs:1.0.4@sha256:ed9210d6411d77ffceb70d94b964a3cb7d225983368bc25bebe01e995293dcc2
     container_name: ${INSTANCE_PREFIX?}storage
     environment:
@@ -591,7 +631,7 @@ services:
       - rustfs_data:/data
     networks:
       - backend-network
-      - sandbox-network
+      - sandbox-worker-network
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:${STORAGE_PORT:?}/minio/health/live || exit 1"]
       interval: 10s
@@ -602,6 +642,8 @@ services:
     restart: unless-stopped
 
   storage-init:
+    mem_limit: 64m
+    pids_limit: 64
     image: curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
     container_name: ${INSTANCE_PREFIX?}storage-init
     networks:
@@ -636,6 +678,14 @@ services:
     restart: on-failure
 
   frontend:
+    mem_limit: 64m
+    pids_limit: 64
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=16m
+    # nginx runs as a non-root user but still listens on 80 (FRONTEND_PORT).
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: 0
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/frontend:${IMAGE_TAG:?}
@@ -657,6 +707,8 @@ services:
       - frontend-network
 
   webhook:
+    mem_limit: 128m
+    pids_limit: 128
     <<: *hardened
     tmpfs:
       - /tmp:size=64m
@@ -696,7 +748,9 @@ services:
       start_period: 5s
 
   epicstaff-nginx:
-    image: nginx:1.31.6@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86
+    mem_limit: 128m
+    pids_limit: 256
+    image: nginx:1.31.9@sha256:08f354a3b44c422021a5c0f5efb3e27f8f90236b5447d3bac4053f5f50ab6760
     container_name: ${INSTANCE_PREFIX?}epicstaff-nginx
     # Long syntax: `docker compose config --no-interpolate` (src/nginx/tests/check_templates.sh)
     # still shows each container port, which it cannot read out of "${VAR}:80".
@@ -730,7 +784,7 @@ services:
       STORAGE_BUCKET: ${STORAGE_BUCKET:?}
       AVATAR_URL_SIGNING_SECRET: ${AVATAR_URL_SIGNING_SECRET:?}
       PLUGINS_ENABLED: ${PLUGINS_ENABLED:?}
-      PLUGINS_BASE_DOMAIN: ${PLUGINS_BASE_DOMAIN:?}
+      PLUGINS_HOST_TEMPLATE: ${PLUGINS_HOST_TEMPLATE:?}
       PLUGINS_MAX_PACKAGE_MB: ${PLUGINS_MAX_PACKAGE_MB:?}
       PLUGINS_MAX_REQUEST_BODY_MB: ${PLUGINS_MAX_REQUEST_BODY_MB:?}
       # The plugins network's subnet: nginx denies it on 80/443 and on the webhook tunnel listener
@@ -742,7 +796,7 @@ services:
       # EpicStaff's public origin: the only page allowed to frame a plugin.
       DJANGO_FRONTEND_BASE_URL: ${DJANGO_FRONTEND_BASE_URL:?}
       # Plugin development mode: the plugin pages' development servers and the development API
-      # listener (8082). nginx refuses to start with it unless EpicStaff and the plugin domain use
+      # listener (8082). nginx refuses to start with it unless EpicStaff and the plugin hosts use
       # .localhost names and docker-compose.plugins-dev.yaml is in the command: that file publishes
       # 80 and 443 on 127.0.0.1 only, publishes 8082, and alone sets PLUGINS_DEV_LOOPBACK_ONLY.
       PLUGINS_DEV_MODE: ${PLUGINS_DEV_MODE:?}
@@ -842,6 +896,8 @@ services:
   # See settings/email.py's EMAIL_HOST comment for the full rationale — do
   # not remove this gate or give DJANGO_EMAIL_HOST a live prod default.
   mailpit:
+    mem_limit: 128m
+    pids_limit: 64
     container_name: ${INSTANCE_PREFIX?}mailpit
     image: axllent/mailpit:v1.33.1@sha256:aef2aacc11f075ec0fb6874275ee4a421e688e11a96ebb296134d1735c7761ce
     profiles: ["dev"]
@@ -853,6 +909,12 @@ services:
     logging: *bounded-logs
 
   agent:
+    mem_limit: ${AGENT_MEMORY:?}
+    pids_limit: 1024
+    cpus: ${AGENT_CPUS:?}
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     image: ghcr.io/epicstaff/agent:${IMAGE_TAG:?}
     container_name: ${INSTANCE_PREFIX?}agent
     build:
@@ -892,17 +954,23 @@ services:
         condition: service_healthy
     networks:
       - backend-network
+      - sandbox-producer-network
 
   # Audit trail stack (opensearch, auditor). Gated behind profiles: ["auditor"]: they start only when
   # COMPOSE_PROFILES includes "auditor"; either audit switch set to true then makes them do work.
   # Nothing outside the profile may depend_on them, or a stack without the audit trail would not start.
   opensearch:
+    mem_limit: ${OPENSEARCH_MEMORY:?}
+    pids_limit: 4096
+    cpus: ${OPENSEARCH_CPUS:?}
     logging: *bounded-logs
     restart: unless-stopped
     image: opensearchproject/opensearch:2.19.1@sha256:72fe2fc84be8295906b8efca020b46c58ed45c8da60cd9b8b49e1991e38e89a4
     container_name: ${INSTANCE_PREFIX?}opensearch
     profiles: ["auditor"]
     entrypoint: ["/bin/bash", "/opensearch-entrypoint.sh"]
+    # Reaps the internal-users sync that opensearch-entrypoint.sh runs in the background.
+    init: true
     environment:
       SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
       USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
@@ -922,16 +990,29 @@ services:
     volumes:
       - opensearch_data:/usr/share/opensearch/data
       - ./auditor/opensearch-entrypoint.sh:/opensearch-entrypoint.sh:ro
+    tmpfs:
+      # The TLS keys and certificates opensearch-entrypoint.sh generates on every start. In memory and
+      # owned by opensearch (uid 1000), so no step has to hand the directory over, and the admin key,
+      # a superuser login without a password, never reaches a disk or a volume.
+      - /usr/share/opensearch/config/tls:uid=1000,gid=1000,mode=0700
     healthcheck:
       # The password comes from the environment (--variable %NAME), not the command line, which every
-      # user on the host can read in the process list.
-      test: ["CMD-SHELL", "curl -sk --variable %OPENSEARCH_INITIAL_ADMIN_PASSWORD --expand-user 'admin:{{OPENSEARCH_INITIAL_ADMIN_PASSWORD}}' https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      # user on the host can read in the process list. The marker file is written by
+      # opensearch-entrypoint.sh once only EpicStaff's own users are left in the security index.
+      test: ["CMD-SHELL", "test -f /tmp/internal-users-synced && curl -s --cacert /usr/share/opensearch/config/tls/root-ca.pem --variable %OPENSEARCH_INITIAL_ADMIN_PASSWORD --expand-user 'admin:{{OPENSEARCH_INITIAL_ADMIN_PASSWORD}}' https://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
       interval: 10s
       timeout: 5s
       retries: 30
-      start_period: 30s
+      # The first start on a new or upgraded data volume boots OpenSearch twice (see
+      # opensearch-entrypoint.sh) and took up to 6 minutes on a busy host.
+      start_period: 300s
 
   auditor:
+    mem_limit: 512m
+    pids_limit: 256
+    <<: *hardened
+    tmpfs:
+      - /tmp:size=64m
     logging: *bounded-logs
     restart: unless-stopped
     image: ghcr.io/epicstaff/auditor:${IMAGE_TAG:?}
@@ -980,6 +1061,9 @@ services:
       start_period: 5s
 
   knowledge_new:
+    mem_limit: ${KNOWLEDGE_MEMORY:?}
+    pids_limit: 1024
+    cpus: ${KNOWLEDGE_CPUS:?}
     <<: *hardened
     logging: *bounded-logs
     restart: unless-stopped
@@ -1012,13 +1096,15 @@ services:
       KNOWLEDGE_MAX_PROCESS_WORKERS: ${KNOWLEDGE_MAX_PROCESS_WORKERS:?}
       KNOWLEDGE_PROCESS_TIMEOUT: ${KNOWLEDGE_PROCESS_TIMEOUT:?}
       KNOWLEDGE_STORAGE_BUCKET: ${KNOWLEDGE_STORAGE_BUCKET:?}
-      KNOWLEDGE_TOKENIZER_PATH: ${KNOWLEDGE_TOKENIZER_PATH:?}
       KNOWLEDGE_CUSTOM_EMBED_BASE_URL: ${KNOWLEDGE_CUSTOM_EMBED_BASE_URL:?}
 
   # Chat service and its database. Gated behind profiles: ["chat"]: they start only when
   # COMPOSE_PROFILES includes "chat"; CHAT_ENABLED=true then exposes the feature in nginx and the UI.
   # Nothing outside the profile may depend_on them, or a stack without chat would not start.
   chat:
+    mem_limit: ${CHAT_MEMORY:?}
+    pids_limit: 1024
+    cpus: ${CHAT_CPUS:?}
     <<: *hardened
     tmpfs:
       - /tmp:size=64m
@@ -1092,6 +1178,8 @@ services:
     restart: unless-stopped
 
   chatdb:
+    mem_limit: 512m
+    pids_limit: 512
     # Same major as crewdb (ankane/pgvector v0.5.1 is Postgres 15); no extensions needed here.
     image: postgres:15@sha256:c961aa287d8698297cb26cdfadfbe9fd2cbaf77e53cfffe9636e8d8a1e4d842c
     container_name: ${INSTANCE_PREFIX?}chatdb
@@ -1124,6 +1212,8 @@ services:
     container_name: ${INSTANCE_PREFIX?}es_plugins
     hostname: es_plugins
     profiles: ["plugins"]
+    # Above the launcher's AGENT_STOP_TIMEOUT_SECONDS (15 s): each plugin gets its graceful stop.
+    stop_grace_period: 20s
     user: root
     read_only: true
     tmpfs:
@@ -1208,6 +1298,9 @@ services:
   # superuser exists for the one init step (plugins_db/init) and works only over the container's
   # own socket (plugins_db/pg_hba.conf). See docs/plugins/operator/enable-plugins.md.
   plugins_db:
+    mem_limit: ${PLUGINS_DB_MEMORY:?}
+    pids_limit: 512
+    cpus: ${PLUGINS_DB_CPUS:?}
     image: postgres:17.11@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3
     container_name: ${INSTANCE_PREFIX?}plugins_db
     hostname: plugins_db
@@ -1219,7 +1312,10 @@ services:
     # (see docs/plugins/operator/enable-plugins.md). temp_file_limit: the temporary
     # files one server process may write, so one plugin's sorts cannot fill the volume; it counts
     # per process (each connection and each parallel worker), and only a superuser can raise it.
-    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf", "-c", "max_connections=${PLUGINS_DB_MAX_CONNECTIONS:?}", "-c", "reserved_connections=5", "-c", "password_encryption=scram-sha-256", "-c", "authentication_timeout=10s", "-c", "temp_file_limit=1GB"]
+    # client_connection_check_interval: a statement whose client is gone (a plugin process the node
+    # killed) ends within 5 s instead of running on. A session may turn it off for itself, so the
+    # node also ends a killed plugin's sessions; this is the backstop.
+    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf", "-c", "max_connections=${PLUGINS_DB_MAX_CONNECTIONS:?}", "-c", "reserved_connections=5", "-c", "password_encryption=scram-sha-256", "-c", "authentication_timeout=10s", "-c", "temp_file_limit=1GB", "-c", "client_connection_check_interval=5s"]
     environment:
       POSTGRES_PASSWORD: ${PLUGINS_DB_SUPERUSER_PASSWORD:?}
       PLUGINS_DB_ADMIN_PASSWORD: ${PLUGINS_DB_ADMIN_PASSWORD:?}
@@ -1293,6 +1389,9 @@ services:
     restart: unless-stopped
 
   sandbox_new:
+    mem_limit: ${SANDBOX_MEMORY:?}
+    pids_limit: 1024
+    cpus: ${SANDBOX_CPUS:?}
     image: ghcr.io/epicstaff/sandbox_new:${IMAGE_TAG:?}
     logging: *bounded-logs
     restart: unless-stopped
@@ -1303,8 +1402,11 @@ services:
     command: ./entrypoint.sh
     init: true
     networks:
-      - backend-network
-      - sandbox-network
+      # Reached only by the code-execution producers (sandbox-producer-network) and by
+      # its worker (sandbox-worker-network); not on backend-network, so no other service
+      # can submit code.
+      - sandbox-producer-network
+      - sandbox-worker-network
     # Not django_app: it is the other way round now. A django_app data migration
     # moves the libraries Python code used to carry into venvs through this API,
     # so this service and its own migrations have to be up before django_app runs.
@@ -1317,13 +1419,16 @@ services:
       redis:
         condition: service_healthy
     # The port opens only after `piccolo migrations forwards all` in the
-    # entrypoint, so healthy means the schema is current and the API answers.
+    # entrypoint and after the startup build of the venvs the sandbox owns, so
+    # healthy means the schema is current, those venvs are built and the API
+    # answers. The first start downloads about 470 MB of their libraries (55s on
+    # a fast link), hence the long start period.
     healthcheck:
       test: ["CMD", "python3", "-I", "-c", "import socket; socket.create_connection(('127.0.0.1', ${SANDBOX_PORT:?}), 5).close()"]
       interval: 15s
       timeout: 5s
       retries: 20
-      start_period: 30s
+      start_period: 600s
     environment:
       <<: [*docker-env, *database-env, *redis-env, *storage-env, *communication-env, *secrets-transport-env]
       SANDBOX_CUSTOM_LIBRARY_BUCKET: ${SANDBOX_CUSTOM_LIBRARY_BUCKET:?}
@@ -1348,13 +1453,15 @@ services:
       - type: volume
         source: sandbox_venvs
         target: ${SANDBOX_VENVS_DIR:?}
-    mem_limit: "1g"
     security_opt:
       - no-new-privileges:true
     cap_drop:
       - ALL
 
   sandbox_worker:
+    mem_limit: ${SANDBOX_WORKER_MEMORY:?}
+    pids_limit: ${SANDBOX_WORKER_PIDS:?}
+    cpus: ${SANDBOX_WORKER_CPUS:?}
     image: ghcr.io/epicstaff/sandbox_worker:${IMAGE_TAG:?}
     logging: *bounded-logs
     restart: unless-stopped
@@ -1365,7 +1472,7 @@ services:
     command: ./worker_entrypoint.sh
     init: true
     networks:
-      - sandbox-network
+      - sandbox-worker-network
     depends_on:
       sandbox_new:
         condition: service_healthy
@@ -1402,7 +1509,6 @@ services:
         source: sandbox_venvs
         target: ${SANDBOX_VENVS_DIR:?}
         read_only: true
-    mem_limit: "2g"
     # Same hardening as the old sandbox: the root parent needs just enough to
     # drop the user-code child to sandboxuser, chown per-exec dirs, and kill its
     # process group on timeout. Everything else is dropped.
@@ -1454,7 +1560,13 @@ networks:
   mcp-network:
     driver: bridge
     external: true
-  sandbox-network:
+  # The sandbox worker, which runs user code, and the only services it may reach:
+  # the sandbox manager and storage. Anything added here is visible to the worker.
+  sandbox-worker-network:
+    driver: bridge
+  # The sandbox manager and the code-execution producers that submit to it
+  # (django_app, crew, agent, realtime), plus the manager's database (crewdb) and Redis.
+  sandbox-producer-network:
     driver: bridge
   # Plugin backends, the plugin node and nginx (as epicstaff-api) only; no outside access.
   # A fixed subnet, so nginx can deny it on 80/443 and allow only it on the internal listener.

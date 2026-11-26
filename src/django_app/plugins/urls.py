@@ -2,6 +2,7 @@ from django.urls import path
 
 from plugins.gateway.development_spa_check_view import development_spa_check
 from plugins.gateway.gateway_check_view import gateway_check
+from plugins.gateway.host_proof_view import PluginHostProofView
 from plugins.views.activity import (
     OrganizationServiceAccountViewSet,
     PluginActivityViewSet,
@@ -282,6 +283,11 @@ urlpatterns = [
         name="plugin-public-navigation-icon",
     ),
     path("api/plugin-gateway/check/", gateway_check, name="plugin-gateway-check"),
+    path(
+        "api/plugin-gateway/instance/",
+        PluginHostProofView.as_view(),
+        name="plugin-gateway-instance",
+    ),
     path(
         "api/plugin-gateway/development-spa/",
         development_spa_check,

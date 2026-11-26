@@ -6,15 +6,27 @@ or not, leaves a plugin no port of the range to take: not another plugin's, and 
 placement will be given, which it could otherwise bind without listening (such a socket shows
 nowhere in `/proc/net/tcp`) and so keep the agent from ever binding it.
 
-The sockets are bound without `SO_REUSEADDR`, so no other socket can share a port with them,
-listening or not. A port listens only while a placement uses it: one given back refuses
-connections again. The agent starts once per container (a restart is a new network
-namespace), so nothing of an earlier run holds a port.
+The sockets are bound with `SO_REUSEADDR`. A connection the plugin closed first leaves a
+TIME_WAIT on its port for a minute, which takes the listener's `SO_REUSEADDR` with it; without
+the option on both, the fresh socket below could not be bound until it expired. The option lets
+another socket that carries it share a port that is not listening, but nothing else on the node
+can: no plugin may `bind()` at all (`bind_refusal`), and the kernel picks a port by itself only
+from the ephemeral range, 21000-65535, above the node's range. A listening port refuses every
+other bind. A port listens only while a placement uses it: one given back refuses connections
+again. The agent starts once per container (a restart is a new network namespace), so nothing
+of an earlier run holds a port.
 
 A plugin process shares its port's socket, as its fd 3, and may change it: shut it down and
-connect it somewhere, say. So each time a port is taken or given back, its socket is checked to
-be what `reserve` made, bound to `0.0.0.0:<port>` and connected to nothing; one that is not is
-closed, with a reset rather than a wait, and a fresh socket is bound in its place.
+connect it somewhere, say. It may also pass a copy to another plugin over a UNIX socket, which
+every plugin on the node can reach. So a socket that served one placement never serves the
+next: a port given back has its socket shut down, which stops it listening for every holder,
+closed with a reset rather than a wait, and replaced by a fresh one. Once the fresh socket
+listens, a copy of the old one can no longer listen. Between the give-back and the next `take`
+the fresh socket is only bound, so a holder of a copy may listen on it first: `take` then
+cannot listen and refuses the port (`PortUnavailableError`, retried) until the copy is closed.
+Nothing is routed to a placement that has not started, and a connection the holder accepts
+stops it (`socket_watchdog`). A socket found changed when its port is taken is replaced the same
+way.
 """
 
 import contextlib
@@ -80,34 +92,41 @@ class PortReservation:
         held = self._intact(port)
         try:
             held.listen(LISTEN_BACKLOG)
-        except OSError:
+        except OSError as error:
+            if error.errno == errno.EADDRINUSE:
+                # A fresh socket would be refused the same way: wait for the other to close.
+                raise _cannot_listen(port, error) from None
             # In no state to listen, e.g. a connection to somewhere still under way.
-            held = self._replace(port, "it could not listen")
-            held.listen(LISTEN_BACKLOG)
+            held = self._replace(port, f"it could not listen: {error}")
+            try:
+                held.listen(LISTEN_BACKLOG)
+            except OSError as again:
+                raise _cannot_listen(port, again) from None
         self._users[port] = placement_id
         return held.fileno()
 
     def give_back(self, port: int, placement_id: int) -> None:
-        """`placement_id` no longer uses `port`: stop listening on it, and keep holding it.
+        """`placement_id` no longer uses `port`: replace its socket, and keep holding the port.
 
         On Linux, `shutdown` of a listening socket stops it listening and resets the connections
-        still queued (none reaches the next plugin given the port), while the port stays bound to
-        it, exclusively, and it can listen again. A socket that is no longer bound to its port
-        alone is replaced instead; if the port cannot be bound now, `take` tries again.
+        still queued, through every descriptor of it, so none reaches the next plugin given the
+        port. When the fresh socket cannot be bound, another socket listens on the port: the
+        port stays unusable, `take` refusing it until it can be bound, and a warning says so.
         """
         if self._users.get(port) != placement_id:
             return
         del self._users[port]
         held = self._sockets.get(port)
-        if held is None:
-            return
-        if not _holds_its_port(held, port):
-            try:
-                self._replace(port, "it is no longer bound to its port alone")
-            except PortUnavailableError as error:
-                logger.warning("{}", error)
-            return
-        held.shutdown(socket.SHUT_RDWR)
+        changed = held is not None and not _holds_its_port(held, port)
+        try:
+            self._replace(port, "it is no longer bound to its port alone" if changed else None)
+        except PortUnavailableError as error:
+            logger.warning("plugins.port.rebind_failed port={} error={}", port, error)
+
+    @property
+    def reserved_ports(self) -> frozenset[int]:
+        """Every port of the node's range, held by the agent whether a placement uses it or not."""
+        return self._reserved
 
     def close(self) -> None:
         for held in self._sockets.values():
@@ -121,19 +140,26 @@ class PortReservation:
             return held
         return self._replace(port, "it is no longer bound to its port alone")
 
-    def _replace(self, port: int, reason: str) -> socket.socket:
-        """Close the port's socket, if there is one, and bind a fresh one.
+    def _replace(self, port: int, reason: str | None) -> socket.socket:
+        """Shut the port's socket down and close it, if there is one, and bind a fresh one.
+
+        Args:
+            reason: Why a socket found changed is replaced, logged as a warning; None for one
+                replaced only because its port was given back.
 
         Raises:
-            PortUnavailableError: The port cannot be bound now, e.g. while a plugin process still
-                holds the old socket.
+            PortUnavailableError: The port cannot be bound now: another socket listens on it.
         """
         old = self._sockets.pop(port, None)
         if old is not None:
-            logger.warning("plugins.port.replaced port={} reason={}", port, reason)
-            # A socket the kernel no longer takes options for is closed all the same.
+            if reason is not None:
+                logger.warning("plugins.port.replaced port={} reason={}", port, reason)
+            # Either may fail, e.g. shutdown of a socket that never listened: it is closed all
+            # the same.
             with contextlib.suppress(OSError):
                 old.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, _RESET_ON_CLOSE)
+            with contextlib.suppress(OSError):
+                old.shutdown(socket.SHUT_RDWR)
             old.close()
         try:
             fresh = _bound(port)
@@ -143,9 +169,19 @@ class PortReservation:
         return fresh
 
 
+def _cannot_listen(port: int, error: OSError) -> PortUnavailableError:
+    if error.errno != errno.EADDRINUSE:
+        return PortUnavailableError(f"port {port} cannot listen: {error}")
+    return PortUnavailableError(
+        f"port {port} cannot listen: another socket listens on it, a copy of the socket of the "
+        "placement that had it before; it is taken once that copy is closed"
+    )
+
+
 def _bound(port: int) -> socket.socket:
     held = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
+        held.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         held.bind(("0.0.0.0", port))
     except OSError:
         held.close()

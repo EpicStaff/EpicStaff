@@ -5,6 +5,7 @@ the same body whoever raised, so the cases are grouped by who raised rather than
 """
 
 from litestar import status_codes
+from loguru import logger
 
 from tests.builders import make_venv
 
@@ -101,6 +102,27 @@ def test_a_failure_inside_the_service_is_a_server_error(client, venv_repository)
     body = response.json()
     assert body["type"] == "server_error"
     assert [error["code"] for error in body["errors"]] == ["unknown"]
+
+
+def test_a_failure_inside_the_service_is_logged_and_not_returned(client, venv_repository):
+    async def explode(*args, **kwargs):
+        raise RuntimeError('connection to "sandbox_db" at 10.0.0.7 failed')
+
+    venv_repository.retrieve = explode
+    venv_repository.seed(make_venv())
+    logged: list = []
+    sink_id = logger.add(logged.append, level="ERROR", format="{message}")
+    try:
+        response = client.get("/venvs/1")
+    finally:
+        logger.remove(sink_id)
+
+    assert response.json()["errors"][0]["detail"] == "An unexpected error occurred."
+    assert "10.0.0.7" not in response.text
+    [record] = [message.record for message in logged]
+    assert "RuntimeError" in record["message"]
+    assert "/venvs/1" in record["message"]
+    assert "10.0.0.7" in str(record["exception"].value)
 
 
 def test_every_error_answer_has_the_same_two_keys(client):

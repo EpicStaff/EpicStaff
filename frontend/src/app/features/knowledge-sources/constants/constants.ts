@@ -12,6 +12,14 @@ export const CHUNK_STRATEGIES_SELECT_ITEMS: SelectItem[] = CHUNK_STRATEGIES.map(
     value: t.toLowerCase(),
 }));
 
+/** CSV chunking parameters; defaults and limits match the backend validation of the csv strategy. */
+export const CSV_ROWS_IN_CHUNK_DEFAULT = 150;
+export const CSV_ROWS_IN_CHUNK_MIN = 1;
+export const CSV_ROWS_IN_CHUNK_MAX = 10000;
+export const CSV_HEADERS_LEVEL_DEFAULT = 1;
+export const CSV_HEADERS_LEVEL_MIN = 0;
+export const CSV_HEADERS_LEVEL_MAX = 100;
+
 export const MAX_DOCUMENT_SIZE = 20 * 1024 * 1024; // 20 MB
 
 /** Longest "Guidance for Agents" (collection description) the backend accepts — keep in sync with
@@ -36,6 +44,16 @@ export const GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES = 200;
 /** Fewest entities the visualization endpoint accepts; lower values are rejected with 400. */
 export const GRAPH_VISUALIZATION_MIN_ENTITIES = 1;
 
+/** Most entities a single visualization request may return; higher totals are split across parallel requests. */
+export const GRAPH_VISUALIZATION_MAX_ENTITIES_PER_REQUEST = 1000;
+
+/** Most parallel pages a single visualization fetch may split into — matches the backend's page_count cap. */
+export const GRAPH_VISUALIZATION_MAX_PARALLEL_PAGES = 5;
+
+/** Most entities the visualization can show in total across all parallel requests. */
+export const GRAPH_VISUALIZATION_MAX_TOTAL_ENTITIES =
+    GRAPH_VISUALIZATION_MAX_ENTITIES_PER_REQUEST * GRAPH_VISUALIZATION_MAX_PARALLEL_PAGES;
+
 /** Kept as 'graph-viz-sidebar' so widths users already saved still apply. */
 export const GRAPH_VISUALIZATION_SIDEBAR_WIDTH_KEY = 'graph-viz-sidebar';
 export const GRAPH_VISUALIZATION_SIDEBAR_WIDTH_OPTIONS = {
@@ -52,11 +70,11 @@ export const GRAPH_VISUALIZATION_DETAIL_PANEL_WIDTH_OPTIONS = {
     maxWidth: 600,
 } as const satisfies SidebarWidthOptions;
 
+/** localStorage key for the "Group by community" toggle in the graph visualization toolbar. */
+export const GRAPH_VISUALIZATION_GROUP_BY_COMMUNITY_KEY = 'graph-viz-group-by-community';
+
 /** Rows per data-table page before the user picks another size; matches the backend default. */
 export const GRAPH_TABLE_DEFAULT_PAGE_SIZE = 10;
-
-/** Page sizes offered for the data tables; the backend caps page_size at 100, so none may exceed it. */
-export const GRAPH_TABLE_PAGE_SIZE_OPTIONS: readonly number[] = [10, 25, 50, 100];
 
 /** Sidebar icon per graph data table, keyed by the table name the backend returns. */
 export const GRAPH_TABLE_ICONS: Record<string, string> = {

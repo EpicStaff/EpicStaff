@@ -4,9 +4,9 @@ import { HttpErrorResponse } from '@angular/common/http';
 import type {} from '../../core/interceptors/validation-errors.interceptor';
 
 /**
- * Extracts a human-readable message from an HttpErrorResponse
+ * Extracts a human-readable message from an HttpErrorResponse: the server's own message, else `fallback`. Without a
+ * fallback, the error's own (technical) message, e.g. "Http failure response for …: 0 Unknown Error".
  */
-
 export function extractHttpErrorMessage(err: HttpErrorResponse, fallback?: string): string {
     // Structured validation errors attached by validationErrorsInterceptor.
     if (Array.isArray(err.validationErrors) && err.validationErrors.length > 0) {
@@ -41,7 +41,7 @@ export function extractHttpErrorMessage(err: HttpErrorResponse, fallback?: strin
         if (collected.length) return joinErrorMessages(collected.map(simplifyKnownMessage));
     }
 
-    return err?.message || (fallback ?? 'Unknown error');
+    return fallback ?? (err?.message || 'Unknown error');
 }
 
 const HTML_DOCUMENT = /^\s*<(!doctype|html)/i;

@@ -5,7 +5,8 @@ with provisioning and the limits watchdog:
 
 1. **Room**, on an admin session to `postgres`: the database's template mark and connection
    limit are put back (`database_attributes`), and CONNECT is granted again to the five roles
-   that hold it (`provisioner.grant_connect`); its size, the server's version and the database's
+   that hold it, in the transaction that opens a database closed to logins
+   (`provisioner.grant_connect`); its size, the server's version and the database's
    own settings are read. The node's free disk space minus its floor must be at least the
    database's size, and the dump stops (reason `disk`) if it grows past that room.
 2. **Dump.** `pg_dump --format=custom` as `plugins_backup` on the plugin's database, with session

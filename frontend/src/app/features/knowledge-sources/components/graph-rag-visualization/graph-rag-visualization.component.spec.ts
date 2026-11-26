@@ -10,12 +10,14 @@ import { By } from '@angular/platform-browser';
 
 import { ConfigService } from '../../../../services/config';
 import { GraphVisualizationData } from '../../models/graph-visualization.model';
+import { GraphRagLinkPairsStorageService } from '../../services/graph-rag-link-pairs-storage.service';
 import { GraphRagVisualizationComponent } from './graph-rag-visualization.component';
 import { GraphSceneService } from './graph-scene.service';
 
 const API_URL = 'http://api.test/api/';
 const VISUALIZATION_URL = `${API_URL}graph-rag/42/visualization/`;
 const INITIAL_REQUEST_URL = `${VISUALIZATION_URL}?max_entities=200`;
+const LINK_PAIRS_URL = `${API_URL}graph-rag/table-link-pairs/`;
 
 // jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
 class ResizeObserverStub {
@@ -163,6 +165,9 @@ describe('GraphRagVisualizationComponent', () => {
     }
 
     beforeEach(async () => {
+        // The component persists the "Group by Community" toggle in localStorage, so a prior test that
+        // flips it off would otherwise seed the next test with the wrong initial state.
+        localStorage.clear();
         vi.stubGlobal('ResizeObserver', ResizeObserverStub);
         await TestBed.configureTestingModule({
             imports: [TestHostComponent],
@@ -177,9 +182,16 @@ describe('GraphRagVisualizationComponent', () => {
             })
             .compileComponents();
 
+        // The link-pairs store caches per session; reset so each test starts with an empty cache.
+        TestBed.inject(GraphRagLinkPairsStorageService).resetForTesting();
+
         fixture = TestBed.createComponent(TestHostComponent);
         httpMock = TestBed.inject(HttpTestingController);
         fixture.detectChanges();
+
+        // The visualization primes the link-pairs cache on init; flush it so the tests only have
+        // to reason about the visualization request itself.
+        httpMock.expectOne(LINK_PAIRS_URL).flush({});
     });
 
     afterEach(() => {
@@ -212,7 +224,7 @@ describe('GraphRagVisualizationComponent', () => {
         it('shows the total entity and relationship counts after a successful load', () => {
             flushInitial(buildVisualizationData(5));
 
-            expect(normalizedText('.visualization__stats')).toBe('Total Entities: 5 Total Relationships: 1');
+            expect(normalizedText('.visualization__stats')).toBe('of 5/Relationships: 1');
         });
 
         it('builds entity type filters from loaded data', () => {
@@ -250,6 +262,13 @@ describe('GraphRagVisualizationComponent', () => {
         });
 
         it('says GraphRAG is unavailable on a 503', () => {
+            vi.useFakeTimers();
+            // The service retries 5XX once after a 300ms backoff, so the error only surfaces after the
+            // retry also fails.
+            httpMock
+                .expectOne(INITIAL_REQUEST_URL)
+                .flush({ message: 'unavailable' }, { status: 503, statusText: 'Service Unavailable' });
+            vi.advanceTimersByTime(300);
             httpMock
                 .expectOne(INITIAL_REQUEST_URL)
                 .flush({ message: 'unavailable' }, { status: 503, statusText: 'Service Unavailable' });
@@ -266,7 +285,16 @@ describe('GraphRagVisualizationComponent', () => {
 
             enterDisplayedEntities('5000');
 
-            expectVisualizationRequest({ max_entities: '5000' }).flush(buildVisualizationData(200, 5000));
+            // 5000 exceeds GRAPH_VISUALIZATION_MAX_ENTITIES_PER_REQUEST (1000), so the service splits
+            // the fetch into GRAPH_VISUALIZATION_MAX_PARALLEL_PAGES (5) parallel page requests.
+            const pageCount = 5;
+            for (let page = 0; page < pageCount; page++) {
+                expectVisualizationRequest({
+                    max_entities: '1000',
+                    page: page.toString(),
+                    page_count: pageCount.toString(),
+                }).flush(buildVisualizationData(200, 5000));
+            }
         });
 
         it('never requests fewer than one entity', () => {
@@ -314,25 +342,8 @@ describe('GraphRagVisualizationComponent', () => {
                 .find((tooltip) => tooltip.message === 'This graph has no communities to group by')!;
         }
 
-        it('starts ungrouped, colored by type, with a type color swatch next to every entity type', () => {
+        it('starts grouped by community, without type swatches, keeping the type filters usable', () => {
             flushInitial(buildVisualizationData(4));
-
-            expect(groupByCommunitySwitch().checked).toBe(false);
-            expect(getSceneService().paintsByCommunity).toBe(false);
-            expect(typeSwatchCount()).toBe(2);
-        });
-
-        it('names the switch for assistive technology', () => {
-            flushInitial();
-
-            expect(groupByCommunitySwitch().getAttribute('aria-label')).toBe('Group by community');
-        });
-
-        it('colors nodes by community and hides the type swatches while grouped, keeping the type filters usable', () => {
-            flushInitial(buildVisualizationData(4));
-
-            groupByCommunitySwitch().click();
-            fixture.detectChanges();
 
             expect(groupByCommunitySwitch().checked).toBe(true);
             expect(getSceneService().paintsByCommunity).toBe(true);
@@ -341,7 +352,24 @@ describe('GraphRagVisualizationComponent', () => {
             expect(typeFilterCheckboxes().every((checkbox) => !checkbox.disabled)).toBe(true);
         });
 
-        it('returns to type colors and swatches when ungrouped', () => {
+        it('names the switch for assistive technology', () => {
+            flushInitial();
+
+            expect(groupByCommunitySwitch().getAttribute('aria-label')).toBe('Group by community');
+        });
+
+        it('colors nodes by type with a swatch next to every entity type once ungrouped', () => {
+            flushInitial(buildVisualizationData(4));
+
+            groupByCommunitySwitch().click();
+            fixture.detectChanges();
+
+            expect(groupByCommunitySwitch().checked).toBe(false);
+            expect(getSceneService().paintsByCommunity).toBe(false);
+            expect(typeSwatchCount()).toBe(2);
+        });
+
+        it('returns to community colors without type swatches when grouped again', () => {
             flushInitial(buildVisualizationData(4));
 
             groupByCommunitySwitch().click();
@@ -349,9 +377,9 @@ describe('GraphRagVisualizationComponent', () => {
             groupByCommunitySwitch().click();
             fixture.detectChanges();
 
-            expect(groupByCommunitySwitch().checked).toBe(false);
-            expect(getSceneService().paintsByCommunity).toBe(false);
-            expect(typeSwatchCount()).toBe(2);
+            expect(groupByCommunitySwitch().checked).toBe(true);
+            expect(getSceneService().paintsByCommunity).toBe(true);
+            expect(typeSwatchCount()).toBe(0);
         });
 
         it('disables the switch and explains why when no entity has a community', () => {

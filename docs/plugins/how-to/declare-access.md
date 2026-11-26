@@ -46,9 +46,9 @@ Writing trigger nodes needs `flows: use` because a trigger starts runs by itself
 when `flows` has `create` or `update` without `use`: a flow the plugin writes still runs, with its
 code, when someone in the organization runs it.
 
-`flows` with `create`, `update` or `use`, and `tools` with `create` or `update`, also let the plugin
-have code of its choosing run in EpicStaff's sandbox, through the flows and tools it writes or
-runs. The sandbox has its own network access, and your `outbound_hosts` do not apply to that
+`flows` with `create`, `update` or `use`, and `tools`, `venvs` or `custom_libraries` with `create`
+or `update`, also let the plugin have code of its choosing run in EpicStaff's sandbox, through the
+flows and tools it writes or runs, and the libraries its venvs install or its packages add. The sandbox has its own network access, and your `outbound_hosts` do not apply to that
 code. `tools` `create` or `update` also lets the plugin point an agent at an MCP server outside
 your `outbound_hosts`. The review warns about it, so ask for these actions only when the plugin
 needs them. Secrets have no `update`: replace one by

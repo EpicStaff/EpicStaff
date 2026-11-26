@@ -86,7 +86,7 @@ def _upstream_message(text: str) -> str:
     return detail if isinstance(detail, str) and detail else text
 
 
-def _client_error_as_api_exception(exc: ClientError) -> APIException:
+def client_error_as_api_exception(exc: ClientError) -> APIException:
     """Translate a transport error from a proxied microservice into a DRF exception.
 
     An upstream 4xx is the caller's own request coming back refused, so it keeps its
@@ -95,6 +95,10 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
     service unavailable, which tells the caller the request is worth retrying. What is
     left - a timeout, an upstream 5xx, a response with no status at all - is this
     gateway's dependency failing, and is reported as a bad gateway.
+
+    Only a 4xx hands on the upstream's words: they describe what was wrong with the
+    caller's request. A bad gateway's body describes the upstream service itself, so
+    the caller gets a fixed message and the body goes to the server log.
     """
     detail = _upstream_detail(exc)
 
@@ -117,7 +121,13 @@ def _client_error_as_api_exception(exc: ClientError) -> APIException:
         client_error.default_code = _status_code_name(status_code)
         return client_error
 
-    upstream_error = APIException(detail)
+    logger.warning(
+        "Proxied service call failed: {error_type} (status {status_code}): {detail}",
+        error_type=type(exc).__name__,
+        status_code=status_code,
+        detail=detail,
+    )
+    upstream_error = APIException(OutboundClientError.public_detail)
     upstream_error.status_code = status.HTTP_502_BAD_GATEWAY
     upstream_error.default_code = "upstream_service_error"
     return upstream_error
@@ -207,7 +217,7 @@ def custom_exception_handler(exc, context):
         # serializer would report, so the 400 message names the field.
         exc = ValidationError(exc.field_errors())
     elif isinstance(exc, ClientError):
-        exc = _client_error_as_api_exception(exc)
+        exc = client_error_as_api_exception(exc)
     elif isinstance(exc, OutboundClientError):
         exc = _outbound_client_error_as_api_exception(exc)
     elif _is_database_pool_exhausted(exc):

@@ -58,9 +58,6 @@ export class CreateLlmModelModalComponent implements OnInit {
 
     form = this.fb.group({
         name: [this.dialogData.model?.name ?? '', Validators.required],
-        baseUrl: [this.dialogData.model?.base_url ?? '', Validators.pattern(/^$|^https?:\/\/.+/i)],
-        deploymentId: [this.dialogData.model?.deployment_id ?? ''],
-        apiVersion: [this.dialogData.model?.api_version ?? ''],
         isVisible: [this.dialogData.model?.is_visible ?? true],
     });
 
@@ -93,16 +90,10 @@ export class CreateLlmModelModalComponent implements OnInit {
         const request$ = this.isEditMode
             ? this.modelsStorageService.patchModel(this.dialogData.model!.id, {
                   name: (value.name || '').trim(),
-                  base_url: value.baseUrl?.trim() || null,
-                  deployment_id: value.deploymentId?.trim() || null,
-                  api_version: value.apiVersion?.trim() || null,
                   is_visible: !!value.isVisible,
               })
             : this.modelsStorageService.createModel({
                   name: (value.name || '').trim(),
-                  base_url: value.baseUrl?.trim() || null,
-                  deployment_id: value.deploymentId?.trim() || null,
-                  api_version: value.apiVersion?.trim() || null,
                   llm_provider: this.provider.id,
                   is_visible: !!value.isVisible,
               });

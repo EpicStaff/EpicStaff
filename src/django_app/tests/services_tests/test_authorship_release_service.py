@@ -4,9 +4,14 @@ from django.utils import timezone
 
 from agents.models import AgentDefinition
 from agents.models.surface_models import Surface
+from rbac.authorship.registry import author_tracked_models
 from rbac.governance.authorship import AuthorshipReleaseService
 from rbac.models import OrganizationUser
-from tables.models import Graph, GraphNote, Label, LLMModel, StorageFile
+from tables.models import Graph, GraphNote, Label, StorageFile
+from ai_models.models import LLMModel
+from tables.models.audit_filter_preset_models import AuditFilterPreset
+from tables.models.flow_filter_preset_models import FlowFilterPreset
+from tables.models.tool_filter_preset_models import ToolFilterPreset
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
@@ -106,6 +111,41 @@ def test_release_clears_storage_file_authors_only_in_target_org(acme, beta, auth
     assert StorageFile.objects.get(pk=colleague_file.pk).created_by_id == other_user.id
 
 
+def test_only_filter_presets_are_deleted_instead_of_released():
+    """A new model with a NOT NULL `created_by` would have its rows deleted when the
+    creator leaves an org; adding one here must be a deliberate choice."""
+    owned = {
+        model._meta.label
+        for model, _ in author_tracked_models()
+        if not model._meta.get_field("created_by").null
+    }
+
+    assert owned == {
+        "tables.AuditFilterPreset",
+        "tables.FlowFilterPreset",
+        "tables.ToolFilterPreset",
+    }
+
+
+@pytest.mark.django_db
+def test_release_deletes_the_rows_the_user_owns_in_target_org(acme, beta, author, other_user):
+    FlowFilterPreset.objects.create(org=acme, created_by=author, name="flows")
+    ToolFilterPreset.objects.create(org=acme, created_by=author, name="tools")
+    AuditFilterPreset.objects.create(org=acme, created_by=author, name="shared", is_shared=True)
+    beta_preset = FlowFilterPreset.objects.create(org=beta, created_by=author, name="flows")
+    colleague_preset = FlowFilterPreset.objects.create(org=acme, created_by=other_user, name="x")
+
+    released = AuthorshipReleaseService().release(user_id=author.id, org_id=acme.id)
+
+    assert released == 3
+    assert list(FlowFilterPreset.objects.values_list("pk", flat=True).order_by("pk")) == [
+        beta_preset.pk,
+        colleague_preset.pk,
+    ]
+    assert not ToolFilterPreset.objects.exists()
+    assert not AuditFilterPreset.objects.exists()
+
+
 @pytest.mark.django_db
 def test_release_without_authored_rows_returns_zero(acme, author):
     assert AuthorshipReleaseService().release(user_id=author.id, org_id=acme.id) == 0
@@ -153,6 +193,20 @@ def test_release_outside_memberships_keeps_orgs_with_membership(
     assert GraphNote.all_objects.get(pk=beta_note.pk).created_by_id is None
     assert Graph.all_objects.get(pk=colleague_graph.pk).created_by_id == other_user.id
     assert GraphNote.all_objects.get(pk=colleague_note.pk).created_by_id == other_user.id
+
+
+@pytest.mark.django_db
+def test_release_outside_memberships_deletes_owned_rows_only_outside_memberships(
+    acme, beta, author, role_member
+):
+    OrganizationUser.objects.create(user=author, org=acme, role=role_member)
+    member_preset = AuditFilterPreset.objects.create(org=acme, created_by=author, name="kept")
+    AuditFilterPreset.objects.create(org=beta, created_by=author, name="former")
+
+    released = AuthorshipReleaseService().release_outside_memberships(user_id=author.id)
+
+    assert released == 1
+    assert list(AuditFilterPreset.objects.values_list("pk", flat=True)) == [member_preset.pk]
 
 
 @pytest.mark.django_db

@@ -14,16 +14,16 @@ import pytest
 from conftest import TOOLS_ROOT, load_tool_main
 
 # mysql_search_tool/main.py imports sqlalchemy and sqlparse at module level.
-# Per its requirements.txt those are installed into the tool's own venv by the
-# sandbox at execution time, not into any service venv — skip cleanly instead
+# Those are installed into the sandbox's `builtin_tools` venv that every
+# built-in tool runs in, not into any service venv -- skip cleanly instead
 # of failing when running outside that venv.
 pytest.importorskip(
     "sqlalchemy",
-    reason="installed by the sandbox into this tool's own venv, not a service venv",
+    reason="installed by the sandbox into its builtin_tools venv, not a service venv",
 )
 pytest.importorskip(
     "sqlparse",
-    reason="installed by the sandbox into this tool's own venv, not a service venv",
+    reason="installed by the sandbox into its builtin_tools venv, not a service venv",
 )
 
 CONFIG_URI = "mysql+pymysql://user:pass@config-host/db"

@@ -5,6 +5,9 @@ import {
     FlowNodeReviewItem,
     FlowNodesByFile,
     mapBackendNodeType,
+    McpToolReviewItem,
+    PythonCodeToolReviewItem,
+    ReviewExpression,
     ReviewItem,
     ReviewPythonCode,
     toFileNodeId,
@@ -16,9 +19,20 @@ interface CodeField {
     code: ReviewPythonCode;
 }
 
+interface ToolEntry {
+    item: PythonCodeToolReviewItem | McpToolReviewItem;
+    fieldKey: string;
+}
+
+const TOOL_KIND_BY_ENTITY_TYPE: Partial<Record<string, ToolEntry['item']['kind']>> = {
+    PythonCodeTool: 'python_code_tool',
+    MCPTool: 'mcp_tool',
+};
+
 interface ReviewedFileNode {
     item: FlowNodeReviewItem;
     fields: CodeField[];
+    rowKey: string;
 }
 
 /**
@@ -29,6 +43,14 @@ interface ReviewedFileNode {
 function flowNodeKey(flowName: string, nodeType: string, nodeId: number | null, nodeName: string | null): string {
     const identity = nodeId === null ? `name:${nodeName ?? ''}` : `id:${nodeId}`;
     return `${flowName}::${nodeType}::${identity}`;
+}
+
+/** One label per comment line: whitespace is collapsed so a label from the file cannot spill onto a code line. */
+function expressionsCode(expressions: ReviewExpression[]): ReviewPythonCode {
+    const code = expressions
+        .map((expression) => `# ${expression.label.replace(/\s+/g, ' ')}\n${expression.code}`)
+        .join('\n\n');
+    return { code, entrypoint: '', libraries: '', global_kwargs: {} };
 }
 
 function toFlowReviewNode(key: string, name: string, backendNodeType: string, fields: CodeField[]): FlowReviewNode {
@@ -45,8 +67,7 @@ function toFlowReviewNode(key: string, name: string, backendNodeType: string, fi
 
 @Injectable()
 export class ReviewSessionStore {
-    private pythonCodeToolCodes = new Map<string, ReviewPythonCode>();
-    private mcpToolTransports = new Map<string, string>();
+    private tools: ToolEntry[] = [];
     private flowNodesByFlow = new Map<string, FlowReviewNode[]>();
 
     public readonly reviewedNodeKeys = signal<Set<string>>(new Set());
@@ -70,29 +91,25 @@ export class ReviewSessionStore {
 
     public init(reviewItems: ReviewItem[], allFlowNodes: FlowNodesByFile): void {
         this.flowNodesByFlow = this.buildFlowNodesByKey(reviewItems, allFlowNodes);
-        this.pythonCodeToolCodes = new Map(
-            reviewItems
-                .filter((item) => item.kind === 'python_code_tool')
-                .map((item) => [item.name, item.python_code] as const)
-        );
-        this.mcpToolTransports = new Map(
-            reviewItems.filter((item) => item.kind === 'mcp_tool').map((item) => [item.name, item.transport] as const)
+        this.tools = reviewItems.flatMap((item, index) =>
+            item.kind === 'flow_node' ? [] : [{ item, fieldKey: `tool::${index}` }]
         );
         this.reviewableEntries = this.buildReviewableEntries();
         this.markCurrentViewed();
 
         if (this.reviewableEntries.length > 0) {
             this.markReviewedKey(this.reviewableEntries[0].fieldKey);
-        } else if (this.mcpToolTransports.size > 0) {
-            const [firstMcpName] = this.mcpToolTransports.keys();
-            this.goToToolCode(firstMcpName);
+        } else {
+            const firstMcpTool = this.tools.find((tool) => tool.item.kind === 'mcp_tool');
+            if (firstMcpTool) this.openTool(firstMcpTool);
         }
     }
 
     private buildReviewableEntries(): ReviewableEntry[] {
         const entries: ReviewableEntry[] = [];
-        for (const [name, code] of this.pythonCodeToolCodes) {
-            entries.push({ kind: 'code', title: name, fieldKey: this.toolReviewKey(name), code, codeTabs: [] });
+        for (const { item, fieldKey } of this.tools) {
+            if (item.kind !== 'python_code_tool') continue;
+            entries.push({ kind: 'code', title: item.name, fieldKey, code: item.python_code, codeTabs: [] });
         }
         for (const nodes of this.flowNodesByFlow.values()) {
             for (const node of nodes) {
@@ -112,33 +129,40 @@ export class ReviewSessionStore {
         reviewItems: ReviewItem[],
         allFlowNodes: FlowNodesByFile
     ): Map<string, FlowReviewNode[]> {
-        const reviewedNodesByKey = new Map<string, ReviewedFileNode>();
-        for (const item of reviewItems) {
-            if (item.kind !== 'flow_node') continue;
+        // A file can hold several nodes that read as one (no id, same name): each keeps its own row and review key.
+        const reviewedNodesByKey = new Map<string, ReviewedFileNode[]>();
+        reviewItems.forEach((item, index) => {
+            if (item.kind !== 'flow_node') return;
             const fields: CodeField[] = [];
             if (item.python_code) fields.push({ label: null, code: item.python_code });
             if (item.pre_python_code) fields.push({ label: 'Pre-computation', code: item.pre_python_code });
             if (item.post_python_code) fields.push({ label: 'Post-computation', code: item.post_python_code });
+            if (item.expressions?.length) {
+                fields.push({ label: 'Expressions', code: expressionsCode(item.expressions) });
+            }
             const key = flowNodeKey(item.flow_name, item.node_type, toFileNodeId(item.node_id), item.node_name);
-            reviewedNodesByKey.set(key, { item, fields });
-        }
+            const reviewed: ReviewedFileNode = { item, fields, rowKey: `review-item::${index}` };
+            reviewedNodesByKey.set(key, [...(reviewedNodesByKey.get(key) ?? []), reviewed]);
+        });
 
         const map = new Map<string, FlowReviewNode[]>();
         for (const [flowName, nodes] of Object.entries(allFlowNodes)) {
-            const list = nodes.map((node): FlowReviewNode => {
+            const list = nodes.map((node, position): FlowReviewNode => {
                 const key = flowNodeKey(flowName, node.node_type, toFileNodeId(node.id), node.name);
-                const fields = reviewedNodesByKey.get(key)?.fields ?? [];
-                reviewedNodesByKey.delete(key);
-                return toFlowReviewNode(key, node.name, node.node_type, fields);
+                const reviewed = reviewedNodesByKey.get(key)?.shift();
+                const rowKey = reviewed?.rowKey ?? `file-node::${flowName}::${position}`;
+                return toFlowReviewNode(rowKey, node.name, node.node_type, reviewed?.fields ?? []);
             });
             map.set(flowName, list);
         }
 
         // Code the backend will import must never be hidden: a reviewed node the file list did not
         // match (a name or id it reads differently) still gets its own row.
-        for (const [key, { item, fields }] of reviewedNodesByKey) {
-            const row = toFlowReviewNode(key, item.node_name ?? 'Untitled node', item.node_type, fields);
-            map.set(item.flow_name, [...(map.get(item.flow_name) ?? []), row]);
+        for (const reviewedNodes of reviewedNodesByKey.values()) {
+            for (const { item, fields, rowKey } of reviewedNodes) {
+                const row = toFlowReviewNode(rowKey, item.node_name ?? 'Untitled node', item.node_type, fields);
+                map.set(item.flow_name, [...(map.get(item.flow_name) ?? []), row]);
+            }
         }
         return map;
     }
@@ -245,38 +269,56 @@ export class ReviewSessionStore {
         this.reviewedNodeKeys.update((current) => new Set(current).add(key));
     }
 
-    public hasPythonCode(name: string): boolean {
-        return this.pythonCodeToolCodes.has(name);
+    public hasPythonCode(entityType: string, position: number): boolean {
+        return this.findTool(entityType, position)?.item.kind === 'python_code_tool';
     }
 
-    public isMcpTool(name: string): boolean {
-        return this.mcpToolTransports.has(name);
+    public isMcpTool(entityType: string, position: number): boolean {
+        return this.findTool(entityType, position)?.item.kind === 'mcp_tool';
     }
 
-    private toolReviewKey(name: string): string {
-        return `tool::${name}`;
+    public isToolViewed(entityType: string, position: number): boolean {
+        const tool = this.findTool(entityType, position);
+        return tool !== undefined && this.isViewed(tool.fieldKey);
     }
 
-    public isToolViewed(name: string): boolean {
-        return this.isViewed(this.toolReviewKey(name));
+    public isToolReviewed(entityType: string, position: number): boolean {
+        const tool = this.findTool(entityType, position);
+        return tool !== undefined && this.reviewedNodeKeys().has(tool.fieldKey);
     }
 
-    public isToolReviewed(name: string): boolean {
-        return this.reviewedNodeKeys().has(this.toolReviewKey(name));
+    public toggleToolReviewed(entityType: string, position: number): void {
+        const tool = this.findTool(entityType, position);
+        if (tool) this.toggleReviewedKey(tool.fieldKey);
     }
 
-    public toggleToolReviewed(name: string): void {
-        this.toggleReviewedKey(this.toolReviewKey(name));
+    public goToToolCode(entityType: string, position: number): void {
+        const tool = this.findTool(entityType, position);
+        if (tool) this.openTool(tool);
     }
 
-    public goToToolCode(name: string): void {
-        const transport = this.mcpToolTransports.get(name);
-        if (transport !== undefined) {
-            this.activeMcpEntry.set({ kind: 'mcp', title: name, fieldKey: this.toolReviewKey(name), name, transport });
-            this.markCurrentViewed();
+    /**
+     * A row's position in its entity list finds its tool: the list and the backend's tools of that kind both
+     * follow the file's order. Ids and names in the file may repeat or be missing, so neither can.
+     */
+    private findTool(entityType: string, position: number): ToolEntry | undefined {
+        const kind = TOOL_KIND_BY_ENTITY_TYPE[entityType];
+        return this.tools.filter(({ item }) => item.kind === kind)[position];
+    }
+
+    private openTool({ item, fieldKey }: ToolEntry): void {
+        if (item.kind === 'python_code_tool') {
+            this.goToCodeTab(fieldKey);
             return;
         }
-        this.goToCodeTab(this.toolReviewKey(name));
+        this.activeMcpEntry.set({
+            kind: 'mcp',
+            title: item.name,
+            fieldKey,
+            name: item.name,
+            transport: item.transport,
+        });
+        this.markCurrentViewed();
     }
 
     public flowReviewTotal(flowName: string): number {

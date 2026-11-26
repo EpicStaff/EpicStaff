@@ -9,7 +9,7 @@
 # unregistered: all four are on_delete=SET_NULL, so a secret used only through one of
 # them silently reports zero usage instead of "hidden".
 #
-# This walks every concrete model in the tables app for forward FK/OneToOne/ManyToMany
+# This walks every concrete model in the tables and ai_models apps for forward FK/OneToOne/ManyToMany
 # fields whose related_model is Secret, and checks each one is covered by a
 # USAGE_SOURCES entry (mapped back to a (model, field) pair via secret_path) or listed
 # in EXEMPT with a written reason.
@@ -43,9 +43,14 @@ MINIMUM_DISCOVERED_SECRET_FIELD_COUNT = 14
 
 
 def _discover_secret_fk_fields() -> set[tuple[type, str]]:
-    """Every (model, field_name) in the tables app with a forward FK/O2O/M2M to Secret."""
+    """Every (model, field_name) in the tables and ai_models apps with a forward FK/O2O/M2M to Secret."""
     pairs = set()
-    for model in apps.get_app_config(app_label="tables").get_models():
+    models = [
+        model
+        for app_label in ("tables", "ai_models")
+        for model in apps.get_app_config(app_label=app_label).get_models()
+    ]
+    for model in models:
         for field in list(model._meta.fields) + list(model._meta.many_to_many):
             if getattr(field, "related_model", None) is Secret:
                 pairs.add((model, field.name))

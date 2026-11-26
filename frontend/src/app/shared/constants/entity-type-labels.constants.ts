@@ -1,0 +1,35 @@
+/**
+ * What an exported entity type is called in the import review and import result dialogs. Keys are the backend's
+ * import/export `EntityType` values; a type missing here shows its raw name.
+ */
+export const ENTITY_TYPE_LABELS: Record<string, string> = {
+    Agent: 'Agent (legacy)',
+    AgentDefinition: 'Agent',
+    AgentTag: 'Agent Tag',
+    CrewTag: 'Project Tag',
+    ElevenLabsRealtimeConfig: 'ElevenLabs Realtime Config',
+    EmbeddingConfig: 'Embedding Config',
+    EmbeddingModel: 'Embedding Model',
+    EmbeddingModelTag: 'Embedding Model Tag',
+    Flow: 'Flow',
+    GeminiRealtimeConfig: 'Gemini Realtime Config',
+    GraphTag: 'Flow Tag',
+    Label: 'Label',
+    LLMConfig: 'LLM Config',
+    LLMConfigTag: 'LLM Config Tag',
+    LLMModel: 'LLM Model',
+    LLMModelTag: 'LLM Model Tag',
+    MCPTool: 'MCP Tool',
+    OpenAIRealtimeConfig: 'OpenAI Realtime Config',
+    Project: 'Project',
+    PythonCodeTool: 'Python Code Tool',
+    RealtimeConfig: 'Realtime Config',
+    RealtimeModel: 'Realtime Model',
+    RealtimeTranscriptionConfig: 'Realtime Transcription Config',
+    RealtimeTranscriptionModel: 'Realtime Transcription Model',
+    SourceCollection: 'Knowledge Collection',
+    Surface: 'Surface',
+    SystemOneConfig: 'System One Config',
+    Venv: 'Virtual Environment',
+    WebhookTrigger: 'Webhook Trigger',
+};

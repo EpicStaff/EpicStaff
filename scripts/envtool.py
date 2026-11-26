@@ -90,7 +90,13 @@ class Feature(NamedTuple):
 # A feature is on only when its flag is true AND its compose profile is active; the wizard
 # writes both together so they cannot drift apart.
 FEATURES = (
-    Feature("Chat", "CHAT_ENABLED", "chat", ("chat", "chatdb"), ("CHAT_WORKERS", "CHAT_LOG_LEVEL")),
+    Feature(
+        "Chat",
+        "CHAT_ENABLED",
+        "chat",
+        ("chat", "chatdb"),
+        ("CHAT_WORKERS", "CHAT_MEMORY", "CHAT_LOG_LEVEL"),
+    ),
     # Both audit switches share the auditor stack: its profile is on when either is.
     Feature(
         "Session audit trail",
@@ -216,6 +222,74 @@ SERVER_SIZE_VALUES = {
     "medium": {"DJANGO_SGI_WORKERS": "3", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "2"},
     "large": {"DJANGO_SGI_WORKERS": "6", "DJANGO_DB_POOL_MAX_SIZE": "15", "CHAT_WORKERS": "4"},
 }
+
+
+class MemoryLimit(NamedTuple):
+    variable: str
+    services: tuple[str, ...]
+    default_mb: int
+    floor_mb: int
+    profile: str | None
+
+
+# The limits the wizard scales to the host. Defaults are benchmark peaks with headroom; floors are
+# the memory each service used at the lightest load plus about 20%.
+MEMORY_LIMITS = (
+    MemoryLimit("CREW_MEMORY", ("crew",), 2048, 384, None),
+    MemoryLimit("CREWDB_MEMORY", ("crewdb",), 2048, 384, None),
+    MemoryLimit("SANDBOX_MEMORY", ("sandbox_new",), 1024, 256, None),
+    MemoryLimit("SANDBOX_WORKER_MEMORY", ("sandbox_worker",), 2048, 512, None),
+    MemoryLimit("KNOWLEDGE_MEMORY", ("knowledge_new",), 2048, 512, None),
+    MemoryLimit("AGENT_MEMORY", ("agent",), 1024, 256, None),
+    MemoryLimit("REDIS_MEMORY", ("redis",), 512, 256, None),
+    MemoryLimit("OPENSEARCH_MEMORY", ("opensearch",), 2048, 1536, "auditor"),
+    MemoryLimit("PLUGINS_DB_MEMORY", ("plugins_db",), 2048, 1024, "plugins"),
+)
+# Limit variable -> (worker variable, MiB per worker, base MiB, profile). Never scaled down:
+# below this the workers themselves run out of memory.
+WORKER_MEMORY = {
+    "DJANGO_MEMORY": ("DJANGO_SGI_WORKERS", 512, 1024, None),
+    "CHAT_MEMORY": ("CHAT_WORKERS", 256, 512, "chat"),
+}
+# Compose service -> (memory MiB, pids, profile). Written in docker-compose.yaml, not in `.env`.
+FIXED_LIMITS = {
+    "epicstaff-nginx": (128, 256, None),
+    "frontend": (64, 64, None),
+    "storage": (256, 512, None),
+    "storage-init": (64, 64, None),
+    "volume-permissions": (64, 64, None),
+    "webhook": (128, 128, None),
+    "manager": (128, 128, None),
+    "realtime": (256, 256, None),
+    "mailpit": (128, 64, "dev"),
+    "auditor": (512, 256, "auditor"),
+    "chatdb": (512, 512, "chat"),
+    "plugins_egress": (256, 128, "plugins"),
+}
+# They get limits but are left out of the total: they exit after startup.
+ONE_SHOT_SERVICES = ("storage-init", "volume-permissions")
+MEMORY_ROUNDING_MB = 64
+DEFAULT_ES_PLUGINS_MEMORY_MB = 4096
+
+
+class MemoryFit(NamedTuple):
+    values: dict[str, str]
+    ram_mb: int
+    reserve_mb: int
+    total_mb: int
+    fits: bool
+    largest: list[str]
+
+
+MEMORY_CHOICES = {"fit": "Fit to this machine", "keep": "Keep current"}
+MEMORY_UNKNOWN_NOTE = (
+    "Could not detect the memory: keeping the default limits; check they fit this machine."
+)
+TUNE_MEMORY_HINT = (
+    'Run python scripts/envtool.py --setup and pick "Tune performance and limits" to fit the new '
+    "memory limits to this machine."
+)
+
 # Sandbox limit -> (description, how long crew waits for the result). Crew must wait longer than
 # the sandbox may run, with room for library installation.
 CODE_TIME_LIMITS = {
@@ -252,6 +326,14 @@ BOLD, DIM, RED, GREEN, YELLOW, CYAN = "1", "2", "31", "32", "33", "36"
 # browsers read as a number makes the host an IP address.
 DNS_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
 NUMERIC_LABEL = re.compile(r"[0-9]+|0[xX][0-9A-Fa-f]*")
+# PLUGINS_HOST_TEMPLATE, by the rules of django_app's plugins.configuration.host_template (and
+# nginx's 16-normalize-plugins-enabled.envsh): `<prefix>{id}<suffix>.<parent>`.
+IDENTIFIER_PLACEHOLDER = "{id}"
+MAX_IDENTIFIER_LENGTH = 32
+TEMPLATE_PREFIX = re.compile(r"(?:[a-z0-9][a-z0-9-]*)?")
+TEMPLATE_SUFFIX = re.compile(r"(?:[a-z0-9-]*[a-z0-9])?")
+# The affix of the suggested flat template, {id}-app.<EpicStaff's parent domain>.
+SUGGESTED_TEMPLATE_SUFFIX = "-app"
 # The local host the plugin development guide uses: bare localhost is refused with plugins on.
 LOCAL_PLUGINS_HOST = {
     "NGINX_SERVER_NAME": "epicstaff.localhost",
@@ -368,24 +450,128 @@ def plugins_host_problem(public_url: str) -> str | None:
     return None
 
 
-def validate_plugins_domain(domain: str, public_url: str) -> str:
-    domain = domain.strip().lower().rstrip(".")
-    labels = domain.split(".")
-    if len(labels) < 2 or len(domain) > 253 or not all(map(DNS_LABEL.fullmatch, labels)):
-        raise ValueError("Enter a domain name such as plugins.example.com.")
-    if domain.endswith(".invalid"):
-        raise ValueError(f"{domain} is a placeholder: enter the real domain.")
+def parse_host_template(template: str) -> tuple[str, str, str]:
+    """`(prefix, suffix, parent)` of a plugin host template, or ValueError naming the rule."""
+    first_label, _, parent = template.partition(".")
+    if template.count(IDENTIFIER_PLACEHOLDER) != 1 or IDENTIFIER_PLACEHOLDER not in first_label:
+        raise ValueError("Put {id} once, in the first label, e.g. {id}-app.example.com.")
+    prefix, _, suffix = first_label.partition(IDENTIFIER_PLACEHOLDER)
+    parent_labels = parent.split(".")
+    if len(parent_labels) < 2 or not all(map(DNS_LABEL.fullmatch, parent_labels)):
+        raise ValueError("After the first label put a domain name such as example.com.")
+    if not TEMPLATE_PREFIX.fullmatch(prefix) or not TEMPLATE_SUFFIX.fullmatch(suffix):
+        raise ValueError(
+            "Around {id} use only letters, digits and hyphens, with no hyphen at either end."
+        )
+    longest_label = len(prefix) + MAX_IDENTIFIER_LENGTH + len(suffix)
+    if longest_label > 63 or longest_label + 1 + len(parent) > 253:
+        raise ValueError("Too long for a 32-character plugin identifier: shorten it.")
+    # Hyphens in a label's 3rd and 4th characters are reserved for xn-- names; see
+    # host_template._affixes_reserve_labels in django_app for why these are the cases.
+    if (
+        (len(prefix) >= 4 and prefix[2:4] == "--")
+        or len(prefix) == 1
+        or (not prefix and suffix.startswith("--"))
+    ):
+        raise ValueError(
+            "The text around {id} would make some hosts look like xn-- names: change it."
+        )
+    return prefix, suffix, parent
+
+
+def template_covers(prefix: str, suffix: str, parent: str, host: str) -> bool:
+    """Whether `host` is in the plugin zone (django_app's PluginHostTemplate.covers)."""
+    if not prefix and not suffix:
+        # Every name, even one with an empty label (`a..parent`, `.parent`).
+        return host == parent or host.endswith(f".{parent}")
+    if not host.endswith(f".{parent}"):
+        return False
+    label = host[: -len(parent) - 1].rsplit(".", 1)[-1]
+    return (
+        len(label) > len(prefix) + len(suffix)
+        and label.startswith(prefix)
+        and label.endswith(suffix)
+    )
+
+
+def shares_site(host: str, parent: str) -> bool:
+    """Whether `host` and `parent` end in the same domain of two or more labels (plugins.E014)."""
+    shared = 0
+    for host_label, parent_label in zip(
+        reversed(host.split(".")), reversed(parent.split(".")), strict=False
+    ):
+        if host_label != parent_label:
+            break
+        shared += 1
+    return shared >= 2
+
+
+def validate_plugins_host_template(template: str, public_url: str) -> str:
+    template = template.strip().lower().rstrip(".")
+    prefix, suffix, parent = parse_host_template(template)
+    if parent.endswith(".invalid"):
+        raise ValueError(f"{template} is a placeholder: enter the real one.")
     parts = urlsplit(public_url)
-    if parts.scheme != "https" and not domain.endswith(".localhost"):
-        raise ValueError("Over plain HTTP the plugin domain must end in .localhost.")
+    if parts.scheme != "https" and not parent.endswith(".localhost"):
+        raise ValueError("Over plain HTTP the plugin hosts must end in .localhost.")
     host = parts.hostname or ""
-    if host == domain or host.endswith(f".{domain}"):
+    if template_covers(prefix, suffix, parent, host):
         # A plugin identifier could then name EpicStaff's own host.
         raise ValueError(
-            f"{host} is under {domain}: use a domain beside it, such as plugins.example.com "
-            "for epicstaff.example.com."
+            f"{host} would be a plugin host: pick an affix EpicStaff's host does not have."
         )
-    return domain
+    if not shares_site(host, parent):
+        raise ValueError(
+            f"{host} and the plugin hosts are not one site: put them under EpicStaff's own "
+            f"domain, such as {suggested_plugins_host_template(public_url)}."
+        )
+    return template
+
+
+def suggested_plugins_parent(host: str) -> str:
+    """The domain the suggested template puts the plugins under, for EpicStaff at `host`.
+
+    Normally the domain EpicStaff's host is in: its host without the first label
+    (staff.acme.com: acme.com). Without the Public Suffix List that can be a shared suffix,
+    so EpicStaff's whole host is taken instead when it has two labels (acme.com,
+    epicstaff.localhost) or when dropping its first label leaves two labels the first of
+    which is three characters or fewer (acme.co.uk: co.uk, com.au), which is how most
+    country-code suffixes look. A longer shared suffix (myorg.github.io: github.io) still gets
+    through; `plugins_parent_note` asks the operator to check that case.
+    """
+    labels = host.split(".")
+    parent_labels = labels[1:]
+    if len(labels) <= 2 or (len(parent_labels) == 2 and len(parent_labels[0]) <= 3):
+        return host
+    return ".".join(parent_labels)
+
+
+def plugins_parent_note(public_url: str) -> str | None:
+    """A reminder when the suggestion may sit on a shared suffix the rule cannot see: the
+    suggested parent has two labels, taken from a three-label EpicStaff host."""
+    host = urlsplit(public_url).hostname or ""
+    parent = suggested_plugins_parent(host)
+    if host.count(".") != 2 or parent.count(".") != 1:
+        return None
+    return (
+        f"The suggestion puts the plugins under {parent}: it must be a domain you control, "
+        "not a shared suffix such as co.uk or github.io."
+    )
+
+
+def suggested_plugins_host_template(public_url: str) -> str:
+    """`{id}-app.<suggested_plugins_parent>`. When EpicStaff's own host has that shape
+    (shop-app.acme.com), the plugins get a parent of their own instead."""
+    host = urlsplit(public_url).hostname or ""
+    parent = suggested_plugins_parent(host)
+    if template_covers("", SUGGESTED_TEMPLATE_SUFFIX, parent, host):
+        return f"{IDENTIFIER_PLACEHOLDER}.plugins.{parent}"
+    return f"{IDENTIFIER_PLACEHOLDER}{SUGGESTED_TEMPLATE_SUFFIX}.{parent}"
+
+
+def plugin_zone_parent(template: str) -> str:
+    """The domain the plugin hosts' wildcard DNS record and certificate name: *.<this>."""
+    return template.partition(".")[2]
 
 
 def production_values(public_url: str, serving_mode: str, image_tag: str) -> dict[str, str]:
@@ -477,7 +663,12 @@ def update_env_file(
     # utf-8-sig: a byte order mark (Windows editors) would glue onto the first variable name.
     original = env_file.read_bytes().decode("utf-8-sig")
     already_set = set(SET_VARIABLE.findall(original))
-    overrides = {**_split_audit_switch(original), **(overrides or {})}
+    overrides = {
+        **_split_audit_switch(original),
+        **carried_forward_values(read_env_values(original)),
+        **worker_memory_values(read_env_values(original)),
+        **(overrides or {}),
+    }
     added, needs_value, content = [], [], []
     for variables in schema["groups"].values():
         for name, declaration in variables["vars"].items():
@@ -516,6 +707,25 @@ def _split_audit_switch(env_text: str) -> dict[str, str]:
     if legacy_value is None:
         return {}
     return {SESSION_AUDIT_SWITCH: legacy_value}
+
+
+def converted_host_template(values: dict[str, str]) -> str | None:
+    """The template that keeps the plugin hosts of a file written before PLUGINS_HOST_TEMPLATE,
+    from its PLUGINS_BASE_DOMAIN: <id>.<that domain>. None without one."""
+    base_domain = values.get("PLUGINS_BASE_DOMAIN", "").strip()
+    return f"{IDENTIFIER_PLACEHOLDER}.{base_domain}" if base_domain else None
+
+
+def carried_forward_values(values: dict[str, str]) -> dict[str, str]:
+    """Values a new variable takes from the old one it replaces, instead of its default.
+
+    A server upgraded from a release with PLUGINS_BASE_DOMAIN keeps its plugin addresses:
+    plugins registered them with outside services.
+    """
+    template = converted_host_template(values)
+    if "PLUGINS_HOST_TEMPLATE" in values or template is None:
+        return {}
+    return {"PLUGINS_HOST_TEMPLATE": template}
 
 
 def read_env_values(text: str) -> dict[str, str]:
@@ -651,7 +861,7 @@ class Screen:
             if default is None:
                 print(style(question, BOLD))
             else:
-                shown = list(choices).index(default) + 1
+                shown = list(choices).index(default) + 1 if choices else default
                 print(f"{style(question, BOLD)} {style(f'Enter for {shown}', DIM)}")
             if choices:
                 for number, description in enumerate(choices.values(), start=1):
@@ -699,13 +909,21 @@ def ask_features(screen: Screen, current: dict[str, bool]) -> dict[str, bool]:
     }
 
 
-def ask_plugins_domain(screen: Screen, public_url: str) -> str:
-    return screen.ask(
-        "Plugin domain",
-        "Parent domain of the plugin hosts, served with a wildcard DNS record *.<domain>, "
-        "e.g. plugins.example.com for epicstaff.example.com",
-        validate=lambda domain: validate_plugins_domain(domain, public_url),
+def ask_plugins_host_template(screen: Screen, public_url: str) -> str:
+    suggestion = suggested_plugins_host_template(public_url)
+    note = plugins_parent_note(public_url)
+    if note:
+        screen.notes.append(note)
+    template = screen.ask(
+        "Plugin hosts",
+        "Where plugins are served, {id} standing for the plugin, e.g. "
+        f"{suggestion} or {{id}}.plugins.<domain>; pick an affix no other host of the zone uses",
+        validate=lambda template: validate_plugins_host_template(template, public_url),
+        default=suggestion,
     )
+    if note:
+        screen.notes.remove(note)
+    return template
 
 
 def plugins_allowed(screen: Screen, public_url: str) -> bool:
@@ -741,15 +959,11 @@ def ask_production_values(
     serving_mode = screen.ask(
         "Served", "How do users reach it?", choices=SERVING_MODE_CHOICES, validate=matching_mode
     )
-    enabled = ask_features(screen, {feature.flag: False for feature in FEATURES})
-    enabled["PLUGINS_ENABLED"] = enabled["PLUGINS_ENABLED"] and plugins_allowed(screen, public_url)
-    plugins_domain = ask_plugins_domain(screen, public_url) if enabled["PLUGINS_ENABLED"] else None
+    enabled, plugins_host_template = ask_production_features(screen, public_url)
     image_tag = screen.ask(
         "Release", "Release tag to pull (IMAGE_TAG), e.g. v1.3.0", validate=validate_image_tag
     )
     values = production_values(public_url, serving_mode, image_tag)
-    if plugins_domain:
-        values["PLUGINS_BASE_DOMAIN"] = plugins_domain
     retention = screen.ask(
         "Retention",
         "How long to keep finished sessions, chat conversations and audit events? "
@@ -758,7 +972,50 @@ def ask_production_values(
     )
     values |= dict.fromkeys(RETENTION_DAYS, retention)
     cpu_count = detect_cpu_count()
-    size = server_size_for(cpu_count)
+    memory_mb = detect_memory_mb()
+    if memory_mb is None:
+        screen.notes.append(MEMORY_UNKNOWN_NOTE)
+    notes_before_sizing = len(screen.notes)
+    while True:
+        sized, fit = ask_server_size(screen, schema, enabled, cpu_count, memory_mb)
+        if fit is None or confirm_memory_fit(screen, fit):
+            break
+        # The wizard has no back step: ask the features and the size again, then fit again.
+        del screen.notes[notes_before_sizing:]
+        enabled, plugins_host_template = ask_production_features(screen, public_url)
+    values |= sized
+    if plugins_host_template:
+        values["PLUGINS_HOST_TEMPLATE"] = plugins_host_template
+    return values, enabled, serving_mode
+
+
+def ask_production_features(screen: Screen, public_url: str) -> tuple[dict[str, bool], str | None]:
+    enabled = ask_features(screen, {feature.flag: False for feature in FEATURES})
+    enabled["PLUGINS_ENABLED"] = enabled["PLUGINS_ENABLED"] and plugins_allowed(screen, public_url)
+    plugins_host_template = (
+        ask_plugins_host_template(screen, public_url) if enabled["PLUGINS_ENABLED"] else None
+    )
+    return enabled, plugins_host_template
+
+
+def ask_server_size(
+    screen: Screen,
+    schema: dict,
+    enabled: dict[str, bool],
+    cpu_count: int | None,
+    memory_mb: int | None,
+) -> tuple[dict[str, str], MemoryFit | None]:
+    """Size the server from its CPUs, stepping down until the memory limits fit, unless the
+    operator opens the advanced settings and picks the size there."""
+    size, fit = server_size_for(cpu_count), None
+    if memory_mb is not None:
+        sizes = list(SERVER_SIZES)
+        # From the CPU size down to Small; Small stays when even it does not fit.
+        for candidate in reversed(sizes[: sizes.index(size) + 1]):
+            size = candidate
+            fit = fit_memory_limits(memory_mb, enabled_profiles(enabled), SERVER_SIZE_VALUES[size])
+            if fit.fits:
+                break
     detected = (
         f"Detected {cpu_count} CPU{'' if cpu_count == 1 else 's'}"
         if cpu_count
@@ -770,14 +1027,16 @@ def ask_production_values(
     )
     screen.notes.append(size_note)
     if screen.ask_yes_no(
-        "Advanced", "Adjust advanced settings (server size, code time limit, logging)?", False
+        "Advanced",
+        "Adjust advanced settings (server size, code time limit, logging, memory limits)?",
+        False,
     ):
         # The operator picks the size now: keep only the part that stays true whatever they pick.
         screen.notes[screen.notes.index(size_note)] = f"{detected}."
-        values |= ask_advanced(screen, schema, enabled, detected_size=size)
+        values, fit = ask_advanced(screen, schema, enabled, detected_size=size, memory_mb=memory_mb)
     else:
-        values |= advanced_values(size, None, None, enabled, schema)
-    return values, enabled, serving_mode
+        values = advanced_values(size, None, None, enabled, schema)
+    return (values | fit.values, fit) if fit else (values, None)
 
 
 def detect_cpu_count() -> int | None:
@@ -794,6 +1053,146 @@ def detect_cpu_count() -> int | None:
             # Some sandboxes refuse the call; the wizard must not fail after all its questions.
             pass
     return os.cpu_count()
+
+
+def detect_memory_mb() -> int | None:
+    """Return the physical RAM in MiB, or None when the OS cannot say (Windows has no sysconf)."""
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // 2**20
+    except (ValueError, OSError, AttributeError):
+        return None
+
+
+def memory_reserve_mb(ram_mb: int) -> int:
+    """Room kept for the OS, SSH and Docker itself: 1 GiB or 10% of RAM, whichever is larger."""
+    return max(1024, ram_mb // 10)
+
+
+def worker_memory_values(values: dict[str, str]) -> dict[str, str]:
+    """Return the Django / chat limits that follow the worker counts held in `values`."""
+    return {
+        variable: f"{per_worker * int(values[workers_variable]) + base}m"
+        for variable, (workers_variable, per_worker, base, _) in WORKER_MEMORY.items()
+        if workers_variable in values
+    }
+
+
+def size_worker_memory_from(env_file: Path, override_file: Path) -> dict[str, str]:
+    """Rewrite the Django / chat limits in `env_file` to follow the worker counts compose will use
+    when `override_file` is loaded after it (its values win). A limit the override file sets
+    itself is left alone. Returns the values written."""
+    values = read_env_values(env_file.read_text(encoding="utf-8"))
+    overrides = read_env_values(override_file.read_text(encoding="utf-8"))
+    sized = {
+        variable: value
+        for variable, value in worker_memory_values({**values, **overrides}).items()
+        if variable not in overrides
+    }
+    if sized:
+        rewrite_env_values(env_file, sized)
+    return sized
+
+
+def _plugins_memory_mb(values: dict[str, str]) -> int:
+    raw = values.get("ES_PLUGINS_MEMORY")
+    if raw is None:
+        return DEFAULT_ES_PLUGINS_MEMORY_MB
+    # Docker writes 4g / 512m; humanize only knows gb / mb.
+    raw = raw.strip().lower()
+    if raw[-1:] in ("k", "m", "g"):
+        raw += "b"
+    return humanize.to_byte_size(raw) // 2**20
+
+
+def fit_memory_limits(ram_mb: int, profiles: list[str], values: dict[str, str]) -> MemoryFit:
+    """Scale the sized services down together until they fit the RAM left after the reserve.
+
+    `values` holds the chosen settings: worker counts and ES_PLUGINS_MEMORY. Django, chat and
+    the plugin node are counted as fixed; the rest shrink by one factor, never below a floor.
+    """
+
+    def active(profile: str | None) -> bool:
+        return profile is None or profile in profiles
+
+    worker_values = {
+        variable: value
+        for variable, value in worker_memory_values(values).items()
+        if active(WORKER_MEMORY[variable][3])
+    }
+    fixed = (
+        sum(
+            memory
+            for service, (memory, _, profile) in FIXED_LIMITS.items()
+            if active(profile) and service not in ONE_SHOT_SERVICES
+        )
+        + sum(int(value[:-1]) for value in worker_values.values())
+        + (_plugins_memory_mb(values) if "plugins" in profiles else 0)
+    )
+    reserve = memory_reserve_mb(ram_mb)
+    budget = ram_mb - reserve - fixed
+    scaled = [limit for limit in MEMORY_LIMITS if active(limit.profile)]
+
+    pinned: set[str] = set()
+    while True:
+        free = [limit for limit in scaled if limit.variable not in pinned]
+        pinned_floor = sum(limit.floor_mb for limit in scaled if limit.variable in pinned)
+        factor = (budget - pinned_floor) / sum(limit.default_mb for limit in free) if free else 1
+        newly_pinned = {
+            limit.variable for limit in free if limit.default_mb * factor < limit.floor_mb
+        }
+        if not newly_pinned:
+            break
+        pinned |= newly_pinned
+
+    sized = {}
+    for limit in scaled:
+        mb = (
+            limit.floor_mb
+            if limit.variable in pinned
+            else min(limit.default_mb, int(limit.default_mb * factor))
+        )
+        sized[limit.variable] = mb // MEMORY_ROUNDING_MB * MEMORY_ROUNDING_MB
+    fit_values = {**worker_values, **{variable: f"{mb}m" for variable, mb in sized.items()}}
+    in_mb = {variable: int(value[:-1]) for variable, value in fit_values.items()}
+    if "plugins" in profiles:
+        in_mb["ES_PLUGINS_MEMORY"] = _plugins_memory_mb(values)
+    return MemoryFit(
+        values=fit_values,
+        ram_mb=ram_mb,
+        reserve_mb=reserve,
+        total_mb=fixed + sum(sized.values()),
+        fits=sum(sized.values()) <= budget,
+        largest=sorted(in_mb, key=in_mb.get, reverse=True)[:3],
+    )
+
+
+def enabled_profiles(enabled: dict[str, bool]) -> list[str]:
+    return [feature.profile for feature in FEATURES if enabled[feature.flag]]
+
+
+def confirm_memory_fit(screen: Screen, fit: MemoryFit) -> bool:
+    """Note the fitted limits, or warn that they do not fit and ask whether to go on anyway."""
+    if fit.fits:
+        screen.notes.append(memory_note(fit))
+        return True
+    available_gb = (fit.ram_mb - fit.reserve_mb) / 1024
+    screen.notes.append(
+        style(
+            f"Memory limits do not fit: these features need {fit.total_mb / 1024:.1f} GB even at "
+            f"their minimum limits, but {available_gb:.1f} GB is left after keeping "
+            f"{fit.reserve_mb / 1024:.1f} GB free for the system ({fit.ram_mb / 1024:.0f} GB "
+            f"detected). The most memory goes to {', '.join(fit.largest)}.",
+            RED,
+        )
+    )
+    return screen.ask_yes_no("Memory", "Continue anyway?", False)
+
+
+def memory_note(fit: MemoryFit) -> str:
+    return (
+        f"Memory limits: {fit.total_mb / 1024:.1f} GB for containers, "
+        f"{fit.reserve_mb / 1024:.1f} GB kept free for the system ({fit.ram_mb / 1024:.0f} GB detected)."
+    )
 
 
 def server_size_for(cpu_count: int | None) -> str:
@@ -819,6 +1218,9 @@ def advanced_values(
     values: dict[str, str] = {}
     if size:
         values |= SERVER_SIZE_VALUES[size]
+        # Below this the workers run out of memory, so it follows the size even when the operator
+        # keeps the other memory limits.
+        values |= worker_memory_values(SERVER_SIZE_VALUES[size])
     if code_limit:
         values["SANDBOX_MAX_EXECUTION_TIMEOUT"] = code_limit
         values["CREW_CODE_RESULT_TIMEOUT"] = CODE_TIME_LIMITS[code_limit][1]
@@ -848,10 +1250,13 @@ def ask_advanced(
     enabled: dict[str, bool],
     current: dict[str, str] | None = None,
     detected_size: str | None = None,
-) -> dict[str, str]:
-    """Ask the three advanced questions; with `current` (an existing file) each can keep its value.
+    memory_mb: int | None = None,
+) -> tuple[dict[str, str], MemoryFit | None]:
+    """Ask the advanced questions; with `current` (an existing file) each can keep its value.
 
-    `detected_size` is the server size an empty answer keeps.
+    `detected_size` is the server size an empty answer keeps. With `memory_mb` (the host RAM) the
+    limits are fitted, after asking whether to when `current` has limits to keep. The fit comes
+    back apart from the values, so the caller can still drop it; it is None when not fitted.
     """
     keep = {}
     if current is not None:
@@ -877,7 +1282,13 @@ def ask_advanced(
     log_level = screen.ask(
         "Logging", "Log level for every service?", choices=keep.get("log", {}) | LOG_CHOICES
     )
-    return advanced_values(
+    memory = "keep" if memory_mb is None else "fit"
+    # A new file has no current limits to keep, so there is nothing to ask.
+    if memory_mb is not None and current is not None:
+        memory = screen.ask(
+            "Memory limits", "Memory limits of the containers?", MEMORY_CHOICES, default="fit"
+        )
+    values = advanced_values(
         None if size == "keep" else size,
         None if code_limit == "keep" else code_limit,
         None if log_level == "keep" else log_level.upper(),
@@ -885,6 +1296,10 @@ def ask_advanced(
         schema,
         current,
     )
+    if memory == "keep":
+        return values, None
+    fit = fit_memory_limits(memory_mb, enabled_profiles(enabled), {**(current or {}), **values})
+    return values, fit
 
 
 def carried_over(
@@ -962,10 +1377,10 @@ def create_env_file(
                 "If your load balancer adds X-Forwarded-For, set DJANGO_NUM_PROXIES=2 in the",
                 "file; otherwise login throttling treats every user as the balancer.",
             ]
-        plugins_domain = overrides.get("PLUGINS_BASE_DOMAIN", "")
-        if enabled["PLUGINS_ENABLED"] and not plugins_domain.endswith(".localhost"):
+        plugins_parent = plugin_zone_parent(overrides.get("PLUGINS_HOST_TEMPLATE", ""))
+        if enabled["PLUGINS_ENABLED"] and not plugins_parent.endswith(".localhost"):
             steps.append(
-                f"Point *.{plugins_domain} at this server (wildcard DNS record and certificate)."
+                f"Point *.{plugins_parent} at this server (wildcard DNS record and certificate)."
             )
         if overrides.get("DJANGO_LOG_LEVEL") == "DEBUG":
             steps.append(DEBUG_REMINDER)
@@ -996,23 +1411,23 @@ def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev
             )
         current[feature.flag] = flag_on and profile_on
         was_on[feature.flag] = flag_on or profile_on
-    enabled = ask_features(screen, current)
-    plugin_values: dict[str, str] = {}
-    if enabled["PLUGINS_ENABLED"]:
-        public_url = old.get("DJANGO_FRONTEND_BASE_URL", "")
-        if target == "dev" and plugins_host_problem(public_url):
-            plugin_values |= LOCAL_PLUGINS_HOST
-            public_url = LOCAL_PLUGINS_HOST["DJANGO_FRONTEND_BASE_URL"]
-        enabled["PLUGINS_ENABLED"] = plugins_allowed(screen, public_url)
-    if enabled["PLUGINS_ENABLED"]:
-        plugin_values |= missing_plugin_secrets(old)
-        old_domain = old.get("PLUGINS_BASE_DOMAIN", "")
-        try:
-            domain = validate_plugins_domain(old_domain, public_url)
-        except ValueError:
-            domain = ask_plugins_domain(screen, public_url)
-        if domain != old_domain:
-            plugin_values["PLUGINS_BASE_DOMAIN"] = domain
+    # Dev runs mostly on Docker Desktop, where the host RAM is not what Docker gets.
+    memory_mb = detect_memory_mb() if target == "prod" else None
+    if target == "prod" and memory_mb is None:
+        screen.notes.append(MEMORY_UNKNOWN_NOTE)
+    notes_before_features = len(screen.notes)
+    old_feature_profiles = {feature.profile for feature in FEATURES} & set(profiles)
+    while True:
+        enabled, plugin_values = ask_changed_features(screen, old, current, target)
+        # Unchanged profiles start no new service: leave the limits, hand edits included.
+        if memory_mb is None or set(enabled_profiles(enabled)) == old_feature_profiles:
+            break
+        # The file holds the worker counts and plugin memory in effect.
+        fit = fit_memory_limits(memory_mb, enabled_profiles(enabled), old)
+        if confirm_memory_fit(screen, fit):
+            plugin_values |= fit.values
+            break
+        del screen.notes[notes_before_features:]
     values = feature_values(enabled, old.get("COMPOSE_PROFILES", ""), local=target == "dev")
     values |= plugin_values
     screen.draw()
@@ -1030,7 +1445,33 @@ def change_features(screen: Screen, env_file: Path, target: Literal["prod", "dev
     print_panel("Apply it with", commands)
 
 
-def tune_settings(screen: Screen, env_file: Path, schema: dict) -> None:
+def ask_changed_features(
+    screen: Screen, old: dict[str, str], current: dict[str, bool], target: Literal["prod", "dev"]
+) -> tuple[dict[str, bool], dict[str, str]]:
+    """Ask the features; return them with the plugin settings turning plugins on needs."""
+    enabled = ask_features(screen, current)
+    plugin_values: dict[str, str] = {}
+    if enabled["PLUGINS_ENABLED"]:
+        public_url = old.get("DJANGO_FRONTEND_BASE_URL", "")
+        if target == "dev" and plugins_host_problem(public_url):
+            plugin_values |= LOCAL_PLUGINS_HOST
+            public_url = LOCAL_PLUGINS_HOST["DJANGO_FRONTEND_BASE_URL"]
+        enabled["PLUGINS_ENABLED"] = plugins_allowed(screen, public_url)
+    if enabled["PLUGINS_ENABLED"]:
+        plugin_values |= missing_plugin_secrets(old)
+        old_template = old.get("PLUGINS_HOST_TEMPLATE") or converted_host_template(old)
+        try:
+            template = validate_plugins_host_template(old_template or "", public_url)
+        except ValueError:
+            template = ask_plugins_host_template(screen, public_url)
+        if template != old.get("PLUGINS_HOST_TEMPLATE"):
+            plugin_values["PLUGINS_HOST_TEMPLATE"] = template
+    return enabled, plugin_values
+
+
+def tune_settings(
+    screen: Screen, env_file: Path, schema: dict, target: Literal["prod", "dev"]
+) -> None:
     old = read_env_values(env_file.read_bytes().decode("utf-8-sig"))
     profiles = parse_profiles(old.get("COMPOSE_PROFILES", ""))
     enabled = {
@@ -1038,7 +1479,20 @@ def tune_settings(screen: Screen, env_file: Path, schema: dict) -> None:
         and feature.profile in profiles
         for feature in FEATURES
     }
-    values = ask_advanced(screen, schema, enabled, current=old)
+    # Dev runs mostly on Docker Desktop, where the host RAM is not what Docker gets.
+    memory_mb = detect_memory_mb() if target == "prod" else None
+    if target == "prod" and memory_mb is None:
+        screen.notes.append(MEMORY_UNKNOWN_NOTE)
+    notes_before_questions = len(screen.notes)
+    while True:
+        values, fit = ask_advanced(screen, schema, enabled, current=old, memory_mb=memory_mb)
+        if fit is None:
+            break
+        if confirm_memory_fit(screen, fit):
+            values |= fit.values
+            break
+        # Nothing is written for a setup the operator declined: ask the questions again.
+        del screen.notes[notes_before_questions:]
     screen.draw()
     # Rewrite only what actually changes, so hand-tuned neighbours stay byte-identical.
     changed = {name: value for name, value in values.items() if old.get(name) != value}
@@ -1092,7 +1546,7 @@ def run_setup(
         if action == "change-features":
             change_features(screen, env_file, target)
         elif action == "tune":
-            tune_settings(screen, env_file, schema)
+            tune_settings(screen, env_file, schema, target)
         elif action == "add-missing":
             overrides = (
                 {name: generate_secret(name) for name in GENERATED_SECRETS}
@@ -1129,6 +1583,12 @@ def main(argv: list[str] | None = None):
         action="store_true",
         help="Ask questions to create the env file or change its features (production unless --dev).",
     )
+    mode.add_argument(
+        "--size-worker-memory-from",
+        metavar="OVERRIDE_ENV_FILE",
+        help="Set DJANGO_MEMORY / CHAT_MEMORY in the env file from the worker counts in it and in"
+        " OVERRIDE_ENV_FILE, which compose loads after it; limits the override file sets stay.",
+    )
     parser.add_argument("--env-file", default=".env", help="Env file path.")
     parser.add_argument("--schema-file", default="env.yaml", help="Schema file path.")
 
@@ -1145,6 +1605,21 @@ def main(argv: list[str] | None = None):
         run_setup(load_schema(schema_file), target, env_file, schema_file)
         return
 
+    if args.size_worker_memory_from:
+        override_file = BASE_DIR / args.size_worker_memory_from
+        for required in (env_file, override_file):
+            if not required.is_file():
+                sys.exit(f"{required} does not exist.")
+        sized = size_worker_memory_from(env_file, override_file)
+        print(
+            f"{env_file}: "
+            + (
+                ", ".join(f"{name}={value}" for name, value in sized.items())
+                or "no worker memory to change"
+            )
+        )
+        return
+
     if args.update:
         if not env_file.is_file():
             generate = "python scripts/envtool.py" + (" --dev" if args.dev else "")
@@ -1155,6 +1630,8 @@ def main(argv: list[str] | None = None):
             load_schema(schema_file), target, env_file, datetime.now().astimezone().date()
         )
         print(f"{env_file}: {update_summary(added, needs_value)}")
+        if target == "prod" and any(name.endswith("_MEMORY") for name in added):
+            print(TUNE_MEMORY_HINT)
         return
 
     schema = load_schema(schema_file)

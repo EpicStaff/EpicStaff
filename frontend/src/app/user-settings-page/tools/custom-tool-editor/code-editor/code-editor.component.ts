@@ -18,6 +18,7 @@ import {
 import { FormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, IconButtonComponent } from '@shared/components';
+import { isAllowedSecretName } from '@shared/utils';
 import type { editor as MonacoEditor } from 'monaco-editor';
 import { MonacoEditorModule } from 'ngx-monaco-editor-v2';
 import { from, of, Subject, Subscription } from 'rxjs';
@@ -27,6 +28,7 @@ import { ToastService } from '../../../../services/notifications';
 import type { RuffDiagnostic } from '../../../../shared/ruff-linter/models/ruff-result.model';
 import { RuffDiagnosticsService } from '../../../../shared/ruff-linter/services/ruff-diagnostics.service';
 import { RuffWasmService } from '../../../../shared/ruff-linter/services/ruff-wasm.service';
+import { pythonStringLiteral } from './python-string-literal.util';
 
 const LINT_DEBOUNCE_MS = 400;
 
@@ -199,6 +201,9 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
                     startColumn: word.startColumn,
                     endColumn: word.endColumn,
                 };
+                // Names stored before the secret-name rule existed may hold characters that run as code when the
+                // call lands inside a string (an f-string's `{…}`, a quote), so only names that pass it are offered.
+                const secretNames = this.secretNames.filter(isAllowedSecretName);
                 return {
                     suggestions: [
                         ...this.inputMapKeys.map((name) => ({
@@ -208,13 +213,17 @@ export class CodeEditorComponent implements OnChanges, OnDestroy {
                             insertText: name,
                             range,
                         })),
-                        ...this.secretNames.map((name) => ({
-                            label: name,
-                            kind: monaco.languages.CompletionItemKind.Constant,
-                            detail: `get_secret("${name}")`,
-                            insertText: `get_secret("${name}")`,
-                            range,
-                        })),
+                        ...secretNames.map((name) => {
+                            // Plain text, not a snippet: no insertTextRules, so `$` in a name is inserted as is.
+                            const getSecretCall = `get_secret(${pythonStringLiteral(name)})`;
+                            return {
+                                label: name,
+                                kind: monaco.languages.CompletionItemKind.Constant,
+                                detail: getSecretCall,
+                                insertText: getSecretCall,
+                                range,
+                            };
+                        }),
                     ],
                 };
             },

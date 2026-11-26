@@ -21,7 +21,10 @@ from loguru import logger
 from rbac.models import Organization
 
 from storage_credentials.clients.minio_admin_client import StorageAdminGateway
-from storage_credentials.exceptions import OrgStorageProvisioningError
+from storage_credentials.exceptions import (
+    OrgStorageCredentialCheckError,
+    OrgStorageProvisioningError,
+)
 from storage_credentials.policies import build_org_user_policy
 from storage_credentials.resource_names import _org_access_key, _org_policy_name, org_storage_prefix
 from storage_credentials.services.org_credential_store import org_credential_store
@@ -63,6 +66,39 @@ class OrgStorageProvisioningService:
 
         org_credential_store.save(org=org, access_key=access_key, secret_key=secret_key)
         logger.info("Provisioned org-level storage user for org_id={}", org.id)
+
+    def stored_credentials_rejection_code(self, org_id: int) -> str | None:
+        """Ask the storage server whether it still accepts the org's stored credentials.
+
+        The stored secret drifts from the server's when this org id is provisioned
+        against the same storage from another database: `user_add` resets the secret
+        of an existing user.
+
+        Returns:
+            The server's error code (`SignatureDoesNotMatch`, `InvalidAccessKeyId`) when
+            it rejects them, `None` when it accepts them.
+
+        Raises:
+            OrgStorageCredentialMissingError: The org has no stored credentials.
+            OrgStorageCredentialCheckError: The server could not answer the question,
+                including a malformed `STORAGE_ENDPOINT` or any unexpected client error.
+        """
+        credentials = org_credential_store.get(org_id=org_id)
+        try:
+            return asyncio.run(
+                self._credential_rejection_code_in_storage(
+                    access_key=credentials.access_key, secret_key=credentials.secret_key
+                )
+            )
+        except OrgStorageCredentialCheckError:
+            raise
+        except Exception as error:
+            # Only the answer "rejected" may lead to a key rotation; any other failure
+            # of the check means the question went unanswered.
+            logger.exception(
+                "Checking the storage credentials of org_id={} failed: {}", org_id, error
+            )
+            raise OrgStorageCredentialCheckError() from error
 
     def deprovision_for_organization(self, org_id: int) -> None:
         """Remove the org-level storage user (cascades to revoke every active
@@ -107,6 +143,17 @@ class OrgStorageProvisioningService:
             )
             await gateway.create_named_policy(_org_policy_name(org_id), policy)
             await gateway.attach_named_policy(_org_policy_name(org_id), access_key)
+        finally:
+            await gateway.close()
+
+    async def _credential_rejection_code_in_storage(
+        self, *, access_key: str, secret_key: str
+    ) -> str | None:
+        gateway = StorageAdminGateway(
+            host=self._host, access_key=access_key, secret_key=secret_key, single_attempt=True
+        )
+        try:
+            return await gateway.credential_rejection_code()
         finally:
             await gateway.close()
 
