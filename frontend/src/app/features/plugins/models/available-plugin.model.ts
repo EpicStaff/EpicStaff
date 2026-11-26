@@ -1,7 +1,13 @@
 import { PluginAction } from './plugin-admin.model';
 
-/** `maintenance`: the plugin, or the organization's install of it, is being updated; it can't be opened until then. */
-export type AvailablePluginAvailability = 'ready' | 'maintenance';
+/**
+ * Only `ready` is framed.
+ *
+ * `maintenance`: the plugin, or the organization's install of it, is being updated; it can't be opened until then.
+ * `unavailable`: the plugin's host did not prove it is served by this EpicStaff (a DNS record may point its name at
+ * another server), so EpicStaff must not frame it.
+ */
+export type AvailablePluginAvailability = 'ready' | 'maintenance' | 'unavailable';
 
 /** One entry of a plugin's app menu (`spa.navigation` in its manifest); EpicStaff draws it in its own sidebar. */
 export interface AvailablePluginNavigationItem {
@@ -20,8 +26,11 @@ export interface AvailablePlugin {
     description: string;
     /** Same-origin public icon URL, for a plain `<img>`. */
     icon_url: string;
-    /** `<scheme>://<identifier>.<plugins base domain>[:<port>]`: the only origin the plugin page is framed from. */
-    frame_origin: string;
+    /**
+     * `<scheme>://<the plugin's host from PLUGINS_HOST_TEMPLATE>[:<port>]`: the only origin the plugin page is framed
+     * from. `null` when the plugin is `unavailable`, so nothing can frame a host that is not served by this EpicStaff.
+     */
+    frame_origin: string | null;
     /** Always contains `read`. */
     permissions: PluginAction[];
     availability: AvailablePluginAvailability;

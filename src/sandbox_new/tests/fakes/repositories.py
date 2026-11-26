@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from manager.domain.enums import VenvOrder, VenvStatus, WheelStatus
-from manager.domain.models import DEFAULT_VENV_NAME, CustomLibrary, Venv, Wheel
+from manager.domain.models import CustomLibrary, Venv, Wheel
 from manager.domain.ports import (
     AbstractCustomLibraryRepository,
     AbstractVenvRepository,
@@ -98,8 +98,12 @@ class FakeVenvRepository(AbstractVenvRepository):
             row.model_copy(deep=True) for row in self.rows.values() if row.status in wanted
         ]
 
-    async def list_using_custom_library(self, name: str) -> list[Venv]:
-        rows = [row for row in self.rows.values() if row.uses_custom_library(name)]
+    async def list_using_custom_library(self, scope: str | None, name: str) -> list[Venv]:
+        rows = [
+            row
+            for row in self.rows.values()
+            if row.scope == scope and row.uses_custom_library(name)
+        ]
         rows.sort(key=lambda row: row.id)
         return [row.model_copy(deep=True) for row in rows]
 
@@ -112,12 +116,9 @@ class FakeVenvRepository(AbstractVenvRepository):
         row = self.rows.get(id)
         return row.model_copy(deep=True) if row is not None else None
 
-    async def retrieve_by_name(self, name: str) -> Venv | None:
-        row = next((row for row in self.rows.values() if row.name == name), None)
+    async def retrieve_by_system_key(self, system_key: str) -> Venv | None:
+        row = next((row for row in self.rows.values() if row.system_key == system_key), None)
         return row.model_copy(deep=True) if row is not None else None
-
-    async def retrieve_default(self) -> Venv | None:
-        return await self.retrieve_by_name(DEFAULT_VENV_NAME)
 
     async def create(self, obj: Venv) -> Venv:
         return self._insert(obj)
@@ -186,16 +187,20 @@ class FakeCustomLibraryRepository(AbstractCustomLibraryRepository):
             return None
         return row.model_copy(deep=True)
 
-    async def list_by_names(self, names: list[str]) -> list[CustomLibrary]:
+    async def list_by_names(self, scope: str | None, names: list[str]) -> list[CustomLibrary]:
         wanted = set(names)
         rows = [
-            row for row in self.rows.values() if row.name in wanted and not row.is_deleted
+            row
+            for row in self.rows.values()
+            if row.scope == scope and row.name in wanted and not row.is_deleted
         ]
         rows.sort(key=lambda row: row.id)
         return [row.model_copy(deep=True) for row in rows]
 
-    async def retrieve_by_name(self, name: str) -> CustomLibrary | None:
-        row = next((row for row in self._live() if row.name == name), None)
+    async def retrieve_by_name(self, scope: str | None, name: str) -> CustomLibrary | None:
+        row = next(
+            (row for row in self._live() if row.scope == scope and row.name == name), None
+        )
         return row.model_copy(deep=True) if row is not None else None
 
     async def create(self, obj: CustomLibrary) -> CustomLibrary:

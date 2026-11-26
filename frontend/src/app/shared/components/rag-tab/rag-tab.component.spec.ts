@@ -1,9 +1,10 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { FormControl, FormGroup } from '@angular/forms';
 import { RAG_MAX_TOKENS } from '@shared/constants';
 import { SuggestResponse } from '@shared/models';
 import { RAG_SUGGEST_API } from '@shared/services';
-import { of } from 'rxjs';
+import { Observable, of, throwError } from 'rxjs';
 
 import { RagTabComponent } from './rag-tab.component';
 
@@ -20,13 +21,13 @@ const SUGGEST_RESPONSE: SuggestResponse = {
     suggested_params: {},
 };
 
-function render(): RagTabComponent {
+function render(suggestGraph: () => Observable<SuggestResponse> = () => of(SUGGEST_RESPONSE)): RagTabComponent {
     TestBed.configureTestingModule({
         providers: [
             {
                 provide: RAG_SUGGEST_API,
                 useValue: {
-                    suggestGraphSearchParams: () => of(SUGGEST_RESPONSE),
+                    suggestGraphSearchParams: suggestGraph,
                     suggestNaiveSearchParams: () => of(SUGGEST_RESPONSE),
                 },
             },
@@ -97,5 +98,18 @@ describe('RagTabComponent validation', () => {
 
         expect(drift.get('reduce_max_tokens')!.valid).toBe(true);
         expect(component.driftTokenCapWarning.max).toBe(4000);
+    });
+});
+
+describe('RagTabComponent token limits', () => {
+    it.each([
+        ['graph_rag_llm_not_configured', 'This RAG has no LLM config. Select one in Update RAG.'],
+        ['graph_rag_embedder_not_configured', 'No embedder configured for this GraphRag.'],
+        ['graph_rag_llm_and_embedder_not_configured', 'No LLM config and embedder configured for this GraphRag.'],
+    ])('surfaces the user-facing message for %s and offers no retry', (code: string, message: string) => {
+        const component = render(() => throwError(() => new HttpErrorResponse({ status: 409, error: { code } })));
+
+        expect(component.tokenLimitsError()).toEqual({ message, canRetry: false });
+        expect(component.tokenLimitsLoading()).toBe(false);
     });
 });

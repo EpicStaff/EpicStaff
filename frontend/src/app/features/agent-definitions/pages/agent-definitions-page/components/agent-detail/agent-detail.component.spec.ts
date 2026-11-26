@@ -5,6 +5,7 @@ import { Component, CUSTOM_ELEMENTS_SCHEMA, forwardRef, input, signal } from '@a
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
+import { By } from '@angular/platform-browser';
 import { AppSvgIconComponent, HelpTooltipComponent, LlmModelSelectorComponent } from '@shared/components';
 import { EnterBlurDirective, HasPermissionDirective } from '@shared/directives';
 import { FullLLMConfig, FullLLMConfigService, FullRealtimeConfigService } from '@shared/services';
@@ -294,6 +295,25 @@ describe('AgentDetailComponent unsaved edits', () => {
         // The page hears "unsaved" right before the save that clears it.
         expect(events.slice(-2)).toEqual(['dirty:true', 'save']);
         expect(saved.at(-1)).toMatchObject({ id: AGENT.id, llm_config: 1 });
+    });
+
+    it('shows what the server created for fields not edited while the draft was being created', () => {
+        const { fixture, saved } = render(null, true);
+        // Adding an instruction to a nameless draft creates it; the store names it.
+        fixture.debugElement
+            .query(By.css('app-agent-instructions-list'))
+            .triggerEventHandler('instructionListChange', [{ name: 'Instruction 1', content: '' }]);
+        expect(saved).toHaveLength(1);
+
+        fixture.componentRef.setInput('isCreating', false);
+        fixture.componentRef.setInput('createdFromDraft', true);
+        fixture.componentRef.setInput('agent', { ...AGENT, name: 'Untitled Agent' });
+        fixture.detectChanges();
+
+        const name = fixture.nativeElement.querySelector('input[aria-label="Agent Name"]') as HTMLInputElement;
+        expect(name.value).toBe('Untitled Agent');
+        expect(selectorTrigger(fixture, PRIMARY).textContent).toContain('gpt-primary');
+        expect(saved).toHaveLength(1);
     });
 
     it("does not carry a discarded draft's model to the agent opened next", () => {

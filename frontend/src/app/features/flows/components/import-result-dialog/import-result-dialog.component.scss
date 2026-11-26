@@ -586,13 +586,21 @@
 
         .item-details {
             background-color: var(--black-alpha-15);
-            border-top: 1px solid var(--graphite-750-alpha-50);
+
+            &.expanded {
+                border-top: 1px solid var(--graphite-750-alpha-50);
+
+                .item-details-grid {
+                    padding-block: 0.6rem;
+                }
+            }
 
             .item-details-grid {
                 display: grid;
                 grid-template-columns: auto 1fr;
                 gap: 0.3rem 1rem;
-                padding: 0.6rem 1rem 0.6rem 2.5rem;
+                // Vertical padding and the border only when open: a `0fr` row can't shrink below them.
+                padding: 0 1rem 0 2.5rem;
 
                 .detail-key {
                     font-size: var(--text-body-small-large-size);

@@ -83,6 +83,14 @@
         pointer-events: none;
     }
 
+    &--small {
+        height: 28px;
+
+        .segmented__option {
+            font-size: 0.75rem;
+        }
+    }
+
     &__slider {
         position: absolute;
         top: 0;
@@ -104,7 +112,7 @@
         z-index: 1;
         border: none;
         background: transparent;
-        color: var(--color-input-text-placeholder);
+        color: var(--color-text-secondary);
         font-size: var(--text-body-medium-size);
         font-weight: var(--text-body-medium-weight);
         line-height: 1;

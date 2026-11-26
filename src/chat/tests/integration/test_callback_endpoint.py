@@ -42,8 +42,8 @@ async def running(client, uow_factory, django):
     return conversation_id, headers, secret, f"{CALLBACKS}/{run_id}"
 
 
-def _signed(secret: str, payload: dict, *, session_id=100, timestamp=None) -> tuple[bytes, dict]:
-    body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+def _signed(secret: str, payload: dict, *, session_id=100, timestamp=None, ensure_ascii=False) -> tuple[bytes, dict]:
+    body = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=ensure_ascii).encode("utf-8")
     timestamp = timestamp or str(int(time.time()))
     return body, {
         "Content-Type": "application/json",
@@ -210,3 +210,30 @@ async def test_a_callback_after_the_visitor_ended_the_conversation_counts_its_to
     async with uow_factory() as uow:
         stored = await uow.conversations.get(UUID(conversation_id))
     assert (stored.tokens_used, stored.turns, stored.is_open, stored.mode.value) == (11, 0, False, "bot")
+
+
+async def test_a_nul_in_the_reply_or_actions_is_dropped_and_the_conversation_released(client, running):
+    # Postgres text and JSONB cannot store U+0000: kept, the write fails on every retry and the
+    # conversation never leaves "processing".
+    conversation_id, headers, secret, url = running
+    result = {"reply": "Hel\u0000lo", "actions": [{"type": "butt\u0000ons", "op\u0000tions": ["Y\u0000es", {"label": "N\u0000o"}]}]}
+    body, signed_headers = _signed(secret, _payload(result=result))
+    response = await client.post(url, content=body, headers=signed_headers)
+    assert (response.status_code, response.json()) == (200, {"result": "applied"})
+    assert (await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=headers)).json()["state"] == "idle"
+    page = (await client.get(f"/chat/public/v1/conversations/{conversation_id}/messages", headers=headers)).json()
+    assert (page[-1]["content"], page[-1]["actions"]) == ("Hello", [{"type": "buttons", "options": ["Yes", {"label": "No"}]}])
+
+
+async def test_a_lone_surrogate_in_the_reply_or_actions_is_replaced_and_the_conversation_released(client, running):
+    # Escaped in the body, it decodes to a string psycopg cannot encode as UTF-8: kept, the write
+    # fails on every retry and the conversation never leaves "processing".
+    conversation_id, headers, secret, url = running
+    result = {"reply": "Hel\ud800lo", "actions": [{"type": "butt\udc00ons", "op\ud800tions": ["Yes"]}]}
+    body, signed_headers = _signed(secret, _payload(result=result), ensure_ascii=True)
+    assert b"\\ud800" in body
+    response = await client.post(url, content=body, headers=signed_headers)
+    assert (response.status_code, response.json()) == (200, {"result": "applied"})
+    assert (await client.get(f"/chat/public/v1/conversations/{conversation_id}", headers=headers)).json()["state"] == "idle"
+    page = (await client.get(f"/chat/public/v1/conversations/{conversation_id}/messages", headers=headers)).json()
+    assert (page[-1]["content"], page[-1]["actions"]) == ("Hel\ufffdlo", [{"type": "butt\ufffdons", "op\ufffdtions": ["Yes"]}])

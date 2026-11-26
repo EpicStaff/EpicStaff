@@ -1,3 +1,4 @@
+from ai_models.models import EmbeddingConfig, LLMConfig
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rbac.access.action_map import DEFAULT_ACTION_MAP
 from rbac.access.asserts import assert_org_permission
@@ -8,6 +9,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tables.clients.knowledge import KnowledgeClient
 from tables.exceptions import (
     CollectionNotFoundException,
     EmbedderNotFoundException,
@@ -19,9 +21,7 @@ from tables.exceptions import (
     RagException,
 )
 from tables.models import SourceCollection
-from tables.models.embedding_models import EmbeddingConfig
 from tables.models.knowledge_models import GraphRag
-from tables.models.llm_models import LLMConfig
 from tables.serializers.graph_rag_serializers import (
     GraphRagCreateSerializer,
     GraphRagDetailSerializer,
@@ -29,9 +29,14 @@ from tables.serializers.graph_rag_serializers import (
     GraphRagDocumentListSerializer,
     GraphRagIndexConfigUpdateSerializer,
     GraphRagSerializer,
+    GraphRagTableDataQuerySerializer,
+    GraphRagVisualizationQuerySerializer,
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.swagger_schemas.common_schemas import INTERNAL_SERVER_ERROR_500_RESPONSE
+from tables.swagger_schemas.knowledge_schemas.graph_rag_schemas import (
+    GRAPH_INDEX_READ_RESPONSES,
+)
 
 # ORM path from a GraphRag up to the owning collection's org.
 _GRAPH_RAG_ORG_PATH = "base_rag_type__source_collection__org_id"
@@ -66,6 +71,12 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
         "delete_document": Permission.UPDATE,
         "list_documents": Permission.READ,
         "initialize_documents": Permission.UPDATE,
+        "visualization": Permission.READ,
+        "entity_detail": Permission.READ,
+        "relationship_detail": Permission.READ,
+        "table_data": Permission.READ,
+        "table_summary": Permission.READ,
+        "table_link_pairs": Permission.READ,
     }
 
     queryset = GraphRag.objects.all()
@@ -395,3 +406,108 @@ class GraphRagViewSet(OrgScopedServiceViewSetMixin, viewsets.GenericViewSet):
             return Response({"error": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except RagException as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(responses=GRAPH_INDEX_READ_RESPONSES)
+    @action(detail=True, methods=["get"], url_path="table-summary")
+    def table_summary(self, request, pk=None):
+        """Proxy table summary (list of tables with row counts) from the knowledge_new service."""
+        self._assert_graph_rag_in_active_org(pk)
+
+        with KnowledgeClient() as client:
+            data = client.get_table_summary(rag_id=int(pk))
+        return Response(data)
+
+    @extend_schema(responses=GRAPH_INDEX_READ_RESPONSES)
+    @action(detail=False, methods=["get"], url_path="table-link-pairs")
+    def table_link_pairs(self, request):
+        """Proxy the allowed linked_to (subject -> targets) matrix from knowledge_new.
+
+        The upstream body is a static per-service matrix with no per-rag variance,
+        so this endpoint carries no rag id. RBAC still gates it by READ on
+        KNOWLEDGE_SOURCES in the active org; there is no per-rag org check because
+        no rag is identified.
+        """
+        with KnowledgeClient() as client:
+            data = client.get_table_link_pairs()
+        # Body is a static mapping — cache for an hour so the browser stops hitting
+        # the Django proxy every time the user opens the link-to picker. `private`
+        # because the endpoint is behind org-level auth: shared caches must not pool
+        # responses across principals, even though the body is the same today.
+        return Response(data, headers={"Cache-Control": "private, max-age=3600"})
+
+    @extend_schema(
+        parameters=[GraphRagTableDataQuerySerializer],
+        responses=GRAPH_INDEX_READ_RESPONSES,
+    )
+    @action(detail=True, methods=["get"], url_path="tables/(?P<table_name>[a-z_]+)")
+    def table_data(self, request, pk=None, table_name=None):
+        """Proxy paginated parquet table data from the knowledge_new service."""
+        self._assert_graph_rag_in_active_org(pk)
+
+        query = GraphRagTableDataQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+
+        with KnowledgeClient() as client:
+            data = client.get_table_data(
+                rag_id=int(pk),
+                table_name=table_name,
+                page=query.validated_data["page"],
+                page_size=query.validated_data["page_size"],
+                search=query.validated_data.get("search") or None,
+                search_scope=query.validated_data.get("search_scope"),
+                filter_column=query.validated_data.get("filter_column"),
+                filter_value=query.validated_data.get("filter_value"),
+                linked_to_type=query.validated_data.get("linked_to_type"),
+                linked_to_id=query.validated_data.get("linked_to_id"),
+            )
+        return Response(data)
+
+    @extend_schema(
+        parameters=[GraphRagVisualizationQuerySerializer],
+        responses=GRAPH_INDEX_READ_RESPONSES,
+    )
+    @action(detail=True, methods=["get"], url_path="visualization")
+    def visualization(self, request, pk=None):
+        """Proxy graph visualization data from the knowledge_new service."""
+        self._assert_graph_rag_in_active_org(pk)
+
+        query = GraphRagVisualizationQuerySerializer(data=request.query_params)
+        query.is_valid(raise_exception=True)
+
+        with KnowledgeClient() as client:
+            data = client.get_visualization(
+                rag_id=int(pk),
+                max_entities=query.validated_data.get("max_entities"),
+                search=query.validated_data.get("search") or None,
+                page=query.validated_data.get("page"),
+                page_count=query.validated_data.get("page_count"),
+            )
+        return Response(data)
+
+    @extend_schema(responses=GRAPH_INDEX_READ_RESPONSES)
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="entity/(?P<entity_id>[^/.]+)",
+    )
+    def entity_detail(self, request, pk=None, entity_id=None):
+        """Proxy entity description lookup to the knowledge_new service."""
+        self._assert_graph_rag_in_active_org(pk)
+
+        with KnowledgeClient() as client:
+            data = client.get_entity_detail(rag_id=int(pk), entity_id=entity_id)
+        return Response(data)
+
+    @extend_schema(responses=GRAPH_INDEX_READ_RESPONSES)
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="relationship/(?P<relationship_id>[^/.]+)",
+    )
+    def relationship_detail(self, request, pk=None, relationship_id=None):
+        """Proxy relationship description lookup to the knowledge_new service."""
+        self._assert_graph_rag_in_active_org(pk)
+
+        with KnowledgeClient() as client:
+            data = client.get_relationship_detail(rag_id=int(pk), relationship_id=relationship_id)
+        return Response(data)

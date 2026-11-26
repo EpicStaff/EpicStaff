@@ -39,7 +39,7 @@ RUN npm run build -- --configuration production
 # ─── Stage: production ────────────────────────────────────────────────────────
 # Pinned to the same multi-arch index digest as the epicstaff-nginx gateway in
 # src/docker-compose.yaml.
-FROM docker.io/library/nginx:1.31.6-trixie@sha256:60f0d4e986561e08804f75c211dcaf7fc5455699eada29f42cbe8a0a7253dd86 AS production
+FROM docker.io/library/nginx:1.31.9-trixie@sha256:08f354a3b44c422021a5c0f5efb3e27f8f90236b5447d3bac4053f5f50ab6760 AS production
 
 COPY --from=build /app/dist/epicstaff-frontend/browser/ /usr/share/nginx/html/
 
@@ -47,7 +47,15 @@ COPY 50x.html /usr/share/nginx/html/
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Runs as the image's unprivileged nginx user (uid 101). Files stay root-owned and read-only for it;
+# the `user` directive only applies to a root master, and the pid file moves to the /tmp tmpfs.
+# Port 80 needs net.ipv4.ip_unprivileged_port_start=0, set in src/docker-compose.yaml.
+RUN chmod +x /entrypoint.sh \
+ && sed -i -E -e '/^user[[:space:]]/d' -e 's|^pid[[:space:]].*|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf \
+ && grep -q '^pid /tmp/nginx.pid;$' /etc/nginx/nginx.conf \
+ && ! grep -q '^user[[:space:]]' /etc/nginx/nginx.conf
+
+USER nginx
 
 EXPOSE 80
 

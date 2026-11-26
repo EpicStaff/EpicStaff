@@ -58,7 +58,11 @@ import {
 import { FLOW_EDITOR_PREVIEW } from '../core/providers/flow-editor-preview.token';
 import { ClipboardService } from '../services/clipboard.service';
 import { FlowService } from '../services/flow.service';
-import { FlowReadOnlyService, TRIGGER_NODES_NEED_USE_MESSAGE } from '../services/flow-readonly.service';
+import {
+    FILE_NODES_NEED_FILES_READ_MESSAGE,
+    FlowReadOnlyService,
+    TRIGGER_NODES_NEED_USE_MESSAGE,
+} from '../services/flow-readonly.service';
 import { NodeAuthorshipStore } from '../services/node-authorship.store';
 import { SavedFlowStateService } from '../services/saved-flow-state.service';
 import { SidePanelService } from '../services/side-panel.service';
@@ -362,6 +366,19 @@ describe('FlowGraphComponent', () => {
             fixture.componentInstance.onOpenNodePanel(noteNode());
 
             expect(dialogOpen.mock.calls[0][1].data.authorship).toEqual(UNKNOWN_AUTHORSHIP);
+        });
+
+        it('opens a linked node in the side panel without expanding it', () => {
+            const start = createStartNode();
+            const fixture = mount(false, { nodes: [start], connections: [] });
+            // The expanding entry point (used by "go to node" from restore warnings) must not run.
+            const openExpanded = vi.spyOn(fixture.componentInstance, 'openNodePanel');
+
+            fixture.componentRef.setInput('initialNodeId', start.id);
+            fixture.detectChanges();
+
+            expect(TestBed.inject(SidePanelService).selectedNodeId()).toBe(start.id);
+            expect(openExpanded).not.toHaveBeenCalled();
         });
 
         it('does not replay an earlier full-save request when the canvas is re-created', () => {
@@ -1848,6 +1865,78 @@ describe('FlowGraphComponent', () => {
                 }
             }
         );
+
+        describe.each([
+            { canReadFiles: true, nodeAdded: true },
+            { canReadFiles: false, nodeAdded: false },
+        ])('for a user with Files:Read $canReadFiles', ({ canReadFiles, nodeAdded }) => {
+            const FILES_ACTIONS = canReadFiles ? [ActionCode.Read] : [ActionCode.Create];
+
+            function fileExtractorNode(): NodeModel {
+                return {
+                    ...pythonNode('file-extractor-1', { x: 0, y: 0 }),
+                    type: NodeType.FILE_EXTRACTOR,
+                    node_name: 'File Extractor #1',
+                } as unknown as NodeModel;
+            }
+
+            it.each([NodeType.FILE_EXTRACTOR, NodeType.AUDIO_TO_TEXT])(
+                `adds a %s node from the context menu: ${nodeAdded}`,
+                (type) => {
+                    mountCanvas(FLOW_ACTIONS_WITH_USE);
+                    grantPermissions({
+                        [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE,
+                        [ResourceCode.Files]: FILES_ACTIONS,
+                    });
+
+                    flowElement().triggerEventHandler(
+                        'contextmenu',
+                        new MouseEvent('contextmenu', { clientX: 40, clientY: 40 })
+                    );
+                    fixture.detectChanges();
+                    child('app-flow-graph-context-menu').triggerEventHandler('nodeSelected', { type });
+
+                    expect(flowService.nodes().filter((node) => node.type === type).length).toBe(nodeAdded ? 1 : 0);
+                    if (nodeAdded) {
+                        expect(info).not.toHaveBeenCalledWith(FILE_NODES_NEED_FILES_READ_MESSAGE);
+                    } else {
+                        expect(info).toHaveBeenCalledWith(FILE_NODES_NEED_FILES_READ_MESSAGE);
+                    }
+                }
+            );
+
+            it(`pastes the copied nodes without the file node, saying why: ${nodeAdded}`, async () => {
+                mountCanvas(FLOW_ACTIONS_WITH_USE, [noteNode(), fileExtractorNode()]);
+                grantPermissions({ [ResourceCode.Flows]: FLOW_ACTIONS_WITH_USE, [ResourceCode.Files]: FILES_ACTIONS });
+                vi.spyOn(flowElement().injector.get(FFlowComponent), 'getSelection').mockReturnValue({
+                    fNodeIds: ['note-1', 'file-extractor-1'],
+                    fGroupIds: [],
+                    fConnectionIds: [],
+                });
+
+                pressShortcut('c');
+                pressShortcut('v');
+                await new Promise((resolve) => setTimeout(resolve, 0));
+
+                const pastedTypes = flowService
+                    .nodes()
+                    .filter((node) => !['note-1', 'file-extractor-1'].includes(node.id))
+                    .map((node) => node.type)
+                    .sort();
+                expect(pastedTypes).toEqual(
+                    nodeAdded ? [NodeType.FILE_EXTRACTOR, NodeType.NOTE].sort() : [NodeType.NOTE]
+                );
+                if (nodeAdded) {
+                    expect(warning).not.toHaveBeenCalled();
+                } else {
+                    expect(warning).toHaveBeenCalledWith(
+                        `1 node was not pasted. ${FILE_NODES_NEED_FILES_READ_MESSAGE}`,
+                        6000,
+                        'bottom-right'
+                    );
+                }
+            });
+        });
 
         // Auto arrange needs two nodes it may move; a trigger node counts only for a user with Use.
         it.each([

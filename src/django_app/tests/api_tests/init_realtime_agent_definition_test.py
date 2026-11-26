@@ -353,3 +353,22 @@ def test_init_realtime_refuses_a_definition_the_caller_cannot_use(auth_client, o
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     if "agent_definition_id" in data:
         assert re.sub(r"\d", "", response.content.decode()) == re.sub(r"\d", "", unknown.content.decode())
+
+
+@pytest.mark.django_db
+def test_init_realtime_refuses_an_llm_config_whose_settings_the_model_does_not_accept(
+    rt_agent_definition, auth_client, redis_client_mock, llm_config
+):
+    # The committed catalog caps gpt-4o's temperature at 2.
+    llm_config.parameters = {"temperature": 5}
+    llm_config.save()
+
+    response = auth_client.post(
+        reverse("init-realtime"), data={"agent_definition_id": rt_agent_definition.pk}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    message = response.json()["error"]
+    assert message.startswith(f"LLM config '{llm_config.custom_name}' has settings its model does not accept: temperature")
+    assert message.endswith("Edit the config in Settings → AI Models and try again.")
+    redis_client_mock.publish.assert_not_called()

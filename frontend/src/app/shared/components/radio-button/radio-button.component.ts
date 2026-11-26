@@ -33,7 +33,8 @@ export class RadioButtonComponent implements ControlValueAccessor {
     required = input<boolean>(false);
     tooltipText = input<string>('');
 
-    mod = input<'default' | 'small' | 'segmented'>('default');
+    mod = input<'default' | 'segmented'>('default');
+    size = input<'default' | 'small'>('default');
     options = input.required<RadioOption[]>();
     disabled = input(false);
 

@@ -49,8 +49,17 @@ async def test_a_job_without_storage_is_left_alone(tmp_path, step):
     await step(context)
 
     assert context.env == {}
+    assert context.always_masked == set()
     assert context.storage_mutations_path is None
     assert context.completed is False
+
+
+async def test_the_storage_keys_are_registered_to_be_masked_from_the_output(tmp_path, step):
+    context = storage_context(tmp_path)
+
+    await step(context)
+
+    assert context.always_masked == {ACCESS_KEY, SECRET_KEY}
 
 
 async def test_the_child_environment_is_built_from_the_credentials_on_the_job(tmp_path, step):
@@ -65,8 +74,39 @@ async def test_the_child_environment_is_built_from_the_credentials_on_the_job(tm
         "STORAGE_SECRET_KEY": SECRET_KEY,
         "STORAGE_ALLOWED_PATHS": json.dumps(["docs/", "reports/q1.csv"]),
         "STORAGE_ORG_PREFIX": "org1",
+        "STORAGE_OWN_PATHS": "[]",
     }
     assert context.completed is False
+
+
+async def test_the_credential_scope_reaches_the_child_environment(tmp_path, step):
+    context = storage_context(
+        tmp_path,
+        storage_credentials=StorageCredentials(
+            access_key=ACCESS_KEY,
+            secret_key=SECRET_KEY,
+            shared_actions=["read", "write"],
+            own_paths=["sessions/7/"],
+        ),
+    )
+
+    await step(context)
+
+    assert context.env["STORAGE_ALLOWED_ACTIONS"] == json.dumps(["read", "write"])
+    assert context.env["STORAGE_OWN_PATHS"] == json.dumps(["sessions/7/"])
+
+
+async def test_narrowed_to_no_actions_reaches_the_child_as_an_empty_list(tmp_path, step):
+    context = storage_context(
+        tmp_path,
+        storage_credentials=StorageCredentials(
+            access_key=ACCESS_KEY, secret_key=SECRET_KEY, shared_actions=[]
+        ),
+    )
+
+    await step(context)
+
+    assert context.env["STORAGE_ALLOWED_ACTIONS"] == "[]"
 
 
 async def test_the_mutations_file_is_pointed_into_the_exec_dir(tmp_path, step):

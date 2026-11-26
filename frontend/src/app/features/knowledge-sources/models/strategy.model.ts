@@ -13,8 +13,8 @@ export interface CharacterStrategyModel {
 }
 
 export interface CsvStrategyModel {
-    rows_in_chunk: number;
-    headers_level: number;
+    rows_in_chunk?: number;
+    headers_level?: number;
 }
 
 export interface HtmlStrategyModel {

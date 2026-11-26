@@ -1,5 +1,15 @@
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
+from ai_models.models import EmbeddingConfig, LLMConfig
+from ai_models.repository import CatalogRepository
+from ai_models.services.config_parameters import (
+    embedding_config_parameters,
+    llm_config_parameters,
+)
+from ai_models.services.connection_arguments import (
+    embedding_config_connection,
+    llm_config_connection,
+)
 from django.core.exceptions import ValidationError
 from django.db.models import Prefetch
 from loguru import logger
@@ -40,6 +50,7 @@ from src.shared.models import (
     WebhookTriggerNodeData,
     variables_to_args_schema,
 )
+from src.shared.models.storage_scope import StorageGrant
 from src.shared.models.system_one import SYSTEM_ONE_PROMPT_KIND, SystemOneConfigData
 from storage_credentials.exceptions import (
     CredentialScopeValidationError,
@@ -49,7 +60,6 @@ from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.exceptions import ConfigProviderMissingError
 from tables.models import PythonCode, PythonCodeTool, Secret
-from tables.models.embedding_models import EmbeddingConfig
 from tables.models.graph_models import (
     AudioTranscriptionNode,
     ClassificationDecisionTableNode,
@@ -69,7 +79,7 @@ from tables.models.graph_models import (
     TelegramTriggerNode,
     WebhookTriggerNode,
 )
-from tables.models.llm_models import LLMConfig, SystemOneConfig
+from tables.models.llm_models import SystemOneConfig
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeToolConfig
 from tables.models.realtime_models import (
@@ -89,6 +99,7 @@ from tables.services.rag_registry import resolve_rag_in_collection
 from tables.services.realtime_surface_service import RealtimeSurfaceService
 from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
 from tables.services.secrets.declaration_validator import binned_secret_names
+from tables.services.storage_grants.flags import storage_grant_of
 from utils.graph_utils import (
     SINGLE_LOOKUP_RESOLVER,
     NodeNameResolver,
@@ -97,17 +108,22 @@ from utils.singleton_meta import SingletonMeta
 
 
 class NodeRagCredentials(NamedTuple):
-    """Secret ids and raw extra headers of a knowledge node's RAG embedder and LLM.
+    """Secret ids, raw extra headers and connections of a knowledge node's RAG embedder and LLM.
 
-    Headers keep their `epicstaff_secret(<name>)` markers; SecretResolver fills them
-    on the published copy only. The LLM parts are None for naive RAGs, which have no
-    LLM, and everything is None for a node without a RAG.
+    Headers and connections keep their `epicstaff_secret(<name>)` markers; SecretResolver
+    fills them on the published copy only. Connections are keyed by LiteLLM argument. The
+    LLM parts are None for naive RAGs, which have no LLM, and everything is None for a node
+    without a RAG.
     """
 
     embedder_api_key_secret_id: int | None = None
     llm_api_key_secret_id: int | None = None
     embedder_extra_headers: dict[str, str] | None = None
     llm_extra_headers: dict[str, str] | None = None
+    embedder_connection: dict[str, str] | None = None
+    embedder_parameters: dict[str, Any] | None = None
+    llm_connection: dict[str, str] | None = None
+    llm_parameters: dict[str, Any] | None = None
 
 
 def secret_names_prefetch(lookup: str) -> Prefetch:
@@ -193,6 +209,10 @@ class ConverterService(metaclass=SingletonMeta):
             llm_api_key_secret_id=rag_credentials.llm_api_key_secret_id,
             embedder_extra_headers=rag_credentials.embedder_extra_headers,
             llm_extra_headers=rag_credentials.llm_extra_headers,
+            embedder_connection=rag_credentials.embedder_connection,
+            embedder_parameters=rag_credentials.embedder_parameters,
+            llm_connection=rag_credentials.llm_connection,
+            llm_parameters=rag_credentials.llm_parameters,
         )
 
     @staticmethod
@@ -214,6 +234,10 @@ class ConverterService(metaclass=SingletonMeta):
             llm_api_key_secret_id=llm.api_key_secret_id if llm else None,
             embedder_extra_headers=embedder.extra_headers if embedder else None,
             llm_extra_headers=llm.extra_headers if llm else None,
+            embedder_connection=embedding_config_connection(embedder) if embedder else None,
+            embedder_parameters=embedding_config_parameters(embedder) if embedder else None,
+            llm_connection=llm_config_connection(llm) if llm else None,
+            llm_parameters=llm_config_parameters(llm) if llm else None,
         )
 
     def _resolve_allowed_paths_for_graph(self, graph_id: int) -> list[str]:
@@ -223,23 +247,36 @@ class ConverterService(metaclass=SingletonMeta):
             .values_list("storage_file__path", flat=True)
         )
 
+    def attached_storage_paths(self, graph_id: int) -> list[str]:
+        """Return the paths of the files and folders attached to a graph.
+
+        A caller converting several nodes of one graph reads this once and hands it to
+        each conversion as `attached_storage_paths`, so the number of queries does not
+        grow with the number of nodes.
+        """
+        return self._resolve_allowed_paths_for_graph(graph_id)
+
     def _resolve_storage_scope(
         self,
         graph_id: int | None,
         org_id: int | None,
-        use_storage: bool,
         extra_paths: list[str],
+        attached_storage_paths: list[str] | None = None,
     ) -> tuple[list[str] | None, str | None]:
         """Return `(storage_allowed_paths, storage_org_prefix)` for one code slot.
 
         Allowed paths are the graph's attached files followed by `extra_paths`, the
         folders the run itself may write to (`sessions/<id>/` in a real run). Both
-        are None when the slot does not use storage or there is no graph to scope
-        it by, which means no storage credentials are minted for this run.
+        are None when there is no graph to scope the slot by. Flow-node code always uses
+        storage, so its callers must pass the graph. `attached_storage_paths` are the graph's
+        attached paths when the caller has them already; they are read from the graph
+        when omitted.
         """
-        if not use_storage or graph_id is None:
+        if graph_id is None:
             return None, None
-        allowed_paths = self._resolve_allowed_paths_for_graph(graph_id) + extra_paths
+        if attached_storage_paths is None:
+            attached_storage_paths = self._resolve_allowed_paths_for_graph(graph_id)
+        allowed_paths = attached_storage_paths + extra_paths
         return allowed_paths, self.storage_prefix_for_org(org_id)
 
     @staticmethod
@@ -348,10 +385,14 @@ class ConverterService(metaclass=SingletonMeta):
 
         # The LLM config is where the user sets temperature; the agent's
         # default_temperature only covers an LLM config that leaves it unset.
-        if ad.llm_config is not None and ad.llm_config.temperature is not None:
-            temperature = ad.llm_config.temperature
-        else:
-            temperature = ad.default_temperature
+        # Read through the catalog like every run path, so a config whose settings the
+        # model no longer accepts refuses the session.
+        llm_temperature = (
+            llm_config_parameters(ad.llm_config).get("temperature")
+            if ad.llm_config is not None
+            else None
+        )
+        temperature = ad.default_temperature if llm_temperature is None else llm_temperature
 
         rt_agent_chat_data = RealtimeAgentChatData(
             role=ad.name,
@@ -367,6 +408,10 @@ class ConverterService(metaclass=SingletonMeta):
             rag_llm_api_key_secret_id=surface_resolution.rag_llm_api_key_secret_id,
             rag_embedder_extra_headers=surface_resolution.rag_embedder_extra_headers,
             rag_llm_extra_headers=surface_resolution.rag_llm_extra_headers,
+            rag_embedder_connection=surface_resolution.rag_embedder_connection,
+            rag_embedder_parameters=surface_resolution.rag_embedder_parameters,
+            rag_llm_connection=surface_resolution.rag_llm_connection,
+            rag_llm_parameters=surface_resolution.rag_llm_parameters,
             llm=self.convert_llm_config_to_pydantic(ad.llm_config),
             memory=False,
             tools=surface_resolution.tools,
@@ -399,15 +444,16 @@ class ConverterService(metaclass=SingletonMeta):
                     if tool_data.python_code.storage_allowed_paths:
                         union_allowed_paths.update(tool_data.python_code.storage_allowed_paths)
 
-            if needs_storage:
-                if not union_allowed_paths:
-                    # Resolved before any mint attempt -- same class of
-                    # problem as RealtimeSurfaceService's fail-closed check,
-                    # same exception type and status code (400, not 500).
-                    raise CredentialScopeValidationError(
-                        "This agent's tools need file storage access, but no files are "
-                        "attached. Attach the required files or folders."
-                    )
+            if needs_storage and not union_allowed_paths:
+                # A realtime chat has no folder of its own, so nothing can be
+                # granted: start the chat without an account. The realtime
+                # service answers a storage tool call with a clear error.
+                logger.warning(
+                    "Realtime chat {} has storage tools but no attached files; "
+                    "starting without storage credentials",
+                    rt_agent_chat.id,
+                )
+            elif needs_storage:
                 rt_agent_chat_data.storage_credentials = (
                     session_credential_service.issue_for_realtime_chat(
                         realtime_agent_chat=rt_agent_chat,
@@ -435,9 +481,13 @@ class ConverterService(metaclass=SingletonMeta):
         storage_org_prefix: str | None = None,
         session_id: int | None = None,
         org_id: int | None = None,
+        storage_grant: StorageGrant | None = None,
+        system_venv: str | None = None,
     ):
         return PythonCodeData(
+            storage_grant=storage_grant,
             venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
+            system_venv=system_venv,
             code=python_code.code,
             entrypoint=python_code.entrypoint,
             global_kwargs=python_code.global_kwargs,
@@ -506,6 +556,7 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            system_venv=python_code_tool.system_venv,
         )
         # A PythonCodeTool is org-owned, not graph-owned, so the session-start graph
         # walk cannot reach it. Gate it here, where the tool is already in hand and
@@ -577,6 +628,7 @@ class ConverterService(metaclass=SingletonMeta):
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            system_venv=python_code_tool.system_venv,
         )
         # A configured tool reaches the session through this method only, so gating
         # convert_python_code_tool_to_pydantic alone would leave it ungated.
@@ -600,6 +652,7 @@ class ConverterService(metaclass=SingletonMeta):
         return McpToolData(
             transport=mcp_tool.transport,
             tool_name=mcp_tool.tool_name,
+            name=mcp_tool.name,
             timeout=mcp_tool.timeout,
             auth_secret_id=mcp_tool.auth_secret_id,
             init_timeout=mcp_tool.init_timeout,
@@ -614,6 +667,7 @@ class ConverterService(metaclass=SingletonMeta):
         Raises:
             ConfigProviderMissingError: The config's model has no provider, because
                 the provider was deleted.
+            ConfigNeedsReviewError: A stored setting is one the model does not accept.
         """
         if not config or not config.model:
             return None
@@ -644,29 +698,27 @@ class ConverterService(metaclass=SingletonMeta):
         )
 
     def convert_llm_config_data(self, config: LLMConfig) -> LLMConfigData:
-        """Convert an LLMConfig that has a model into its provider-independent LLMConfigData.
+        """Convert an LLMConfig that has a model into its LLMConfigData.
 
-        Reads only the config and its model, never `model.llm_provider`, so a model
-        whose provider was deleted (NULL) converts without raising. Issues no query
-        when the caller selected `model`.
+        Sends the stored settings that are set, as they are. A model whose provider was
+        deleted (NULL) converts without raising, with no settings and only the connection
+        keys sent before the catalog existed. Issues no query when the caller selected
+        `model__llm_provider`.
+
+        Raises:
+            ConfigNeedsReviewError: A stored setting is one the model does not accept: a
+                catalog update lowered its limit, dropped the choice or dropped the setting.
         """
+        provider = config.model.llm_provider
+        provider_name = provider.name if provider else ""
         return LLMConfigData(
             model=config.model.name,
             custom_name=config.custom_name,
             timeout=config.timeout,
-            temperature=config.temperature,
-            top_p=config.top_p,
-            stop=config.stop,
-            max_tokens=config.max_tokens,
-            presence_penalty=config.presence_penalty,
-            frequency_penalty=config.frequency_penalty,
-            logit_bias=config.logit_bias,
-            seed=config.seed,
-            reasoning_effort=config.reasoning_effort,
-            base_url=config.model.base_url,
-            api_version=config.model.api_version,
+            parameters=llm_config_parameters(config),
+            connection=llm_config_connection(config),
+            main_secret_argument=_main_secret_argument(provider_name),
             api_key_secret_id=config.api_key_secret_id,
-            deployment_id=config.model.deployment_id,
             extra_headers=config.extra_headers,
             input_cost_per_token=config.input_cost_per_token,
             output_cost_per_token=config.output_cost_per_token,
@@ -683,6 +735,7 @@ class ConverterService(metaclass=SingletonMeta):
         Raises:
             ConfigProviderMissingError: The config has no model, or its model has no
                 provider, because the model or provider was deleted.
+            ConfigNeedsReviewError: A stored setting is one the model does not accept.
         """
         if not embedding_config:
             return None
@@ -690,11 +743,14 @@ class ConverterService(metaclass=SingletonMeta):
         if embedding_config.model is None or embedding_config.model.embedding_provider is None:
             raise ConfigProviderMissingError("Embedding", embedding_config.custom_name)
 
+        provider_name = embedding_config.model.embedding_provider.name
         return EmbedderData(
-            provider=embedding_config.model.embedding_provider.name,
+            provider=provider_name,
             config=EmbedderConfigData(
                 model=embedding_config.model.name,
-                base_url=embedding_config.model.base_url,
+                parameters=embedding_config_parameters(embedding_config),
+                connection=embedding_config_connection(embedding_config),
+                main_secret_argument=_main_secret_argument(provider_name),
                 api_key_secret_id=embedding_config.api_key_secret_id,
                 extra_headers=embedding_config.extra_headers,
             ),
@@ -703,11 +759,12 @@ class ConverterService(metaclass=SingletonMeta):
     def _convert_code_slot(
         self,
         python_code: PythonCode,
-        use_storage: bool,
         graph_id: int | None,
         session_id: int | None,
         extra_storage_paths: list[str] | None,
         org_id: int | None,
+        storage_grant: StorageGrant | None = None,
+        attached_storage_paths: list[str] | None = None,
     ) -> PythonCodeData:
         org_id = self._org_id_for_graph(graph_id, org_id)
         writable_paths = list(extra_storage_paths or [])
@@ -716,17 +773,18 @@ class ConverterService(metaclass=SingletonMeta):
         storage_allowed_paths, storage_org_prefix = self._resolve_storage_scope(
             graph_id=graph_id,
             org_id=org_id,
-            use_storage=use_storage,
             extra_paths=writable_paths,
+            attached_storage_paths=attached_storage_paths,
         )
 
         return self.convert_python_code_to_pydantic(
             python_code=python_code,
-            use_storage=use_storage,
+            use_storage=True,
             storage_allowed_paths=storage_allowed_paths,
             storage_org_prefix=storage_org_prefix,
             session_id=session_id,
             org_id=org_id,
+            storage_grant=storage_grant,
         )
 
     def convert_python_node_to_pydantic(
@@ -737,6 +795,7 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
         extra_storage_paths: list[str] | None = None,
         org_id: int | None = None,
+        attached_storage_paths: list[str] | None = None,
     ) -> PythonNodeData:
         """Convert a python node into the data a run sends to the sandbox.
 
@@ -747,14 +806,17 @@ class ConverterService(metaclass=SingletonMeta):
                 session, such as a test-mode run's own folder.
             org_id: `Graph.org_id` of `graph_id` when the caller already loaded
                 the graph row; read from the graph when omitted.
+            attached_storage_paths: `attached_storage_paths(graph_id)` when the caller
+                already read it; read from the graph when omitted.
         """
         python_code_data = self._convert_code_slot(
             python_code=python_node.python_code,
-            use_storage=python_node.use_storage,
             graph_id=graph_id,
             session_id=session_id,
             extra_storage_paths=extra_storage_paths,
             org_id=org_id,
+            storage_grant=storage_grant_of(python_node),
+            attached_storage_paths=attached_storage_paths,
         )
         return PythonNodeData(
             node_name=resolver(python_node.id),
@@ -792,6 +854,7 @@ class ConverterService(metaclass=SingletonMeta):
         graph_id: int | None = None,
         session_id: int | None = None,
         org_id: int | None = None,
+        attached_storage_paths: list[str] | None = None,
     ):
         condition_groups = [
             ClassificationConditionGroupData(
@@ -845,44 +908,28 @@ class ConverterService(metaclass=SingletonMeta):
                 llm_data=llm_data,
             )
 
-        org_id = self._org_id_for_graph(graph_id, org_id)
-
-        pre_storage_allowed_paths = None
-        pre_storage_org_prefix = None
-        if node.pre_use_storage and graph_id is not None:
-            pre_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            if session_id is not None:
-                pre_storage_allowed_paths.append(f"sessions/{session_id}/")
-            pre_storage_org_prefix = self.storage_prefix_for_org(org_id)
-
-        post_storage_allowed_paths = None
-        post_storage_org_prefix = None
-        if node.post_use_storage and graph_id is not None:
-            post_storage_allowed_paths = self._resolve_allowed_paths_for_graph(graph_id)
-            if session_id is not None:
-                post_storage_allowed_paths.append(f"sessions/{session_id}/")
-            post_storage_org_prefix = self.storage_prefix_for_org(org_id)
-
         pre_python_code_data = None
         if node.pre_python_code is not None:
-            pre_python_code_data = self.convert_python_code_to_pydantic(
-                node.pre_python_code,
-                use_storage=node.pre_use_storage,
-                storage_allowed_paths=pre_storage_allowed_paths,
-                storage_org_prefix=pre_storage_org_prefix,
+            pre_python_code_data = self._convert_code_slot(
+                python_code=node.pre_python_code,
+                graph_id=graph_id,
                 session_id=session_id,
+                extra_storage_paths=None,
                 org_id=org_id,
+                storage_grant=storage_grant_of(node, prefix="pre_"),
+                attached_storage_paths=attached_storage_paths,
             )
 
         post_python_code_data = None
         if node.post_python_code is not None:
-            post_python_code_data = self.convert_python_code_to_pydantic(
-                node.post_python_code,
-                use_storage=node.post_use_storage,
-                storage_allowed_paths=post_storage_allowed_paths,
-                storage_org_prefix=post_storage_org_prefix,
+            post_python_code_data = self._convert_code_slot(
+                python_code=node.post_python_code,
+                graph_id=graph_id,
                 session_id=session_id,
+                extra_storage_paths=None,
                 org_id=org_id,
+                storage_grant=storage_grant_of(node, prefix="post_"),
+                attached_storage_paths=attached_storage_paths,
             )
 
         return ClassificationDecisionTableNodeData(
@@ -950,6 +997,7 @@ class ConverterService(metaclass=SingletonMeta):
         session_id: int | None = None,
         extra_storage_paths: list[str] | None = None,
         org_id: int | None = None,
+        attached_storage_paths: list[str] | None = None,
     ) -> WebhookTriggerNodeData:
         """Convert a webhook trigger node into the data a run sends to the sandbox.
 
@@ -960,14 +1008,17 @@ class ConverterService(metaclass=SingletonMeta):
                 session, such as a test-mode run's own folder.
             org_id: `Graph.org_id` of `graph_id` when the caller already loaded
                 the graph row; read from the graph when omitted.
+            attached_storage_paths: `attached_storage_paths(graph_id)` when the caller
+                already read it; read from the graph when omitted.
         """
         python_code_data = self._convert_code_slot(
             python_code=webhook_trigger_node.python_code,
-            use_storage=webhook_trigger_node.use_storage,
             graph_id=graph_id,
             session_id=session_id,
             extra_storage_paths=extra_storage_paths,
             org_id=org_id,
+            storage_grant=storage_grant_of(webhook_trigger_node),
+            attached_storage_paths=attached_storage_paths,
         )
         return WebhookTriggerNodeData(
             node_name=resolver(webhook_trigger_node.id),
@@ -1137,3 +1188,8 @@ class ConverterService(metaclass=SingletonMeta):
             domain=localhost_webhook_config.domain,
             auth=auth,
         )
+
+
+def _main_secret_argument(provider_name: str) -> str:
+    provider = CatalogRepository.default().provider(provider_name)
+    return provider.main_secret_argument if provider else "api_key"

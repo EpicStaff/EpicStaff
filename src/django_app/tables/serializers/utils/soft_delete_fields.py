@@ -19,8 +19,9 @@ class ExcludeSoftDeleteFieldsMixin:
     among the serializer's fields. With this mixin it never is, so such a clash
     surfaces as an IntegrityError instead of a 400: add an explicit validator if
     the serializer writes names without deduplicating them first. A conditional
-    constraint on one field (TwilioChannel's `phone_number`) is unaffected: DRF
-    always gives that field a UniqueValidator filtered by the condition.
+    constraint on one field is unaffected: DRF always gives that field a
+    UniqueValidator filtered by the condition, unless the serializer declares the
+    field itself or empties its validators.
     """
 
     def get_field_names(self, declared_fields, info):

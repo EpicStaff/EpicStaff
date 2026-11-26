@@ -1,17 +1,18 @@
 from agents.models import AgentDefinition, Surface
+from ai_models.models import LLMConfig
 from proxies.sandbox.models import SandboxVenvBinding
 
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.strategies.nodes.node_maps import NODE_RELATIONS
 from tables.models import (
     Graph,
-    LLMConfig,
     McpTool,
     PythonCodeTool,
     SystemOneConfig,
     WebhookTrigger,
 )
 from tables.services.secrets.python_code_sites import GRAPH_PYTHON_CODE_SITES
+from tables.services.storage_grants.slots import STORAGE_GRANT_SLOTS
 
 _EXCLUDED_GRAPH_SCALARS = (
     "id",
@@ -76,3 +77,7 @@ def _build_venv_code_fields_by_node_type() -> dict[NodeType, tuple[str, ...]]:
 
 #: The code slots a snapshot node can point at a venv through, by node type.
 _VENV_CODE_FIELDS_BY_NODE_TYPE = _build_venv_code_fields_by_node_type()
+
+
+#: The model of each snapshot node type that carries storage grants.
+_GRANT_MODEL_BY_NODE_TYPE = {_node_type_for_model(model): model for model in STORAGE_GRANT_SLOTS}

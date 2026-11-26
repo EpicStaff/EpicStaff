@@ -1,23 +1,24 @@
+from ai_models.domain.specs import ModelKind
+from ai_models.models import (
+    DefaultModels,
+    EmbeddingConfig,
+    EmbeddingConfigTag,
+    EmbeddingModel,
+    LLMConfig,
+    LLMConfigTag,
+    LLMModel,
+)
+from ai_models.services.catalog_model_resolver import CatalogModelResolver
+from ai_models.services.config_validation import ConfigValidationService
 from django.db import transaction
 from django.forms.models import model_to_dict
 from loguru import logger
 from rbac.authorship import record_last_edits, resolve_author
 from src.shared.models import UserAction
 from src.shared.system_one.constants import OPENAI_DECISIONS_MODELS, OPENAI_PROVIDER
-from tables.models.default_models import DefaultModels
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
-from tables.models.llm_models import (
-    LLMConfig,
-    LLMModel,
-    SystemOneConfig,
-)
-from tables.models.provider import Provider
+from tables.models.llm_models import SystemOneConfig
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
 from tables.models.secret_models import Secret
-from tables.models.tag_models import (
-    EmbeddingConfigTag,
-    LLMConfigTag,
-)
 from tables.models.user import User
 from tables.services.secrets import secret_service
 from user_audit.context import mark_request_handled
@@ -35,15 +36,12 @@ class QuickstartUnsupportedProviderError(QuickstartError):
     """Raised when the provider exists but quickstart has no model defaults for it."""
 
 
-class QuickstartCustomModelError(QuickstartError):
-    """Raised when quickstart would attach its secret to an org model with a custom `base_url`."""
-
-
 class QuickstartService(metaclass=SingletonMeta):
     QUICKSTART_TAG = "quickstart:latest"
 
-    # `llm_config` holds LLMConfig field values that replace the model defaults for
-    # that provider's quickstart config. A provider without it keeps the defaults.
+    # `llm_config` and `embedding_config` hold settings that replace the model's catalog
+    # defaults in that provider's quickstart config, each only where the catalog allows it
+    # for the model. A provider without them keeps the defaults.
     PROVIDER_CONFIGS = {
         "openai": {
             "llm_model": "gpt-6-luna",
@@ -55,11 +53,14 @@ class QuickstartService(metaclass=SingletonMeta):
             "llm_config": {"reasoning_effort": "low", "max_tokens": 100000},
         },
         "gemini": {
-            "llm_model": "gemini-1.5-pro",
-            "embedding_model": "text-embedding-004",
+            "llm_model": "gemini-3.8-flash",
+            "embedding_model": "gemini-embedding-001",
+            # The model returns 3072 dimensions by default; the GraphRAG vector store in
+            # knowledge_new holds 1536.
+            "embedding_config": {"dimensions": 1536},
         },
         "cohere": {
-            "llm_model": "command-r-plus",
+            "llm_model": "command-a-03-2025",
             "embedding_model": "embed-english-v3.0",
         },
         "mistral": {
@@ -100,8 +101,7 @@ class QuickstartService(metaclass=SingletonMeta):
                     f"Unsupported provider: {provider}. Supported providers: {supported}"
                 )
 
-            config_name = self._generate_unique_quickstart_config_name(provider)
-            provider_obj = Provider.objects.get(name=provider)
+            config_name = self._generate_unique_quickstart_config_name(provider, org_id=org_id)
             author = resolve_author(user)
             with transaction.atomic():
                 # One Secret backs the whole bundle. Resolved before any config
@@ -113,14 +113,14 @@ class QuickstartService(metaclass=SingletonMeta):
                     created_by=author,
                 )
                 llm_config = self._create_llm_model_config(
-                    provider=provider_obj,
+                    provider=provider,
                     config_name=config_name,
                     org_id=org_id,
                     secret=bundle_secret,
                     author=author,
                 )
                 embedding_config = self._create_embedder_config(
-                    provider=provider_obj,
+                    provider=provider,
                     config_name=config_name,
                     org_id=org_id,
                     secret=bundle_secret,
@@ -285,34 +285,39 @@ class QuickstartService(metaclass=SingletonMeta):
     def _create_llm_model_config(
         self,
         *,
-        provider: Provider,
+        provider: str,
         config_name: str,
         org_id: int,
         secret: Secret,
         author: User | None,
     ) -> LLMConfig:
-        llm_model = self._get_or_create_llm_model(provider=provider, org_id=org_id, author=author)
-        provider_overrides = self.PROVIDER_CONFIGS[provider.name].get("llm_config", {})
+        llm_model = self._model(ModelKind.LLM, provider=provider, org_id=org_id, author=author)
         return LLMConfig.objects.create(
             model=llm_model,
             custom_name=config_name,
             org_id=org_id,
             api_key_secret=secret,
             created_by=author,
-            **provider_overrides,
+            parameters=self._parameters(
+                ModelKind.LLM,
+                provider=provider,
+                model_name=llm_model.name,
+                org_id=org_id,
+                overrides=self.PROVIDER_CONFIGS[provider].get("llm_config", {}),
+            ),
         )
 
     def _create_embedder_config(
         self,
         *,
-        provider: Provider,
+        provider: str,
         config_name: str,
         org_id: int,
         secret: Secret,
         author: User | None,
     ) -> EmbeddingConfig:
-        embedder_model = self._get_or_create_embedder_model(
-            provider=provider, org_id=org_id, author=author
+        embedder_model = self._model(
+            ModelKind.EMBEDDING, provider=provider, org_id=org_id, author=author
         )
         return EmbeddingConfig.objects.create(
             model=embedder_model,
@@ -320,7 +325,66 @@ class QuickstartService(metaclass=SingletonMeta):
             org_id=org_id,
             api_key_secret=secret,
             created_by=author,
+            parameters=self._parameters(
+                ModelKind.EMBEDDING,
+                provider=provider,
+                model_name=embedder_model.name,
+                org_id=org_id,
+                overrides=self.PROVIDER_CONFIGS[provider].get("embedding_config", {}),
+            ),
         )
+
+    def _model(
+        self, kind: ModelKind, *, provider: str, org_id: int, author: User | None
+    ) -> LLMModel | EmbeddingModel:
+        """Return the model row of the provider's quickstart model, resolved like the API does.
+
+        Quickstart's configs have an empty `connection`, so the bundle secret goes to
+        wherever the model's name routes, which for the fixed name is the provider's own
+        endpoint. An organization's own row is locked until the quickstart commits: a
+        concurrent rename locks it too (`check_llm_model_write`), so it either waits and
+        then counts the configs made here, or lands first, and the renamed row no longer
+        matches and is resolved again. Must run inside the quickstart's transaction.
+
+        Raises:
+            UnknownCatalogModelError: The provider or model has no row and takes no custom models.
+        """
+        model_key = "llm_model" if kind == ModelKind.LLM else "embedding_model"
+        provider_field = "llm_provider" if kind == ModelKind.LLM else "embedding_provider"
+        resolver = CatalogModelResolver()
+        model = resolver.resolve(
+            kind, provider, self.PROVIDER_CONFIGS[provider][model_key], org_id=org_id, author=author
+        )
+        # A built-in row is immutable, so it stays unlocked. An unsaved row comes back
+        # from `save_if_new` either created by this transaction or locked and still matching.
+        if model.pk is None or model.org_id is None:
+            return resolver.save_if_new(model)
+        locked = (
+            type(model)
+            .objects.select_for_update(no_key=True, of=("self",))
+            .filter(pk=model.pk)
+            .first()
+        )
+        resolved_key = (model.name, getattr(model, f"{provider_field}_id"))
+        if locked is None or (locked.name, getattr(locked, f"{provider_field}_id")) != resolved_key:
+            return self._model(kind, provider=provider, org_id=org_id, author=author)
+        return locked
+
+    def _parameters(
+        self, kind: ModelKind, *, provider: str, model_name: str, org_id: int, overrides: dict
+    ) -> dict:
+        """Return the model's catalog defaults with the overrides the catalog allows for it.
+
+        Raises:
+            ConfigValidationError: The result does not pass the catalog's write rules.
+        """
+        service = ConfigValidationService()
+        parameters = {
+            **service.defaults(kind, provider, model_name),
+            **service.allowed_parameters(kind, provider, model_name, overrides),
+        }
+        service.validate(kind, provider, model_name, parameters, {}, org_id)
+        return parameters
 
     def _create_openai_realtime_config(
         self, secret: Secret, config_name: str, org_id: int, author: User | None
@@ -355,94 +419,7 @@ class QuickstartService(metaclass=SingletonMeta):
             created_by=author,
         )
 
-    def _get_or_create_llm_model(self, *, provider: Provider, org_id: int, author: User | None):
-        llm_model_name = self.PROVIDER_CONFIGS.get(provider.name, {}).get("llm_model")
-        if llm_model_name is None:
-            raise KeyError(f"Can not get 'llm_model' from PROVIDER_CONFIGS for {provider.name}")
-        return self._get_or_create_model(
-            model_class=LLMModel,
-            provider_field="llm_provider",
-            provider=provider,
-            name=llm_model_name,
-            org_id=org_id,
-            author=author,
-        )
-
-    def _get_or_create_embedder_model(
-        self, *, provider: Provider, org_id: int, author: User | None
-    ):
-        embedder_model_name = self.PROVIDER_CONFIGS.get(provider.name, {}).get("embedding_model")
-        if embedder_model_name is None:
-            raise KeyError(
-                f"Can not get 'embedding_model' from PROVIDER_CONFIGS for {provider.name}"
-            )
-        return self._get_or_create_model(
-            model_class=EmbeddingModel,
-            provider_field="embedding_provider",
-            provider=provider,
-            name=embedder_model_name,
-            org_id=org_id,
-            author=author,
-        )
-
-    def _get_or_create_model(
-        self,
-        *,
-        model_class: type[LLMModel] | type[EmbeddingModel],
-        provider_field: str,
-        provider: Provider,
-        name: str,
-        org_id: int,
-        author: User | None,
-    ) -> LLMModel | EmbeddingModel:
-        """Return the model quickstart attaches the bundle secret to, creating it if missing.
-
-        The built-in catalog model wins over the org's own model of the same name. A
-        custom model can point at any `base_url`, and anyone who may create models in
-        the org could make one under the catalog name ahead of a quickstart, which
-        would then send the bundle secret to that URL. So the org's model is only used
-        when there is no built-in and it has no `base_url` of its own; with one,
-        quickstart refuses rather than attach the key.
-
-        Raises:
-            QuickstartCustomModelError: No built-in exists and the org's model of
-                this name has a custom `base_url`.
-        """
-        candidates = model_class.objects.filter(**{provider_field: provider, "name": name})
-        built_in_model = candidates.filter(org_id__isnull=True).first()
-        if built_in_model is not None:
-            return built_in_model
-        # Locked until the quickstart's transaction commits, and `base_url` read from
-        # the locked row: a concurrent edit of this model's `base_url` locks it too
-        # (check_llm_model_write / check_embedding_model_write), so it either lands
-        # first and is refused below, or waits and then counts the config attached here.
-        # Built-in models are immutable and need no lock.
-        own_model = candidates.filter(org_id=org_id).select_for_update().first()
-        if own_model is not None:
-            if own_model.base_url:
-                raise QuickstartCustomModelError(
-                    f'The organization\'s custom model "{own_model.name}" sends requests '
-                    "to a custom URL, so quickstart will not attach a key to it."
-                )
-            return own_model
-        model = model_class.objects.create(
-            **{provider_field: provider},
-            name=name,
-            org_id=org_id,
-            is_custom=True,
-            created_by=author,
-        )
-        record_user_action(action=UserAction.CREATED, org_id=org_id, target=model)
-        logger.info(
-            "Created custom {} {} for provider {} in org {}",
-            model_class.__name__,
-            model.name,
-            provider.name,
-            org_id,
-        )
-        return model
-
-    def _generate_unique_quickstart_config_name(self, provider: str) -> str:
+    def _generate_unique_quickstart_config_name(self, provider: str, *, org_id: int) -> str:
         """
         Generate unique quickstart configuration name
 
@@ -451,15 +428,12 @@ class QuickstartService(metaclass=SingletonMeta):
         - If no configs exist: return quickstart_{provider}
         - If configs exist: return quickstart_{provider}_{next_number}
 
-        Args:
-            provider: Provider name
-
-        Returns:
-            str: Unique configuration name
+        Numbering is per org, like the configs' unique-name constraints, so another
+        org's configs never shift this org's numbers.
         """
         base_name = f"quickstart_{provider}"
 
-        existing_names = self._get_existing_config_names(base_name)
+        existing_names = self._get_taken_config_names(base_name, org_id=org_id)
 
         if not existing_names:
             return base_name
@@ -470,6 +444,9 @@ class QuickstartService(metaclass=SingletonMeta):
                 max_number = max(max_number, 0)
             elif name.startswith(f"{base_name}_"):
                 suffix = name[len(f"{base_name}_") :]
+                # A huge number would push the bundle Secret name past its max_length.
+                if len(suffix) > 9:
+                    continue
                 try:
                     number = int(suffix)
                     max_number = max(max_number, number)
@@ -477,25 +454,43 @@ class QuickstartService(metaclass=SingletonMeta):
                     # Skip non-numeric suffixes
                     continue
 
-        if max_number == 0 and base_name in existing_names:
-            return f"{base_name}_1"
-        else:
-            return f"{base_name}_{max_number + 1}"
+        # The max skips long suffixes, so max + 1 can be one of those names.
+        number = max_number + 1
+        while f"{base_name}_{number}" in existing_names:
+            number += 1
+        return f"{base_name}_{number}"
 
-    def _get_existing_config_names(self, base_name: str) -> set[str]:
-        """Get all existing configuration names that start with base_name"""
+    def _get_taken_config_names(self, base_name: str, *, org_id: int) -> set[str]:
+        """Return the org's names starting with base_name that a new bundle can't reuse.
+
+        Besides config names, this includes the bundle names of the org's active
+        quickstart Secrets: deleting a bundle's configs keeps its Secret, and
+        creating a Secret with the same name again would break its unique constraint.
+        """
         existing_names = set()
 
         config_models = [
             LLMConfig,
             EmbeddingConfig,
             SystemOneConfig,
+            OpenAIRealtimeConfig,
+            GeminiRealtimeConfig,
         ]
 
         for model in config_models:
-            names = model.objects.filter(custom_name__startswith=base_name).values_list(
-                "custom_name", flat=True
-            )
+            names = model.objects.filter(
+                org_id=org_id, custom_name__startswith=base_name
+            ).values_list("custom_name", flat=True)
             existing_names.update(names)
+
+        secret_suffix = self._bundle_secret_name(bundle_name="")
+        secret_names = Secret.objects.filter(
+            org_id=org_id,
+            name__startswith=base_name.replace("_", "-"),
+            name__endswith=secret_suffix,
+        ).values_list("name", flat=True)
+        existing_names.update(
+            name.removesuffix(secret_suffix).replace("-", "_") for name in secret_names
+        )
 
         return existing_names

@@ -3,6 +3,7 @@
 import pytest
 
 from rbac.models import Organization
+from tables.services.secrets.exceptions import SecretTooLargeError
 from tables.services.secrets.secret_service import secret_service
 
 from storage_credentials.constants import SECRET_NAME_ORG_STORAGE_USER
@@ -38,3 +39,14 @@ def test_an_org_without_credentials_is_reported_missing(org):
     assert org_credential_store.exists(org_id=org.id) is False
     with pytest.raises(OrgStorageCredentialMissingError):
         org_credential_store.get(org_id=org.id)
+
+
+@pytest.mark.django_db
+def test_a_replacement_that_cannot_be_stored_keeps_the_previous_credentials(org):
+    org_credential_store.save(org=org, access_key="access-key-1", secret_key="secret-key-1")
+
+    with pytest.raises(SecretTooLargeError):
+        org_credential_store.save(org=org, access_key="access-key-1", secret_key="x" * 9000)
+
+    credentials = org_credential_store.get(org_id=org.id)
+    assert (credentials.access_key, credentials.secret_key) == ("access-key-1", "secret-key-1")

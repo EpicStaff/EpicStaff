@@ -118,7 +118,7 @@ def test_the_view_never_runs_on_a_refusal(regular_user, jwt_tokens):
     ],
     ids=["nested-label", "base-domain", "upper-case-host", "trailing-dot", "other-port", "other-scheme"],
 )
-def test_a_plugin_domain_origin_that_is_not_an_exact_plugin_origin_cannot_exchange(origin):
+def test_a_plugin_zone_origin_that_is_not_an_exact_plugin_origin_cannot_exchange(origin):
     client = APIClient()
 
     response = client.post(TOKEN_URL, {}, format="json", HTTP_ORIGIN=origin)
@@ -128,13 +128,42 @@ def test_a_plugin_domain_origin_that_is_not_an_exact_plugin_origin_cannot_exchan
 
 def test_an_http_plugin_origin_on_an_https_deployment_is_refused(settings):
     settings.FRONTEND_BASE_URL = "https://epicstaff.example.com"
-    settings.PLUGINS_BASE_DOMAIN = "plugins.example.com"
+    settings.PLUGINS_HOST_TEMPLATE = "{id}.plugins.example.com"
 
     plain = APIClient().post(TOKEN_URL, {}, format="json", HTTP_ORIGIN="http://weather.plugins.example.com")
     secure = APIClient().post(TOKEN_URL, {}, format="json", HTTP_ORIGIN="https://weather.plugins.example.com")
 
     _assert_refused(plain)
     assert secure.status_code == 400
+
+
+@pytest.fixture
+def flat_template(settings):
+    """Plugins beside EpicStaff in its own zone, told apart by the -app suffix."""
+    settings.FRONTEND_BASE_URL = "https://epicstaff.example.com"
+    settings.PLUGINS_HOST_TEMPLATE = "{id}-app.example.com"
+
+
+def test_with_a_flat_template_the_plugin_s_own_origin_reaches_the_token_exchange(flat_template):
+    response = APIClient().post(TOKEN_URL, {}, format="json", HTTP_ORIGIN="https://weather-app.example.com")
+
+    assert (response.status_code, response.json()["code"]) == (400, "invalid")
+    assert response["Access-Control-Allow-Origin"] == "https://weather-app.example.com"
+
+
+@pytest.mark.parametrize(
+    "origin",
+    ["https://weather-app.example.com", "https://a.weather-app.example.com", "https://no-such-plugin-app.example.com"],
+)
+def test_with_a_flat_template_every_host_of_the_plugin_shape_is_refused_elsewhere(flat_template, origin):
+    _assert_refused(APIClient().get("/api/graphs/", HTTP_ORIGIN=origin))
+
+
+@pytest.mark.parametrize("origin", ["https://example.com", "https://mail.example.com", "https://app.example.com"])
+def test_with_a_flat_template_the_zone_s_other_hosts_are_not_judged(flat_template, origin):
+    response = APIClient().get("/api/graphs/", HTTP_ORIGIN=origin)
+
+    assert response.status_code == 401
 
 
 # ---- what a plugin page may do ----

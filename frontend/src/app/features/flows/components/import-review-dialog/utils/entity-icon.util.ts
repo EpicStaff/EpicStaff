@@ -1,6 +1,4 @@
-import { DEFAULT_ENTITY_ICON, ENTITY_ICONS } from '@shared/constants';
-
-import { ENTITY_TYPE_LABELS } from '../constants/import-review.constants';
+import { DEFAULT_ENTITY_ICON, ENTITY_ICONS, ENTITY_TYPE_LABELS } from '@shared/constants';
 
 const ENTITY_SPRITE_ICONS: Record<string, string> = {
     Flow: 'flow',

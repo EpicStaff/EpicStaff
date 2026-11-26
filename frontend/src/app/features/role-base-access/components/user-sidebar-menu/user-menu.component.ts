@@ -6,10 +6,10 @@ import { NavigationEnd, Router } from '@angular/router';
 import { AppSvgIconComponent, UserAvatarComponent } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { FullMembership, GetMeResponse } from '@shared/models';
-import { ORG_SWITCH_URL_RULES } from '@shared/services';
 import { EMPTY } from 'rxjs';
 import { catchError, filter, finalize, map, switchMap } from 'rxjs/operators';
 
+import { OrgSwitchNavigationService } from '../../../../core/services/org-switch-navigation.service';
 import { UnsavedChangesRegistry } from '../../../../core/services/unsaved-changes-registry.service';
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { AuthService } from '../../../../services/auth/auth.service';
@@ -51,8 +51,7 @@ export class UserMenuComponent {
     private unsavedChangesRegistry = inject(UnsavedChangesRegistry);
     private currentUserService = inject(ProfileService);
     private permissionService = inject(PermissionsService);
-    /** Features' own rules for their addresses (a plugin page keeps the plugin, not its path). */
-    private readonly orgSwitchUrlRules = inject(ORG_SWITCH_URL_RULES, { optional: true }) ?? [];
+    private orgSwitchNavigation = inject(OrgSwitchNavigationService);
 
     // Declared after the router it reads: field initializers run in order.
     private currentUrl = toSignal(
@@ -88,10 +87,7 @@ export class UserMenuComponent {
             )
             .subscribe(() => {
                 this.isUserMenuOpen.set(false);
-                const targetUrl = this.getUrlForOrgSwitch(this.router.url);
-                void this.router.navigateByUrl('/profile', { skipLocationChange: true }).then(() => {
-                    void this.router.navigateByUrl(targetUrl);
-                });
+                this.orgSwitchNavigation.reenterAfterOrgSwitch();
             });
     }
 
@@ -116,22 +112,6 @@ export class UserMenuComponent {
                 })
             )
             .subscribe();
-    }
-
-    /**
-     * Detail routes with resource IDs are not safe to keep across an org switch —
-     * the resource not exist in the new org. Map them to their list page.
-     * Other features map their own addresses through `ORG_SWITCH_URL_RULES` (a plugin page keeps the plugin but drops
-     * its own path; the plugin page guard sends the user to the default route when the new org can't open it).
-     */
-    private getUrlForOrgSwitch(currentUrl: string): string {
-        if (/^\/flows\/(?!my|templates)[^/?]+/.test(currentUrl)) return '/flows/my';
-        if (/^\/graph\//.test(currentUrl)) return '/sessions';
-        for (const rule of this.orgSwitchUrlRules) {
-            const mapped = rule(currentUrl);
-            if (mapped !== null) return mapped;
-        }
-        return currentUrl;
     }
 
     /** The server's message when the response carries one (a network error or a non-JSON 5xx does not). */

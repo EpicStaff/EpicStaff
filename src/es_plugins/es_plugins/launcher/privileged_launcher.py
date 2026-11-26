@@ -57,6 +57,10 @@ PLUGIN_OOM_SCORE_ADJ = 800
 MAX_REMEMBERED_EXIT_STATUSES = 4096
 _PEER_CREDENTIALS = struct.Struct("3i")
 _LOOP_TIMEOUT_SECONDS = 0.5
+# After accept() fails (no descriptor left), the listener rests this long instead of spinning on
+# the connection still queued, and the warning is repeated at most once per interval.
+ACCEPT_BACKOFF_SECONDS = 1.0
+_ACCEPT_WARNING_INTERVAL_SECONDS = 60.0
 
 
 class LauncherRefusalError(Exception):
@@ -79,8 +83,13 @@ class LauncherOperations:
         uid_range: UidRange,
         directory_setup: DirectorySetup,
         process_table: ProcessTable,
+        *,
+        max_file_bytes: int,
     ):
         self._layout = layout
+        # RLIMIT_FSIZE: no file a plugin writes grows past its whole disk cap, whatever it writes
+        # between two of the disk watchdog's measurements.
+        self._resource_limits = (*PLUGIN_RESOURCE_LIMITS, (resource.RLIMIT_FSIZE, max_file_bytes))
         self._uid_range = uid_range
         self._directory_setup = directory_setup
         self._process_table = process_table
@@ -146,10 +155,6 @@ class LauncherOperations:
                     process_table=self._process_table,
                 )
                 return None, [result_pipe]
-            case protocol.PurgeData(plugin=plugin, uid=uid):
-                kill_uid(uid, self._process_table, reap=self.reap)
-                self._directory_setup.purge_plugin_data(plugin, uid)
-                return None, []
             case protocol.RemovePlugin(plugin=plugin, uid=uid):
                 return None, [self._start_removal(plugin, uid)]
         raise LauncherRefusalError(f"unknown operation {request.operation}")
@@ -187,7 +192,7 @@ class LauncherOperations:
                 environment={**request.environment, "EPICSTAFF_PLUGIN_LISTEN_FD": str(LISTEN_FD)},
                 working_directory=self._layout.plugin_home(request.plugin),
                 nice=request.nice,
-                resource_limits=PLUGIN_RESOURCE_LIMITS,
+                resource_limits=self._resource_limits,
                 oom_score_adj=PLUGIN_OOM_SCORE_ADJ,
                 seccomp_filter=plugin_filter(),
                 output_descriptor=output_descriptor,
@@ -257,6 +262,8 @@ class LauncherServer:
         self._agent_uid = agent_uid
         self._listener: socket.socket | None = None
         self._connections: list[socket.socket] = []
+        self._accept_resumes_at = 0.0
+        self._accept_warned_at: float | None = None
 
     def listen(self, group: int) -> None:
         """Bind the socket (0660, owned by root and `group`)."""
@@ -270,8 +277,9 @@ class LauncherServer:
 
     def serve_once(self, timeout: float = _LOOP_TIMEOUT_SECONDS) -> None:
         """Wait up to `timeout` for activity and handle what arrived."""
+        accepting = [self._listener] if time.monotonic() >= self._accept_resumes_at else []
         try:
-            readable, _, _ = select.select([self._listener, *self._connections], [], [], timeout)
+            readable, _, _ = select.select([*accepting, *self._connections], [], [], timeout)
         except InterruptedError:
             return
         for ready in readable:
@@ -287,8 +295,22 @@ class LauncherServer:
             self._listener.close()
 
     def _accept(self) -> None:
-        connection, _ = self._listener.accept()
-        uid = peer_uid(connection)
+        connection = None
+        try:
+            connection, _ = self._listener.accept()
+            uid = peer_uid(connection)
+        except OSError as error:
+            # Out of descriptors, or a connection gone before it was taken: PID 1 serves on.
+            if connection is not None:
+                connection.close()
+            now = time.monotonic()
+            self._accept_resumes_at = now + ACCEPT_BACKOFF_SECONDS
+            warned = self._accept_warned_at
+            if warned is None or now - warned >= _ACCEPT_WARNING_INTERVAL_SECONDS:
+                logger.warning("Could not accept a launcher connection: {}", error)
+                self._accept_warned_at = now
+            return
+        self._accept_warned_at = None
         if uid != self._agent_uid:
             logger.warning("Refused a launcher connection from UID {}", uid)
             connection.close()
@@ -306,8 +328,7 @@ class LauncherServer:
         except OSError:
             packet, descriptors, flags = b"", [], 0
         if not packet:
-            self._connections.remove(connection)
-            connection.close()
+            self._drop(connection)
             for descriptor in descriptors:
                 os.close(descriptor)
             return
@@ -334,9 +355,17 @@ class LauncherServer:
                 socket.send_fds(connection, [reply], reply_descriptors)
             else:
                 connection.send(reply)
+        except OSError as error:
+            # The agent hung up before the answer, as a cancelled call does.
+            logger.warning("Could not answer the agent: {}", error)
+            self._drop(connection)
         finally:
             for descriptor in reply_descriptors:
                 os.close(descriptor)
+
+    def _drop(self, connection: socket.socket) -> None:
+        self._connections.remove(connection)
+        connection.close()
 
 
 def serve_until_agent_exits(

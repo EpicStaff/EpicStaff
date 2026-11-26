@@ -18,7 +18,6 @@ from django.utils import timezone
 from rbac.models import Organization
 from tables.services.run_admission import RunKind, RunSubject
 from tables.services.run_resources import (
-    CODE_SLOT_STORAGE_FLAGS,
     RUN_REFERENCES,
     FollowChildren,
     FollowField,
@@ -66,9 +65,9 @@ class World:
         return row
 
     def llm_config(self):
-        model = self.make("tables.LLMModel", name=self.name("llm"), org=self.org)
+        model = self.make("ai_models.LLMModel", name=self.name("llm"), org=self.org)
         return self.make(
-            "tables.LLMConfig",
+            "ai_models.LLMConfig",
             custom_name=self.name("llm-config"),
             model=model,
             api_key_secret=self.secret(),
@@ -95,9 +94,9 @@ class World:
         )
 
     def embedding_config(self):
-        model = self.make("tables.EmbeddingModel", name=self.name("embedding"), org=self.org)
+        model = self.make("ai_models.EmbeddingModel", name=self.name("embedding"), org=self.org)
         return self.make(
-            "tables.EmbeddingConfig",
+            "ai_models.EmbeddingConfig",
             custom_name=self.name("embedding-config"),
             model=model,
             api_key_secret=self.secret(),
@@ -105,7 +104,8 @@ class World:
         )
 
     def python_code(self):
-        code = self.make("tables.PythonCode", code="def main(): return 1", entrypoint="main")
+        venv = self.make("proxies.SandboxVenvBinding", org=self.org, resource_id=self.name("venv"))
+        code = self.make("tables.PythonCode", code="def main(): return 1", entrypoint="main", venv=venv)
         code.secrets.set([self.secret()])
         return code
 
@@ -623,12 +623,14 @@ def test_a_code_start_walks_the_code_and_adds_what_holds_it_without_walking_it(w
     assert node_run.refs == {
         ref(node_code),
         *(ref(secret) for secret in node_code.secrets.all()),
+        ref(node_code.venv),
         ref(flow),
     }
     assert ref(other_agent) not in node_run.refs
     assert tool_run.refs == {
         ref(tool.python_code),
         *(ref(secret) for secret in tool.python_code.secrets.all()),
+        ref(tool.python_code.venv),
         ref(tool),
     }
 
@@ -663,31 +665,28 @@ def flow_with_attached_storage(world):
     return flow, attached_file, attached_folder
 
 
+FLOW_NODE_CODE_SLOTS = [
+    ("tables.PythonNode", "python_code"),
+    ("tables.WebhookTriggerNode", "python_code"),
+    ("tables.ClassificationDecisionTableNode", "pre_python_code"),
+    ("tables.ClassificationDecisionTableNode", "post_python_code"),
+]
+
+
 @pytest.mark.django_db
-@pytest.mark.parametrize("uses_storage", [True, False], ids=["storage-on", "storage-off"])
-@pytest.mark.parametrize("model_label, code_field", sorted(CODE_SLOT_STORAGE_FLAGS))
-def test_a_code_run_counts_the_flow_s_attached_storage_while_its_slot_uses_storage(
-    world, flow_with_attached_storage, model_label, code_field, uses_storage
+@pytest.mark.parametrize("model_label, code_field", FLOW_NODE_CODE_SLOTS)
+def test_a_code_run_counts_the_flow_s_attached_storage(
+    world, flow_with_attached_storage, model_label, code_field
 ):
     flow, attached_file, attached_folder = flow_with_attached_storage
     code = world.python_code()
-    world.make(
-        model_label,
-        graph=flow,
-        node_name="holder",
-        **{code_field: code, CODE_SLOT_STORAGE_FLAGS[(model_label, code_field)]: uses_storage},
-    )
+    world.make(model_label, graph=flow, node_name="holder", **{code_field: code})
 
     resources = RunResourceCollector().collect(RunSubject(RunKind.CODE, code.pk, world.org.pk))
 
-    attached = {ref(attached_file), ref(attached_folder)}
     assert ref(flow) in resources.refs
-    if uses_storage:
-        assert attached <= resources.refs
-        assert resources.storage_prefixes == {attached_folder.path}
-    else:
-        assert not attached & resources.refs
-        assert resources.storage_prefixes == frozenset()
+    assert {ref(attached_file), ref(attached_folder)} <= resources.refs
+    assert resources.storage_prefixes == {attached_folder.path}
 
 
 @pytest.mark.django_db
@@ -697,33 +696,14 @@ def test_a_code_run_counts_only_the_storage_of_the_flows_holding_its_code(
     flow, attached_file, _ = flow_with_attached_storage
     other_flow = world.make("tables.Graph", name="other-storage", org=world.org)
     code = world.python_code()
-    world.make("tables.PythonNode", graph=other_flow, python_code=code, use_storage=True)
+    world.make("tables.PythonNode", graph=other_flow, python_code=code)
     unrelated = world.python_code()
-    world.make("tables.PythonNode", graph=flow, python_code=unrelated, use_storage=True)
+    world.make("tables.PythonNode", graph=flow, python_code=unrelated)
 
     resources = RunResourceCollector().collect_many(RunKind.CODE, [code.pk, unrelated.pk])
 
     assert ref(attached_file) not in resources[code.pk].refs
     assert ref(attached_file) in resources[unrelated.pk].refs
-
-
-def test_every_storage_flag_belongs_to_a_followed_code_slot_of_a_flow_node():
-    flow_nodes = {
-        row.child for row in RUN_REFERENCES if isinstance(row, FollowChildren) and row.fk == "graph"
-    }
-    wrong = []
-    for (model_label, code_field), flag in CODE_SLOT_STORAGE_FLAGS.items():
-        model = apps.get_model(model_label)
-        code_slot = model._meta.get_field(code_field)
-        if (
-            FollowField(model_label, code_field) not in RUN_REFERENCES
-            or code_slot.related_model._meta.label != "tables.PythonCode"
-            or model_label not in flow_nodes
-            or model._meta.get_field(flag).get_internal_type() != "BooleanField"
-        ):
-            wrong.append((model_label, code_field, flag))
-
-    assert wrong == []
 
 
 @pytest.mark.django_db
@@ -783,7 +763,7 @@ def _flow_asking(world: World, *configs):
 
 
 def _config_with_headers(world: World, headers: dict[str, str]):
-    return world.make("tables.LLMConfig", custom_name=world.name("cfg"), org=world.org, extra_headers=headers)
+    return world.make("ai_models.LLMConfig", custom_name=world.name("cfg"), org=world.org, extra_headers=headers)
 
 
 @pytest.mark.django_db
@@ -803,12 +783,36 @@ def test_a_header_marker_reaches_the_live_secret_of_its_name_in_the_row_s_organi
 
 
 @pytest.mark.django_db
+def test_a_connection_marker_reaches_its_secret_as_a_header_marker_does(world):
+    # The AWS access key id of a Bedrock config is a marker in its `connection`.
+    live = world.secret()
+    elsewhere = _make_secret(Organization.objects.create(name="Connection elsewhere"), live.name, "value")
+    config = world.make(
+        "ai_models.LLMConfig",
+        custom_name=world.name("cfg"),
+        org=world.org,
+        connection={"aws_access_key_id": f"epicstaff_secret({live.name})", "aws_region_name": "eu-west-1"},
+    )
+
+    resources = _collect(RunKind.FLOW, _flow_asking(world, config))
+
+    assert ref(live) in resources.refs
+    assert ref(elsewhere) not in resources.refs
+    assert resources.secret_marker_names == {live.name}
+
+
+@pytest.mark.django_db
 def test_an_embedding_config_s_markers_are_followed_too(world):
     secret = world.secret()
     collection = world.make("tables.SourceCollection", collection_name=world.name("kb"), org=world.org)
     base = world.make("tables.BaseRagType", rag_type="naive", source_collection=collection)
+    connection_secret = world.secret()
     embedder = world.make(
-        "tables.EmbeddingConfig", custom_name=world.name("emb"), org=world.org, extra_headers=_marker_headers(secret.name)
+        "ai_models.EmbeddingConfig",
+        custom_name=world.name("emb"),
+        org=world.org,
+        extra_headers=_marker_headers(secret.name),
+        connection={"base_url": f"https://gateway.example/epicstaff_secret({connection_secret.name})"},
     )
     world.make("tables.NaiveRag", base_rag_type=base, embedder=embedder)
     flow = world.make("tables.Graph", name=world.name("kb-flow"), org=world.org)
@@ -816,8 +820,8 @@ def test_an_embedding_config_s_markers_are_followed_too(world):
 
     resources = _collect(RunKind.FLOW, flow)
 
-    assert ref(secret) in resources.refs
-    assert resources.secret_marker_names == {secret.name}
+    assert {ref(secret), ref(connection_secret)} <= resources.refs
+    assert resources.secret_marker_names == {secret.name, connection_secret.name}
 
 
 @pytest.mark.django_db

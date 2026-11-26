@@ -1,0 +1,249 @@
+@if (!summaryLoaded()) {
+    <div class="data-tables-loader">
+        @if (viewState() === 'loading') {
+            <app-loading-spinner
+                size="lg"
+                message="Loading graph data..."
+            />
+        } @else {
+            <p class="data-tables__state-message">{{ errorMessage() }}</p>
+        }
+    </div>
+} @else {
+    <div class="data-tables">
+        <!-- Sidebar -->
+        <aside class="data-tables__sidebar">
+            <div class="data-tables__sidebar-header">
+                <span class="data-tables__sidebar-title">TABLES</span>
+            </div>
+            <ul class="data-tables__sidebar-list">
+                @for (table of tables(); track table.name) {
+                    <li
+                        class="data-tables__card"
+                        [class.data-tables__card--active]="activeTable()?.name === table.name"
+                        [class.data-tables__card--dimmed]="table.count === 0"
+                    >
+                        <button
+                            type="button"
+                            class="data-tables__card-button"
+                            (click)="onSelectTable(table)"
+                        >
+                            <app-svg-icon
+                                class="data-tables__card-icon"
+                                [icon]="getTableIcon(table.name)"
+                                size="1.25rem"
+                            />
+                            <span class="data-tables__card-text">
+                                <span class="data-tables__card-label">{{ table.label }}</span>
+                                <span class="data-tables__card-count">{{ table.count }} entries</span>
+                            </span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        </aside>
+
+        <!-- Main content -->
+        <div class="data-tables__content">
+            @if (activeTable(); as table) {
+                <div class="data-tables__toolbar">
+                    @if (previewFileName()) {
+                        <h3 class="data-tables__title data-tables__title--breadcrumb">
+                            <button
+                                type="button"
+                                class="data-tables__breadcrumb-back"
+                                (click)="closePreview()"
+                            >
+                                <app-svg-icon
+                                    icon="arrow-left"
+                                    size="1rem"
+                                />
+                                <span class="data-tables__breadcrumb-label">{{ table.label }}</span>
+                            </button>
+                            <span class="data-tables__breadcrumb-separator">/</span>
+                            <span class="data-tables__breadcrumb-current">{{ previewFileName() }}</span>
+                        </h3>
+                    } @else if (filterBreadcrumbValue(); as filterValue) {
+                        <h3 class="data-tables__title data-tables__title--breadcrumb">
+                            <button
+                                type="button"
+                                class="data-tables__breadcrumb-back"
+                                (click)="clearJumpFilter()"
+                            >
+                                <app-svg-icon
+                                    icon="arrow-left"
+                                    size="1rem"
+                                />
+                                <span class="data-tables__breadcrumb-label">{{ table.label }}</span>
+                            </button>
+                            <span class="data-tables__breadcrumb-separator">/</span>
+                            <span class="data-tables__breadcrumb-current">Community {{ filterValue }}</span>
+                        </h3>
+                    } @else if (linkedToBreadcrumb(); as linkedTo) {
+                        <h3 class="data-tables__title data-tables__title--breadcrumb">
+                            <button
+                                type="button"
+                                class="data-tables__breadcrumb-back"
+                                (click)="clearLinkedTo()"
+                            >
+                                <app-svg-icon
+                                    icon="arrow-left"
+                                    size="1rem"
+                                />
+                                <span class="data-tables__breadcrumb-label">{{ table.label }}</span>
+                            </button>
+                            <span class="data-tables__breadcrumb-separator">/</span>
+                            <span class="data-tables__breadcrumb-current">
+                                Linked to {{ linkedTo.typeLabel }} {{ linkedTo.id }}
+                            </span>
+                        </h3>
+                        <div class="data-tables__toolbar-actions">
+                            <div class="data-tables__search">
+                                <app-search
+                                    mod="small"
+                                    placeholder="Search..."
+                                    ariaLabel="Search table data"
+                                    [maxLength]="searchMaxLength"
+                                    [searchTerm]="searchTerm()"
+                                    (searchTermChange)="onSearchInput($event)"
+                                />
+                            </div>
+                        </div>
+                    } @else {
+                        <h3 class="data-tables__title">{{ table.label }}</h3>
+                        <div class="data-tables__toolbar-actions">
+                            @if (allowedTargetsForActive().length > 0) {
+                                <app-graph-rag-linked-to-picker
+                                    [ragId]="ragId()"
+                                    [allowedTargets]="allowedTargetsForActive()"
+                                    (picked)="onLinkedToPicked($event)"
+                                />
+                            }
+                            <div class="data-tables__search">
+                                <app-search
+                                    mod="small"
+                                    placeholder="Search..."
+                                    ariaLabel="Search table data"
+                                    [maxLength]="searchMaxLength"
+                                    [searchTerm]="searchTerm()"
+                                    (searchTermChange)="onSearchInput($event)"
+                                />
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                @if (previewFileName()) {
+                    <div class="data-tables__preview">
+                        @if (previewError()) {
+                            <div class="data-tables__state">
+                                <p class="data-tables__state-message">
+                                    {{ previewError() }}
+                                </p>
+                            </div>
+                        } @else if (previewLoading()) {
+                            <div class="data-tables__state">
+                                <app-loading-spinner
+                                    size="lg"
+                                    message="Loading document..."
+                                />
+                            </div>
+                        } @else {
+                            <app-blob-preview
+                                [blob]="previewBlob()"
+                                [fileName]="previewFileName()"
+                            />
+                        }
+                    </div>
+                } @else if (viewState() === 'error' || viewState() === 'not-indexed') {
+                    <div class="data-tables__state">
+                        <p class="data-tables__state-message">
+                            {{ errorMessage() }}
+                        </p>
+                    </div>
+                } @else if (viewState() === 'loading') {
+                    <div class="data-tables__state">
+                        <app-loading-spinner
+                            size="lg"
+                            message="Loading table data..."
+                        />
+                    </div>
+                } @else if (noSearchMatches()) {
+                    <div class="data-tables__state">
+                        <p class="data-tables__state-message">No rows match your search</p>
+                    </div>
+                } @else {
+                    <div class="data-tables__grid-wrapper">
+                        @if (tableLoading()) {
+                            <div class="data-tables__grid-overlay">
+                                <app-loading-spinner size="md" />
+                            </div>
+                        }
+                        <app-graph-rag-grid-table
+                            class="data-tables__grid"
+                            [rows]="rows()"
+                            [searchTerm]="trimmedSearchTerm()"
+                            [columnDefs]="activeColumnDefs()"
+                            (actionClick)="onGridAction($event)"
+                        />
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="data-tables__pagination">
+                        <div class="data-tables__page-size">
+                            <span class="data-tables__page-size-label">Rows per page:</span>
+                            <app-input-number
+                                class="data-tables__page-size-input"
+                                ariaLabel="Rows per page"
+                                [value]="pageSize()"
+                                [min]="1"
+                                [max]="100"
+                                [stepSize]="10"
+                                [commitOnBlur]="true"
+                                [alwaysShowSteps]="true"
+                                (changed)="onPageSizeChange($event)"
+                            />
+                        </div>
+
+                        <nav class="data-tables__pager">
+                            <button
+                                type="button"
+                                class="data-tables__pager-btn data-tables__pager-btn--nav"
+                                [disabled]="page() <= 1"
+                                aria-label="Previous page"
+                                (click)="onPageChange(page() - 1)"
+                            >
+                                &#x2039;
+                            </button>
+
+                            @for (p of pageNumbers(); track $index) {
+                                @if (p === '...') {
+                                    <span class="data-tables__pager-ellipsis">&hellip;</span>
+                                } @else {
+                                    <button
+                                        type="button"
+                                        class="data-tables__pager-btn"
+                                        [class.data-tables__pager-btn--active]="p === page()"
+                                        (click)="onPageChange(p)"
+                                    >
+                                        {{ p }}
+                                    </button>
+                                }
+                            }
+
+                            <button
+                                type="button"
+                                class="data-tables__pager-btn data-tables__pager-btn--nav"
+                                [disabled]="page() >= totalPages()"
+                                aria-label="Next page"
+                                (click)="onPageChange(page() + 1)"
+                            >
+                                &#x203A;
+                            </button>
+                        </nav>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+}

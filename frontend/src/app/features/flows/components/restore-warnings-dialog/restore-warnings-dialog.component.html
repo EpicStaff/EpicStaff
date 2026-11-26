@@ -6,7 +6,7 @@
                 size="20px"
                 class="warning-icon"
             />
-            <h2 class="dialog-title">Missing Dependencies</h2>
+            <h2 class="dialog-title">{{ title }}</h2>
         </div>
         <button
             type="button"
@@ -62,11 +62,19 @@
         let-warning
     >
         <span>
-            @if (warning.node_name) {
-                In node <strong>{{ warning.node_name }}</strong
-                >,&nbsp;
+            @if (isCapped(warning)) {
+                @if (warning.node_name) {
+                    <strong>{{ warning.node_name }}</strong
+                    >:&nbsp;
+                }
+                {{ cappedText(warning) }}
+            } @else {
+                @if (warning.node_name) {
+                    In node <strong>{{ warning.node_name }}</strong
+                    >,&nbsp;
+                }
+                {{ warning.reason }}
             }
-            {{ warning.reason }}
         </span>
     </ng-template>
 

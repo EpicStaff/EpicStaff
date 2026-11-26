@@ -32,7 +32,7 @@ def _ngrok_source():
 
 def _llm_source():
     """A statically-readable source, for the non-conditional branches."""
-    from tables.models import LLMConfig
+    from ai_models.models import LLMConfig
 
     return next(source for source in USAGE_SOURCES if source.model is LLMConfig)
 

@@ -36,20 +36,22 @@
                     ></span>
                     <span>Loading token limits…</span>
                 </div>
-            } @else if (tokenLimitsError()) {
+            } @else if (tokenLimitsError(); as tokenError) {
                 <div class="metadata-status metadata-status--error">
                     <app-svg-icon
                         icon="warning"
                         size="1.1rem"
                     />
-                    <span>{{ tokenLimitsError() }}</span>
-                    <button
-                        type="button"
-                        class="metadata-status__retry"
-                        (click)="retryMetadataFetch()"
-                    >
-                        Retry
-                    </button>
+                    <span>{{ tokenError.message }}</span>
+                    @if (tokenError.canRetry) {
+                        <button
+                            type="button"
+                            class="metadata-status__retry"
+                            (click)="retryMetadataFetch()"
+                        >
+                            Retry
+                        </button>
+                    }
                 </div>
             }
 

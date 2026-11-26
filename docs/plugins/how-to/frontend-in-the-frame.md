@@ -1,8 +1,8 @@
 # Build a plugin's frontend for EpicStaff's frame
 
 A plugin's page is a single-page app built to static files, in any framework. EpicStaff shows it in a frame on the
-plugin's own origin (`<id>.<plugins base domain>`); people can also open that address directly. This page lists what a
-page has to do to behave well in both places. The [Weather sample](../../../plugin-samples/weather/spa/) does all of
+plugin's own origin (its host from the deployment's `PLUGINS_HOST_TEMPLATE`, such as `weather-app.example.com`); people
+can also open that address directly. This page lists what a page has to do to behave well in both places. The [Weather sample](../../../plugin-samples/weather/spa/) does all of
 it in a few hundred lines of plain TypeScript.
 
 ## Start the SDK before the router
@@ -134,6 +134,14 @@ every rule.
 `epicstaff-plugin validate` and `pack` check the menu and its icons, and `pack` takes only the icon files the menu
 names. A menu change ships like any other change: with a new version ([Local development](local-development.md#ship-a-change)).
 
+## Keep data on your backend
+
+Never keep the only copy of anything in the browser's storage (local storage, IndexedDB, cookies). The browser keeps it
+under your plugin's address, and that address belongs to the deployment: when its operator changes EpicStaff's domain
+or the plugin host template, the plugin moves to a new address and its browser storage stays behind
+([Changing the domain](../operator/enable-plugins.md#changing-the-domain)). Your backend is the source of truth; use
+browser storage only for what can be rebuilt from it, such as a cache or a person's last-open tab.
+
 ## Theme
 
 Take every colour from the `--es-*` tokens, with defaults in `:root` for the page outside EpicStaff
@@ -148,7 +156,7 @@ A provider's sign-in page cannot be framed; open it in a popup with `login.openP
 
 While a SuperAdmin has set "Frontend dev server port" on your plugin's Development tab, EpicStaff serves your plugin's
 own host from a development server on your machine. The frame's address does not change: the page still runs on
-`<id>.<plugins base domain>`, so the sign-in, the frame protocol and the platform config work as with the published
+the plugin's own host, so the sign-in, the frame protocol and the platform config work as with the published
 page, and the SDK needs no option for it.
 [Local development](local-development.md#develop-the-page-against-a-development-server) shows how to start one and
 what any development server must allow.
@@ -168,6 +176,6 @@ What your page's code has to do for it:
 
 - Inside EpicStaff: open the plugin from the Apps list, move between your routes and your app's menu entries, use EpicStaff's Back and Forward, and
   switch organization (the frame reloads in the new organization).
-- On its own: open `https://<id>.<plugins base domain>/<route>` in a new tab; EpicStaff's login or organization chooser
+- On its own: open `https://<plugin host>/<route>` in a new tab; EpicStaff's login or organization chooser
   appears and brings you back to the same route.
 - [Local development](local-development.md) shows how to run all of this on your machine.

@@ -5,6 +5,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 
+from ai_models.models import LLMConfig
 from asgiref.sync import async_to_sync
 from tables.constants.cdt_explanation_limits import (
     MAX_EXPLANATION_TEXT_LENGTH,
@@ -16,9 +17,9 @@ from tables.exceptions import (
     CdtExplainLLMConfigNotFoundError,
     CdtExplainUpstreamError,
     ClassificationDecisionTableNodeNotFoundError,
+    ConfigNeedsReviewError,
 )
 from tables.models.graph_models import ClassificationDecisionTableNode
-from tables.models.llm_models import LLMConfig
 from tables.services.llm_clients import get_llm_client
 from tables.services.llm_clients.base import (
     DoneEvent,
@@ -26,7 +27,8 @@ from tables.services.llm_clients.base import (
     TokenEvent,
     UnsupportedLLMProviderError,
 )
-from tables.services.secrets import secret_resolver
+from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
+from tables.services.secrets.pinned_principal_rules import pinned_principal_of_user
 
 from .context import render_user_message
 from .output_schema import CDT_EXPLAIN_OUTPUT_SCHEMA
@@ -54,30 +56,29 @@ class CdtExplainService:
     """
 
     def explain(
-        self, *, pk, org_id: int, llm_config_id: int, table: dict, blocks: list[dict]
+        self, *, pk, org_id: int, llm_config_id: int, table: dict, blocks: list[dict], user
     ) -> ExplainResult:
         self._assert_node_visible(pk, org_id)
         llm_config = self._get_llm_config_or_404(llm_config_id, org_id)
+        # The explanation calls the model as a run would, so it is admitted like one.
+        assert_run_admitted(RunSubject(RunKind.LLM_CONFIG, llm_config.pk, org_id))
 
-        api_key = secret_resolver.resolve(
-            secret_id=llm_config.api_key_secret_id,
-            org_id=llm_config.org_id,
-            context="CdtExplain.llm_config.api_key",
-        )
         try:
             client = get_llm_client(
-                llm_config, output_schema=CDT_EXPLAIN_OUTPUT_SCHEMA, api_key=api_key
+                llm_config,
+                output_schema=CDT_EXPLAIN_OUTPUT_SCHEMA,
+                principal=pinned_principal_of_user(user),
             )
         except UnsupportedLLMProviderError as exc:
             raise CdtExplainLLMConfigNotFoundError(llm_config_id) from exc
-        except InvalidLLMConfigError as exc:
+        except (InvalidLLMConfigError, ConfigNeedsReviewError) as exc:
             raise CdtExplainLLMConfigInvalidError(str(exc)) from exc
 
         batches = list(self._batches(blocks))
         texts, failed_batches = async_to_sync(self._run_batches)(client, table, batches)
 
         if failed_batches == len(batches):
-            if not api_key:
+            if llm_config.api_key_secret_id is None:
                 raise CdtExplainLLMConfigMissingKeyError(llm_config_id)
             raise CdtExplainUpstreamError()
 

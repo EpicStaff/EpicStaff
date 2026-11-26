@@ -34,6 +34,12 @@ class ExecutionContext(BaseModel):
 
     # The environment handed to the child interpreter.
     env: dict[str, str] = {}
+    # Values scrubbed from the output even when MASK_SECRET is off -- worker-issued
+    # credentials the code author never chose to see, unlike the job's user secrets.
+    # Register through mask_always(), in the step that hands the value to the child.
+    # Values only: a user secret may share an env-var name with one of these, and
+    # both values must be masked.
+    always_masked: set[str] = set()
     # Storage changes the execution reported; published by the orchestrator.
     storage_mutations: StorageMutations | None = None
 
@@ -46,6 +52,15 @@ class ExecutionContext(BaseModel):
     completed: bool = False
 
     model_config = ConfigDict(validate_assignment=True)
+
+    def mask_always(self, value: str) -> None:
+        """Have the orchestrator scrub `value` from the output, whatever MASK_SECRET says.
+
+        An empty value is skipped: there is nothing to leak, and masking it would match
+        nowhere anyway.
+        """
+        if value:
+            self.always_masked.add(value)
 
     def complete(self) -> None:
         """Mark the run finished with whatever outcome fields are already set."""

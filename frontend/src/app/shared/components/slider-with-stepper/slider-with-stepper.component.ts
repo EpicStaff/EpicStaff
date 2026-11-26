@@ -12,6 +12,10 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
     templateUrl: './slider-with-stepper.component.html',
     styleUrls: ['./slider-with-stepper.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
+    host: {
+        '[class.slider-stepper--sm]': 'mod() === "sm"',
+        '[class.slider-stepper--inline]': 'inline()',
+    },
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -28,9 +32,21 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
     min = input<number>(0);
     max = input<number>(100);
     step = input<number>(1);
+    mod = input<'md' | 'sm'>('md');
+    inline = input<boolean>(false);
     /** Digits kept after rounding; defaults to the precision of `step`. */
     decimals = input<number | undefined>(undefined);
     optional = input<boolean>(false);
+    /** The value is shown and typed multiplied by this, e.g. 100 to show 0.7 as 70; the slider and form keep 0.7. */
+    scale = input<number>(1);
+    /** Shown after the value, e.g. `%`. */
+    suffix = input<string>('');
+    /**
+     * When true, dragging the slider only moves the thumb and the value is committed (emitted)
+     * once on release — for consumers where every intermediate value would trigger expensive work.
+     * By default every `input` event commits.
+     */
+    commitOnRelease = input<boolean>(false);
 
     value = model<number | null>(null);
     changed = output<number | null>();
@@ -45,10 +61,14 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
 
     private precision = computed(() => this.decimals() ?? this.countFractionDigits(this.step()));
 
+    /** Digits shown after scaling: a step of 0.01 shown times 100 needs none. */
+    private displayPrecision = computed(() => Math.max(0, this.precision() - Math.round(Math.log10(this.scale()))));
+
     displayValue = computed(() => {
         const val = this.value();
         if (val === null || val === undefined) return '0';
-        return this.precision() > 0 ? val.toFixed(this.precision()) : val.toString();
+        const shown = val * this.scale();
+        return this.precision() > 0 ? shown.toFixed(this.displayPrecision()) : shown.toString();
     });
 
     sliderPercentage = computed(() => {
@@ -58,10 +78,23 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
         return ((val - minVal) / (maxVal - minVal)) * 100;
     });
 
-    onSliderChange(event: Event) {
+    /** Commits every drag step, or with `commitOnRelease` only updates the visual state. */
+    onSliderInput(event: Event) {
         const target = event.target as HTMLInputElement;
-        const newValue = parseFloat(target.value);
-        this.updateValue(this.roundToDecimals(newValue));
+        const newValue = this.roundToDecimals(parseFloat(target.value));
+        if (this.commitOnRelease()) {
+            this.value.set(newValue);
+        } else {
+            this.updateValue(newValue);
+        }
+    }
+
+    /** With `commitOnRelease`, commits the final value on pointer release and notifies the parent. */
+    onSliderCommit(event: Event) {
+        if (!this.commitOnRelease()) return;
+        const target = event.target as HTMLInputElement;
+        const newValue = this.roundToDecimals(parseFloat(target.value));
+        this.updateValue(newValue);
     }
 
     onStepDown() {
@@ -90,7 +123,7 @@ export class SliderWithStepperComponent implements ControlValueAccessor {
             return;
         }
 
-        const clamped = Math.min(this.max(), Math.max(this.min(), parsed));
+        const clamped = Math.min(this.max(), Math.max(this.min(), parsed / this.scale()));
         this.updateValue(this.roundToDecimals(clamped));
         target.value = this.displayValue();
         this.onTouched();

@@ -581,20 +581,17 @@ def test_code_run_of_a_target_answers_a_refusal_with_409_and_writes_no_result(
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("use_storage, expected_status", [(True, 409), (False, 200)])
 def test_a_code_test_run_that_can_read_a_refused_attached_file_is_refused(
     run_admission_checks,
     flow,
     default_org,
     auth_client,
     redis_client_mock,
-    use_storage,
-    expected_status,
 ):
     attached = StorageFile.objects.create(org=default_org, name="input.csv", path="input.csv")
     GraphStorageFile.objects.create(graph=flow, storage_file=attached)
     code = PythonCode.objects.create(code="def main(): return 1", entrypoint="main")
-    node = PythonNode.objects.create(graph=flow, python_code=code, use_storage=use_storage)
+    node = PythonNode.objects.create(graph=flow, python_code=code)
     run_admission_checks.append(RefusesRunsUsing(ResourceRef("tables.StorageFile", attached.pk)))
 
     response = auth_client.post(
@@ -603,8 +600,8 @@ def test_a_code_test_run_that_can_read_a_refused_attached_file_is_refused(
         format="json",
     )
 
-    assert response.status_code == expected_status, response.content
-    assert PythonCodeResult.objects.exists() is (expected_status == 200)
+    assert response.status_code == 409, response.content
+    assert not PythonCodeResult.objects.exists()
 
 
 # --- Triggers: refused quietly, logged once ---------------------------------------------

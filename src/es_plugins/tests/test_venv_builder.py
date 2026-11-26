@@ -5,12 +5,14 @@ for ensurepip, as on the node.
 """
 
 import asyncio
+import hashlib
 import subprocess
 import sys
 import threading
 from pathlib import Path
 
 import pytest
+from epicstaff_plugin.requirements_lock import parse_requirements_lock
 
 from es_plugins.packages import venv_builder
 from es_plugins.packages.venv_builder import (
@@ -102,6 +104,69 @@ async def test_a_hash_mismatch_fails_the_offline_install(tmp_path):
         await build_venv(request)
 
     assert not request.venv.exists()
+
+
+async def test_pip_installs_from_the_canonical_lock_not_the_shipped_one(tmp_path, monkeypatch):
+    wheels = [
+        make_wheel(tmp_path / "built", "uvicorn", "0.52.3", requires=("h11>=0.8",)),
+        make_wheel(tmp_path / "built", "h11", "0.16.0"),
+    ]
+    uvicorn_digest, h11_digest = (hashlib.sha256(wheel.read_bytes()).hexdigest() for wheel in wheels)
+    lock = (
+        "# generated\n"
+        "h11==0.16.0 \\\n"
+        f"    --hash=sha256:{h11_digest}\n"
+        "    # via uvicorn\n"
+        "Uvicorn==0.52.3 \\\n"
+        f"    --hash=sha256:{uvicorn_digest}\n"
+    )
+    request = request_for(tmp_path, backend(tmp_path, wheels, lock))
+    seen = []
+    original_run = venv_builder._run
+
+    async def recording_run(argv, environment, timeout, step):
+        if "-r" in argv:
+            lock_given_to_pip = Path(argv[argv.index("-r") + 1])
+            seen.append((lock_given_to_pip, lock_given_to_pip.read_bytes()))
+        return await original_run(argv, environment, timeout, step)
+
+    monkeypatch.setattr(venv_builder, "_run", recording_run)
+
+    python = await build_venv(request)
+
+    assert run_isolated(python, "import h11, uvicorn; print(h11.VERSION, uvicorn.VERSION)") == "0.16.0 0.52.3"
+    ((given, content),) = seen
+    assert given != request.backend / "requirements.lock"
+    assert content == parse_requirements_lock(lock.encode()).canonical_text().encode()
+    assert list(request.temporary_directory.iterdir()) == []
+
+
+async def test_a_lock_pip_would_read_differently_fails_the_build_before_pip_runs(tmp_path):
+    wheels = [make_wheel(tmp_path / "built", "uvicorn", "0.52.3")]
+    digest = hashlib.sha256(wheels[0].read_bytes()).hexdigest()
+    lock = (
+        "# -*- coding: utf-7 -*-\n"
+        "# note +AAo-./wheels/evil-1.0.tar.gz --hash=sha256:" + "a" * 64 + "\n"
+        f"uvicorn==0.52.3 --hash=sha256:{digest}\n"
+    )
+    request = request_for(tmp_path, backend(tmp_path, wheels, lock))
+
+    with pytest.raises(VenvBuildError, match="requirements.lock is not acceptable.*coding declaration"):
+        await build_venv(request)
+
+    assert not request.venv.exists()
+    assert list(request.temporary_directory.iterdir()) == []
+
+
+async def test_the_canonical_lock_is_removed_when_pip_fails(tmp_path):
+    wheels = [make_wheel(tmp_path / "built", "uvicorn", "0.52.3")]
+    lock = f"uvicorn==0.52.3 --hash=sha256:{'0' * 64}\n"
+    request = request_for(tmp_path, backend(tmp_path, wheels, lock))
+
+    with pytest.raises(VenvBuildError, match="DO NOT MATCH THE HASHES"):
+        await build_venv(request)
+
+    assert list(request.temporary_directory.iterdir()) == []
 
 
 async def test_a_lock_that_misses_a_requirement_fails_the_build_naming_it(tmp_path):

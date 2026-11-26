@@ -122,7 +122,7 @@ def build_test_jail(tmp_path: Path):
     )
 
 
-def test_the_jail_grants_write_access_only_to_the_runs_own_workspace(tmp_path):
+def test_the_jail_grants_write_access_only_to_the_runs_own_workspace_and_dev_null(tmp_path):
     jail = build_test_jail(tmp_path)
     exec_dir = tmp_path / "executions" / "exec-1"
 
@@ -130,7 +130,15 @@ def test_the_jail_grants_write_access_only_to_the_runs_own_workspace(tmp_path):
         str(exec_dir),
         str(exec_dir / "home"),
         str(exec_dir / "tmp"),
+        "/dev/null",
     }
+
+
+def test_dev_null_is_writable_so_git_can_open_it_read_write(tmp_path):
+    jail = build_test_jail(tmp_path)
+
+    assert "/dev/null" in jail.read_write
+    assert "/dev/null" not in jail.read_only
 
 
 def test_the_jail_grants_execute_access_to_the_venv_and_system_directories(tmp_path):

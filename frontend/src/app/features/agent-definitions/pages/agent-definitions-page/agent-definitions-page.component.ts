@@ -2,19 +2,23 @@ import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
 import {
+    afterNextRender,
     ChangeDetectionStrategy,
     Component,
     computed,
+    DestroyRef,
     effect,
     ElementRef,
     HostListener,
     inject,
     Injector,
     OnInit,
+    ResourceRef,
     signal,
     untracked,
     viewChild,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -28,22 +32,29 @@ import {
 import { HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { escapeHtml, takeQueryParams } from '@shared/utils';
-import { Observable, of } from 'rxjs';
-import { map, tap } from 'rxjs/operators';
+import { defer, Observable, of, Subject } from 'rxjs';
+import { defaultIfEmpty, finalize, map, switchMap, take, takeUntil, tap } from 'rxjs/operators';
 
 import { CanComponentDeactivate } from '../../../../core/guards/unsaved-changes.guard';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
+import { ToastService } from '../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../services/recycle-bin';
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../create-agent-tour/create-agent-tour-anchors';
 import { StorageItem } from '../../../files/models/storage.models';
 import { StoragePreviewComponent } from '../../../files/pages/files-list-page/components/storage-page/components/storage-preview/storage-preview.component';
 import { StorageContextActionEvent, StorageTreeFacade } from '../../../files/services/storage-tree-facade.service';
 import { AgentDefinition, AgentInstruction, AgentSurfacePlace } from '../../models/agent-definition.model';
-import { ExplorerSectionId, GroupAssignTarget } from '../../models/explorer.model';
+import { AgentFocus, ExplorerSectionId, GroupAssignTarget } from '../../models/explorer.model';
 import { CreateSurfaceRequest } from '../../models/surface.model';
 import { SURFACE_CATEGORIES, SurfaceCategoryConfig, SurfaceCategoryId } from '../../models/surface-category.model';
+import {
+    SurfaceUsage,
+    surfaceUsageAgentCount,
+    surfaceUsageFlowCount,
+    surfaceUsageTotal,
+} from '../../models/surface-usage.model';
 import { BranchTreeNode } from '../../models/tree-node.model';
-import { AgentsPageStore } from '../../services/agents-page-store.service';
+import { AgentSaveResult, AgentsPageStore } from '../../services/agents-page-store.service';
 import { SurfaceCatalogsStore } from '../../services/surface-catalogs-store.service';
 import {
     buildDeleteAgentDialog,
@@ -71,7 +82,6 @@ import {
     SurfaceSummaryDialogData,
 } from './components/surface-summary-dialog/surface-summary-dialog.component';
 import {
-    SurfaceUsage,
     SurfaceUsageDialogComponent,
     SurfaceUsageDialogData,
 } from './components/surface-usage-dialog/surface-usage-dialog.component';
@@ -111,6 +121,8 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     private readonly router: Router = inject(Router);
     private readonly permissions: PermissionsService = inject(PermissionsService);
     private readonly authorshipDetailsDialog = inject(AuthorshipDetailsDialogService);
+    private readonly toast: ToastService = inject(ToastService);
+    private readonly destroyRef = inject(DestroyRef);
 
     protected readonly ResourceCode = ResourceCode;
     protected readonly ActionCode = ActionCode;
@@ -162,20 +174,31 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         read: ElementRef,
     });
 
+    // Surfaces whose delete confirmation is being prepared or shown: a repeat click must not stack a second one.
+    private readonly surfaceDeletesInFlight = new Set<number>();
     // `?agentId=` and `?surfaceId=`, taken from the URL at init and applied once the agent list has loaded
     private queryPreselect: Partial<Record<'agentId' | 'surfaceId', string>> = {};
     private sawLoading = false;
 
-    protected readonly hasUnsavedChanges = signal<boolean>(false);
+    /** Edits the agent editor holds that no save has been sent for. */
+    private readonly editorDirty = signal<boolean>(false);
+    /** The result of the agent save under way; null once it has landed. */
+    private readonly agentSave = signal<Observable<AgentSaveResult> | null>(null);
+    /** The agent save a leave waits on: the leave's dialog gives the reason it failed, so no toast does. */
+    private saveAwaitedByLeave: Observable<AgentSaveResult> | null = null;
+    /** Fires as a leave starts, so that one still waiting gives way to it. */
+    private readonly leaveStarted = new Subject<void>();
 
-    protected readonly selectedSurfaceUsage = computed<SurfaceUsage | null>(() => {
-        const sv = this.store.selectedSurfaceView();
-        return sv ? this.store.surfaceUsage(sv.surface.id) : null;
-    });
+    protected readonly hasUnsavedChanges = computed<boolean>(() => this.editorDirty() || this.agentSave() !== null);
 
-    protected readonly selectedSurfaceUsageCount = computed<number>(() => {
-        const u = this.selectedSurfaceUsage();
-        return u ? u.agents.length + u.flows.length + u.chats.length : 0;
+    protected readonly selectedSurfaceUsageFailed = computed<boolean>(
+        () => this.store.selectedSurfaceUsage.error() !== undefined
+    );
+
+    /** Null until the server has answered; the "Used by" button shows an ellipsis meanwhile. */
+    protected readonly selectedSurfaceUsageCount = computed<number | null>(() => {
+        const usage = this.store.selectedSurfaceUsage;
+        return usage.hasValue() ? surfaceUsageTotal(usage.value()) : null;
     });
 
     protected readonly selectedSurfacePlace = computed<SurfaceCategoryConfig | null>(() => {
@@ -295,7 +318,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     onDirtyChange(isDirty: boolean): void {
-        this.hasUnsavedChanges.set(isDirty);
+        this.editorDirty.set(isDirty);
     }
 
     onSelectNode(node: BranchTreeNode): void {
@@ -322,6 +345,11 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 }
             }
         });
+    }
+
+    /** From a crumb or the instruction preview: like a click in the explorer, it waits for the agent's edits. */
+    onOpenAgent(agentId: number, focus: AgentFocus = 'all'): void {
+        this.guardUnsaved(() => this.store.selectAgent(agentId, focus));
     }
 
     onSelectStorageItem(item: StorageItem): void {
@@ -371,9 +399,10 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     onSaveAgent(payload: AgentSavePayload): void {
+        let saved: Observable<AgentSaveResult>;
         if (payload.id == null) {
             this.openDocInEdit = !!payload.openFirstInstructionInEdit;
-            this.store.saveNewAgent(
+            saved = this.store.saveNewAgent(
                 {
                     name: payload.name,
                     description: payload.description,
@@ -385,7 +414,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 !!payload.openFirstInstructionInEdit
             );
         } else {
-            this.store.updateAgent(payload.id, {
+            saved = this.store.updateAgent(payload.id, {
                 name: payload.name,
                 description: payload.description,
                 llm_config: payload.llm_config,
@@ -403,7 +432,12 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 schema_max_retries: payload.schema_max_retries,
             });
         }
-        this.hasUnsavedChanges.set(false);
+        this.editorDirty.set(false);
+        this.agentSave.set(saved);
+        saved.subscribe((result) => {
+            if (this.agentSave() === saved) this.agentSave.set(null);
+            if (!result.saved && saved !== this.saveAwaitedByLeave) this.toast.error(result.error);
+        });
     }
 
     onSelectedInstructionList(instructionList: AgentInstruction[]): void {
@@ -450,28 +484,17 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
 
     onCreateSurface(body: CreateSurfaceRequest): void {
         this.store.saveNewSurface(body);
-        this.hasUnsavedChanges.set(false);
+        this.editorDirty.set(false);
     }
 
     onOpenUsage(): void {
-        const usage = this.selectedSurfaceUsage();
-        if (!usage) return;
-        this.dialog
-            .open<number | undefined, SurfaceUsageDialogData>(SurfaceUsageDialogComponent, {
-                width: 'calc(100vw - 2rem)',
-                height: 'calc(100vh - 2rem)',
-                maxWidth: '100vw',
-                panelClass: 'surface-usage-dialog-panel',
-                injector: this.injector,
-                data: { usage },
-            })
-            .closed.subscribe((agentId) => {
-                if (typeof agentId !== 'number') return;
-                this.guardUnsaved(() => {
-                    this.storageFacade.selectedFile.set(null);
-                    this.store.selectAgent(agentId);
-                });
-            });
+        // Flow-editor changes made since the last load must show up.
+        this.store.selectedSurfaceUsage.reload();
+        this.openUsageDialog(this.store.selectedSurfaceUsage);
+    }
+
+    onOpenSurfaceUsage(surfaceId: number): void {
+        this.openUsageDialog(this.store.openSurfaceUsage(surfaceId), () => this.store.closeSurfaceUsage());
     }
 
     onViewSummary(event: { place: SurfaceCategoryId; surfaceIds: number[] }): void {
@@ -494,8 +517,14 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     onOpenInstruction(request: { index: number; edit: boolean }): void {
         const id = this.store.selectedAgent()?.id;
         if (id == null) return;
-        this.openDocInEdit = request.edit;
-        this.store.selectAgentDoc(id, request.index);
+        this.guardUnsaved(() => {
+            this.openDocInEdit = request.edit;
+            this.store.selectAgentDoc(id, request.index);
+        });
+    }
+
+    onOpenSurfaceSource(surfaceId: number): void {
+        this.guardUnsaved(() => this.store.openSharedSurfaceSource(surfaceId));
     }
 
     onDeleteAgent(agent: AgentDefinition): void {
@@ -506,7 +535,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         this.confirmDeleteAgent(agentId).subscribe((confirmed) => {
             if (!confirmed) return;
             this.store.deleteAgent(agentId);
-            this.hasUnsavedChanges.set(false);
+            this.editorDirty.set(false);
         });
     }
 
@@ -514,7 +543,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         this.confirmDeleteSurface(surfaceId).subscribe((confirmed) => {
             if (!confirmed) return;
             this.store.deleteSurface(surfaceId);
-            this.hasUnsavedChanges.set(false);
+            this.editorDirty.set(false);
         });
     }
 
@@ -568,6 +597,26 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     /** Off the menu item first: a dialog the action opens returns the focus to what had it, and the item goes away. */
+    private openUsageDialog(usage: ResourceRef<SurfaceUsage | undefined>, onClosed?: () => void): void {
+        this.dialog
+            .open<number | undefined, SurfaceUsageDialogData>(SurfaceUsageDialogComponent, {
+                width: 'calc(100vw - 2rem)',
+                height: 'calc(100vh - 2rem)',
+                maxWidth: '100vw',
+                panelClass: 'surface-usage-dialog-panel',
+                injector: this.injector,
+                data: { usage },
+            })
+            .closed.subscribe((agentId) => {
+                onClosed?.();
+                if (typeof agentId !== 'number') return;
+                this.guardUnsaved(() => {
+                    this.storageFacade.selectedFile.set(null);
+                    this.store.selectAgent(agentId);
+                });
+            });
+    }
+
     private closeHeaderMenuToTrigger(): void {
         this.headerMenuTrigger()?.nativeElement.focus();
         this.closeHeaderMenu();
@@ -645,7 +694,8 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         ]
             .filter(Boolean)
             .join(' and ');
-        const outcome = members ? `Its ${members} stay, just without a group.` : 'The group is empty.';
+        const verb = agentCount + surfaceCount === 1 ? 'stays' : 'stay';
+        const outcome = members ? `Its ${members} ${verb}, just without a group.` : 'The group is empty.';
         this.confirmationDialog
             .confirm(
                 {
@@ -705,13 +755,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     canDeactivate(): boolean | Observable<boolean> {
-        if (!this.hasUnsavedChanges()) return true;
-        return this.confirmLeaveAgent().pipe(
-            map((leave) => {
-                if (leave) this.hasUnsavedChanges.set(false);
-                return leave;
-            })
-        );
+        return this.hasUnsavedChanges() ? this.leaveAgent() : true;
     }
 
     @HostListener('window:beforeunload', ['$event'])
@@ -737,18 +781,31 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
         const surface = this.store.surfaces().find((s) => s.id === surfaceId);
         if (!surface) return of(false);
 
-        const usageRaw = this.store.surfaceUsage(surfaceId);
-        const shared = surface.owner_agent == null;
-        const usage = {
-            agents: shared ? usageRaw.agents.length : 0,
-            flows: usageRaw.flows.length,
-            chats: usageRaw.chats.length,
-        };
-        const dialog = buildDeleteSurfaceDialog(surface, usage, shared, this.recycleBinSettings.retentionDays());
+        if (this.surfaceDeletesInFlight.has(surfaceId)) return of(false);
+        this.surfaceDeletesInFlight.add(surfaceId);
 
-        return this.confirmationDialog
-            .confirm(dialog, { width: DELETE_CONFIRM_DIALOG_WIDTH })
-            .pipe(map((result) => result === true));
+        const shared = surface.owner_agent == null;
+        // Fetched fresh: the surface may not be the selected one, and a stale or missing count would understate the impact.
+        return this.store.loadSurfaceUsage(surfaceId).pipe(
+            switchMap((usageRaw) => {
+                if (!usageRaw) return of(false);
+                const usage = {
+                    agents: shared ? surfaceUsageAgentCount(usageRaw) : 0,
+                    flows: surfaceUsageFlowCount(usageRaw),
+                    chats: 0,
+                };
+                const dialog = buildDeleteSurfaceDialog(
+                    surface,
+                    usage,
+                    shared,
+                    this.recycleBinSettings.retentionDays()
+                );
+                return this.confirmationDialog
+                    .confirm(dialog, { width: DELETE_CONFIRM_DIALOG_WIDTH })
+                    .pipe(map((result) => result === true));
+            }),
+            finalize(() => this.surfaceDeletesInFlight.delete(surfaceId))
+        );
     }
 
     private guardUnsaved(action: () => void, onCancel?: () => void): void {
@@ -756,9 +813,8 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
             action();
             return;
         }
-        this.confirmLeaveAgent().subscribe((leave) => {
+        this.leaveAgent().subscribe((leave) => {
             if (leave) {
-                this.hasUnsavedChanges.set(false);
                 action();
             } else {
                 onCancel?.();
@@ -767,29 +823,100 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
     }
 
     /**
-     * Asks whether to drop the agent's unsaved edits; true to leave. There is no Save: a draft needs a name
-     * to be created, and an existing agent saves itself when its field loses focus. Staying on a draft
-     * points the user at the missing name.
+     * True once the agent's edits are saved: the save under way, then what is left, sent as leaving the name field
+     * sends it. No dialog for edits that can be saved — it takes the focus, and that blur would save them behind it.
+     * A newer leave takes over from one still waiting, which then answers false.
      */
-    private confirmLeaveAgent(): Observable<boolean> {
-        const drafting = this.store.isDraftingAgent();
-        return this.unsavedChangesDialog
-            .confirm({
-                title: drafting ? 'Agent not created' : 'Unsaved Changes',
-                message: drafting
-                    ? "This agent hasn't been created yet. Fix the name to save it, or discard it."
-                    : 'You have unsaved changes in this agent.',
-                dontSaveText: 'Discard & Leave',
-                cancelText: 'Keep Editing',
-                type: 'warning',
-                showSave: false,
-            })
-            .pipe(
-                map((result) => result === UNSAVED_CHANGES_RESULT.dontSave),
-                tap((leave) => {
-                    if (!leave && drafting) this.agentDetail()?.requireName();
-                })
+    private leaveAgent(): Observable<boolean> {
+        this.leaveStarted.next();
+        return this.saveAgentEdits().pipe(
+            takeUntil(this.leaveStarted),
+            defaultIfEmpty(false),
+            tap((left) => {
+                if (left) this.editorDirty.set(false);
+            }),
+            takeUntilDestroyed(this.destroyRef)
+        );
+    }
+
+    private saveAgentEdits(): Observable<boolean> {
+        const saveUnderWay = this.agentSave();
+        if (saveUnderWay) {
+            this.saveAwaitedByLeave = saveUnderWay;
+            return saveUnderWay.pipe(
+                // After the result, or when the leave stops waiting first: then a failure is toasted after all.
+                finalize(() => {
+                    if (this.saveAwaitedByLeave === saveUnderWay) this.saveAwaitedByLeave = null;
+                }),
+                switchMap((result) =>
+                    result.saved ? this.saveEditsTypedMeanwhile() : this.confirmDiscardFailedEdits(result.error)
+                )
             );
+        }
+        const detail = this.agentDetail();
+        if (!detail || !this.editorDirty()) return of(true);
+        if (!detail.canSave()) return this.confirmDiscardEdits();
+        detail.savePendingEdits();
+        return this.agentSave() ? this.saveAgentEdits() : of(true);
+    }
+
+    /** Sent only after a render: the editor must take in the saved agent first, or a created draft is created again. */
+    private saveEditsTypedMeanwhile(): Observable<boolean> {
+        if (!this.editorDirty()) return of(true);
+        return new Observable<void>((subscriber) => {
+            const render = afterNextRender(() => subscriber.next(), { injector: this.injector });
+            return () => render.destroy();
+        }).pipe(
+            take(1),
+            switchMap(() => this.saveAgentEdits())
+        );
+    }
+
+    /** Edits that can't be saved as they are — no name, or one over the limit. Staying points the user at the name. */
+    private confirmDiscardEdits(): Observable<boolean> {
+        const drafting = this.store.isDraftingAgent();
+        return this.askToDiscardEdits(
+            drafting ? 'Agent not created' : 'Changes not saved',
+            drafting
+                ? "This agent hasn't been created yet. Fix the name to save it, or discard it."
+                : "These changes can't be saved as they are. Fix the name to save them, or discard them."
+        ).pipe(
+            tap((leave) => {
+                if (!leave) this.agentDetail()?.requireName();
+            })
+        );
+    }
+
+    /** Edits the server rejected. Discard & Leave is the way out when it keeps rejecting them. */
+    private confirmDiscardFailedEdits(error: string): Observable<boolean> {
+        return this.askToDiscardEdits("Couldn't save your changes", escapeHtml(error));
+    }
+
+    /**
+     * True to drop the agent's edits and leave. There is no Save: there is nothing the server would take. Saves on blur
+     * are held while the dialog is open — it takes the focus, and that blur must not save behind it.
+     */
+    private askToDiscardEdits(title: string, message: string): Observable<boolean> {
+        return defer(() => {
+            const detail = this.agentDetail();
+            detail?.holdAutosave(true);
+            return this.unsavedChangesDialog
+                .confirm({
+                    title,
+                    message,
+                    dontSaveText: 'Discard & Leave',
+                    cancelText: 'Keep Editing',
+                    type: 'warning',
+                    showSave: false,
+                })
+                .pipe(
+                    map((result) => result === UNSAVED_CHANGES_RESULT.dontSave),
+                    tap((leave) => {
+                        if (leave) detail?.discardEdits();
+                    }),
+                    finalize(() => detail?.holdAutosave(false))
+                );
+        });
     }
 
     private openExplorerAgentDetails({ node, trigger }: ExplorerTreeMenuEvent): void {

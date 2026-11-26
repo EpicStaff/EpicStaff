@@ -1,0 +1,49 @@
+<div class="tabs">
+    <app-tab-button
+        mod="sm"
+        [active]="activeTab() === 'configuration'"
+        (action)="onTabChange('configuration')"
+    >
+        Configuration
+    </app-tab-button>
+    <span class="tab-separator">/</span>
+    <app-tab-button
+        mod="sm"
+        [active]="activeTab() === 'visualization'"
+        [disabled]="!showTabs()"
+        matTooltip="Available after indexing"
+        [matTooltipDisabled]="showTabs()"
+        (action)="onTabChange('visualization')"
+    >
+        Graph Visualization
+    </app-tab-button>
+    <span class="tab-separator">/</span>
+    <app-tab-button
+        mod="sm"
+        [active]="activeTab() === 'data-tables'"
+        [disabled]="!showTabs()"
+        matTooltip="Available after indexing"
+        [matTooltipDisabled]="showTabs()"
+        (action)="onTabChange('data-tables')"
+    >
+        Data Tables
+    </app-tab-button>
+</div>
+
+@if (activeTab() === 'configuration' || !showTabs()) {
+    <ng-content />
+}
+@if (showTabs() && activeTab() === 'visualization') {
+    <app-graph-rag-visualization
+        class="content"
+        [ragId]="ragId()"
+        (openInRequested)="onOpenInRequested($event)"
+    />
+}
+@if (showTabs() && activeTab() === 'data-tables') {
+    <app-graph-rag-data-tables
+        class="content"
+        [ragId]="ragId()"
+        [pendingOpenIn]="pendingOpenIn()"
+    />
+}

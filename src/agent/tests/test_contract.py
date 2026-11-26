@@ -27,7 +27,7 @@ EXAMPLE_BLOB = {
             "instructions": "You research topics thoroughly.",
             "llm": {
                 "provider": "openai",
-                "config": {"model": "gpt-4o", "temperature": 0.7},
+                "config": {"model": "gpt-4o", "parameters": {"temperature": 0.7}},
             },
             "fcm_llm": None,
             "max_iter": 15,

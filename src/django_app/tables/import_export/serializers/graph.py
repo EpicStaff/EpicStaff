@@ -20,10 +20,7 @@ from tables.models import (
     WebhookTriggerNode,
 )
 from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
-from tables.models.graph_models import (
-    GraphNote,
-    ScheduleTriggerNode,
-)
+from tables.models.graph_models import ScheduleTriggerNode
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
 
 
@@ -142,12 +139,6 @@ class AudioTranscriptionNodeImportSerializer(BaseNodeImportSerializer):
 class SubgraphNodeImportSerializer(BaseNodeImportSerializer):
     class Meta(BaseNodeImportSerializer.Meta):
         model = SubGraphNode
-        exclude = ["created_at", "updated_at", "created_by"]
-
-
-class GraphNoteImportSerializer(BaseNodeImportSerializer):
-    class Meta(BaseNodeImportSerializer.Meta):
-        model = GraphNote
         exclude = ["created_at", "updated_at", "created_by"]
 
 

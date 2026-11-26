@@ -31,7 +31,7 @@ function linkedRegionChange(current: typeof REGION | null, version: typeof REGIO
 let fixture: ComponentFixture<FlowBaseNodeComponent>;
 
 /** Renders the note on a diff canvas (`status` set) or off one (`null`: the Preview tab, the live editor). */
-function render(status: NodeDiffStatus | null, fields: FieldChange[] = []): void {
+function render(status: NodeDiffStatus | null, fields: FieldChange[] = [], node: GraphNoteModel = NOTE): void {
     TestBed.configureTestingModule({
         providers: [
             { provide: FlowReadOnlyService, useValue: { isReadOnly: signal(true) } },
@@ -42,7 +42,7 @@ function render(status: NodeDiffStatus | null, fields: FieldChange[] = []): void
     });
     TestBed.inject(FlowDiffStateService).setState(
         status && {
-            nodes: new Map([[NOTE.id, { status, fields, missingReferences: [] }]]),
+            nodes: new Map([[node.id, { status, fields, missingReferences: [] }]]),
             connections: new Map(),
             versionOnlyPortIds: new Set(),
             currentOnlyRoutePortIds: new Set(),
@@ -50,7 +50,7 @@ function render(status: NodeDiffStatus | null, fields: FieldChange[] = []): void
         }
     );
     fixture = TestBed.createComponent(FlowBaseNodeComponent);
-    fixture.componentRef.setInput('node', NOTE);
+    fixture.componentRef.setInput('node', node);
     fixture.detectChanges();
 }
 
@@ -232,5 +232,25 @@ describe('GraphNoteComponent on a version diff canvas', () => {
         expect(tooltip()).toBeNull();
         expect(note().hasAttribute('tabindex')).toBe(false);
         expect(note().hasAttribute('aria-describedby')).toBe(false);
+    });
+});
+
+describe('GraphNoteComponent background colour', () => {
+    /** The note as the editor loads it from the backend with `backgroundColor` stored in its metadata. */
+    function renderLoaded(backgroundColor: string): void {
+        render(null, [], mapGraphNoteToModel({ ...liveNote, metadata: { backgroundColor } }));
+    }
+
+    it('fills the note with its palette colour', () => {
+        renderLoaded('#685FFF');
+
+        expect(note().style.getPropertyValue('--note-bg')).toBe('#685FFF');
+    });
+
+    // A url() colour would make every viewer's browser fetch an outside host when the note is drawn.
+    it('fills a note stored with a url() colour with the default note colour', () => {
+        renderLoaded('url(https://attacker.example/pixel.png)');
+
+        expect(note().style.getPropertyValue('--note-bg')).toBe('#ffffd1');
     });
 });

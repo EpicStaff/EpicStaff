@@ -23,6 +23,7 @@ from manager.domain.enums import ExecutionStatus, VenvStatus
 from manager.domain.errors import (
     SandboxOverloadedError,
     SecretNotDecryptableError,
+    SystemVenvNotFoundError,
     VenvNotFoundError,
 )
 from manager.domain.models import StorageCredentials
@@ -102,7 +103,8 @@ def build_orchestrator(
 ) -> JobOrchestrator:
     intake_gate = IntakeGate(
         registry,
-        lambda: True,
+        # As many guaranteed slots as the cap admits: a worker slot is always free.
+        lambda: MAX_ACCEPTED,
         max_accepted=MAX_ACCEPTED,
         max_held=MAX_HELD,
         queue_timeout=QUEUE_TIMEOUT,
@@ -205,8 +207,11 @@ async def test_submit_against_a_failed_venv_reports_a_failure(
 
 
 async def test_submit_without_a_venv_id_uses_the_default_venv(uow, orchestrator, dispatcher):
-    uow.venv_repo.seed(make_venv(name="data", status=VenvStatus.COMPLETED, hash="9zzz"))
-    uow.venv_repo.seed(make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc"))
+    # A tenant's venv named `default`, stored first, must not be taken for the fallback.
+    uow.venv_repo.seed(make_venv(name="default", status=VenvStatus.COMPLETED, hash="9zzz"))
+    uow.venv_repo.seed(
+        make_venv(name="default", status=VenvStatus.COMPLETED, hash="1abc", system_key="default")
+    )
 
     await orchestrator.submit(venv_id=None, **SUBMISSION)
 
@@ -219,8 +224,41 @@ async def test_submit_against_a_missing_venv_raises(orchestrator):
 
 
 async def test_submit_without_a_venv_id_and_no_default_raises(orchestrator):
-    with pytest.raises(VenvNotFoundError):
+    with pytest.raises(SystemVenvNotFoundError):
         await orchestrator.submit(venv_id=None, **SUBMISSION)
+
+
+async def test_submit_with_a_system_venv_runs_in_that_venv(uow, orchestrator, dispatcher):
+    # A tenant's venv of the same name, and the default, must not be taken for it.
+    uow.venv_repo.seed(make_venv(name="file_extractor", status=VenvStatus.COMPLETED, hash="9zzz"))
+    uow.venv_repo.seed(
+        make_venv(name="default", status=VenvStatus.COMPLETED, hash="8yyy", system_key="default")
+    )
+    system = uow.venv_repo.seed(
+        make_venv(
+            name="file_extractor",
+            status=VenvStatus.COMPLETED,
+            hash="1abc",
+            system_key="file_extractor",
+        )
+    )[0]
+
+    await orchestrator.submit(venv_id=None, system_venv="file_extractor", **SUBMISSION)
+
+    assert (dispatcher.dispatched[0].venv_id, dispatcher.dispatched[0].venv_hash) == (
+        system.id,
+        "1abc",
+    )
+
+
+async def test_submit_with_an_undeclared_system_venv_raises_and_forgets_the_id(
+    orchestrator, registry
+):
+    with pytest.raises(SystemVenvNotFoundError):
+        await orchestrator.submit(
+            venv_id=None, system_venv="audio_transcription", **SUBMISSION
+        )
+    assert registry.status(SUBMISSION["execution_id"]) is None
 
 
 async def test_a_dispatch_failure_does_not_reach_the_caller(uow, orchestrator, dispatcher):

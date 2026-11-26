@@ -245,17 +245,32 @@ async def test_submitted_task_gets_a_fresh_execution_id_and_its_result(client, s
 
 
 async def test_storage_credentials_reach_the_intake(client, sandbox):
-    credentials = StorageCredentials(access_key="AK-TEMP", secret_key="SK-TEMP")
+    credentials = StorageCredentials(
+        access_key="AK-TEMP",
+        secret_key="SK-TEMP",
+        shared_actions=["read"],
+        own_paths=["sessions/42/"],
+    )
 
     await asyncio.wait_for(client.submit(_storage_task(credentials)), timeout=2)
 
     assert sandbox.submitted["storage_credentials"] == {
         "access_key": "AK-TEMP",
         "secret_key": "SK-TEMP",
+        "shared_actions": ["read"],
+        "own_paths": ["sessions/42/"],
     }
     assert sandbox.submitted["use_storage"] is True
     assert sandbox.submitted["storage_allowed_paths"] == ["org_7/session_42/"]
     assert sandbox.submitted["storage_org_prefix"] == "org_7"
+
+
+async def test_system_venv_reaches_the_intake(client, sandbox):
+    """A built-in tool names the sandbox's own venv instead of a venv id."""
+    await asyncio.wait_for(client.submit(_task(system_venv="builtin_tools")), timeout=2)
+
+    assert sandbox.submitted["system_venv"] == "builtin_tools"
+    assert sandbox.submitted["venv_id"] is None
 
 
 async def test_task_without_storage_submits_null_credentials(client, sandbox):
@@ -511,11 +526,12 @@ async def test_reader_loop_failure_logs_the_class_name_and_a_digest_only(explodi
     assert_masked_exception(error_line, "RuntimeError")
 
 
-async def test_reader_loop_failure_reaches_the_agent_as_an_unredacted_tool_result(
+async def test_reader_loop_failure_reaches_the_agent_without_its_cause(
     exploding_sandbox,
 ):
-    """Only the log line is redacted: the ConnectionError text still carries the cause,
-    and the executor passes it to the agent as ToolResult.content."""
+    """The executor passes the ConnectionError text to the model as ToolResult.content,
+    so it names the failure only: the cause (a Redis error quotes host and port) is
+    logged, not forwarded."""
     sandbox_client = _build_client()
     await sandbox_client.start()
     executor = PythonCodeToolExecutor(sandbox_client, _make_tool_data())
@@ -525,6 +541,4 @@ async def test_reader_loop_failure_reaches_the_agent_as_an_unredacted_tool_resul
         await sandbox_client.stop()
 
     assert tool_result.is_error is True
-    assert tool_result.content == (
-        f"SandboxClient reader loop failed: pubsub subscription broke: {READER_MARKER}"
-    )
+    assert tool_result.content == "SandboxClient result listener failed"

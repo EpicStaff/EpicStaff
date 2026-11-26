@@ -81,11 +81,18 @@ creation are organization-scoped:
 Every `get_org_scope_q` returns `Q()` when `org_id is None`, so direct/internal
 callers that do not pass an org are unaffected.
 
-**Secret markers.** `BaseConfigStrategy.create_entity` calls `check_config_import` with the
-strategy's `marker_fields` (`extra_headers` for LLM and embedding configs). A created config
-carrying an `epicstaff_secret(<name>)` marker needs `secrets:USE` for the importing user;
-a denial is a `400` that rolls the import back. Configs the import reuses are never written
-and are not checked.
+**Secret markers.** `BaseConfigStrategy.create_entity` runs the strategy's `secret_use_check`,
+the same check the API write path runs (`check_llm_config_write` / `check_embedding_config_write`).
+A created config carrying an `epicstaff_secret(<name>)` marker in `extra_headers` or `connection`
+needs `secrets:USE` for the importing user, and a plugin credential may not set an endpoint field
+of `connection`; a denial is a `400` that rolls the import back. Configs the import reuses are
+never written and are not checked.
+
+**Model catalog.** An LLM or embedding config's `parameters` and `connection` are fitted to its
+model before they are compared or stored (`BaseCatalogConfigStrategy`): settings the model does
+not take and connection fields its provider does not declare are dropped, values are kept as they
+are, and required connection fields are not demanded. A connection marker must sit in a secret
+field and name a secret of the importing organization (`ConfigValidationService.validate_import`).
 
 ---
 

@@ -19,7 +19,8 @@ from plugins.ownership.request_scope import request_scope
 from plugins.runs.run_guard import PluginRunGuard
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory
-from tables.models import EmbeddingConfig, Session
+from tables.models import Session
+from ai_models.models import EmbeddingConfig, EmbeddingModel, Provider
 from tables.models.graph_models import ClassificationDecisionTableNode, ClassificationDecisionTablePrompt
 from tables.models.knowledge_models.collection_models import BaseRagType, DocumentMetadata, SourceCollection
 from tables.models.knowledge_models.naive_rag_models import NaiveRag
@@ -206,10 +207,27 @@ def knowledge_client(monkeypatch):
     return client
 
 
-def _naive_rag(acme, headers) -> NaiveRag:
+def _naive_rag(acme, headers, connection=None) -> NaiveRag:
     collection = SourceCollection.objects.create(collection_name="Forecasts", org=acme)
     DocumentMetadata.objects.create(source_collection=collection, file_name="a.txt")
-    embedder = EmbeddingConfig.objects.create(custom_name="Weather embeddings", org=acme, extra_headers=headers)
+    # A connection marker is sent only from a secret field its provider declares: Bedrock's.
+    model = (
+        EmbeddingModel.objects.create(
+            name="weather-embed",
+            embedding_provider=Provider.objects.get_or_create(name="bedrock")[0],
+            org=acme,
+            is_custom=True,
+        )
+        if connection
+        else None
+    )
+    embedder = EmbeddingConfig.objects.create(
+        custom_name="Weather embeddings",
+        org=acme,
+        model=model,
+        extra_headers=headers,
+        connection=connection or {},
+    )
     return NaiveRag.objects.create(
         base_rag_type=BaseRagType.objects.create(source_collection=collection, rag_type=BaseRagType.RagType.NAIVE),
         embedder=embedder,
@@ -240,4 +258,31 @@ def test_a_purged_then_recreated_secret_name_refuses_the_plugin_s_indexing(acme,
 
     assert response.status_code == 409, response.content
     assert response.json() == REFUSAL
+    knowledge_client.index.assert_not_called()
+
+
+def _connection_marker(secret) -> dict[str, str]:
+    """A connection whose secret field names `secret` by marker."""
+    return {"aws_access_key_id": f"epicstaff_secret({secret.name})"}
+
+
+def test_a_plugin_indexes_with_a_connection_marker_of_its_own_secret(acme, acme_key, own_key, knowledge_client):
+    response = _index(acme, acme_key, _naive_rag(acme, {}, _connection_marker(own_key)))
+
+    assert response.status_code == 202, response.content
+    assert open_sealed_headers(knowledge_client.index.call_args.kwargs["embedding_connection"]) == {
+        "aws_access_key_id": "sk-weather"
+    }
+
+
+def test_a_purged_then_recreated_secret_name_in_a_connection_refuses_the_plugin_s_indexing(
+    acme, acme_key, own_key, knowledge_client
+):
+    rag = _naive_rag(acme, {}, _connection_marker(own_key))
+    _purge_and_recreate(own_key)
+
+    response = _index(acme, acme_key, rag)
+
+    assert response.status_code == 409, response.content
+    assert response.json()["code"] == REFUSAL["code"]
     knowledge_client.index.assert_not_called()

@@ -1,0 +1,97 @@
+<div
+    class="grid-table-wrapper"
+    role="grid"
+>
+    <!-- Header row -->
+    <div
+        class="grid-table-header"
+        role="row"
+        [style.grid-template-columns]="gridTemplateColumns()"
+    >
+        @for (def of columnDefs(); track def.key) {
+            <div
+                #headerCell
+                class="grid-table-cell"
+                [class.grid-table-cell--pinned-end]="def.pinned === 'end'"
+                role="columnheader"
+            >
+                <span class="grid-table-col-label">{{ formatColumnHeader(def) }}</span>
+                @if (!isActionColumn(def)) {
+                    <span
+                        class="grid-table-resize-handle"
+                        (pointerdown)="onResizeStart(def.key, $event, headerCell)"
+                        (pointermove)="onResizeMove($event)"
+                        (pointerup)="onResizeEnd()"
+                        (pointercancel)="onResizeEnd()"
+                        (lostpointercapture)="onResizeEnd()"
+                        (pointerenter)="onResizeHandleEnter(def.key)"
+                        (pointerleave)="onResizeHandleLeave(def.key)"
+                    ></span>
+                }
+            </div>
+        }
+    </div>
+
+    <!-- Body rows -->
+    <div
+        class="grid-table-body"
+        role="rowgroup"
+    >
+        @for (row of rows(); track $index; let rowIndex = $index) {
+            <div
+                class="grid-table-row"
+                role="row"
+                [style.grid-template-columns]="gridTemplateColumns()"
+            >
+                @for (def of columnDefs(); track def.key; let columnIndex = $index) {
+                    <!-- Roving tabindex: one cell is in the Tab order, the arrow keys move between cells -->
+                    <div
+                        #bodyCell
+                        class="grid-table-cell grid-table-cell--body"
+                        [class.grid-table-cell--pinned-end]="def.pinned === 'end'"
+                        [class.grid-table-cell--action]="isActionColumn(def)"
+                        [class.grid-table-cell--resize-line]="def.key === activeResizeKey()"
+                        role="gridcell"
+                        [attr.aria-label]="def.action?.tooltip ?? null"
+                        [tabIndex]="cellTabIndex(rowIndex, columnIndex)"
+                        (focus)="onCellFocus(rowIndex, columnIndex)"
+                        (click)="onCellActivate(def, row, bodyCell)"
+                        (keydown)="onCellKeydown($event, def, row, { row: rowIndex, column: columnIndex }, bodyCell)"
+                    >
+                        @if (def.action; as action) {
+                            <app-svg-icon
+                                class="grid-table-action-icon"
+                                [icon]="action.icon"
+                                size="1.5rem"
+                                [matTooltip]="action.tooltip ?? ''"
+                                matTooltipPosition="left"
+                            />
+                        } @else {
+                            <span
+                                class="grid-table-cell-text"
+                                [innerHTML]="row[def.key] | highlight: searchTerm()"
+                            ></span>
+                            @if (def.copyable && row[def.key] != null) {
+                                <app-copy-button
+                                    class="grid-table-copy-btn"
+                                    [text]="cellString(row[def.key])"
+                                    ariaLabel="Copy id"
+                                />
+                            }
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Cell popover -->
+@if (expandedCell(); as cell) {
+    <div
+        class="grid-table-popover"
+        [style]="cell.style"
+    >
+        <span class="grid-table-popover__text">{{ cell.value }}</span>
+    </div>
+}

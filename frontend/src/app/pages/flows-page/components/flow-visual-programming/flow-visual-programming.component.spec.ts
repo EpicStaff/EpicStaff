@@ -806,6 +806,31 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(liveCanvas()).toBeDefined();
         });
 
+        it('shows the server message when a restore is refused for missing Files permissions', () => {
+            enterPreview(VERSION_A);
+            flowsApi['restoreGraphVersion'].mockReturnValue(
+                throwError(
+                    () =>
+                        new HttpErrorResponse({
+                            status: 403,
+                            error: {
+                                status_code: 403,
+                                code: 'storage_grant_denied',
+                                message: 'You lack Files permissions: read, update.',
+                                missing_grants: ['read', 'update'],
+                            },
+                        })
+                )
+            );
+            unsavedChangesDialog.confirm.mockReturnValue(of('dont-save'));
+
+            component.onVersionRestoreRequested(VERSION_A);
+            fixture.detectChanges();
+
+            expect(toast['error']).toHaveBeenCalledExactlyOnceWith('You lack Files permissions: read, update.');
+            expect(toast['success']).not.toHaveBeenCalled();
+        });
+
         it('explains a restore refused over code that reads secrets with no toast', () => {
             enterPreview(VERSION_A);
             const confirm = vi
@@ -1223,7 +1248,9 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(command).toContain('"graph_uuid": "graph-uuid"');
             expect(command).toContain('"topic": "pricing"');
             expect(command).toContain('/api/run-session/');
-            expect(toast['success']).toHaveBeenCalledWith('cURL command copied to clipboard!');
+            expect(toast['success']).toHaveBeenCalledWith(
+                'cURL command copied! Keep only one auth header: access token or API key.'
+            );
         });
 
         it.each([
@@ -1496,7 +1523,6 @@ describe('FlowVisualProgrammingComponent', () => {
             metadata: {},
             webhook_trigger: null,
             test_payload: {},
-            use_storage: false,
             created_at: '2026-01-01T00:00:00Z',
             created_by: null,
             last_edited_by: null,
@@ -1700,7 +1726,6 @@ describe('FlowVisualProgrammingComponent', () => {
                                 metadata: {},
                                 webhook_trigger: null,
                                 test_payload: {},
-                                use_storage: false,
                                 created_at: '2026-01-01T00:00:00Z',
                                 created_by: null,
                                 last_edited_by: null,
@@ -3001,11 +3026,9 @@ describe('FlowVisualProgrammingComponent', () => {
                 pre_python_code: null,
                 pre_input_map: {},
                 pre_output_variable_path: null,
-                pre_use_storage: false,
                 post_python_code: null,
                 post_input_map: {},
                 post_output_variable_path: null,
-                post_use_storage: false,
                 prompt_configs: [],
                 default_llm_config: null,
                 default_next_node_id: null,

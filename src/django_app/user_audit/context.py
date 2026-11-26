@@ -6,6 +6,25 @@ from dataclasses import dataclass, field
 from django.db.models import Model
 from django.http import HttpRequest
 
+from user_audit.targets import TargetDescription
+
+
+@dataclass(frozen=True)
+class RowBeforeDelete:
+    """The row a DELETE request's URL names, read before the view deletes it.
+
+    Described then, with its parent, because the view may delete with it a row the parent
+    is reached through (a RAG reaches its collection through its base type, which the
+    delete removes), and afterwards the parent could no longer be read.
+
+    Attributes:
+        row: Carries its owning org's id (`ORG_BEFORE_DELETE_ATTRIBUTE` in the middleware).
+    """
+
+    row: Model
+    description: TargetDescription
+    parent: Model | None
+
 
 @dataclass
 class UserActionContext:
@@ -16,14 +35,14 @@ class UserActionContext:
             request itself only while it is still False.
         retention_days_by_org: Each org's audit retention, read once per request however
             many actions it records.
-        row_before_delete: The row a DELETE request's URL names, loaded before the view
-            deletes it, so the fallback can still name it afterwards.
+        row_before_delete: The row a DELETE request's URL names, loaded and described
+            before the view deletes it, so the fallback can still name it afterwards.
     """
 
     request: HttpRequest
     recorded: bool = False
     retention_days_by_org: dict[int, int] = field(default_factory=dict)
-    row_before_delete: Model | None = None
+    row_before_delete: RowBeforeDelete | None = None
 
 
 _current_context: ContextVar[UserActionContext | None] = ContextVar(

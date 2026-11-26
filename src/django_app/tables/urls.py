@@ -1,9 +1,14 @@
+from ai_models.views.default_config import DefaultModelsAPIView
+from ai_models.views.model_view_sets import (
+    EmbeddingConfigReadWriteViewSet,
+    EmbeddingModelReadWriteViewSet,
+    LLMConfigReadWriteViewSet,
+    LLMModelReadWriteViewSet,
+    ProviderReadWriteViewSet,
+)
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from tables.views.default_config import (
-    DefaultModelsAPIView,
-)
 from tables.views.execution_timeout_limits_views import ExecutionTimeoutLimitsAPIView
 from tables.views.flow_assistant_views import (
     FlowAssistantAuditView,
@@ -51,8 +56,6 @@ from tables.views.model_view_sets import (
     DecisionTableNodeModelViewSet,
     EdgeViewSet,
     ElevenLabsRealtimeConfigViewSet,
-    EmbeddingConfigReadWriteViewSet,
-    EmbeddingModelReadWriteViewSet,
     EndNodeModelViewSet,
     FileExtractorNodeViewSet,
     FlowFilterPresetViewSet,
@@ -68,11 +71,8 @@ from tables.views.model_view_sets import (
     KeyValueTableViewSet,
     KnowledgeNodeViewSet,
     LabelViewSet,
-    LLMConfigReadWriteViewSet,
-    LLMModelReadWriteViewSet,
     McpToolViewSet,
     OpenAIRealtimeConfigViewSet,
-    ProviderReadWriteViewSet,
     PythonCodeResultReadViewSet,
     PythonCodeToolConfigViewSet,
     PythonCodeToolViewSet,
@@ -388,6 +388,36 @@ urlpatterns = [
         "graph-rag/<int:pk>/documents/initialize/",
         GraphRagViewSet.as_view({"post": "initialize_documents"}),
         name="graph-rag-documents-initialize",
+    ),
+    path(
+        "graph-rag/<int:pk>/visualization/",
+        GraphRagViewSet.as_view({"get": "visualization"}),
+        name="graph-rag-visualization",
+    ),
+    path(
+        "graph-rag/<int:pk>/entity/<str:entity_id>/",
+        GraphRagViewSet.as_view({"get": "entity_detail"}),
+        name="graph-rag-entity-detail",
+    ),
+    path(
+        "graph-rag/<int:pk>/relationship/<str:relationship_id>/",
+        GraphRagViewSet.as_view({"get": "relationship_detail"}),
+        name="graph-rag-relationship-detail",
+    ),
+    path(
+        "graph-rag/<int:pk>/table-summary/",
+        GraphRagViewSet.as_view({"get": "table_summary"}),
+        name="graph-rag-table-summary",
+    ),
+    path(
+        "graph-rag/table-link-pairs/",
+        GraphRagViewSet.as_view({"get": "table_link_pairs"}),
+        name="graph-rag-table-link-pairs",
+    ),
+    path(
+        "graph-rag/<int:pk>/tables/<str:table_name>/",
+        GraphRagViewSet.as_view({"get": "table_data"}),
+        name="graph-rag-table-data",
     ),
     path(
         "telegram-trigger-available-fields/",

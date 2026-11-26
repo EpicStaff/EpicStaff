@@ -1,6 +1,7 @@
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
-from plugins.access.available_plugins import AvailablePlugin
+from plugins.access.available_plugins import AVAILABILITIES, UNAVAILABLE, AvailablePlugin
 from plugins.origins import PluginOrigins
 from plugins.serializers.admin import icon_url, navigation_icon_url
 
@@ -19,7 +20,13 @@ class AvailablePluginSerializer(serializers.Serializer):
     icon_url = serializers.SerializerMethodField()
     frame_origin = serializers.SerializerMethodField()
     permissions = serializers.ListField(child=serializers.CharField())
-    availability = serializers.ChoiceField(choices=["ready", "maintenance"])
+    availability = serializers.ChoiceField(
+        choices=AVAILABILITIES,
+        help_text=(
+            "ready: open it in its frame. maintenance: it is being updated. unavailable: its host "
+            "is served by another server, not this EpicStaff; it must not be framed."
+        ),
+    )
     development = serializers.BooleanField(
         help_text="Served from a developer's machine by plugin development mode."
     )
@@ -28,7 +35,18 @@ class AvailablePluginSerializer(serializers.Serializer):
     def get_icon_url(self, available: AvailablePlugin) -> str:
         return icon_url(available.plugin)
 
-    def get_frame_origin(self, available: AvailablePlugin) -> str:
+    @extend_schema_field(
+        serializers.CharField(
+            allow_null=True,
+            help_text=(
+                "The only origin the plugin's page is framed from; null while the plugin is "
+                "unavailable, so not even an outdated page of EpicStaff can frame its host."
+            ),
+        )
+    )
+    def get_frame_origin(self, available: AvailablePlugin) -> str | None:
+        if available.availability == UNAVAILABLE:
+            return None
         return PluginOrigins().frame_origin(available.plugin.identifier)
 
     def get_navigation(self, available: AvailablePlugin) -> list[dict]:

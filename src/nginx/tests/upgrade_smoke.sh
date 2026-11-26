@@ -22,7 +22,7 @@
 #
 # Settings, from the environment:
 #   SMOKE_BASE_URL            EpicStaff's origin, as in DJANGO_FRONTEND_BASE_URL, e.g. http://epicstaff.localhost
-#   SMOKE_PLUGINS_BASE_DOMAIN PLUGINS_BASE_DOMAIN, e.g. plugins.epicstaff.localhost
+#   SMOKE_PLUGINS_HOST_TEMPLATE PLUGINS_HOST_TEMPLATE, e.g. {id}.plugins.epicstaff.localhost
 #   SMOKE_PLUGIN              a running plugin with a backend and a database, granted to SMOKE_ORG_ID, e.g. weather
 #   SMOKE_ORG_ID              an organization the plugin is active in
 #   SMOKE_SAMPLE_DIR          the plugin's sample directory at the installed version, e.g. plugin-samples/weather
@@ -44,7 +44,7 @@
 # inside a file, counted only.
 #
 # Usage:
-#   SMOKE_BASE_URL=http://epicstaff.localhost SMOKE_PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
+#   SMOKE_BASE_URL=http://epicstaff.localhost SMOKE_PLUGINS_HOST_TEMPLATE='{id}.plugins.epicstaff.localhost' \
 #   SMOKE_PLUGIN=weather SMOKE_ORG_ID=3 SMOKE_SAMPLE_DIR=plugin-samples/weather \
 #   SMOKE_SDK_WHEEL=/tmp/epicstaff-plugin-dist/epicstaff_plugin-0.7.0-py3-none-any.whl SMOKE_PLUGIN_UID=20001 \
 #   SMOKE_SUPERADMIN_EMAIL=root@example.com SMOKE_SUPERADMIN_PASSWORD=... \
@@ -60,7 +60,7 @@ shift
 
 repository=$(cd "$(dirname "$0")/../../.." && pwd)
 base_url=${SMOKE_BASE_URL:?set SMOKE_BASE_URL, e.g. http://epicstaff.localhost}
-base_domain=${SMOKE_PLUGINS_BASE_DOMAIN:?set SMOKE_PLUGINS_BASE_DOMAIN, e.g. plugins.epicstaff.localhost}
+host_template=${SMOKE_PLUGINS_HOST_TEMPLATE:?set SMOKE_PLUGINS_HOST_TEMPLATE, e.g. \{id\}.plugins.epicstaff.localhost}
 plugin=${SMOKE_PLUGIN:?set SMOKE_PLUGIN to a running plugin with a database, e.g. weather}
 org_id=${SMOKE_ORG_ID:?set SMOKE_ORG_ID}
 sample_dir=${SMOKE_SAMPLE_DIR:?set SMOKE_SAMPLE_DIR to the sample directory of the plugin}
@@ -98,7 +98,7 @@ for path in "$sample_dir/manifest.json" "$sample_dir/database/migrations" "$sdk_
   [ -e "$path" ] || { echo "ERROR: $path does not exist" >&2; exit 2; }
 done
 base_url=${base_url%/}
-plugin_origin="${base_url%%://*}://$plugin.$base_domain"
+plugin_origin="${base_url%%://*}://${host_template/\{id\}/$plugin}"
 database="plugin_${plugin//-/_}"
 
 work_dir=$(mktemp -d)

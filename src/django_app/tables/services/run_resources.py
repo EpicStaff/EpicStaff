@@ -5,16 +5,17 @@ touches. A `FollowField` row follows a forward FK, O2O or auto-through M2M by id
 target's recycle-bin state, because a run would use the target or fail on it. A
 `FollowChildren` row follows the live rows of a child model (its default manager) whose FK
 points at a reached row, as a run reads them. A `FollowSecretMarkers` row follows the
-`epicstaff_secret(<name>)` markers of a header field by name, to the secret a run resolves for
-it. The walk is deliberately broad: an agent counts with both LLM configs, all its default
+`epicstaff_secret(<name>)` markers of a header or connection field by name, to the secret a
+run resolves for it. The walk is deliberately broad: an agent counts with both LLM configs, all its default
 surfaces and its voice configs, a collection with every RAG's embedder and LLM, and an
 attached folder with every file under it. Over-counting shows in what a suspension stops;
 a missed reference would let a run use something it should not.
 
 Adding a reference (a new node type, a new FK on a model the walk reaches, a new child row):
 add a `FollowField` or `FollowChildren` row, or an entry in `RUN_REFERENCE_EXEMPTIONS` or
-`RUN_TRAVERSAL_STOPS` with the reason it is not followed. A new header field a run resolves
-markers in (a field whose name ends in `extra_headers`) gets a `FollowSecretMarkers` row.
+`RUN_TRAVERSAL_STOPS` with the reason it is not followed. A new field a run resolves markers
+in (a field whose name ends in `extra_headers` or `connection`) gets a `FollowSecretMarkers`
+row.
 `tests/plugins_tests/test_run_resource_collector_coverage.py` fails until one is added.
 """
 
@@ -79,7 +80,7 @@ class FollowChildren:
 
 @dataclass(frozen=True)
 class FollowSecretMarkers:
-    """Follow the `epicstaff_secret(<name>)` markers in the header field `field` of `model`.
+    """Follow the `epicstaff_secret(<name>)` markers in the dict field `field` of `model`.
 
     A marker binds by name when a run starts, not by id when it is written: the run sends the
     live secret of that name in its organization (`SecretResolver.resolve_named`). So a marker
@@ -205,6 +206,9 @@ RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
     # Tools and code.
     FollowField("tables.PythonCodeTool", "python_code"),
     FollowField("tables.PythonCode", "secrets"),
+    # The venv the code runs in. Its custom libraries are not reached: a venv names them
+    # inside the sandbox, by name, with no link in this database for the walk to follow.
+    FollowField("tables.PythonCode", "venv"),
     FollowField("tables.McpTool", "auth_secret"),
     # Knowledge: every RAG of a collection, not only the one a node picks.
     FollowChildren("tables.BaseRagType", "source_collection"),
@@ -214,12 +218,12 @@ RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
     FollowField("tables.GraphRag", "embedder"),
     FollowField("tables.GraphRag", "llm"),
     # Model configs.
-    FollowField("tables.LLMConfig", "model"),
-    FollowField("tables.LLMConfig", "api_key_secret"),
+    FollowField("ai_models.LLMConfig", "model"),
+    FollowField("ai_models.LLMConfig", "api_key_secret"),
     FollowField("tables.SystemOneConfig", "api_key_secret"),
     FollowField("tables.SystemOneConfig", "llm_config"),
-    FollowField("tables.EmbeddingConfig", "model"),
-    FollowField("tables.EmbeddingConfig", "api_key_secret"),
+    FollowField("ai_models.EmbeddingConfig", "model"),
+    FollowField("ai_models.EmbeddingConfig", "api_key_secret"),
     # Webhooks.
     FollowChildren("tables.WebhookTriggerAuth", "trigger"),
     FollowField("tables.WebhookTriggerAuth", "secret"),
@@ -233,11 +237,13 @@ RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
     FollowField("tables.TwilioChannel", "webhook_trigger"),
 )
 
-# Every header field whose markers a run resolves (`SecretResolver` fills each payload field
-# whose name ends in `extra_headers` from these).
+# Every field whose markers a run resolves (`SecretResolver` fills each payload field whose
+# name ends in `extra_headers` or `connection` from these).
 RUN_SECRET_MARKERS: tuple[FollowSecretMarkers, ...] = (
-    FollowSecretMarkers("tables.LLMConfig", "extra_headers"),
-    FollowSecretMarkers("tables.EmbeddingConfig", "extra_headers"),
+    FollowSecretMarkers("ai_models.LLMConfig", "extra_headers"),
+    FollowSecretMarkers("ai_models.LLMConfig", "connection"),
+    FollowSecretMarkers("ai_models.EmbeddingConfig", "extra_headers"),
+    FollowSecretMarkers("ai_models.EmbeddingConfig", "connection"),
 )
 
 # Forward references of a model the walk reaches that it does not follow: (model, field).
@@ -298,19 +304,8 @@ RUN_START_MODELS: Mapping[RunKind, str] = MappingProxyType(
         RunKind.REALTIME: "agents.AgentDefinition",
         RunKind.VOICE_CHANNEL: "tables.RealtimeChannel",
         RunKind.CODE: "tables.PythonCode",
-    }
-)
-
-# The flag that gives a code slot of a flow node the flow's attached files and folders, as
-# the converter scopes its storage. A test run of the slot can read them, so a code run
-# counts them as used while the flag is on. A code slot of a flow node not listed here
-# always counts them.
-CODE_SLOT_STORAGE_FLAGS: Mapping[tuple[str, str], str] = MappingProxyType(
-    {
-        ("tables.PythonNode", "python_code"): "use_storage",
-        ("tables.WebhookTriggerNode", "python_code"): "use_storage",
-        ("tables.ClassificationDecisionTableNode", "pre_python_code"): "pre_use_storage",
-        ("tables.ClassificationDecisionTableNode", "post_python_code"): "post_use_storage",
+        RunKind.LLM_CONFIG: "ai_models.LLMConfig",
+        RunKind.EMBEDDING_CONFIG: "ai_models.EmbeddingConfig",
     }
 )
 
@@ -334,9 +329,8 @@ class RunResourceCollector:
     A code run (`RunKind.CODE`) walks the code itself (its secrets) and adds, without
     walking them, the rows that hold it: a tool with that code, or the flow of a node with
     that code. A test run of one node of a flow is therefore never refused because another
-    node of the same flow uses something. When the node's slot uses storage
-    (`CODE_SLOT_STORAGE_FLAGS`), the flow's attached files and folders count too, since the
-    test run can read them.
+    node of the same flow uses something. The flow's attached files and folders count too,
+    since the test run can read them.
     """
 
     def collect(self, subject: RunSubject) -> RunResources:
@@ -407,8 +401,6 @@ class _ChildLink:
 @dataclass(frozen=True)
 class _CodeSlot:
     code_attname: str
-    # None on a flow node: the slot always counts the flow's attached storage.
-    storage_flag: str | None
 
 
 @dataclass(frozen=True)
@@ -585,12 +577,7 @@ def _code_holder_plan() -> tuple[_CodeHolder, ...]:
             continue
         field = apps.get_model(reference.model)._meta.get_field(reference.field)
         if not field.many_to_many and field.related_model._meta.label == _PYTHON_CODE:
-            slots[reference.model].append(
-                _CodeSlot(
-                    code_attname=field.attname,
-                    storage_flag=CODE_SLOT_STORAGE_FLAGS.get((reference.model, reference.field)),
-                )
-            )
+            slots[reference.model].append(_CodeSlot(code_attname=field.attname))
     flow_links = {
         reference.child: apps.get_model(reference.child)._meta.get_field(reference.fk).attname
         for reference in RUN_REFERENCES
@@ -621,9 +608,7 @@ def _add_code_holders(
         matches = reduce(
             or_, (Q(**{f"{slot.code_attname}__in": code_ids}) for slot in holder.slots)
         )
-        columns = [slot.code_attname for slot in holder.slots] + [
-            slot.storage_flag for slot in holder.slots if slot.storage_flag is not None
-        ]
+        columns = [slot.code_attname for slot in holder.slots]
         rows = (
             apps.get_model(holder.model)
             ._base_manager.filter(matches)
@@ -638,7 +623,7 @@ def _add_code_holders(
                 if code_id not in starts:
                     continue
                 used[code_id].add(root)
-                if holder.root == _GRAPH and (slot.storage_flag is None or row[slot.storage_flag]):
+                if holder.root == _GRAPH:
                     flows_with_storage[code_id].add(root)
 
     storage_walk = _Walk(_attached_storage_plan())
@@ -654,7 +639,7 @@ class _Walk:
 
     Passes go model by model in the plan's order and query a model's newly reached rows
     together, so the number of queries depends on the table and on how often references
-    lead back to an earlier model, never on how many rows there are. A row's header markers
+    lead back to an earlier model, never on how many rows there are. A row's markers
     are read in the same query as its other fields, and the names found are looked up once
     the passes reach nothing more: one query for every name of every row.
     """

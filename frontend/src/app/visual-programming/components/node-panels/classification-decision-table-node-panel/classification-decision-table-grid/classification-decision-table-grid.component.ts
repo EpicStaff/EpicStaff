@@ -914,6 +914,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
     };
 
     private savedColumnWidths = new Map<string, number>();
+    /** Columns whose width the user set by hand; fitting the columns to the grid keeps them as they are. */
+    private readonly userResizedColIds = new Set<string>();
     private saveTimeout: ReturnType<typeof setTimeout> | null = null;
     private isRebuilding = false;
     /** Guard flag to prevent recursive cellValueChanged loops during programmatic cell writes. */
@@ -934,6 +936,8 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             });
             const state = {
                 widths,
+                // Only columns that still exist: a removed variable takes its hand-set width with it.
+                userResizedColIds: [...this.userResizedColIds].filter((colId) => colId in widths),
                 order: this.movableColumnOrder(),
                 manipOrder: this.manipColumnOrder(),
                 pinned: this.frozenColIdsFor(this.freezeState()),
@@ -961,6 +965,12 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             const state = JSON.parse(raw);
             if (state.widths) {
                 Object.entries(state.widths).forEach(([k, v]) => this.savedColumnWidths.set(k, v as number));
+            }
+            // A state saved before hand-set widths were remembered has no list: nothing is kept then.
+            if (Array.isArray(state.userResizedColIds)) {
+                (state.userResizedColIds as unknown[])
+                    .filter((colId): colId is string => typeof colId === 'string')
+                    .forEach((colId) => this.userResizedColIds.add(colId));
             }
             if (state.order?.length > 0) {
                 this.movableColumnOrder.set(state.order);
@@ -1077,6 +1087,10 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
         },
         onColumnResized: (event: ColumnResizedEvent) => {
             if (event.finished) {
+                // A double click on a resize handle auto-sizes the column: the grid never does it on its own.
+                if (event.source === 'uiColumnResized' || event.source === 'autosizeColumns') {
+                    this.rememberUserResizedColumns(event);
+                }
                 this.saveGridState();
                 if (event.source !== 'sizeColumnsToFit') {
                     this.ensureColumnsFillViewport();
@@ -2037,7 +2051,13 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             },
             field: 'continue_flag',
             editable: true,
-            minWidth: 80,
+            // One checkbox: fixed to the width its "Continue" label and chevron need. The
+            // max width also caps a width saved before it was fixed, and fitting the
+            // columns to the panel never grows it.
+            width: 100,
+            minWidth: 100,
+            maxWidth: 100,
+            resizable: false,
             cellDataType: 'boolean',
             suppressMovable: true,
             cellStyle: {
@@ -3399,22 +3419,34 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             .replace(/'/g, '&#39;');
     }
 
-    private ensureColumnsFillViewport(): void {
-        if (!this.gridApi) return;
-        setTimeout(() => {
-            const columnState = this.gridApi?.getColumnState();
-            if (!columnState) return;
-            const totalColWidth = columnState.filter((s) => !s.hide).reduce((sum, s) => sum + (s.width ?? 0), 0);
-            const gridEl = this.gridElementRef();
-            if (!gridEl) return;
-            const viewportWidth = gridEl.nativeElement.clientWidth;
-            if (totalColWidth < viewportWidth - 4) {
-                this.gridApi.sizeColumnsToFit();
-            }
-        }, 0);
+    /**
+     * Remembers the columns the user dragged or auto-sized to a new width. A column ag-grid reports only
+     * because it flexed to make room is not one of them.
+     */
+    private rememberUserResizedColumns(event: ColumnResizedEvent): void {
+        const flexed = new Set(event.flexColumns ?? []);
+        (event.columns ?? [])
+            .filter((column) => !flexed.has(column))
+            .forEach((column) => this.userResizedColIds.add(column.getColId()));
     }
 
+    /** Stretches the columns when they no longer fill the grid width. */
+    private ensureColumnsFillViewport(): void {
+        this.fitColumnsToGridWhen((totalWidth, gridWidth) => totalWidth < gridWidth - 4);
+    }
+
+    /** Shrinks the columns when they are wider than the grid. */
     private ensureColumnsFitViewport(): void {
+        this.fitColumnsToGridWhen((totalWidth, gridWidth) => totalWidth > gridWidth);
+    }
+
+    /**
+     * Fits the columns to the grid width when `needsFit` says so. Columns whose width the user
+     * set by hand keep it, and the others grow or shrink to make the difference. When they
+     * cannot (none of them can be resized, or even at their minimum widths they overflow),
+     * every column is fitted, rather than leave an empty strip or a scrollbar.
+     */
+    private fitColumnsToGridWhen(needsFit: (totalWidth: number, gridWidth: number) => boolean): void {
         if (!this.gridApi) return;
         setTimeout(() => {
             const columnState = this.gridApi?.getColumnState();
@@ -3423,9 +3455,30 @@ export class ClassificationDecisionTableGridComponent implements OnDestroy {
             const gridEl = this.gridElementRef();
             if (!gridEl) return;
             const viewportWidth = gridEl.nativeElement.clientWidth;
-            if (totalColWidth > viewportWidth) {
+            if (!needsFit(totalColWidth, viewportWidth)) return;
+
+            const displayed = this.gridApi.getAllDisplayedColumns();
+            const isSetByHand = (column: Column): boolean => this.userResizedColIds.has(column.getColId());
+            const canBeFitted = (column: Column): boolean =>
+                column.isResizable() &&
+                !column.getColDef().suppressSizeToFit &&
+                column.getMinWidth() < column.getMaxWidth() &&
+                !isSetByHand(column);
+            const fitted = displayed.filter(canBeFitted);
+            const fixedWidth = displayed
+                .filter((column) => !canBeFitted(column))
+                .reduce((sum, column) => sum + column.getActualWidth(), 0);
+            const fittedMinWidth = fitted.reduce((sum, column) => sum + column.getMinWidth(), 0);
+            if (fitted.length === 0 || fixedWidth + fittedMinWidth > viewportWidth) {
                 this.gridApi.sizeColumnsToFit();
+                return;
             }
+            const columnLimits = displayed.filter(isSetByHand).map((column) => ({
+                key: column,
+                minWidth: column.getActualWidth(),
+                maxWidth: column.getActualWidth(),
+            }));
+            this.gridApi.sizeColumnsToFit({ columnLimits });
         }, 0);
     }
 }

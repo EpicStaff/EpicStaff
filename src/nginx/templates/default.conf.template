@@ -31,9 +31,13 @@ map "$trusted_proxy:$http_x_forwarded_proto" $forwarded_proto {
 # 19-render-django-upstream.envsh renders one line per server from DJANGO_SGI_WORKERS. least_conn
 # sends each request to the server with the fewest active requests, so a burst spreads evenly and
 # a server busy with slow requests gets fewer new ones.
+# keepalive 0: a new connection per request (nginx caches them by default since 1.29.7). Gunicorn
+# closes idle ones after 2 s (--keep-alive) and on every max-requests recycle; a request sent on one
+# as it closes is reset, and nginx never retries a POST.
 upstream backend_server {
     zone backend_server 64k;
     least_conn;
+    keepalive 0;
 ${NGINX_DJANGO_UPSTREAM_SERVERS}}
 
 # The same servers for the long-lived connections (websockets, the session event stream), in
@@ -41,6 +45,7 @@ ${NGINX_DJANGO_UPSTREAM_SERVERS}}
 # a server holding many of them look busy, and steer a burst onto the others.
 upstream backend_stream_server {
     zone backend_stream_server 64k;
+    keepalive 0;
 ${NGINX_DJANGO_UPSTREAM_SERVERS}}
 
 upstream frontend_server {
@@ -53,8 +58,10 @@ upstream realtime_server {
     server ${REALTIME_HOST}:${REALTIME_PORT} resolve;
 }
 
+# keepalive 0: as for backend_server; Uvicorn closes idle connections after 5 s.
 upstream webhook_server {
     zone webhook_server 64k;
+    keepalive 0;
     server ${WEBHOOK_HOST}:${WEBHOOK_PORT} resolve;
 }
 
@@ -342,8 +349,9 @@ server {
     }
 }
 
-# The plugin hosts' server. It must stay after the server above: the first server on a port is
-# the default one, so a host name that is not a valid plugin host still reaches EpicStaff.
+# The plugin hosts' server, and the one that closes every other name under their parent. They must
+# stay after the server above: the first server on a port is the default one, so an IP address or
+# a host name outside the plugins' parent still reaches EpicStaff.
 include /etc/nginx/conf.d/plugins-server-${PLUGINS_ENABLED}.snippet;
 
 # EpicStaff's API for the plugin node and plugin backends, on port 8081 of plugins-network.

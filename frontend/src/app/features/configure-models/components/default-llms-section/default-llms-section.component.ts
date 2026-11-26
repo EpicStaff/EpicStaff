@@ -10,6 +10,7 @@ import { UpdateDefaultModelsRequest } from '../../models/default-models.model';
 import { DefaultModelsStorageService } from '../../services/default-models-storage.service';
 import { DefaultLlmsCardComponent } from '../default-llms-card/default-llms-card.component';
 
+/** The body of the AI Models page's Default Models section: the role cards, grouped ("For Agents"). */
 @Component({
     selector: 'app-default-llms-section',
     imports: [DefaultLlmsCardComponent],

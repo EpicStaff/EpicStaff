@@ -165,6 +165,15 @@ class WebhookTriggerAuth(SoftDeleteFields):
         return f"WebhookTriggerAuth({self.kind}) for trigger {self.trigger_id}"
 
 
+# Every writer of `WebhookTrigger.path` must apply this, including serializers that
+# replace the generated field validators: the webhook service matches paths with "/"
+# stripped, so a path with "/" could collide with another organization's path.
+webhook_path_validator = RegexValidator(
+    regex=r"^[a-zA-Z0-9]{1}[a-zA-Z0-9-_]*$",
+    message="Path may only contain letters, numbers, hyphens, and underscores, and must start with a letter or number.",
+)
+
+
 class WebhookTrigger(OrgScopedModel, LastEditTrackedModel, SoftDeleteMixin):
     """A public webhook endpoint. `path` is the routing key, unique among live
     triggers across all organizations. In the recycle bin its tunnel and auth are
@@ -174,15 +183,7 @@ class WebhookTrigger(OrgScopedModel, LastEditTrackedModel, SoftDeleteMixin):
 
     soft_delete_keeps_references: ClassVar[bool] = True
 
-    path = models.CharField(
-        max_length=255,
-        validators=[
-            RegexValidator(
-                regex=r"^[a-zA-Z0-9]{1}[a-zA-Z0-9-_]*$",
-                message="Path may only contain letters, numbers, hyphens, and underscores, and must start with a letter or number.",
-            )
-        ],
-    )
+    path = models.CharField(max_length=255, validators=[webhook_path_validator])
     provider_type = models.CharField(
         max_length=20,
         choices=ProviderType.choices,

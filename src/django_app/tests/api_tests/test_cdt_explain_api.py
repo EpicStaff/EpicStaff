@@ -16,8 +16,7 @@ from tables.constants.cdt_explanation_limits import (
 )
 from tables.models import Graph
 from tables.models.graph_models import ClassificationDecisionTableNode
-from tables.models.llm_models import LLMConfig, LLMModel
-from tables.models.provider import Provider
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.services.secrets import secret_service
 
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
@@ -139,12 +138,39 @@ def test_failing_calls_with_an_api_key_stay_upstream_failed(
 
 
 @pytest.mark.django_db
+def test_a_bedrock_config_s_connection_and_header_markers_reach_the_call_resolved(
+    acme_client, cdt_node, acme
+):
+    secret_service.create(text="AKIA-acme", org=acme, name="AWS_ID")
+    secret_service.create(text="gateway-token", org=acme, name="GATEWAY_TOKEN")
+    provider, _ = Provider.objects.get_or_create(name="bedrock")
+    model = LLMModel.objects.create(name="anthropic.claude-v2", llm_provider=provider)
+    bedrock_config = LLMConfig.objects.create(
+        custom_name="bedrock",
+        model=model,
+        org=acme,
+        connection={"aws_access_key_id": "epicstaff_secret(AWS_ID)", "aws_region_name": "eu-west-1"},
+        extra_headers={"X-Gateway": "Bearer epicstaff_secret(GATEWAY_TOKEN)"},
+    )
+
+    with mock.patch("litellm.acompletion", side_effect=_answering()) as acompletion:
+        response = acme_client.post(_url(cdt_node.id), _body(bedrock_config.id), format="json")
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    sent = acompletion.call_args.kwargs
+    assert (sent["aws_access_key_id"], sent["aws_region_name"]) == ("AKIA-acme", "eu-west-1")
+    assert sent["extra_headers"] == {"X-Gateway": "Bearer gateway-token"}
+    bedrock_config.refresh_from_db()
+    assert bedrock_config.connection["aws_access_key_id"] == "epicstaff_secret(AWS_ID)"
+
+
+@pytest.mark.django_db
 def test_ollama_config_with_no_api_key_explains(acme_client, cdt_node, acme):
     provider, _ = Provider.objects.get_or_create(name="ollama")
-    model = LLMModel.objects.create(
-        name="llama3", llm_provider=provider, base_url="http://ollama:11434"
+    model = LLMModel.objects.create(name="llama3", llm_provider=provider)
+    ollama_config = LLMConfig.objects.create(
+        custom_name="local", model=model, org=acme, connection={"base_url": "http://ollama:11434"}
     )
-    ollama_config = LLMConfig.objects.create(custom_name="local", model=model, org=acme)
 
     with mock.patch("litellm.acompletion", side_effect=_answering()) as acompletion:
         response = acme_client.post(_url(cdt_node.id), _body(ollama_config.id), format="json")
@@ -155,6 +181,7 @@ def test_ollama_config_with_no_api_key_explains(acme_client, cdt_node, acme):
         "failures": [],
     }
     assert acompletion.call_args.kwargs["model"] == "ollama/llama3"
+    assert acompletion.call_args.kwargs["api_base"] == "http://ollama:11434"
     assert "api_key" not in acompletion.call_args.kwargs
 
 

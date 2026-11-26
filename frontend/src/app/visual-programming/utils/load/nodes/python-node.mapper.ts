@@ -1,6 +1,7 @@
 import { NodeType, toSecretIds, toSecretNames } from '@shared/models';
 import { generateUuid } from '@shared/utils';
 
+import { storageGrantsFromDto } from '../../../core/helpers/storage-grants.util';
 import { PythonNodeModel } from '../../../core/models/node.model';
 import { PythonNode } from '../../../core/models/python-node.model';
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
@@ -22,7 +23,6 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
             venv_id: pn.python_code.venv_id ?? null,
             global_kwargs: pn.python_code.global_kwargs,
             execution_timeout: pn.python_code.execution_timeout,
-            use_storage: pn.use_storage ?? false,
             secret_ids: toSecretIds(pn.python_code.secrets),
             secret_names: toSecretNames(pn.python_code.secrets),
         },
@@ -31,5 +31,6 @@ export function mapPythonNodeToModel(pn: PythonNode): PythonNodeModel {
         input_map: pn.input_map ?? {},
         output_variable_path: pn.output_variable_path,
         size: ui.size,
+        storageGrants: storageGrantsFromDto(pn),
     };
 }

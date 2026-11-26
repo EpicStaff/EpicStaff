@@ -2,14 +2,19 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
 from django.utils import timezone
-from foundation.transport.http import ClientError, ClientUnavailableError
+from foundation.transport.http import (
+    ClientError,
+    ClientUnavailableError,
+    ClientValidationError,
+)
 from loguru import logger
 from pydantic import ValidationError
 from rbac.authorship import resolve_author
 from src.shared.models import CodeResultData, CodeTaskData
-from src.shared.models.storage_scope import StorageCredentials
-from storage_credentials.exceptions import StorageCredentialError
+from src.shared.models.storage_scope import StorageAction, StorageCredentials, StorageGrant
+from storage_credentials.exceptions import CredentialScopeValidationError, StorageCredentialError
 from storage_credentials.resource_names import org_storage_prefix
 from storage_credentials.services.session_credential_service import session_credential_service
 from tables.clients import SandboxExecutionClient
@@ -35,7 +40,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
     _INVALID_REQUEST_LOG = "Invalid code execution request (execution_id={})"
     _INVALID_REQUEST_STDERR = "Invalid code execution request."
     _CREDENTIAL_ISSUE_LOG = (
-        "Failed to issue storage credentials for code execution (execution_id={})"
+        "Failed to issue storage credentials for code execution (execution_id={}): {}"
     )
     _CREDENTIAL_ISSUE_STDERR = "Could not grant file storage access for this run."
     _SUBMIT_FAILED_LOG = "Failed to submit code execution to the sandbox (execution_id={}, {})"
@@ -105,6 +110,11 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         ).exists()
         storage_org_prefix = org_storage_prefix(organization_id) if use_storage else None
         storage_allowed_paths = [f"test-runs/{execution_id}/"] if use_storage else None
+        # Built-in tool code runs in the sandbox's own venv, the way the real run sends it.
+        built_in_tool = PythonCodeTool.objects.filter(
+            python_code=python_code, built_in=True
+        ).first()
+        system_venv = built_in_tool.system_venv if built_in_tool is not None else None
 
         python_code_result = self._create_pending_result(
             execution_id=execution_id,
@@ -119,6 +129,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             python_code_result=python_code_result,
             storage_allowed_paths=storage_allowed_paths,
             org_id=organization_id,
+            own_paths=storage_allowed_paths or [],
+            shared_actions=frozenset(),
         )
         if not ok:
             return execution_id
@@ -129,6 +141,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 # would, not on the sandbox's default venv. The sandbox's own id,
                 # not the binding's: this payload leaves django.
                 venv_id=int(python_code.venv.resource_id) if python_code.venv_id else None,
+                system_venv=system_venv,
                 code=python_code.code,
                 entrypoint=python_code.entrypoint,
                 func_kwargs=varaibles,
@@ -222,6 +235,9 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             python_code_result=python_code_result,
             storage_allowed_paths=resolved.storage_allowed_paths,
             org_id=resolved.org_id,
+            own_paths=[storage_path_for_test_run(target_type, target_id)],
+            # The slot's saved grant, as a real run gives it; one missing fails closed.
+            shared_actions=(resolved.storage_grant or StorageGrant()).actions,
         )
         if not ok:
             return execution_id
@@ -231,6 +247,7 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 # The slot's real-run venv: a test run of a slot must execute where
                 # the real run would, not on the sandbox's default venv.
                 venv_id=resolved.venv_id,
+                system_venv=resolved.system_venv,
                 code=resolved.code,
                 entrypoint=resolved.entrypoint,
                 func_kwargs=variables,
@@ -267,6 +284,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         python_code_result: PythonCodeResult,
         storage_allowed_paths: list[str] | None,
         org_id: int,
+        own_paths: list[str],
+        shared_actions: frozenset[StorageAction],
     ) -> tuple[StorageCredentials | None, bool]:
         """Mint storage credentials if needed. Returns (credentials, ok);
         ok=False means the execution already failed (ERROR, best-effort revoke)
@@ -279,15 +298,24 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                     python_code_result=python_code_result,
                     storage_allowed_paths=storage_allowed_paths,
                     org_id=org_id,
+                    own_paths=own_paths,
+                    shared_actions=shared_actions,
                 ),
                 True,
             )
-        except StorageCredentialError:
+        except StorageCredentialError as error:
+            # A scope refusal is written for the user; other storage errors may carry internals.
+            stderr = (
+                str(error)
+                if isinstance(error, CredentialScopeValidationError)
+                else self._CREDENTIAL_ISSUE_STDERR
+            )
             self._fail_execution(
                 execution_id=execution_id,
                 use_storage=use_storage,
                 log_message=self._CREDENTIAL_ISSUE_LOG,
-                stderr=self._CREDENTIAL_ISSUE_STDERR,
+                stderr=stderr,
+                log_args=(error,),
             )
             return None, False
 
@@ -345,6 +373,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         python_code_result: PythonCodeResult,
         storage_allowed_paths: list[str] | None,
         org_id: int,
+        own_paths: list[str],
+        shared_actions: frozenset[StorageAction],
     ):
         if not use_storage:
             return None
@@ -352,6 +382,8 @@ class RunPythonCodeService(metaclass=SingletonMeta):
             python_code_result=python_code_result,
             storage_allowed_paths=storage_allowed_paths,
             org_id=org_id,
+            own_paths=own_paths,
+            shared_actions=shared_actions,
         )
 
     def _revoke_storage_credentials_safely(self, *, use_storage: bool, execution_id: str) -> None:
@@ -381,6 +413,14 @@ class RunPythonCodeService(metaclass=SingletonMeta):
                 use_storage=use_storage,
                 log_message=self._SUBMIT_FAILED_LOG,
                 stderr=self._SANDBOX_BUSY_STDERR,
+                log_args=(type(error).__name__,),
+            )
+        except ClientValidationError as error:
+            return self._fail_execution(
+                execution_id=execution_id,
+                use_storage=use_storage,
+                log_message=self._SUBMIT_FAILED_LOG,
+                stderr=_refusal_reasons(error.response) or self._INVALID_REQUEST_STDERR,
                 log_args=(type(error).__name__,),
             )
         except ClientError as error:
@@ -427,3 +467,17 @@ class RunPythonCodeService(metaclass=SingletonMeta):
         )
         if stale_ids:
             PythonCodeResult.objects.filter(pk__in=list(stale_ids)).delete()
+
+
+def _refusal_reasons(response: httpx.Response) -> str:
+    """Join the `detail` strings of the sandbox's 400 envelope, which never echoes the submitted body."""
+    try:
+        body = response.json()
+    except ValueError:
+        return ""
+    errors = body.get("errors") if isinstance(body, dict) else None
+    return "\n".join(
+        str(error["detail"])
+        for error in errors or []
+        if isinstance(error, dict) and error.get("detail")
+    )

@@ -10,7 +10,8 @@ from copy import deepcopy
 
 import pytest
 
-from tables.models import CrewNode, Graph, LLMConfig, PythonCode, PythonNode
+from tables.models import CrewNode, Graph, PythonCode, PythonNode
+from ai_models.models import LLMConfig
 from tables.import_export.constants import IMPORT_VERSION
 from tables.import_export.enums import EntityType, NodeType
 from tables.import_export.id_mapper import IDMapper
@@ -175,13 +176,11 @@ def _exported_llm_config_entry(strategy, config, **changes) -> dict:
 
 
 @pytest.mark.django_db
-def test_llm_config_entry_from_before_reasoning_effort_does_not_reuse_a_config_with_effort(
+def test_llm_config_entry_without_parameters_does_not_reuse_a_config_with_some(
     llm_config_strategy, llm_config, default_org
 ):
-    LLMConfig.objects.filter(pk=llm_config.pk).update(reasoning_effort="high")
-    llm_config.refresh_from_db()
     entry = _exported_llm_config_entry(llm_config_strategy, llm_config)
-    del entry["reasoning_effort"]
+    del entry["parameters"]
 
     imported = llm_config_strategy.import_entity(
         entry, _llm_model_mapper(llm_config.model), is_main=False, org_id=default_org.id
@@ -189,15 +188,17 @@ def test_llm_config_entry_from_before_reasoning_effort_does_not_reuse_a_config_w
 
     assert imported.pk != llm_config.pk
     imported.refresh_from_db()
-    assert imported.reasoning_effort is None
+    assert imported.parameters == {}
 
 
 @pytest.mark.django_db
-def test_llm_config_entry_from_before_reasoning_effort_reuses_an_equivalent_config(
+def test_llm_config_entry_without_parameters_reuses_an_equivalent_config(
     llm_config_strategy, llm_config, default_org
 ):
+    LLMConfig.objects.filter(pk=llm_config.pk).update(parameters={})
+    llm_config.refresh_from_db()
     entry = _exported_llm_config_entry(llm_config_strategy, llm_config)
-    del entry["reasoning_effort"]
+    del entry["parameters"]
 
     imported = llm_config_strategy.import_entity(
         entry, _llm_model_mapper(llm_config.model), is_main=False, org_id=default_org.id
@@ -228,7 +229,7 @@ def test_new_llm_config_with_a_field_unknown_to_this_version_is_created(
     entry = _exported_llm_config_entry(
         llm_config_strategy,
         llm_config,
-        temperature=1.1,
+        parameters={"temperature": 1.1},
         field_from_a_newer_version="value",
     )
 
@@ -237,4 +238,4 @@ def test_new_llm_config_with_a_field_unknown_to_this_version_is_created(
     )
 
     assert imported.pk != llm_config.pk
-    assert imported.temperature == 1.1
+    assert imported.parameters == {"temperature": 1.1}

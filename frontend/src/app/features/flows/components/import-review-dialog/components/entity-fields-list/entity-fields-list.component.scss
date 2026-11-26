@@ -10,9 +10,9 @@
         display: grid;
         grid-template-columns: auto 1fr;
         gap: 0.3rem 1rem;
-        padding: 0.6rem 1rem 0.6rem 2.5rem;
+        // Vertical padding and the border only when open: a `0fr` row can't shrink below them.
+        padding: 0 1rem 0 2.5rem;
         background-color: rgba(0, 0, 0, 0.15);
-        border-top: 1px solid var(--transparent-white-8);
 
         .detail-key {
             font-size: var(--text-body-small-large-size);
@@ -26,5 +26,10 @@
             color: var(--color-text-primary);
             word-break: break-word;
         }
+    }
+
+    &.expanded .item-details-grid {
+        padding-block: 0.6rem;
+        border-top: 1px solid var(--transparent-white-8);
     }
 }

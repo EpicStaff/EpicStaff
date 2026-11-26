@@ -2,8 +2,9 @@
 
 Uninstall takes the plugin out of service everywhere without deleting anything: every grant
 in service is suspended (cause `uninstall`) until the plugin's `purge_after`, its process is
-stopped (it runs again only to execute an organization removed hook), and the gateway serves
-none of its paths. A reinstall puts it back and resumes exactly the grants the uninstall
+stopped (it runs again only to execute an organization removed hook), the gateway serves
+none of its API paths, and its host serves none of its frontend (`withdraw_spa_on_commit`).
+A reinstall puts it back, frontend included, and resumes exactly the grants the uninstall
 suspended; a grant suspended on its own stays suspended. Once `purge_after` passes, the
 scheduled maintenance deletes the plugin (`PluginPurgeService`).
 """
@@ -19,6 +20,7 @@ from plugins.configuration.grace_period import grace_period
 from plugins.lifecycle.grant_actions import SUSPENDABLE_GRANT_STATES
 from plugins.lifecycle.lifecycle_locks import lock_existing_plugin, lock_grants_of
 from plugins.lifecycle.plugin_actions import PluginLifecycleAction, assert_plugin_action
+from plugins.lifecycle.spa_serving import serve_spa_on_commit, withdraw_spa_on_commit
 from plugins.lifecycle.suspension_service import PluginSuspensionService
 from plugins.models import GrantState, Plugin, PluginState, SuspensionCause
 
@@ -31,7 +33,7 @@ class PluginUninstallService:
         granted, active or whose install failed is suspended until then, with the
         suspension's steps (hooks failed, keys revoked, sessions stopped after commit); a
         grant already suspended or being purged keeps its state and dates. A pending package
-        stays pending.
+        stays pending. After commit the plugin's frontend is no longer served; its files stay.
 
         Raises:
             PluginNotFoundError: No such plugin.
@@ -60,6 +62,7 @@ class PluginUninstallService:
                     now=now,
                 )
                 suspended += 1
+            withdraw_spa_on_commit(identifier)
             ActivityRecorder().plugin_uninstalled(actor, identifier, plugin.purge_after, suspended)
             transaction.on_commit(
                 partial(
@@ -76,7 +79,8 @@ class PluginUninstallService:
         """Reinstall an uninstalled plugin, in one transaction.
 
         A plugin with a backend is `provisioning` until its node reports the process running;
-        one without is `running` at once. Each grant the uninstall suspended resumes (to
+        one without is `running` at once. Its frontend is served again after commit, from
+        the start, as a first install's is. Each grant the uninstall suspended resumes (to
         `active`, or `install_failed` when its install never succeeded), with its keys
         revoked once more; the node's next credentials fetch mints new ones.
 
@@ -88,7 +92,8 @@ class PluginUninstallService:
         with transaction.atomic():
             plugin = lock_existing_plugin(identifier)
             assert_plugin_action(plugin, PluginLifecycleAction.REINSTALL)
-            has_backend = plugin.current_package.parsed_manifest.backend is not None
+            manifest = plugin.current_package.parsed_manifest
+            has_backend = manifest.backend is not None
             plugin.state = PluginState.PROVISIONING if has_backend else PluginState.RUNNING
             plugin.uninstall_requested_at = None
             plugin.purge_after = None
@@ -106,6 +111,8 @@ class PluginUninstallService:
                 suspension.resume_locked(grant, actor=actor, now=now)
                 transaction.on_commit(partial(log_grant_resumed, actor, grant))
                 resumed += 1
+            if manifest.spa is not None:
+                serve_spa_on_commit(identifier, plugin.current_package.version)
             ActivityRecorder().plugin_reinstalled(actor, identifier, resumed)
             transaction.on_commit(
                 partial(

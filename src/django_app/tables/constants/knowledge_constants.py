@@ -27,6 +27,11 @@ MIN_CHUNK_SIZE = 20
 MAX_CHUNK_SIZE = 8000
 MIN_CHUNK_OVERLAP = 0
 MAX_CHUNK_OVERLAP = 1000
+MIN_ROWS_IN_CHUNK = 1
+MAX_ROWS_IN_CHUNK = 10000
+MIN_HEADERS_LEVEL = 0
+MAX_HEADERS_LEVEL = 100
+MAX_CHUNK_REGEX_LENGTH = 256
 
 # Chunk preview
 CHUNKING_TIMEOUT = 50.0
@@ -101,3 +106,31 @@ DRIFT_N_DEPTH_MIN = 1
 DRIFT_N_DEPTH_MAX = 10
 LOCAL_SEARCH_N_MIN = 1
 LOCAL_SEARCH_N_MAX = 10
+
+# Graph index read endpoints (table data, visualization). knowledge_new validates the
+# same bounds under the same names in application/graph_index_read_limits.py.
+GRAPH_TABLE_MIN_PAGE = 1
+GRAPH_TABLE_DEFAULT_PAGE = 1
+GRAPH_TABLE_MIN_PAGE_SIZE = 1
+GRAPH_TABLE_MAX_PAGE_SIZE = 100
+GRAPH_TABLE_DEFAULT_PAGE_SIZE = 10
+GRAPH_SEARCH_MAX_LENGTH = 200
+GRAPH_VISUALIZATION_MIN_MAX_ENTITIES = 1
+GRAPH_VISUALIZATION_MAX_MAX_ENTITIES = 1000
+GRAPH_VISUALIZATION_MAX_PAGE_COUNT = 5
+# Table names accepted by the linked_to_type filter; matches knowledge_new's GraphOutputTableEnum.
+GRAPH_LINKED_TO_TYPE_CHOICES: tuple[str, ...] = (
+    "entities",
+    "relationships",
+    "communities",
+    "community_reports",
+    "text_units",
+    "documents",
+    "covariates",
+)
+# Row ids in graph index parquets are short — hashes, uuids or human-readable slugs.
+GRAPH_LINKED_TO_ID_MAX_LENGTH = 200
+# `search_scope` values accepted by the table data endpoint; matches knowledge_new's
+# GraphTableSearchScope. `all` is the default (every user-facing column); `identity`
+# restricts `search` to id + the per-table label column — used by the linked-to picker.
+GRAPH_SEARCH_SCOPE_CHOICES: tuple[str, ...] = ("all", "identity")

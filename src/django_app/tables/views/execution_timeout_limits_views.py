@@ -19,6 +19,7 @@ class ExecutionTimeoutLimitsAPIView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
+    uses_organization_context = False
 
     @extend_schema(**EXECUTION_TIMEOUT_LIMITS_GET)
     def get(self, request):

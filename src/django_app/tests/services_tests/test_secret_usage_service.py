@@ -10,21 +10,19 @@ tests below are what hold the two dedup rules together.
 import pytest
 
 from tables.models import (
-    EmbeddingConfig,
-    LLMConfig,
     McpTool,
     OpenAIRealtimeConfig,
     PythonCode,
     PythonCodeTool,
 )
-from tables.models.embedding_models import EmbeddingModel
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     Graph,
     PythonNode,
     TelegramTriggerNode,
 )
-from tables.models.llm_models import LLMModel, RealtimeConfig, RealtimeModel
+from tables.models.llm_models import RealtimeConfig, RealtimeModel
 from rbac.models import Organization
 from rbac.models.enums import Permission, ResourceType
 from rbac.access.effective import EffectivePermissions

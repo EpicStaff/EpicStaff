@@ -40,6 +40,15 @@ class OrgStorageCredentialMissingError(StorageCredentialError):
     default_code = "org_storage_credential_missing"
 
 
+class OrgStorageCredentialCheckError(StorageCredentialError):
+    """The storage server could not tell whether it accepts an org's stored
+    credentials: it was unreachable or answered with an unexpected error.
+    Not evidence that the credentials are wrong, so never a reason to rotate them."""
+
+    default_detail = "We couldn't reach file storage to check your organization's access."
+    default_code = "org_storage_credential_check_error"
+
+
 class CredentialScopeValidationError(StorageCredentialError):
     """The trusted scope for an execution_id is missing, malformed, or has
     `storage_allowed_paths` that escape `storage_org_prefix`. Raised before
@@ -48,6 +57,16 @@ class CredentialScopeValidationError(StorageCredentialError):
     status_code = 400
     default_detail = "This request doesn't specify which files it needs. Check the file attachments in your flow."
     default_code = "credential_scope_validation_error"
+
+
+class TemporaryPolicyTooLargeError(CredentialScopeValidationError):
+    """The access rules for a run's files exceed what the storage backend accepts."""
+
+    default_detail = (
+        "Too many files are attached to this flow for one run to access. "
+        "Attach a folder instead of individual files."
+    )
+    default_code = "temporary_policy_too_large"
 
 
 class TemporaryCredentialError(StorageCredentialError):

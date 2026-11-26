@@ -7,15 +7,12 @@ unbounded across runs, because _attach_api_key_secret ran once per config.
 """
 
 import pytest
-from django.db import connection
-from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from rest_framework.test import APIClient
 
 from tables.models import Secret
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
-from tables.models.llm_models import LLMConfig, LLMModel, SystemOneConfig
-from tables.models.provider import Provider
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
+from tables.models.llm_models import SystemOneConfig
 from tables.models.realtime_models import GeminiRealtimeConfig, OpenAIRealtimeConfig
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
@@ -67,8 +64,8 @@ def quickstart_url():
 
 @pytest.fixture
 def openai_seeded(db):
-    """QuickstartService does Provider.objects.get(name=...) and get_or_create for
-    each model. Mirrors `openai_provider_seeded` in quickstart_test.py."""
+    """Quickstart resolves its models among the provider's built-in rows.
+    Mirrors `openai_provider_seeded` in quickstart_test.py."""
     provider = Provider.objects.create(name="openai")
     LLMModel.objects.get_or_create(name="gpt-6-luna", llm_provider=provider)
     EmbeddingModel.objects.get_or_create(
@@ -80,9 +77,9 @@ def openai_seeded(db):
 @pytest.fixture
 def gemini_seeded(db):
     provider = Provider.objects.create(name="gemini")
-    LLMModel.objects.get_or_create(name="gemini-1.5-pro", llm_provider=provider)
+    LLMModel.objects.get_or_create(name="gemini-3.8-flash", llm_provider=provider)
     EmbeddingModel.objects.get_or_create(
-        name="text-embedding-004", embedding_provider=provider
+        name="gemini-embedding-001", embedding_provider=provider
     )
     return provider
 
@@ -278,8 +275,8 @@ def test_foreign_secret_error_matches_a_nonexistent_id(
 
 # ---- which model the bundle secret is attached to ----
 #
-# A custom model can send requests to any base_url. One created under the catalog
-# name must not silently receive the quickstart secret.
+# A model row holds no endpoint, so whichever row quickstart picks, its configs send the
+# bundle secret to the provider's own endpoint.
 
 OPENAI_LLM_MODEL_NAME = "gpt-6-luna"
 OPENAI_EMBEDDING_MODEL_NAME = "text-embedding-3-small"
@@ -316,11 +313,7 @@ def test_quickstart_prefers_built_in_model_over_custom_with_same_name(
 ):
     built_in = model_class.objects.get(name=model_name, org__isnull=True)
     model_class.objects.create(
-        name=model_name,
-        org=org,
-        is_custom=True,
-        base_url="https://attacker.example",
-        **{provider_field: openai_seeded},
+        name=model_name, org=org, is_custom=True, **{provider_field: openai_seeded}
     )
 
     resp = client_a.post(
@@ -333,48 +326,13 @@ def test_quickstart_prefers_built_in_model_over_custom_with_same_name(
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("model_class, provider_field, model_name, config_class", MODEL_KINDS)
-def test_quickstart_refuses_custom_model_with_base_url_when_no_built_in(
+def test_quickstart_uses_the_org_s_own_model_when_no_built_in_and_sends_to_the_provider(
     client_a, org, quickstart_url, model_class, provider_field, model_name, config_class,
-):
-    provider = Provider.objects.create(name="openai")
-    _seed_built_in_models_except(provider, model_class)
-    model_class.objects.create(
-        name=model_name,
-        org=org,
-        is_custom=True,
-        base_url="https://attacker.example",
-        **{provider_field: provider},
-    )
-
-    resp = client_a.post(
-        quickstart_url, {"provider": "openai", "api_key": "sk-cold-start"}, format="json"
-    )
-
-    assert resp.status_code == 400, resp.content
-    assert f'custom model "{model_name}"' in resp.data["error"]
-    # The refusal rolls back the whole bundle, including the configs and the
-    # secret written before the model lookup.
-    assert not Secret.objects.filter(org=org).exists()
-    assert not LLMConfig.objects.filter(org=org).exists()
-    assert not EmbeddingConfig.objects.filter(org=org).exists()
-    assert not OpenAIRealtimeConfig.objects.filter(org=org).exists()
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("empty_base_url", [None, ""])
-@pytest.mark.parametrize("model_class, provider_field, model_name, config_class", MODEL_KINDS)
-def test_quickstart_uses_custom_model_without_base_url_when_no_built_in(
-    client_a, org, quickstart_url,
-    model_class, provider_field, model_name, config_class, empty_base_url,
 ):
     provider = Provider.objects.create(name="openai")
     _seed_built_in_models_except(provider, model_class)
     own_model = model_class.objects.create(
-        name=model_name,
-        org=org,
-        is_custom=True,
-        base_url=empty_base_url,
-        **{provider_field: provider},
+        name=model_name, org=org, is_custom=True, **{provider_field: provider}
     )
 
     resp = client_a.post(
@@ -382,35 +340,9 @@ def test_quickstart_uses_custom_model_without_base_url_when_no_built_in(
     )
 
     assert resp.status_code == 200, resp.content
-    assert config_class.objects.get(custom_name="quickstart_openai").model_id == own_model.id
+    config = config_class.objects.get(custom_name="quickstart_openai")
+    assert (config.model_id, config.connection) == (own_model.id, {})
     assert model_class.objects.filter(name=model_name).count() == 1
-
-
-@pytest.mark.django_db
-@pytest.mark.parametrize("model_class, provider_field, model_name, config_class", MODEL_KINDS)
-def test_quickstart_locks_reused_org_model(
-    client_a, org, quickstart_url, model_class, provider_field, model_name, config_class,
-):
-    # Locked so a concurrent edit of the model's base_url either lands before the
-    # base_url check reads it, or waits until the bundle's config is committed and
-    # then counts it.
-    provider = Provider.objects.create(name="openai")
-    _seed_built_in_models_except(provider, model_class)
-    model_class.objects.create(
-        name=model_name, org=org, is_custom=True, **{provider_field: provider}
-    )
-
-    with CaptureQueriesContext(connection) as captured:
-        resp = client_a.post(
-            quickstart_url, {"provider": "openai", "api_key": "sk-cold-start"}, format="json"
-        )
-
-    assert resp.status_code == 200, resp.content
-    table = model_class._meta.db_table
-    assert any(
-        "FOR UPDATE" in query["sql"] and f'FROM "{table}"' in query["sql"]
-        for query in captured.captured_queries
-    )
 
 
 @pytest.mark.django_db

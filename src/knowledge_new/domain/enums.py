@@ -3,7 +3,9 @@ from enum import StrEnum
 from src.shared.enums.knowledge_new import (
     ChunkStrategyEnum,
     DocumentStatusEnum,
+    GraphOutputTableEnum,
     GraphSearchMethodEnum,
+    GraphTableSearchScope,
     RAGStrategy,
 )
 
@@ -13,7 +15,9 @@ __all__ = [
     "DocumentStatusEnum",
     "EmbedderProviderEnum",
     "FileExtensionEnum",
+    "GraphOutputTableEnum",
     "GraphSearchMethodEnum",
+    "GraphTableSearchScope",
     "IndexStatusEnum",
     "RAGStrategy",
 ]

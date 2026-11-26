@@ -14,6 +14,10 @@ A run that is built before it is handed over (a flow session) is asked again jus
 handover with `assert_still_admitted`, so a cause that appeared while it was built still
 refuses it. Each check gets back what it found the first time, so the re-check is cheap.
 
+A call to a model outside a flow (indexing a knowledge source, explaining a decision table,
+the flow assistant's reply) is admitted like a run of the model config it uses, so a config
+that may not run in a flow is not used there either.
+
 Adding a run entry point: call `assert_run_admitted` before anything is written. Add a
 `RunKind` only when the run starts from a new kind of row, together with its start model in
 `run_resources.RUN_START_MODELS`.
@@ -37,6 +41,8 @@ class RunKind(StrEnum):
     REALTIME = "realtime"  # an AgentDefinition
     VOICE_CHANNEL = "voice_channel"  # a RealtimeChannel
     CODE = "code"  # a PythonCode
+    LLM_CONFIG = "llm_config"  # an LLMConfig called outside a flow
+    EMBEDDING_CONFIG = "embedding_config"  # an EmbeddingConfig called outside a flow
 
 
 @dataclass(frozen=True)

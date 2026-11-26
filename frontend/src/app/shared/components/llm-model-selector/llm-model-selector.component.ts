@@ -1,7 +1,6 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Dialog } from '@angular/cdk/dialog';
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
-import { ComponentType } from '@angular/cdk/portal';
 import { NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
@@ -35,7 +34,7 @@ import { getProviderIconPath } from '@shared/utils';
 import { finalize, Observable } from 'rxjs';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
-import { LlmModelConfigDialogComponent, VoiceModelConfigDialogComponent } from '../llm-dialogs';
+import { ModelConfigDialogComponent, ModelConfigDialogData, VoiceModelConfigDialogComponent } from '../llm-dialogs';
 import { LlmModelItemComponent } from './llm-model-item/llm-model-item.component';
 
 export type ModelSelectorKind = 'llm' | 'realtime';
@@ -611,13 +610,12 @@ export class LlmModelSelectorComponent implements OnInit, OnDestroy, ControlValu
     }
 
     onCreateLlm(): void {
-        const component: ComponentType<unknown> =
-            this.kind() === 'realtime' ? VoiceModelConfigDialogComponent : LlmModelConfigDialogComponent;
-        this.dialog.open(component, {
-            autoFocus: false,
-            height: '90vh',
-            width: '600px',
-        });
+        if (this.kind() === 'realtime') {
+            this.dialog.open(VoiceModelConfigDialogComponent, { autoFocus: false, height: '90vh', width: '600px' });
+            return;
+        }
+        const data: ModelConfigDialogData = { kind: 'llm' };
+        this.dialog.open(ModelConfigDialogComponent, { autoFocus: false, data });
     }
 
     // ControlValueAccessor implementation

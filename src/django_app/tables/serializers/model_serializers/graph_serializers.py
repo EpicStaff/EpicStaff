@@ -44,6 +44,7 @@ from tables.serializers.model_serializers.node_serializers.trigger_serializers i
 )
 from tables.serializers.model_serializers.tag_serializers import GraphTagSerializer
 from tables.serializers.utils.soft_delete_fields import ExcludeSoftDeleteFieldsMixin
+from tables.validators.note_metadata import validate_note_metadata
 
 
 class GraphNoteSerializer(
@@ -58,6 +59,10 @@ class GraphNoteSerializer(
     class Meta(BaseGraphEntityMixin.Meta):
         model = GraphNote
         fields = "__all__"
+
+    def validate_metadata(self, value):
+        validate_note_metadata(value)
+        return value
 
 
 class GraphSessionMessageSerializer(serializers.ModelSerializer):

@@ -1,5 +1,5 @@
+from ai_models.utils.litellm_model_info import resolve_context_window
 from drf_spectacular.utils import extend_schema
-from loguru import logger
 from pydantic import ValidationError
 from rbac.access.asserts import assert_org_permission
 from rbac.models.enums import Permission, ResourceType
@@ -13,11 +13,10 @@ from src.shared.models.search_config_suggestion import (
     SuggestOutput,
 )
 from tables.exceptions import (
-    CollectionNotFoundException,
-    GraphRagIndexNotReadyException,
-    NaiveRagIndexNotReadyException,
+    GraphRagEmbedderNotConfiguredException,
+    GraphRagLlmAndEmbedderNotConfiguredException,
+    GraphRagLlmNotConfiguredException,
     NoGraphRagForCollectionException,
-    NoNaiveRagForCollectionException,
 )
 from tables.models import SourceCollection
 from tables.serializers.search_config_serializers import (
@@ -39,7 +38,6 @@ from tables.swagger_schemas.knowledge_schemas.search_config_schemas import (
     GRAPH_RAG_SUGGEST_PARAMS_POST,
     NAIVE_RAG_SUGGEST_PARAMS_POST,
 )
-from tables.utils.litellm_model_info import resolve_context_window
 from user_audit.read_only import reads_only
 
 
@@ -57,16 +55,34 @@ def _validation_error_response(exc: ValidationError) -> Response:
 
 
 def _resolve_graph_llm_ctx(collection_id: int) -> tuple[int, str, str | None, bool]:
-    """Resolve the graph-suggest context window from the collection's own GraphRag."""
+    """Resolve the graph-suggest context window from the collection's own GraphRag.
+
+    Raises:
+        NoGraphRagForCollectionException: The collection has no GraphRag.
+        GraphRagLlmAndEmbedderNotConfiguredException: The GraphRag has neither an
+            LLM nor an embedder config. Checked before the single-field cases so a
+            caller missing both is not told only about one.
+        GraphRagLlmNotConfiguredException: The GraphRag has no LLM config, e.g. its
+            LLM config was deleted. The graph view calls this before it fetches
+            metrics, so a missing LLM is reported even while the index is not ready.
+        GraphRagEmbedderNotConfiguredException: The GraphRag has no embedder
+            config, e.g. its embedder was deleted. Reported before metrics for the
+            same reason as the LLM case.
+    """
     graph_rag = GraphRagService.get_or_none_graph_rag_by_collection(collection_id)
     if graph_rag is None:
         raise NoGraphRagForCollectionException(collection_id)
+    missing_llm = graph_rag.llm is None
+    missing_embedder = graph_rag.embedder is None
+    if missing_llm and missing_embedder:
+        raise GraphRagLlmAndEmbedderNotConfiguredException(collection_id)
+    if missing_llm:
+        raise GraphRagLlmNotConfiguredException(collection_id)
+    if missing_embedder:
+        raise GraphRagEmbedderNotConfiguredException(collection_id)
     llm_cfg = graph_rag.llm
-    if llm_cfg is not None:
-        model_name = llm_cfg.model.name if llm_cfg.model else ""
-        user_override = getattr(llm_cfg, "context_window", None)
-    else:
-        model_name, user_override = "", None
+    model_name = llm_cfg.model.name if llm_cfg.model else ""
+    user_override = getattr(llm_cfg, "context_window", None)
     ctx, warning, is_trusted = resolve_context_window(model_name, user_override)
     return ctx, model_name, warning, is_trusted
 
@@ -125,22 +141,13 @@ class NaiveRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
             Permission.READ,
         )
 
-        try:
-            metrics = CollectionManagementService.get_collection_metrics(
-                req.knowledge_collection_id, "naive"
-            )
-            suggested, clamped = build_naive_params(metrics, req.user_custom_params)
-            # Naive params derive only from the corpus (chunk count);
-            return _build_response(metrics, None, None, None, suggested, clamped, False)
-        except (
-            CollectionNotFoundException,
-            NoNaiveRagForCollectionException,
-            NaiveRagIndexNotReadyException,
-        ) as exc:
-            return Response({"error": str(exc)}, status=exc.status_code)
-        except Exception:
-            logger.exception("Unexpected error in NaiveRagSuggestParamsView")
-            raise
+        metrics = CollectionManagementService.get_collection_metrics(
+            req.knowledge_collection_id, "naive"
+        )
+        suggested, clamped = build_naive_params(metrics, req.user_custom_params)
+        # Naive params derive only from the corpus (chunk count), so no LLM context
+        # window applies and the LLM fields of the response stay empty.
+        return _build_response(metrics, None, None, None, suggested, clamped, False)
 
 
 class GraphRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
@@ -172,30 +179,20 @@ class GraphRagSuggestParamsView(OrgScopedServiceViewSetMixin, APIView):
         except ValueError as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        try:
-            ctx, llm_name, warning, is_trusted = _resolve_graph_llm_ctx(req.knowledge_collection_id)
-            metrics = CollectionManagementService.get_collection_metrics(
-                req.knowledge_collection_id, "graph"
-            )
-            suggested, clamped = strategy.builder(metrics, ctx, is_trusted, req.user_custom_params)
-            effective_budget = resolve_effective_budget(ctx, is_trusted, req.user_custom_params)
-            return _build_response(
-                metrics,
-                ctx,
-                llm_name,
-                warning,
-                suggested,
-                clamped,
-                is_trusted,
-                recommended_method=recommend_graph_search_method(metrics),
-                effective_budget=effective_budget,
-            )
-        except (
-            CollectionNotFoundException,
-            NoGraphRagForCollectionException,
-            GraphRagIndexNotReadyException,
-        ) as exc:
-            return Response({"error": str(exc)}, status=exc.status_code)
-        except Exception:
-            logger.exception("Unexpected error in GraphRagSuggestParamsView")
-            raise
+        ctx, llm_name, warning, is_trusted = _resolve_graph_llm_ctx(req.knowledge_collection_id)
+        metrics = CollectionManagementService.get_collection_metrics(
+            req.knowledge_collection_id, "graph"
+        )
+        suggested, clamped = strategy.builder(metrics, ctx, is_trusted, req.user_custom_params)
+        effective_budget = resolve_effective_budget(ctx, is_trusted, req.user_custom_params)
+        return _build_response(
+            metrics,
+            ctx,
+            llm_name,
+            warning,
+            suggested,
+            clamped,
+            is_trusted,
+            recommended_method=recommend_graph_search_method(metrics),
+            effective_budget=effective_budget,
+        )

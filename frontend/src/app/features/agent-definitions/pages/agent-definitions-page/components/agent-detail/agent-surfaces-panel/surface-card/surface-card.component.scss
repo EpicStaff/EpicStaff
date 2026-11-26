@@ -1,5 +1,29 @@
 @use '../../../../../../../../../styles/header-action-buttons';
 
+$action-size: 28px;
+$action-divider-gap: 9px;
+// Width of the widest icon group (three buttons and the dividers between them), reserved so
+// the usage button sits at the same offset on every card.
+$icon-actions-min-width: 3 * $action-size + 2 * $action-divider-gap;
+
+@mixin action-divider {
+    > * + * {
+        position: relative;
+        margin-left: $action-divider-gap;
+
+        &::before {
+            content: '';
+            position: absolute;
+            left: -4px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 1px;
+            height: 24px;
+            background-color: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
+        }
+    }
+}
+
 :host {
     display: block;
     min-width: 150px;
@@ -141,20 +165,38 @@
     flex-shrink: 0;
     margin-left: auto;
 
-    > * + * {
-        position: relative;
-        margin-left: 9px;
+    @include action-divider;
 
-        &::before {
-            content: '';
-            position: absolute;
-            left: -4px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 1px;
-            height: 24px;
-            background-color: color-mix(in srgb, var(--color-text-primary) 8%, transparent);
-        }
+    &--with-usage .surface-card__icon-actions {
+        min-width: $icon-actions-min-width;
+    }
+}
+
+.surface-card__icon-actions {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-end;
+
+    @include action-divider;
+}
+
+.surface-card__used-by {
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 4px;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--accent-color);
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    white-space: nowrap;
+    cursor: pointer;
+
+    &:is(:hover, :focus-visible) {
+        background-color: var(--color-ghost-btn-hover);
     }
 }
 
@@ -162,8 +204,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    width: $action-size;
+    height: $action-size;
     padding: 0;
     background: transparent;
     border: none;

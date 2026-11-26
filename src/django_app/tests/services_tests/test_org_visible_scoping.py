@@ -18,7 +18,8 @@ from rbac.scoping.fields import (
     org_visible_q,
     org_visible_queryset,
 )
-from tables.models import Label, LLMModel, Provider, PythonCode, PythonCodeTool
+from tables.models import Label, PythonCode, PythonCodeTool
+from ai_models.models import LLMModel, Provider
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 

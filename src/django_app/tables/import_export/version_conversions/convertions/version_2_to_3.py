@@ -2,7 +2,13 @@ from loguru import logger
 
 from tables.import_export.enums import EntityType
 from tables.import_export.registry import entity_registry
+from tables.import_export.utils import exported_nodes
 from tables.import_export.version_conversions.base import VersionConverter
+from tables.import_export.version_conversions.convertions.version_5_to_6 import (
+    EMBEDDING_SETTING_COLUMNS,
+    LLM_CONFIG_ENDPOINT_COLUMNS,
+    LLM_SETTING_COLUMNS,
+)
 from tables.models import McpTool, PythonCodeTool
 
 _GENERIC_CONFIG_ENTITY_TYPES = (
@@ -21,6 +27,10 @@ _ENTITY_TYPE_FALLBACK_MODELS = {
 
 _ENTITY_TYPE_EXTRA_ALLOWED_FIELDS = {
     EntityType.PYTHON_CODE_TOOL: {"python_code", "python_code_tool_config"},
+    # Columns the current models lack because v5->v6 folds them into `parameters` and
+    # `connection`; stripping them here would lose them before that conversion runs.
+    EntityType.LLM_CONFIG: {*LLM_SETTING_COLUMNS, *LLM_CONFIG_ENDPOINT_COLUMNS.values()},
+    EntityType.EMBEDDING_CONFIG: set(EMBEDDING_SETTING_COLUMNS),
 }
 
 _STALE_FIELD_STRIPPED_ENTITY_TYPES = (
@@ -40,10 +50,11 @@ def v2_to_v3(data: dict) -> dict:
       would otherwise crash find_existing() during import.
     - Deprecated nodes are ignored
     """
-    for graph in data.get(EntityType.GRAPH, []):
-        nodes = graph.get("nodes", [])
-        _strip_python_node_stream_config(nodes)
-        _remap_classification_prompt_refs(nodes)
+    for node_type, node in exported_nodes(data):
+        if node_type == EntityType.PYTHON_NODE:
+            node.pop("stream_config", None)
+        elif node_type == EntityType.CLASSIFICATION_DECISION_TABLE_NODE:
+            _remap_classification_prompt_refs(node)
 
     _merge_legacy_llm_config_headers(data)
     _strip_stale_config_fields(data)
@@ -86,42 +97,32 @@ def _strip_stale_config_fields(data: dict) -> None:
                     )
 
 
-def _strip_python_node_stream_config(nodes: list) -> None:
-    for node in nodes:
-        if node.get("node_type") == "PythonNode":
-            node.pop("stream_config", None)
+def _remap_classification_prompt_refs(node: dict) -> None:
+    # Legacy prompt_configs have no "id" — prompt_key is the only unique
+    # identifier per node, so backfill id from it before resolving.
+    for prompt_config in node.get("prompt_configs", []):
+        if "prompt_key" not in prompt_config:
+            logger.warning(
+                "prompt_configs entry missing prompt_key during v2->v3 "
+                "conversion: id will backfill to None"
+            )
+        prompt_config.setdefault("id", prompt_config.get("prompt_key"))
 
+    prompt_key_to_id = {
+        prompt_config.get("prompt_key"): prompt_config.get("id")
+        for prompt_config in node.get("prompt_configs", [])
+    }
 
-def _remap_classification_prompt_refs(nodes: list) -> None:
-    for node in nodes:
-        if node.get("node_type") != "ClassificationDecisionTableNode":
+    for group in node.get("condition_groups", []):
+        if "prompt_id" not in group:
             continue
 
-        # Legacy prompt_configs have no "id" — prompt_key is the only unique
-        # identifier per node, so backfill id from it before resolving.
-        for prompt_config in node.get("prompt_configs", []):
-            if "prompt_key" not in prompt_config:
-                logger.warning(
-                    "prompt_configs entry missing prompt_key during v2->v3 "
-                    "conversion: id will backfill to None"
-                )
-            prompt_config.setdefault("id", prompt_config.get("prompt_key"))
-
-        prompt_key_to_id = {
-            prompt_config.get("prompt_key"): prompt_config.get("id")
-            for prompt_config in node.get("prompt_configs", [])
-        }
-
-        for group in node.get("condition_groups", []):
-            if "prompt_id" not in group:
-                continue
-
-            prompt_key = group.pop("prompt_id")
-            resolved_id = prompt_key_to_id.get(prompt_key)
-            if resolved_id is None:
-                logger.warning(
-                    "Dangling prompt_id={} on ClassificationConditionGroup during "
-                    "v2->v3 conversion: no matching prompt_key in prompt_configs",
-                    prompt_key,
-                )
-            group["prompt"] = resolved_id
+        prompt_key = group.pop("prompt_id")
+        resolved_id = prompt_key_to_id.get(prompt_key)
+        if resolved_id is None:
+            logger.warning(
+                "Dangling prompt_id={} on ClassificationConditionGroup during "
+                "v2->v3 conversion: no matching prompt_key in prompt_configs",
+                prompt_key,
+            )
+        group["prompt"] = resolved_id

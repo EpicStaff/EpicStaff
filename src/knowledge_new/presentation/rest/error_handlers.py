@@ -3,13 +3,16 @@ from collections.abc import Callable
 from domain.errors import (
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
+    EntityNotFoundError,
     GraphArtifactsNotReadyError,
+    GraphNotIndexedError,
     GraphRagConfigNotFoundError,
     InvalidArtifactArchiveError,
     KnowledgeError,
     NotRunningOperationError,
     RagInProcessingError,
     RagNotFoundError,
+    RelationshipNotFoundError,
     UnsupportedError,
 )
 from litestar import Request, Response, status_codes
@@ -17,11 +20,15 @@ from loguru import logger
 
 __all__ = ["get_error_handlers"]
 
+INTERNAL_ERROR_DETAIL = "The knowledge service failed to process the request."
 
-_error_handlers: dict[type[Exception], Callable[[Request, Exception], Response]] = {}
+
+ErrorHandlerKey = type[Exception] | int
+
+_error_handlers: dict[ErrorHandlerKey, Callable[[Request, Exception], Response]] = {}
 
 
-def get_error_handlers() -> dict[type[Exception], Callable[[Request, Exception], Response]]:
+def get_error_handlers() -> dict[ErrorHandlerKey, Callable[[Request, Exception], Response]]:
     return _error_handlers
 
 
@@ -35,14 +42,14 @@ def create_response(request: Request, status_code: int, code: str, error: Except
     )
 
 
-def registry(*errors: type[Exception]):
+def registry(*errors: ErrorHandlerKey):
     def decorator(fn: Callable[[Request, Exception], Response]):
         for error in errors:
             handler = _error_handlers.get(error)
             if handler is None:
                 _error_handlers[error] = fn
             else:
-                raise ValueError(f"'{error.__name__}' has had {handler.__name__} handler yet.")
+                raise ValueError(f"'{error!r}' has had {handler.__name__} handler yet.")
         return fn
 
     return decorator
@@ -52,11 +59,21 @@ def registry(*errors: type[Exception]):
     RagNotFoundError,
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
+    EntityNotFoundError,
     GraphRagConfigNotFoundError,
     NotRunningOperationError,
+    RelationshipNotFoundError,
 )
 def handler_not_found(request: Request, error: Exception) -> Response:
     return create_response(request, status_codes.HTTP_404_NOT_FOUND, "not_found", error)
+
+
+@registry(GraphNotIndexedError)
+def handler_graph_not_indexed(request: Request, error: Exception) -> Response:
+    # The RAG exists but has no index output yet: a state the caller can resolve by
+    # indexing, not a missing resource. django_app recognises the code and tells the
+    # browser so.
+    return create_response(request, status_codes.HTTP_409_CONFLICT, "graph_not_indexed", error)
 
 
 @registry(UnsupportedError)
@@ -83,9 +100,24 @@ def handle_rag_in_processing(request, error: Exception) -> Response:
     return create_response(request, status_codes.HTTP_409_CONFLICT, "rag_in_processing", error)
 
 
-@registry(KnowledgeError)
-def handle_server_error(request, error: Exception) -> Response:
-    logger.exception("Unhandled domain error: {}", error)
-    return create_response(
-        request, status_codes.HTTP_500_INTERNAL_SERVER_ERROR, "internal_error", error
+# Registered by status code, Litestar's fallback for any exception that no handler
+# claims by type. Without it an unexpected error is answered with Litestar's own body
+# (a traceback while KNOWLEDGE_DEBUG is on) and, with debug off, is not logged at all.
+@registry(KnowledgeError, status_codes.HTTP_500_INTERNAL_SERVER_ERROR)
+def handle_server_error(request: Request, error: Exception) -> Response:
+    """Answer a server-side failure with a fixed message and log the exception.
+
+    The exception text describes this service's internals (a provider or driver
+    error, a file path), not the caller's request, and some callers pass a 5xx body
+    on to users and the LLM. The full exception goes to the server log only.
+    """
+    logger.opt(exception=error).error(
+        "Unhandled {error_type} on {method} {path}",
+        error_type=type(error).__name__,
+        method=request.method,
+        path=request.url.path,
+    )
+    return Response(
+        content={"code": "internal_error", "detail": INTERNAL_ERROR_DETAIL},
+        status_code=status_codes.HTTP_500_INTERNAL_SERVER_ERROR,
     )

@@ -47,6 +47,7 @@ class CrossOrgAdminViewSet(viewsets.ViewSet):
 
     authentication_classes = [JwtAuthentication, ApiKeyAuthentication]
     permission_classes = [IsAuthenticated, HasResourcePermissionAnywhere]
+    uses_organization_context = False
     superadmin_actions = frozenset()
     lookup_value_regex = "[0-9]+"
 

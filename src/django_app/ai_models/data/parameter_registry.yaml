@@ -1,0 +1,885 @@
+# What LiteLLM does not tell us about model settings and providers. Hand-written: the
+# catalog command only reads this file. Unknown keys fail loading, so a typo cannot
+# silently drop a limit.
+#
+# parameters.<name>:  value_type, control, label, help_text, group and default are
+#   required; default null means "not set" (the setting is not sent). Optional:
+#   minimum, maximum, step, options, limit_from (a model limit that replaces maximum),
+#   overrides (<provider>: replacements of the fields above).
+# providers.<name>:  label and kinds are required. kinds are what EpicStaff can run for
+#   that provider. Optional: recommended (false), custom_models (false),
+#   connection_fields, common_parameters (settings offered for a model the catalog
+#   does not know, per kind), aliases (other names a database Provider row stores the
+#   provider under; each resolves to this provider in every catalog lookup),
+#   main_secret_argument (api_key; the LiteLLM argument the config's api_key_secret is
+#   sent as). The main secret is the config's api_key_secret and is not listed; any
+#   further secret field holds an epicstaff_secret(<name>) marker.
+# connection_fields.<name>:  label and litellm_argument are required. Optional:
+#   value_type (text), control (text), required (false), secret (false), endpoint
+#   (false). endpoint marks a field that decides where requests, and the secrets they
+#   carry, go: a host, a region or deployment that picks one, or a project that picks
+#   whose account is called. Changing one on a config that carries a secret needs
+#   secrets:USE, and a plugin credential may not set one. When unsure, mark it: a
+#   false positive only asks for a permission.
+
+parameters:
+  temperature:
+    value_type: number
+    control: slider
+    label: Temperature
+    help_text: Controls randomness of responses. Lower = more deterministic, higher = more creative.
+    group: sampling
+    default: 0.7
+    minimum: 0
+    maximum: 2
+    step: 0.01
+    overrides:
+      anthropic:
+        maximum: 1
+  top_p:
+    value_type: number
+    control: percent
+    label: Top P
+    help_text: "Nucleus sampling: only tokens whose cumulative probability reaches Top P are considered."
+    group: sampling
+    default: 1.0
+    minimum: 0.01
+    maximum: 1.0
+    step: 0.01
+  presence_penalty:
+    value_type: number
+    control: slider
+    label: Presence penalty
+    help_text: Penalises tokens that have already appeared, encouraging the model to introduce new topics.
+    group: sampling
+    default: 0.0
+    minimum: -2
+    maximum: 2
+    step: 0.1
+  frequency_penalty:
+    value_type: number
+    control: slider
+    label: Frequency penalty
+    help_text: Penalises tokens proportionally to how often they appear, reducing repetition.
+    group: sampling
+    default: 0.0
+    minimum: -2
+    maximum: 2
+    step: 0.1
+  # Range from the Fireworks AI API reference (most models reporting top_k are Fireworks);
+  # Vertex AI documents no range.
+  top_k:
+    value_type: integer
+    control: stepper
+    label: Top K
+    help_text: Only the K most likely next tokens are considered.
+    group: sampling
+    default: null
+    minimum: 0
+    maximum: 100
+    step: 1
+  # min_p, typical_p and repetition_penalty: ranges from the Fireworks AI API reference,
+  # the only provider reporting them.
+  min_p:
+    value_type: number
+    control: slider
+    label: Min P
+    help_text: Only tokens at least this likely are considered. An alternative to Top P and Top K.
+    group: sampling
+    default: null
+    minimum: 0
+    maximum: 1
+    step: 0.01
+  typical_p:
+    value_type: number
+    control: slider
+    label: Typical P
+    help_text: Considers the most typical tokens whose cumulative probability is at most Typical P.
+    group: sampling
+    default: null
+    minimum: 0
+    maximum: 1
+    step: 0.01
+  repetition_penalty:
+    value_type: number
+    control: slider
+    label: Repetition penalty
+    help_text: 1 is no penalty; above 1 discourages repeated tokens, below 1 encourages them.
+    group: sampling
+    default: null
+    minimum: 0
+    maximum: 2
+    step: 0.01
+  # mirostat_target and mirostat_lr: the Fireworks AI API reference (the only provider
+  # reporting them) documents no range. 0-10 and 0-1 are our bounds: common Mirostat
+  # targets are around 3-5 and the common learning rate is 0.1.
+  mirostat_target:
+    value_type: number
+    control: slider
+    label: Mirostat target
+    help_text: Target perplexity for Mirostat sampling, which keeps output surprise near this value. Not set turns Mirostat off.
+    group: sampling
+    default: null
+    minimum: 0
+    maximum: 10
+    step: 0.1
+  mirostat_lr:
+    value_type: number
+    control: slider
+    label: Mirostat learning rate
+    help_text: How fast Mirostat adjusts towards its target. Has no effect without a Mirostat target.
+    group: sampling
+    default: null
+    minimum: 0
+    maximum: 1
+    step: 0.01
+  seed:
+    value_type: integer
+    control: stepper
+    label: Seed
+    help_text: Same seed and settings give repeatable answers where the provider supports it.
+    group: sampling
+    default: null
+    # The range of the integer column the seed was stored in.
+    minimum: -2147483648
+    maximum: 2147483647
+    step: 1
+  max_tokens:
+    value_type: integer
+    control: stepper
+    label: Max tokens
+    help_text: Upper limit on the tokens the model generates in one answer.
+    group: output
+    default: 4096
+    minimum: 500
+    # Applies only to models that do not report max_output_tokens (custom models).
+    maximum: 2147483647
+    step: 100
+    limit_from: max_output_tokens
+  # context_length_exceeded_behavior and prompt_truncate_len: from the Fireworks AI API
+  # reference, the only provider reporting them.
+  context_length_exceeded_behavior:
+    value_type: choice
+    control: select
+    label: When context is exceeded
+    help_text: "What happens when the prompt plus max tokens exceed the context window: truncate lowers max tokens to fit (the provider's default), error fails the request."
+    group: output
+    default: null
+    options: [error, truncate]
+  prompt_truncate_len:
+    value_type: integer
+    control: stepper
+    label: Truncate prompt to
+    help_text: Cuts a longer chat prompt down to this many tokens by silently dropping its start.
+    group: advanced
+    default: null
+    minimum: 1
+    # Applies only to models that do not report max_input_tokens.
+    maximum: 2147483647
+    step: 1
+    limit_from: max_input_tokens
+  stop:
+    value_type: text_list
+    control: list
+    label: Stop sequences
+    help_text: The model stops generating when it produces one of these.
+    group: output
+    default: null
+  logprobs:
+    value_type: boolean
+    control: toggle
+    label: Log probabilities
+    help_text: Return the log probability of each output token.
+    group: output
+    default: false
+  top_logprobs:
+    value_type: integer
+    control: stepper
+    label: Top log probabilities
+    help_text: How many most likely tokens to return at each position. Needs log probabilities on.
+    group: output
+    default: null
+    minimum: 0
+    maximum: 20
+    step: 1
+  reasoning_effort:
+    value_type: choice
+    control: select
+    label: Reasoning effort
+    help_text: How much the model thinks before answering. More effort is slower and costs more.
+    group: reasoning
+    default: null
+    # Every level LiteLLM knows; each model narrows this to the levels it accepts.
+    options: [none, minimal, low, medium, high, xhigh, max]
+  # From the Fireworks AI API reference; LiteLLM reports it for Fireworks reasoning models only.
+  reasoning_history:
+    value_type: choice
+    control: select
+    label: Reasoning history
+    help_text: How the model's earlier reasoning is kept in the prompt of later turns. Models accept different values (e.g. DeepSeek V4 only interleaved); a value the model does not take is rejected.
+    group: reasoning
+    default: null
+    options: [disabled, interleaved, preserved]
+  verbosity:
+    value_type: choice
+    control: select
+    label: Verbosity
+    help_text: How long and detailed the answers are.
+    group: output
+    default: null
+    # The values litellm.completion's type hint allows.
+    options: [low, medium, high]
+  logit_bias:
+    value_type: json
+    control: json
+    label: Logit bias
+    help_text: Maps token ids to a bias from -100 to 100 that makes those tokens more or less likely.
+    group: advanced
+    default: null
+  # From the Fireworks AI API reference. Null, not false: the provider turns it on by
+  # default where the model supports it, and an explicit true fails where it does not.
+  safe_tokenization:
+    value_type: boolean
+    control: toggle
+    label: Safe tokenization
+    help_text: Special tokens typed in user content are never read as real special tokens, which guards against prompt injection. On by default where the model supports it; Truncate prompt to is not applied while it is on.
+    group: advanced
+    default: null
+  task_type:
+    value_type: choice
+    control: select
+    label: Task type
+    help_text: What the embeddings are used for, so the provider can optimise them.
+    group: embedding
+    default: retrieval_document
+    options: [retrieval_document]
+  dimensions:
+    value_type: integer
+    control: stepper
+    label: Dimensions
+    help_text: Length of the returned vectors. Not set uses the model's own length.
+    group: embedding
+    default: null
+    minimum: 1
+    maximum: 3072
+    step: 1
+
+# Settings LiteLLM reports that are never offered on a config. Each group heading gives the
+# reason; the comment after a name says what it does. To offer one, move it to `parameters`
+# with its range or options.
+hidden:
+  # The runtime sets these on every call; a stored value would collide with what it sends.
+  - model  # comes from the config's model
+  - messages  # the conversation the agent loop builds
+  - prompt  # text-completion input; the runtime sends messages instead
+  - tools  # the agent's tool definitions
+  - tool_choice  # whether and which tool the model must call
+  - functions  # older form of tools
+  - function_call  # older form of tool_choice
+  - parallel_tool_calls  # several tool calls in one turn; the agent loop decides
+  - include_server_side_tool_invocations  # Gemini: returns its built-in tool calls in the answer
+  - stream  # the runtime picks streaming per call
+  - stream_options  # the runtime asks for usage in the stream to count cost
+  - response_format  # structured output, set per task
+  - n  # several answers per call; the runtime reads only the first
+  - user  # end-user id, per request
+  - extra_body  # raw passthrough body; would bypass every settings check
+  # Payloads for one call, not for every call made with the config.
+  - audio  # voice and format of audio output
+  - modalities  # output types (text, audio) of one call
+  - prediction  # expected output text of one edit request
+  - speculation  # Fireworks: draft text or tokens for speculative decoding
+  - web_search_options  # web search for one request
+  - instruction_override  # Gradient AI: system instruction for one request
+  - kb_filters  # Gradient AI: knowledge base filters for one request
+  # Identifiers and tags of one request.
+  - metadata  # request tags for logging
+  - requestMetadata  # Bedrock: request tags
+  - safety_identifier  # OpenAI: hashed end-user id for abuse detection
+  - prompt_cache_key  # routes one conversation to the same cache entry
+  - prompt_cache_isolation_key  # Fireworks: separates cache entries per tenant
+  # Price and latency tier: a billing choice, not tuning.
+  - service_tier  # OpenAI flex / priority processing; Fireworks priority
+  - speed  # Anthropic fast mode and similar premium speeds
+  - realtime  # Inception: low-latency mode
+  # Change the answer the runtime parses: it expects plain text and tool calls only.
+  - diffusing  # Inception: streams the intermediate diffusion steps
+  - echo  # Fireworks: repeats the prompt before the answer
+  - echo_last  # Fireworks: repeats the last N prompt tokens before the answer
+  - raw_output  # Fireworks: raw model output instead of the parsed answer
+  - perf_metrics_in_response  # Fireworks: adds performance metrics to the response
+  - return_token_ids  # Fireworks: adds token ids to the answer
+  - sampling_mask  # Fireworks: adds sampling mask data per token
+  - encoding_format  # embedding vector format (float / base64); the runtime reads floats
+  - timestamp_granularities  # transcription timestamps
+  - reasoning_summary  # Anthropic / Inception: shape of the returned reasoning summary
+  - reasoning_summary_wait  # Inception: waits for the reasoning summary
+  - reasoning_split  # MiniMax: returns reasoning in a separate field
+  - include_functions_info  # Gradient AI: adds function call details
+  - include_guardrails_info  # Gradient AI: adds guardrail details
+  - include_retrieval_info  # Gradient AI: adds retrieval details
+  - provide_citations  # Gradient AI: adds citations
+  # Already covered by an offered setting or a config field.
+  - max_completion_tokens  # LiteLLM translates max_tokens to it per provider
+  - thinking  # LiteLLM translates reasoning_effort to it; exact budgets are not offered
+  - output_config  # reasoning_effort sets its effort; its format part is response_format
+  - extra_headers  # the config's own extra_headers field
+  - timeout  # the config's own timeout field
+  - language  # the realtime service sends the voice agent's language per session
+  # Would break runs or bypass a rule.
+  - ignore_eos  # Fireworks: ignores the end token and generates until max_tokens; benchmarking only
+  - max_retries  # retries belong to the agent's retry policy and each agent's max_retry_limit
+  - cache_control  # marks single message and tool blocks for caching; nothing to attach it to on a config
+  - context_management  # Anthropic server-side compaction; changes the history the agent loop keeps
+  # A decision, not tuning.
+  - store  # OpenAI keeps prompts and answers for 30 days; a data retention policy, not offered
+  # LiteLLM reports it for ~40 providers that reuse OpenAI's settings list, and a setting
+  # cannot be offered for one provider only yet. OpenAI-only: GPT-5.5 takes only 24h, GPT-5.6+
+  # replaces it with prompt_cache_options.ttl.
+  - prompt_cache_retention  # how long OpenAI keeps a cached prompt prefix (in_memory / 24h)
+  # Only Gradient AI reports these, and it is not a registered provider: nobody could pick them.
+  - k  # number of knowledge base results
+  - retrieval_method  # how the knowledge base query is rewritten
+  - filter_kb_content_by_query_metadata  # filters knowledge base results by query metadata
+
+# The provider picker offers only the providers listed here, because each needs checked connection fields.
+providers:
+  ai21:
+    label: AI21
+    kinds: [llm]
+    connection_fields:
+      base_url: &base_url
+        label: Base URL
+        litellm_argument: api_base
+        endpoint: true
+    common_parameters:
+      llm: [temperature, stop, max_tokens, seed]
+  aleph_alpha:
+    label: Aleph Alpha
+    kinds: [llm]
+    # LiteLLM's bundled map has no models of this provider; it runs any typed name.
+    custom_models: true
+    aliases: [aleph-alpha]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens, presence_penalty, frequency_penalty]
+  anthropic:
+    label: Anthropic
+    recommended: true
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens]
+  anyscale:
+    label: Anyscale
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens, presence_penalty, frequency_penalty]
+  azure:
+    label: Azure
+    kinds: [llm]
+    custom_models: true
+    connection_fields:
+      base_url: &required_base_url
+        label: Base URL
+        litellm_argument: api_base
+        required: true
+        endpoint: true
+      api_version:
+        label: API version
+        litellm_argument: api_version
+      deployment_id:
+        label: Deployment name
+        litellm_argument: deployment_id
+        endpoint: true
+    common_parameters:
+      llm: &openai_compatible_reasoning_parameters
+        - temperature
+        - top_p
+        - stop
+        - max_tokens
+        - presence_penalty
+        - frequency_penalty
+        - logit_bias
+        - seed
+        - logprobs
+        - top_logprobs
+        - reasoning_effort
+  azure_ai:
+    label: Azure AI
+    kinds: [llm]
+    connection_fields:
+      base_url: *required_base_url
+      api_version:
+        label: API version
+        litellm_argument: api_version
+    common_parameters:
+      llm: &openai_compatible_parameters
+        - temperature
+        - top_p
+        - stop
+        - max_tokens
+        - presence_penalty
+        - frequency_penalty
+        - logit_bias
+        - seed
+        - logprobs
+        - top_logprobs
+  bedrock:
+    label: Bedrock
+    kinds: [llm]
+    connection_fields:
+      # Optional: only SigV4 signing reads it; a bearer api_key (the main secret) needs none.
+      aws_access_key_id: &aws_access_key_id
+        label: AWS access key ID
+        litellm_argument: aws_access_key_id
+        secret: true
+      # Optional: the access key ID signs nothing without its secret key.
+      aws_secret_access_key: &aws_secret_access_key
+        label: AWS secret access key
+        litellm_argument: aws_secret_access_key
+        secret: true
+      # Optional: only temporary (STS) credentials have one.
+      aws_session_token: &aws_session_token
+        label: AWS session token
+        litellm_argument: aws_session_token
+        secret: true
+      # Optional: configs created before this field existed take the region from the
+      # service environment (AWS_REGION_NAME).
+      aws_region_name: &aws_region_name
+        label: AWS region
+        litellm_argument: aws_region_name
+        endpoint: true
+      base_url: *base_url
+    common_parameters:
+      llm: [max_tokens]
+  clarifai:
+    label: Clarifai
+    kinds: [llm]
+    # LiteLLM's bundled map has no models of this provider; it runs any typed name.
+    custom_models: true
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, max_tokens, presence_penalty, frequency_penalty]
+  cloudflare:
+    label: Cloudflare Workers AI
+    kinds: [llm]
+    aliases: [cloudflare_workers_ai]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  cohere:
+    label: Cohere
+    kinds: [llm, embedding]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens, presence_penalty, frequency_penalty, seed]
+      embedding: [dimensions]
+  compactifai:
+    label: CompactifAI
+    kinds: [llm]
+    # LiteLLM's bundled map has no models of this provider; it runs any typed name.
+    custom_models: true
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  dashscope:
+    label: DashScope
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  databricks:
+    label: Databricks
+    kinds: [llm]
+    connection_fields:
+      base_url: *required_base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens, reasoning_effort]
+  deepinfra:
+    label: DeepInfra
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens, presence_penalty, frequency_penalty, logit_bias]
+  deepseek:
+    label: DeepSeek
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm:
+        - temperature
+        - top_p
+        - stop
+        - max_tokens
+        - presence_penalty
+        - frequency_penalty
+        - logit_bias
+        - seed
+        - logprobs
+        - top_logprobs
+        - reasoning_effort
+  featherless_ai:
+    label: Featherless AI
+    kinds: [llm]
+    aliases: [featherless-ai]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens, presence_penalty, frequency_penalty, logit_bias]
+  fireworks_ai:
+    label: Fireworks AI
+    recommended: true
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  friendliai:
+    label: FriendliAI
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  galadriel:
+    label: Galadriel
+    kinds: [llm]
+    # LiteLLM's bundled map has no models of this provider; it runs any typed name.
+    custom_models: true
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  gemini:
+    label: Gemini
+    recommended: true
+    kinds: [llm, embedding]
+    aliases: [google_ai]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens, presence_penalty, frequency_penalty, logprobs]
+      embedding: [task_type, dimensions]
+  github:
+    label: GitHub
+    kinds: [llm]
+    # LiteLLM's bundled map has no models of this provider; it runs any typed name.
+    custom_models: true
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  groq:
+    label: Groq
+    recommended: true
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  heroku:
+    label: Heroku
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  hosted_vllm:
+    label: Hosted vLLM
+    kinds: [llm]
+    custom_models: true
+    connection_fields:
+      base_url: *required_base_url
+    common_parameters:
+      llm: *openai_compatible_reasoning_parameters
+  huggingface:
+    label: Hugging Face
+    kinds: [llm]
+    # LiteLLM's bundled map has no models of this provider; it runs any typed name.
+    custom_models: true
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  hyperbolic:
+    label: Hyperbolic
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens, presence_penalty, frequency_penalty, seed]
+  lambda_ai:
+    label: Lambda AI
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  meta_llama:
+    label: Meta Llama
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  mistral:
+    label: Mistral
+    kinds: [llm, embedding]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens, seed]
+      embedding: []
+  morph:
+    label: Morph
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: []
+  novita:
+    label: Novita AI
+    kinds: [llm]
+    aliases: [novita_ai]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  nvidia_nim:
+    label: NVIDIA NIM
+    kinds: [llm]
+    # LiteLLM's bundled map has no models of this provider; it runs any typed name.
+    custom_models: true
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens, presence_penalty, frequency_penalty, seed]
+  oci:
+    label: OCI
+    kinds: [llm]
+    connection_fields:
+      oci_region:
+        label: Region
+        litellm_argument: oci_region
+        required: true
+        endpoint: true
+      oci_user:
+        label: User OCID
+        litellm_argument: oci_user
+        required: true
+      oci_fingerprint:
+        label: Key fingerprint
+        litellm_argument: oci_fingerprint
+        required: true
+      oci_tenancy:
+        label: Tenancy OCID
+        litellm_argument: oci_tenancy
+        required: true
+      oci_compartment_id:
+        label: Compartment OCID
+        litellm_argument: oci_compartment_id
+        required: true
+        endpoint: true
+      base_url: *base_url
+    common_parameters:
+      llm:
+        - temperature
+        - top_p
+        - stop
+        - max_tokens
+        - presence_penalty
+        - frequency_penalty
+        - logit_bias
+        - seed
+        - logprobs
+        - reasoning_effort
+  ollama:
+    label: Ollama
+    kinds: [llm]
+    custom_models: true
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens, frequency_penalty, seed, reasoning_effort]
+  openai:
+    label: OpenAI
+    recommended: true
+    kinds: [llm, embedding, transcription]
+    custom_models: true
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_reasoning_parameters
+      embedding: [dimensions]
+      transcription: []
+  openrouter:
+    label: OpenRouter
+    kinds: [llm]
+    # LiteLLM's bundled map has no models of this provider; it runs any typed name.
+    custom_models: true
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  perplexity:
+    label: Perplexity
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, max_tokens, presence_penalty, frequency_penalty]
+  petals:
+    label: Petals
+    kinds: [llm]
+    # LiteLLM's bundled map has no models of this provider; it runs any typed name.
+    custom_models: true
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, max_tokens]
+  replicate:
+    label: Replicate
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens, seed]
+  sagemaker:
+    label: AWS SageMaker
+    kinds: [llm]
+    aliases: [aws_sagemaker]
+    connection_fields:
+      aws_access_key_id: *aws_access_key_id
+      aws_secret_access_key: *aws_secret_access_key
+      aws_session_token: *aws_session_token
+      aws_region_name: *aws_region_name
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens]
+  sambanova:
+    label: SambaNova
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: [temperature, top_p, stop, max_tokens]
+  together_ai:
+    label: Together AI
+    kinds: [llm, embedding]
+    aliases: [together-ai]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+      embedding: []
+  v0:
+    label: v0
+    kinds: [llm]
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: []
+  vertex_ai:
+    label: Vertex AI
+    kinds: [llm]
+    connection_fields:
+      # Optional: configs created before these fields existed take the project and
+      # location from the service environment (VERTEXAI_PROJECT, VERTEXAI_LOCATION).
+      vertex_project:
+        label: Project
+        litellm_argument: vertex_project
+        endpoint: true
+      vertex_location:
+        label: Location
+        litellm_argument: vertex_location
+        endpoint: true
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_parameters
+  vllm:
+    label: vLLM
+    kinds: [llm]
+    custom_models: true
+    connection_fields:
+      base_url: *base_url
+    common_parameters:
+      llm: *openai_compatible_reasoning_parameters
+  # Embedding-only provider that knowledge_new cannot run yet, so it has no kinds.
+  voyage:
+    label: Voyage
+    kinds: []
+  watsonx:
+    label: watsonx
+    kinds: [llm]
+    connection_fields:
+      base_url: *required_base_url
+      project_id:
+        label: Project ID
+        litellm_argument: project_id
+        endpoint: true
+      space_id:
+        label: Space ID
+        litellm_argument: space_id
+        endpoint: true
+    common_parameters:
+      llm:
+        - temperature
+        - top_p
+        - stop
+        - max_tokens
+        - presence_penalty
+        - frequency_penalty
+        - seed
+        - logprobs
+        - top_logprobs
+        - reasoning_effort
+  # Embedding-only provider that knowledge_new cannot run yet, so it has no kinds.
+  xinference:
+    label: Xinference
+    kinds: []
+
+# Settings declared for every model of a provider and kind, because LiteLLM has no
+# per-model discovery there (its generic embedding call returns the chat settings).
+kind_parameters:
+  embedding:
+    openai: [dimensions]
+    gemini: [task_type, dimensions]
+    cohere: [dimensions]
+    mistral: []
+    together_ai: []
+  transcription:
+    # Voice configs do not store settings yet; transcription models are only picked by name.
+    openai: []
+
+recommended_models:
+  anthropic: [claude-opus-5-5, claude-sonnet-5-5]
+  fireworks_ai: [fireworks_ai/gpt-oss-120b]
+  gemini:
+    - gemini/gemini-4-argon
+    - gemini/gemini-3.8-flash
+    - gemini/gemini-3.5-flash
+    - gemini/gemini-3.1-pro-preview
+    - gemini/gemini-2.5-flash
+  groq: [groq/openai/gpt-oss-120b]
+  openai:
+    - gpt-6-sol
+    - gpt-6-luna
+    - gpt-5.5
+    - gpt-5-mini
+    - gpt-5-nano
+    - o3
+    - gpt-4o
+    - gpt-4o-mini
+    - text-embedding-3-small

@@ -1,4 +1,8 @@
+from contextlib import contextmanager
+
 from agents.models.agent_models import AgentDefinition
+from ai_models.domain.specs import ModelKind
+from ai_models.repository import CatalogRepository
 from django.core.validators import RegexValidator
 from rbac.authorship import (
     OMIT_AUTHORSHIP_CONTEXT_KEY,
@@ -6,8 +10,9 @@ from rbac.authorship import (
     AuthorSummarySerializerMixin,
     LastEditFieldsSerializerMixin,
 )
-from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField
+from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField, OrgScopedUniqueValidator
 from rest_framework import serializers
+from tables.exceptions import TwilioUnavailableError
 from tables.models.base_models import SOFT_DELETE_FIELD_NAMES
 from tables.models.realtime_models import (
     ConversationRecording,
@@ -34,6 +39,12 @@ from tables.serializers.utils.soft_delete_fields import (
     KeptLinkPrimaryKeyRelatedField,
 )
 from tables.services.secrets import secret_resolver
+from tables.services.twilio_service import (
+    PhoneNumberClaimRefusal,
+    TwilioNoAnswerError,
+    TwilioPhoneNumberClaimError,
+    TwilioService,
+)
 
 
 class RealtimeAgentDefinitionSerializer(serializers.ModelSerializer):
@@ -142,6 +153,16 @@ class OpenAIRealtimeConfigSerializer(
         allow_null=True,
     )
 
+    custom_name = serializers.CharField(
+        max_length=250,
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=OpenAIRealtimeConfig.objects.all(),
+                message="An OpenAI realtime config with this name already exists.",
+            )
+        ],
+    )
+
     class Meta:
         model = OpenAIRealtimeConfig
         fields = [
@@ -159,6 +180,15 @@ class OpenAIRealtimeConfigSerializer(
         ]
         read_only_fields = ["org", "created_by", "created_at"]
 
+    def validate_transcription_model_name(self, value):
+        # An unchanged stored name is kept, so a model that left the catalog never
+        # blocks editing the rest of the config.
+        if value is None or (self.instance and value == self.instance.transcription_model_name):
+            return value
+        if CatalogRepository.default().model(ModelKind.TRANSCRIPTION, "openai", value) is None:
+            raise serializers.ValidationError(f"'{value}' is not an OpenAI transcription model.")
+        return value
+
 
 class ElevenLabsRealtimeConfigSerializer(
     AuthorStampingSerializerMixin,
@@ -170,6 +200,16 @@ class ElevenLabsRealtimeConfigSerializer(
         source="api_key_secret",
         required=False,
         allow_null=True,
+    )
+
+    custom_name = serializers.CharField(
+        max_length=250,
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=ElevenLabsRealtimeConfig.objects.all(),
+                message="An ElevenLabs realtime config with this name already exists.",
+            )
+        ],
     )
 
     class Meta:
@@ -199,6 +239,16 @@ class GeminiRealtimeConfigSerializer(
         allow_null=True,
     )
 
+    custom_name = serializers.CharField(
+        max_length=250,
+        validators=[
+            OrgScopedUniqueValidator(
+                queryset=GeminiRealtimeConfig.objects.all(),
+                message="A Gemini realtime config with this name already exists.",
+            )
+        ],
+    )
+
     class Meta:
         model = GeminiRealtimeConfig
         fields = [
@@ -223,7 +273,37 @@ class TwilioAuthTokenSecretSerializer(serializers.Serializer):
     auth_token_secret_id = OrgScopedPrimaryKeyRelatedField(queryset=Secret.objects.all())
 
 
+# The request field each refusal is reported on: the input the user has to fix.
+_PHONE_NUMBER_CLAIM_REFUSAL_FIELDS = {
+    PhoneNumberClaimRefusal.NOT_E164: "phone_number",
+    PhoneNumberClaimRefusal.INVALID_ACCOUNT_SID: "account_sid",
+    PhoneNumberClaimRefusal.NO_AUTH_TOKEN: "auth_token_secret_id",
+    PhoneNumberClaimRefusal.AUTH_TOKEN_UNAVAILABLE: "auth_token_secret_id",
+    PhoneNumberClaimRefusal.CREDENTIALS_REJECTED: "account_sid",
+    PhoneNumberClaimRefusal.NOT_IN_ACCOUNT: "phone_number",
+    PhoneNumberClaimRefusal.ALREADY_USED: "phone_number",
+}
+
+
+@contextmanager
+def _phone_number_claim_error_as_field_error():
+    try:
+        yield
+    except TwilioPhoneNumberClaimError as error:
+        field = _PHONE_NUMBER_CLAIM_REFUSAL_FIELDS[error.reason]
+        raise serializers.ValidationError({field: [error.message]}) from None
+    except TwilioNoAnswerError as error:
+        raise TwilioUnavailableError(error.message) from error
+
+
 class TwilioChannelSerializer(serializers.ModelSerializer):
+    """Writes a channel's Twilio settings; a new phone number must be in its Twilio account.
+
+    The number is checked at save time, after the viewset's org, permission and secret
+    Use checks, by `TwilioService.claim_phone_number`: it proves ownership before
+    uniqueness, so a caller can't learn whether another org holds a number.
+    """
+
     webhook_trigger = KeptLinkPrimaryKeyRelatedField(
         queryset=WebhookTrigger.all_objects.all(), required=False, allow_null=True
     )
@@ -243,6 +323,9 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
             "phone_number",
             "webhook_trigger",
         ]
+        # No UniqueValidator from the live-number constraint: it would answer "taken"
+        # before ownership is proven.
+        extra_kwargs = {"phone_number": {"validators": []}}
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
@@ -273,6 +356,31 @@ class TwilioChannelSerializer(serializers.ModelSerializer):
             )
 
         return attrs
+
+    def validate_phone_number(self, value):
+        # A blank number is no number: "" would otherwise be one more unique live value.
+        return value or None
+
+    def create(self, validated_data):
+        with _phone_number_claim_error_as_field_error(), self._claim_phone_number(validated_data):
+            return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        with _phone_number_claim_error_as_field_error(), self._claim_phone_number(validated_data):
+            return super().update(instance, validated_data)
+
+    def _claim_phone_number(self, validated_data):
+        # A partial update leaves out what it doesn't change: fall back to the stored values.
+        instance = self.instance
+        return TwilioService().claim_phone_number(
+            channel=validated_data.get("channel", getattr(instance, "channel", None)),
+            account_sid=validated_data.get("account_sid", getattr(instance, "account_sid", "")),
+            auth_token_secret=validated_data.get(
+                "auth_token_secret", getattr(instance, "auth_token_secret", None)
+            ),
+            phone_number=validated_data.get("phone_number"),
+            current_phone_number=getattr(instance, "phone_number", None),
+        )
 
 
 class _TwilioChannelReadSerializer(serializers.ModelSerializer):

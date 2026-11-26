@@ -2,13 +2,13 @@ import pytest
 
 from tables.models import (
     Graph,
-    LLMConfig,
     McpTool,
     PythonCode,
     PythonCodeTool,
     WebhookTrigger,
     WebhookTriggerNode,
 )
+from ai_models.models import LLMConfig
 from agents.models import AgentDefinition, Surface
 from tables.models.label_models import Label
 from rbac.models import Organization
