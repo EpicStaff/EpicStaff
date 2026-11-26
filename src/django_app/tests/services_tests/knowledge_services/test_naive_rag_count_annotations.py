@@ -6,7 +6,6 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 
 from tables.models.knowledge_models import (
-    DocumentContent,
     DocumentMetadata,
     NaiveRag,
     NaiveRagChunk,
@@ -18,6 +17,7 @@ from tables.serializers.knowledge_serializers import SourceCollectionDetailSeria
 from tables.services.knowledge_services.collection_management_service import (
     CollectionManagementService,
 )
+from tests.knowledge_content import stored_document_content
 
 pytestmark = pytest.mark.django_db
 
@@ -26,7 +26,7 @@ def add_document_config(naive_rag, file_name, chunks, embeddings):
     """Create a document config with `chunks` chunks, the first `embeddings` of them embedded."""
     document = DocumentMetadata.objects.create(
         source_collection=naive_rag.base_rag_type.source_collection,
-        document_content=DocumentContent.objects.create(content=file_name.encode()),
+        document_content=stored_document_content(file_name.encode()),
         file_name=file_name,
         file_type="pdf",
         file_size=1,

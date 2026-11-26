@@ -627,7 +627,7 @@ async def _cache_prefix_of_run(monkeypatch, **command_fields) -> str:
         return [_result("extract_graph")]
 
     monkeypatch.setattr(graph_indexer, "build_index", fake_build_index)
-    await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+    await GraphIndexOrchestrator(FakeUoW(repo), CRYPTOGRAPHER, CONTENT_READER).execute(
         _make_request(frozenset({7}), **command_fields)
     )
     return config.cache.storage.prefix
