@@ -1,3 +1,4 @@
+import keyword
 import tarfile
 import zipfile
 from datetime import datetime
@@ -168,6 +169,8 @@ class ExecutionSubmitSchema(Schema):
     func_kwargs: dict[str, Any] = Field(default_factory=dict)
     secrets: dict[str, Any] = Field(default_factory=dict, repr=False)
     venv_id: int | None = None
+    # A venv the sandbox owns, such as a built-in node's; never with `venv_id`.
+    system_venv: str | None = Field(default=None, min_length=1, max_length=255)
     use_storage: bool = False
     storage_allowed_paths: list[str] = Field(default_factory=list)
     storage_org_prefix: str | None = None
@@ -175,6 +178,17 @@ class ExecutionSubmitSchema(Schema):
     timeout: float | None = None
     # Asks for the result on crew's private result channel instead of the shared one.
     reply_to_crew_channel: bool = False
+
+    @model_validator(mode="after")
+    def reject_two_venvs(self) -> Self:
+        """Reject a submission naming both a venv and a system venv.
+
+        Raises:
+            ValueError: Both `venv_id` and `system_venv` are set. Rendered as 400.
+        """
+        if self.venv_id is not None and self.system_venv is not None:
+            raise ValueError("Give venv_id or system_venv, not both.")
+        return self
 
     @model_validator(mode="after")
     def require_everything_storage_needs(self) -> Self:
@@ -200,6 +214,18 @@ class ExecutionSubmitSchema(Schema):
         if missing:
             raise ValueError(f"use_storage requires {' and '.join(missing)}")
         return self
+
+    @field_validator("entrypoint")
+    @classmethod
+    def require_a_plain_function_name(cls, entrypoint: str) -> str:
+        """Reject an entrypoint that is not a plain Python name.
+
+        The worker pastes it into the generated source as the function to call. Whether
+        the code binds it is checked there, in the child, because that needs a parse.
+        """
+        if not entrypoint.isidentifier() or keyword.iskeyword(entrypoint):
+            raise ValueError("entrypoint must be a Python function name")
+        return entrypoint
 
 
 class ExecutionAcceptedSchema(Schema):

@@ -55,9 +55,7 @@ async def start_runtime(app: Litestar) -> None:
     worker_contact = WorkerContact()
     intake_gate = IntakeGate(
         registry,
-        # A parked long-poll is a free slot, but only beyond what is already queued
-        # for it: a poller about to wake for a just-dispatched job is not free capacity.
-        lambda: worker_contact.waiting_pollers > job_queue.qsize(),
+        lambda: worker_contact.guaranteed_slots,
         max_accepted=settings.MAX_ACCEPTED_EXECUTIONS,
         max_held=settings.MAX_HELD_EXECUTIONS,
         queue_timeout=settings.QUEUE_TIMEOUT,

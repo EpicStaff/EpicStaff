@@ -107,21 +107,22 @@ async def test_config_headers_are_sent(litellm_api, no_endpoint_overrides):
 async def test_config_base_url_wins_over_env_base_url(litellm_api, monkeypatch):
     monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", ENV_URL)
 
-    await _embedder(base_url="http://config-gateway:9090/v1").embed("hi")
+    await _embedder(connection={"api_base": "http://config-gateway:9090/v1"}).embed("hi")
 
     assert litellm_api.await_args.kwargs["api_base"] == "http://config-gateway:9090/v1"
 
 
-async def test_env_base_url_used_when_config_has_none(litellm_api, monkeypatch):
+@pytest.mark.parametrize("connection", [{}, {"api_base": ""}], ids=["unset", "empty"])
+async def test_env_base_url_used_when_config_has_none(litellm_api, monkeypatch, connection):
     monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", ENV_URL)
 
-    await _embedder(base_url=None).embed("hi")
+    await _embedder(connection=connection).embed("hi")
 
     assert litellm_api.await_args.kwargs["api_base"] == ENV_URL
 
 
 async def test_config_base_url_sent_without_env_settings(litellm_api, no_endpoint_overrides):
-    await _embedder(base_url="http://config-gateway:9090/v1").embed("hi")
+    await _embedder(connection={"api_base": "http://config-gateway:9090/v1"}).embed("hi")
 
     assert litellm_api.await_args.kwargs["api_base"] == "http://config-gateway:9090/v1"
     assert "extra_headers" not in litellm_api.await_args.kwargs
@@ -132,7 +133,7 @@ async def test_cohere_embedder_keeps_input_type_with_config_overrides(
 ):
     await _embedder(
         EmbedderProviderEnum.COHERE,
-        base_url="http://cohere-gateway/v1",
+        connection={"api_base": "http://cohere-gateway/v1"},
         extra_headers={"X-Config": "c"},
     ).embed("hi")
 
@@ -140,3 +141,43 @@ async def test_cohere_embedder_keeps_input_type_with_config_overrides(
     assert request["api_base"] == "http://cohere-gateway/v1"
     assert request["extra_headers"] == {"X-Config": "c"}
     assert request["input_type"] == "search_query"
+
+
+async def test_connection_and_parameters_reach_the_litellm_call(litellm_api, no_endpoint_overrides):
+    """The request's connection arrives under LiteLLM argument names; its settings go out
+    without the unset ones, task_type as Gemini's uppercase enum value."""
+    await _embedder(
+        EmbedderProviderEnum.GEMINI,
+        connection={"api_base": "http://gemini-gateway/v1"},
+        parameters={"dimensions": 768, "task_type": "retrieval_document", "encoding_format": None},
+    ).embed("hi")
+
+    assert litellm_api.await_args.kwargs == {
+        "input": ["hi"],
+        "api_key": "sk-test",
+        "model": "m",
+        "custom_llm_provider": EmbedderProviderEnum.GEMINI,
+        "api_base": "http://gemini-gateway/v1",
+        "dimensions": 768,
+        "task_type": "RETRIEVAL_DOCUMENT",
+    }
+
+
+async def test_azure_deployment_in_the_connection_is_never_sent(litellm_api, no_endpoint_overrides):
+    """litellm sends any call carrying deployment_id to Azure."""
+    await _embedder(connection={"api_base": "http://gw/v1", "deployment_id": "dep"}).embed("hi")
+
+    assert "deployment_id" not in litellm_api.await_args.kwargs
+
+
+def test_a_logged_config_never_shows_its_connection_or_headers():
+    config = make_config(EmbedderProviderEnum.OPENAI).model_copy(
+        update={
+            "connection": {"api_base": "http://user:pa55@gw/v1"},
+            "extra_headers": {"X-Key": "header-secret"},
+        }
+    )
+
+    for rendered in (repr(config), str(config), f"{config}"):
+        assert "pa55" not in rendered
+        assert "header-secret" not in rendered

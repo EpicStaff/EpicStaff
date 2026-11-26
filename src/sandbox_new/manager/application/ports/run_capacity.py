@@ -1,12 +1,13 @@
-"""The port intake uses to ask the worker whether it could start a job right now.
+"""The port intake uses to learn how many jobs the worker always starts at once.
 
-A plain callable, not a class: intake needs one yes/no answer and nothing else. The
-worker's admission gate supplies it, so a job that would start at once is never refused
-on a queue-wait prediction.
+A plain callable, not a class: intake needs one number and nothing else. The worker
+reports it in its heartbeat; intake subtracts the executions in flight, so a job that
+would start at once is never refused on a queue-wait prediction.
 """
 
 from collections.abc import Callable
 
-__all__ = ["FreeSlotProbe"]
+__all__ = ["WorkerSlots"]
 
-type FreeSlotProbe = Callable[[], bool]
+# The worker's guaranteed slots, or None before the worker has reported them.
+type WorkerSlots = Callable[[], int | None]

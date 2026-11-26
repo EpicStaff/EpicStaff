@@ -32,9 +32,12 @@ class PythonCodeCleanupService:
         return owners
 
     @classmethod
-    def _owned_by_any_owner(cls) -> Q:
-        # The base manager also sees owners in the recycle bin: they still own
-        # the code, and reclaiming it would CASCADE-delete them and break a restore.
+    def owned_by_any_owner(cls) -> Q:
+        """The PythonCode rows some tool or node still owns, binned owners included.
+
+        The base manager also sees owners in the recycle bin: they still own the
+        code, and reclaiming it would CASCADE-delete them and break a restore.
+        """
         condition = Q()
         for relation in cls.owner_relations():
             condition |= Q(
@@ -53,7 +56,7 @@ class PythonCodeCleanupService:
         if not ids:
             return 0
 
-        owners = cls._owned_by_any_owner()
+        owners = cls.owned_by_any_owner()
         if not owners:
             return 0
 

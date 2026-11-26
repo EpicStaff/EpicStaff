@@ -106,6 +106,10 @@ class KnowledgeSearchService:
         rag_llm_api_key: str | None = None,
         rag_embedder_extra_headers: dict[str, str] | None = None,
         rag_llm_extra_headers: dict[str, str] | None = None,
+        rag_embedder_connection: dict[str, str] | None = None,
+        rag_embedder_parameters: dict[str, Any] | None = None,
+        rag_llm_connection: dict[str, str] | None = None,
+        rag_llm_parameters: dict[str, Any] | None = None,
         writer: Optional["StreamWriter"] = None,
         session_id: int | None = None,
         node_name: str | None = None,
@@ -160,6 +164,10 @@ class KnowledgeSearchService:
             llm_api_key=resolved_llm_key,
             embedding_extra_headers=rag_embedder_extra_headers,
             llm_extra_headers=rag_llm_extra_headers,
+            embedding_connection=rag_embedder_connection,
+            embedding_parameters=rag_embedder_parameters,
+            llm_connection=rag_llm_connection,
+            llm_parameters=rag_llm_parameters,
         )
         try:
             outcome = await until_stopped(searching, stop_event)

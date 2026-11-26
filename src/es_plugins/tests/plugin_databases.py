@@ -87,6 +87,16 @@ async def connect_as(
     )
 
 
+async def login_refusal(role: str, password: str, database_name: str) -> str | None:
+    """Why the server refuses `role` a session on `database_name`; None when it lets it in."""
+    try:
+        session = await connect_as(role, password, database_name)
+    except psycopg.OperationalError as error:
+        return str(error)
+    await session.close()
+    return None
+
+
 async def drop_plugin_database(desired: DesiredDatabase) -> None:
     """Remove what provisioning (or a test) made for `desired`: the database of that name and
     every other database the owner owns, then the roles. Its sessions must be closed."""

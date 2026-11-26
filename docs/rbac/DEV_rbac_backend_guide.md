@@ -285,17 +285,24 @@ implementation. Resolution order:
 
 Then membership is asserted (`assert_membership`, public — key creation reuses it): a
 non-superadmin must have an `OrganizationUser` row in that org **and the org must be
-active**. For a USER key this checks the key's owner, so an owner removed from the key's org,
-or an inactive org, gives `403`. Errors:
+active**. For a USER key this checks the key's owner; authentication already rejects
+(`401`) a key whose owner left its org or whose org is inactive, so the `403` is reached only
+if that changes during the request. Errors:
 
 | Condition | Exception | HTTP |
 |---|---|---|
 | Header/kwarg missing or non-integer | `OrgContextRequiredError` (`org_context_required`) | 400 |
-| Not a member / org inactive (non-superadmin) | `OrgMembershipRequiredError` (`org_membership_required`) | 403 |
-| Org inactive (superadmin) | `OrgMembershipRequiredError` (`org_membership_required`) | 403 |
+| Not a member (non-superadmin) | `OrgMembershipRequiredError` (`org_membership_required`) | 403 |
+| Org deactivated (member or superadmin) | `OrgDeactivatedError` (`organization_deactivated`) | 403 |
 | Org does not exist (superadmin) | `OrganizationNotFoundError` (`organization_not_found`) | 404 |
 
 Superadmin skips the membership check (may target any existing, active org).
+`OrgDeactivatedError` subclasses `OrgMembershipRequiredError`, so code that catches the
+parent to answer 404 or "no permissions" treats an inactive org the same way. The choice
+between the two for a non-superadmin is `membership_refusal` in `rbac/access/org_context.py`,
+shared with `PermissionResolver`: a membership row without an active org means the org is
+inactive; no row at all means not a member. A pinned principal whose pinned org is inactive
+also gets `OrgDeactivatedError`.
 The resolved id is cached per-request as `request._rbac_active_org_id` — both
 `OrgScopedResolverMixin.get_active_org_id()` and the serializer fields share that cache,
 so resolution runs at most once per request.
@@ -512,30 +519,28 @@ on every save, usable without `USE`.
 1. **Reference change** — the set of secret ids a FK/M2M links to changes (including
    clearing it, and any value on create). Binned secrets the row already links to count as
    linked (`tables/services/secrets/linked_ids.py`).
-2. **New header marker** — an `extra_headers` dict gains an `epicstaff_secret(<name>)` name
-   it does not have now. Keeping or removing markers is free.
+2. **New marker** — an LLM or embedding config's `extra_headers` or `connection` gains an
+   `epicstaff_secret(<name>)` name it does not have now. Keeping or removing markers is free.
 3. **Destination change on a secret-bearing row** — the row, after the write, carries a
    secret, and the place it sends requests changes:
-   - `LLMConfig`: its own `base_url` and its model's `base_url`. Switching `model` to one with
-     a different `base_url` counts; to one with the same `base_url` does not.
-     `LLMConfig.base_url` is not read at run time today and is gated anyway.
-   - `EmbeddingConfig`: its model's `base_url` (via a `model` switch).
+   - `LLMConfig` / `EmbeddingConfig`: each `connection` field the catalog marks `endpoint`
+     (`parameter_registry.yaml`) for the config's provider before or after the write: a base
+     URL, an Azure deployment, an AWS / OCI / Vertex region, a Vertex / watsonx project or an
+     OCI compartment. A key no provider declares counts too. Reported as
+     `connection.<field>`. Model rows hold no endpoint, so switching `model` is free.
    - `OpenAIRealtimeConfig`: `base_url`, when either API-key secret is set.
    - `McpTool`: `transport` (the URL the agent connects to, sending `auth_secret`), when
      `auth_secret` is set. A PUT that resends the stored `transport` is not a change. A PUT
      that omits `transport` never reaches the check: `McpToolViewSet.update` back-fills the
      missing field with `None`, which the serializer rejects with a 400.
 
-   "Carries a secret" means an API-key secret reference or any header marker.
-4. **Model `base_url` change while a secret-bearing config uses it** — `LLMModel` /
-   `EmbeddingModel` `base_url` changes while any config of that model carries a secret.
-   Not narrowed to the active org: a custom model belongs to one org, and counting more
-   configs can only deny more.
+   "Carries a secret" means an API-key secret reference or any marker in `extra_headers` or
+   `connection`.
 
-Only `base_url` and McpTool `transport` are destinations; provider, `deployment_id` and
-`api_version` cannot send a request to a host the caller picks. `None` and `""` are the same
-destination (both mean "the provider's default"), so a client sending `""` where `null` is
-stored is not denied.
+The provider and an Azure `api_version` choose between vendor hosts or API versions, not a
+host the caller picks, so they are not destinations. `None`, `""` and a missing key are the
+same destination (all mean "the provider's default"), so a client sending `""` where nothing
+is stored is not denied.
 
 No actor (no user to resolve), or an actor that is not a member of the org, is denied when a
 change needs `USE` — fail-safe, not fail-open.
@@ -546,15 +551,18 @@ principal implementing `PinnedOrgPrincipal` is held to the rules in
 
 - Every secret a row references *after* the write — changed or not, carried by the payload or
   persisted — must pass `principal.may_reference_secrets` (`SecretUseService.check_references`),
-  and every header marker must name such a secret (`check_markers`, via
+  and every marker in a config's `extra_headers` or `connection` must name such a secret
+  (`check_markers`, via
   `may_reference_marker_names`; a name no secret has is refused). So a nested PythonCode is
   checked on every write of it, even one that leaves `secret_ids` out. The denial is a
   `SecretUseDeniedError` whose message names no secret.
-- It never sets or changes a model's endpoint fields (`base_url`, `deployment_id` /
-  `deployment`), on create or update: `ModelEndpointsGuardedViewSetMixin` (first in the LLM and
-  embedding model viewsets, so a built-in model answers 400, not its own 403) and the model
-  import strategies call `assert_endpoints_untouched`. Its `ModelEndpointNotSettableError` renders
-  as a 400 keyed by each field; the import strategies re-raise it as a `ValidationError`.
+- It never sets, changes or clears an endpoint field of an LLM or embedding config's
+  `connection` (the fields the catalog marks `endpoint`: a base URL, an Azure deployment, a cloud
+  region or project), on create or update: `check_llm_config_write` /
+  `check_embedding_config_write` refuse it before any other secret check. Model rows hold no
+  endpoint; the model import strategies still call `assert_endpoints_untouched` on the endpoint
+  keys an older export file may carry. `ModelEndpointNotSettableError` renders as a 400 keyed by
+  each field (`connection.base_url`); the import strategies re-raise it as a `ValidationError`.
 - A run or indexing job it starts is refused with `409 secret_marker_not_referenceable` when a
   marker it would resolve names a secret it may not reference (`assert_may_resolve_markers`,
   called by the plugin run guard and `process-rag-indexing/`).
@@ -565,14 +573,11 @@ principal implementing `PinnedOrgPrincipal` is held to the rules in
 `actor_from_request` keeps one `SecretActor` per request, so `USE` is resolved at most once per
 request, however many nodes a bulk save checks.
 
-**Concurrent writes.** Rules 3 (model switch) and 4 read another row, so they lock the model
-row (`select_for_update`, two models in ascending pk order) and read `base_url` from the
-locked row; rule 4 locks before it counts configs. The LLM / embedding config and model
-viewsets set `secret_use_check_locks_rows = True`, which makes `SecretUseCheckedViewSetMixin` run the
-check and the save in one `transaction.atomic()`, so a concurrent model edit and config
-switch cannot both pass. Quickstart locks a reused org model the same way. Not covered: an
-admin adding a secret to a config while someone edits its (unchanged) model's `base_url` —
-the config write locks no model.
+**Concurrent writes.** Every rule reads only the row it writes, and a save writes the whole
+row, so of two concurrent writes of one config the later one wins entirely; neither leaves a
+mix of one write's secret and the other's destination. A check that does lock rows it reads
+sets `secret_use_check_locks_rows = True`, which makes `SecretUseCheckedViewSetMixin` run the
+check and the save in one `transaction.atomic()`.
 
 **Write points.** Every place that saves a secret-bearing entity runs its check:
 
@@ -583,7 +588,7 @@ the config write locks no model.
 | Graph bulk save | `NodeTypeConfig.secret_use_check` in `tables/services/graph_bulk_save_service/registry.py`; run per node after its serializer validates |
 | Classification decision table node | `ClassificationDecisionTableNodeService.create_or_update` calls `check_cdt_node_write` |
 | Quickstart | `QuickstartView.post` calls `check_quickstart` before `quickstart_service.quickstart` |
-| Config import | `BaseConfigStrategy` calls `check_config_import` with the strategy's `marker_fields`; actor from the importing user |
+| Config import | `BaseConfigStrategy` calls the strategy's `secret_use_check` (`check_llm_config_write` / `check_embedding_config_write`, as the API does) on every config it creates; actor from the importing user |
 
 PythonCode is always nested: each parent's check calls `check_python_code_write` with the
 attribute it nests it under.
@@ -717,7 +722,7 @@ Serializer rules for org-scoped models:
 `utils/exception_handler.custom_exception_handler` renders domain exceptions from
 `rbac/exceptions.py` as
 `{"status_code": ..., "code": "...", "message": "..."}`. Reuse existing codes
-(`org_context_required`, `org_membership_required`, `permission_denied`,
+(`org_context_required`, `org_membership_required`, `organization_deactivated`, `permission_denied`,
 `built_in_role_immutable`, `built_in_model_immutable`, `last_org_admin`,
 `last_superadmin`, …) and add new exceptions
 to that module — never raw `Response({"error": ...})`.

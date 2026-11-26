@@ -18,14 +18,12 @@ from tables.import_export.services.partial_export_service import (
 from tables.import_export.services.partial_import_service import PartialImportService
 from tables.models import (
     Graph,
-    LLMConfig,
-    LLMModel,
-    Provider,
     PythonCode,
     PythonNode,
     StartNode,
     WebhookTrigger,
 )
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     ConditionGroup,

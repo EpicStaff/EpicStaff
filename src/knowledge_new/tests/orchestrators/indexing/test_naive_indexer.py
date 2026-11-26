@@ -274,6 +274,12 @@ async def test_cancelled_run_marks_rag_cancelled_and_restores_the_document(
 
 
 CSV_CONFIG = ChunkingConfig(chunk_strategy=ChunkStrategyEnum.CSV, chunk_size=50, chunk_overlap=0)
+ZERO_ROWS_CSV_CONFIG = ChunkingConfig(
+    chunk_strategy=ChunkStrategyEnum.CSV,
+    chunk_size=50,
+    chunk_overlap=0,
+    extra={"csv": {"rows_in_chunk": 0}},
+)
 
 
 @pytest.mark.parametrize(
@@ -283,8 +289,18 @@ CSV_CONFIG = ChunkingConfig(chunk_strategy=ChunkStrategyEnum.CSV, chunk_size=50,
         (_broken_json_document(7), None),
         (_document(content=b"\n\n"), None),
         (_document(), RuntimeError("provider down")),
+        (
+            _document(name="doc.csv", content=b"h\na\nb", config=ZERO_ROWS_CSV_CONFIG),
+            None,
+        ),
     ],
-    ids=["extraction_failure", "chunking_failure", "no_chunks_produced", "embedding_failure"],
+    ids=[
+        "extraction_failure",
+        "chunking_failure",
+        "no_chunks_produced",
+        "embedding_failure",
+        "invalid_chunker_params",
+    ],
 )
 async def test_document_failure_marks_document_and_rag_failed(
     embedding_api, document, provider_error
@@ -424,6 +440,24 @@ async def test_embedding_extra_headers_reach_the_embedding_provider(embedding_ap
     assert embedding_api.await_args.kwargs["extra_headers"] == {"X-Gateway-Key": "resolved-value"}
 
 
+async def test_request_settings_and_connection_reach_the_embedding_provider(
+    embedding_api, monkeypatch
+):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    repo = FakeNaiveRagRepo(documents=[_document()], rag=_new_rag())
+
+    await _index(
+        repo,
+        7,
+        embedding_connection={"api_base": "http://gateway/v1"},
+        embedding_parameters={"dimensions": 256},
+    )
+
+    request = embedding_api.await_args.kwargs
+    assert request["api_base"] == "http://gateway/v1"
+    assert request["dimensions"] == 256
+
+
 async def test_sealed_header_markers_reach_the_embedding_provider_decrypted(
     embedding_api, monkeypatch
 ):
@@ -531,3 +565,13 @@ async def test_cancelled_run_records_tokens_consumed_so_far(embedding_api):
 
     (run,) = repo.usage_runs
     assert run.embedding_tokens == 10
+
+
+async def test_invalid_csv_params_fail_the_document_with_a_clear_message(embedding_api):
+    document = _document(name="doc.csv", content=b"h\na\nb", config=ZERO_ROWS_CSV_CONFIG)
+    repo = FakeNaiveRagRepo(documents=[document], rag=_new_rag())
+
+    await _index(repo, 7)
+
+    assert document.status == DocumentStatusEnum.FAILED
+    assert "rows_in_chunk" in document.error_message

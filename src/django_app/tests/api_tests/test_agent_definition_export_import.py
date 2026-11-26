@@ -23,10 +23,11 @@ from agents.models import (
     ToolMode,
 )
 from rbac.models.enums import Permission, ResourceType
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.import_export.archive import ENVELOPE_MEMBER
 from tables.import_export.enums import EntityType
 from tables.import_export.schemas import ImportSettings
-from tables.models import LLMConfig, LLMModel, Provider, TransferJob
+from tables.models import TransferJob
 from tables.models.knowledge_models import DocumentMetadata, SourceCollection
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool

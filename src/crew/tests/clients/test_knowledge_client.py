@@ -31,7 +31,7 @@ async def _search(client: KnowledgeClient, **overrides):
     return await client.search_with_usage(**{**arguments, **overrides})
 
 
-async def test_search_sends_extra_headers_with_the_api_keys():
+async def test_search_sends_extra_headers_and_connections_with_the_api_keys():
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -43,14 +43,22 @@ async def test_search_sends_extra_headers_with_the_api_keys():
         client,
         embedding_extra_headers={"X-Emb": "emb-resolved"},
         llm_extra_headers={"X-Llm": "llm-resolved"},
+        embedding_connection={"api_base": "http://emb-gateway/v1"},
+        embedding_parameters={"dimensions": 256},
+        llm_connection={"aws_region_name": "eu-west-1"},
+        llm_parameters={"temperature": 0.1},
     )
 
     assert seen["body"]["embedding_api_key"] == "sk-emb"
     assert seen["body"]["embedding_extra_headers"] == {"X-Emb": "emb-resolved"}
     assert seen["body"]["llm_extra_headers"] == {"X-Llm": "llm-resolved"}
+    assert seen["body"]["embedding_connection"] == {"api_base": "http://emb-gateway/v1"}
+    assert seen["body"]["embedding_parameters"] == {"dimensions": 256}
+    assert seen["body"]["llm_connection"] == {"aws_region_name": "eu-west-1"}
+    assert seen["body"]["llm_parameters"] == {"temperature": 0.1}
 
 
-async def test_search_without_extra_headers_sends_empty_objects():
+async def test_search_without_extra_headers_or_connections_sends_empty_objects():
     seen = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -62,6 +70,10 @@ async def test_search_without_extra_headers_sends_empty_objects():
 
     assert seen["body"]["embedding_extra_headers"] == {}
     assert seen["body"]["llm_extra_headers"] == {}
+    assert seen["body"]["embedding_connection"] == {}
+    assert seen["body"]["embedding_parameters"] == {}
+    assert seen["body"]["llm_connection"] == {}
+    assert seen["body"]["llm_parameters"] == {}
 
 
 async def test_search_with_usage_returns_the_embedding_usage_knowledge_new_reports():

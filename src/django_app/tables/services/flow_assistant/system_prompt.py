@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from string import Template
 
+from src.shared.untrusted_content import UNTRUSTED_TOOL_RESULT_INSTRUCTION
+
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 _personality: str | None = None
@@ -73,4 +75,6 @@ def build_system_prompt(inputs: SystemPromptInputs, *, anthropic_tables: bool = 
         subflow_summary=inputs.subflow_summary,
     )
     rich_format = _load_rich_format_anthropic() if anthropic_tables else _load_rich_format()
-    return f"{personality}\n\n{instructions}\n\n{rich_format}"
+    return (
+        f"{personality}\n\n{instructions}\n\n{UNTRUSTED_TOOL_RESULT_INSTRUCTION}\n\n{rich_format}"
+    )

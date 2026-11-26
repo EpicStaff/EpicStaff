@@ -74,6 +74,17 @@ def test_a_zombie_whose_thread_vanished_mid_read_is_not_living(tmp_path):
     assert ProcessTable(tmp_path).living_pids_of_uid(20001) == []
 
 
+def test_a_running_thread_whose_name_is_not_utf8_keeps_its_zombie_leader_living(tmp_path):
+    write_status(tmp_path, 40, 20001, state="Z (zombie)")
+    write_thread(tmp_path, 40, 40, "Z (zombie)")
+    write_thread(tmp_path, 40, 41, "S (sleeping)", with_status=False)
+    (tmp_path / "40" / "task" / "41" / "status").write_bytes(
+        b"Name:\tab\xff\xfecd\nState:\tS (sleeping)\nUid:\t20001\t20001\t20001\t20001\n"
+    )
+
+    assert ProcessTable(tmp_path).living_pids_of_uid(20001) == [40]
+
+
 def test_the_interpreter_and_libraries_every_process_maps_are_not_counted(tmp_path):
     # Two workers of one plugin, each mapping the same 30 MB of interpreter and libraries.
     write_status(tmp_path, 30, 20001, 10_000, file_kib=30_000)
@@ -88,6 +99,30 @@ def test_an_old_kernel_without_rss_anon_falls_back_to_vm_rss(tmp_path):
     (directory / "status").write_text("State:\tS\nUid:\t20001\t20001\t20001\t20001\nVmRSS:\t 5000 kB\n")
 
     assert ProcessTable(tmp_path).rss_kib_by_uid([20001]) == {20001: 5000}
+
+
+def test_a_process_whose_name_is_not_utf8_is_still_read(tmp_path):
+    write_status(tmp_path, 30, 20001, 9_000)
+    (tmp_path / "30" / "status").write_bytes(
+        b"Name:\tab\xff\xfecd\nState:\tS (sleeping)\nUid:\t20001\t20001\t20001\t20001\n"
+        b"RssAnon:\t    8000 kB\nRssShmem:\t    1000 kB\n"
+    )
+    table = ProcessTable(tmp_path)
+
+    assert [entry.pid for entry in table.read()] == [30]
+    assert table.living_pids_of_uid(20001) == [30]
+    assert table.rss_kib_by_uid([20001]) == {20001: 9_000}
+
+
+def test_a_process_name_cannot_forge_a_field_of_its_status(tmp_path):
+    # An exited, unreaped process has no memory lines, so only its name could carry a VmRSS.
+    directory = tmp_path / "30"
+    directory.mkdir()
+    (directory / "status").write_bytes(
+        b"Name:\t\x1cVmRSS:\tx\nState:\tZ (zombie)\nUid:\t20001\t20001\t20001\t20001\n"
+    )
+
+    assert ProcessTable(tmp_path).rss_kib_by_uid([20001]) == {20001: 0}
 
 
 def test_a_process_that_vanishes_while_read_is_left_out(tmp_path):

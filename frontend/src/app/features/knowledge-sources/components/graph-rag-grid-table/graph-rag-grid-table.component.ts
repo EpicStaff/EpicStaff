@@ -11,7 +11,7 @@ import {
     viewChildren,
 } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
-import { AppSvgIconComponent } from '@shared/components';
+import { AppSvgIconComponent, CopyButtonComponent } from '@shared/components';
 
 import { GraphGridActionEvent, GraphGridColumnDef } from './graph-rag-grid-table.model';
 import { HighlightPipe } from './highlight.pipe';
@@ -37,7 +37,7 @@ interface CellPosition {
     templateUrl: './graph-rag-grid-table.component.html',
     styleUrls: ['./graph-rag-grid-table.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AppSvgIconComponent, HighlightPipe, MatTooltip],
+    imports: [AppSvgIconComponent, CopyButtonComponent, HighlightPipe, MatTooltip],
 })
 export class GraphRagGridTableComponent {
     readonly columnDefs = input.required<GraphGridColumnDef[]>();
@@ -53,6 +53,8 @@ export class GraphRagGridTableComponent {
     /** Body cells in DOM order: row by row, one entry per column. */
     private readonly bodyCells = viewChildren<ElementRef<HTMLElement>>('bodyCell');
     private resizing: { key: string; startX: number; startWidth: number } | null = null;
+    /** The column whose resize handle is hovered, focused or dragged: its right edge is highlighted in every body row. */
+    protected readonly activeResizeKey = signal<string | null>(null);
     private popoverAnchor: HTMLElement | null = null;
 
     constructor() {
@@ -106,6 +108,10 @@ export class GraphRagGridTableComponent {
     /** True while the column renders as a row-level action button rather than a value cell. */
     isActionColumn(def: GraphGridColumnDef): boolean {
         return def.action !== undefined;
+    }
+
+    cellString(value: unknown): string {
+        return value == null ? '' : String(value);
     }
 
     /**
@@ -189,6 +195,19 @@ export class GraphRagGridTableComponent {
         (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
         this.freezeColumnWidths(headerCell);
         this.resizing = { key, startX: event.clientX, startWidth: headerCell.offsetWidth };
+        this.activeResizeKey.set(key);
+    }
+
+    onResizeHandleEnter(key: string): void {
+        if (!this.resizing) {
+            this.activeResizeKey.set(key);
+        }
+    }
+
+    onResizeHandleLeave(key: string): void {
+        if (!this.resizing && this.activeResizeKey() === key) {
+            this.activeResizeKey.set(null);
+        }
     }
 
     private freezeColumnWidths(headerCell: HTMLElement): void {
@@ -217,6 +236,7 @@ export class GraphRagGridTableComponent {
 
     onResizeEnd(): void {
         this.resizing = null;
+        this.activeResizeKey.set(null);
     }
 
     /** The cell a navigation key moves to, or null for keys the grid does not handle. Moves stop at the edges. */

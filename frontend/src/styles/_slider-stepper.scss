@@ -1,0 +1,8 @@
+// The slider-with-stepper's value box (−, value, +) on the right of its label line, which is as high as the box.
+// Defined once: `schema-form` lays its reset button left of the box and centres it on the same line.
+
+$value-box-width: 120px;
+$value-box-height: 28px;
+
+// A medium number stepper's height (number-stepper `md`): `schema-form` sizes the reset beside a stepper to match.
+$number-stepper-md-height: 2.5rem;

@@ -21,7 +21,7 @@ from loguru import logger
 
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
 from app.llm.retry import RetryPolicy
-from app.llm.router_pool import RouterPool, get_router_pool
+from app.llm.router_pool import CONNECTION_KEY, RouterPool, get_router_pool
 from app.logging_utils import redact
 from shared.bench_log import BENCH_LEVEL
 
@@ -30,9 +30,8 @@ from shared.bench_log import BENCH_LEVEL
 _STRIPPED_MODEL_CONFIG_KEYS = frozenset(
     {
         "model",
-        "api_key",
-        "base_url",
-        "api_version",
+        # The connection arguments and main secret live on the Router deployment.
+        CONNECTION_KEY,
         "max_retry_limit",
         "max_rpm",
         "input_cost_per_token",

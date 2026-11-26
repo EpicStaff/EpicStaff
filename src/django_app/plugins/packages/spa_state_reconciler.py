@@ -2,11 +2,12 @@
 
 The flag nginx reads for the maintenance page, and the `current` link it serves, are written
 after a transaction commits (`SpaPublisher`); a write that fails there is logged and left. This
-repairs both from the plugins' rows: the flag exists exactly for plugins in maintenance, and a
-running (or failed) plugin with a frontend serves its current version once that version's
-files are there. It never removes a directory, and never waits for a plugin another
-transaction holds (an approval writes its files under the plugin's lock): that plugin is left
-to the next pass.
+repairs both from the plugins' rows: the flag exists exactly for plugins in maintenance, a
+provisioning, running or failed plugin with a frontend serves its current version once that
+version's files are there, and an uninstalled plugin, or one being deleted, serves none (its
+`current` is removed, its files stay). It never removes a directory, and never waits for a
+plugin another transaction holds (an approval writes its files under the plugin's lock): that
+plugin is left to the next pass.
 """
 
 from django.conf import settings
@@ -15,10 +16,12 @@ from utils.logger import logger
 
 from plugins.audit import log_spa_repaired
 from plugins.lifecycle.lifecycle_locks import lock_plugin
+from plugins.lifecycle.plugin_actions import OUT_OF_SERVICE_PLUGIN_STATES
 from plugins.models import Plugin, PluginState
 from plugins.packages.spa_publisher import SpaPublisher
 
-_SERVING_STATES = (PluginState.RUNNING, PluginState.FAILED)
+# The states a first install and a reinstall serve the frontend from, at once.
+_SERVING_STATES = (PluginState.PROVISIONING, PluginState.RUNNING, PluginState.FAILED)
 
 
 class SpaStateReconciler:
@@ -77,7 +80,10 @@ class SpaStateReconciler:
             log_spa_repaired(identifier, "maintenance_flag")
             repairs += 1
         if self._current_wrong(plugin):
-            self._publisher.switch_current(identifier, plugin.current_package.version)
+            if plugin.state in OUT_OF_SERVICE_PLUGIN_STATES:
+                self._publisher.remove_current(identifier)
+            else:
+                self._publisher.switch_current(identifier, plugin.current_package.version)
             log_spa_repaired(identifier, "current")
             repairs += 1
         return repairs
@@ -87,6 +93,8 @@ class SpaStateReconciler:
         return self._publisher.maintenance_flag_set(plugin.identifier) != in_maintenance
 
     def _current_wrong(self, plugin: Plugin) -> bool:
+        if plugin.state in OUT_OF_SERVICE_PLUGIN_STATES:
+            return self._publisher.current_version(plugin.identifier) is not None
         package = plugin.current_package
         return (
             plugin.state in _SERVING_STATES

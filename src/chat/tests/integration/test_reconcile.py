@@ -1,6 +1,7 @@
 import asyncio
 from datetime import timedelta
 
+import psycopg
 import pytest
 from application.orchestrators.conversation import ApplyOutcome, ConversationOrchestrator, RunConfig
 from application.orchestrators.lifecycle import LifecycleTimers
@@ -14,7 +15,11 @@ from infrastructure.database.models import VisitorTokenRow
 from infrastructure.django.client import DjangoClient
 from infrastructure.redis.counters import RedisRateLimiter
 from infrastructure.redis.fanout import RedisFanout
+from litestar.testing import AsyncTestClient
+from loguru import logger
+from main import create_app
 from sqlalchemy import update
+from sqlalchemy.exc import DBAPIError
 from tests.factories import HANDBACK_NOTICE, make_binding, make_closed, make_conversation
 from tests.integration.test_callback_endpoint import _payload, _signed
 from tests.infrastructure.test_django_client import CHAT_FLOW
@@ -78,6 +83,21 @@ async def test_finished_run_is_applied_from_session_messages(uow_factory, parts,
     assert stored.run_state == RunState.IDLE and stored.tokens_used == 11
     assert messages[-1].role == Role.ASSISTANT and messages[-1].content == "late reply"
     assert await reconciler.run_once(utcnow()) == 0
+
+
+async def test_a_finished_run_whose_result_holds_a_nul_is_applied_without_it(uow_factory, parts, django):
+    # Kept, the NUL fails the write on every pass and the conversation stays "processing" for good.
+    conversations, reconciler = parts
+    conversation = await _stuck(uow_factory, conversations, minutes=10)
+    django.sessions[100].update(status="end", token_usage={"total_tokens": 11})
+    result = {"reply": "late\x00 reply", "actions": [{"ty\x00pe": ["butt\x00ons"]}]}
+    django.messages[100] = [{"id": 1, "message_data": {"message_type": "graph_end", "end_node_result": result}}]
+    assert await reconciler.run_once(utcnow()) == 1
+    async with uow_factory() as uow:
+        stored = await uow.conversations.get(conversation.id)
+        messages = await uow.messages.page(conversation.id, None, 10)
+    assert (stored.run_state, stored.active_run_id) == (RunState.IDLE, None)
+    assert (messages[-1].content, messages[-1].actions) == ("late reply", [{"type": ["buttons"]}])
 
 
 async def test_run_past_timeout_is_stopped(uow_factory, parts, django):
@@ -540,3 +560,96 @@ async def test_closed_conversations_are_never_touched_by_the_timers(uow_factory,
     await reconciler.run_once(NOW)
     stored, messages = await _stored(uow_factory, closed.id)
     assert (stored, messages) == (closed, [])
+
+
+# ---- what a failing pass logs -------------------------------------------------------------------
+
+SECRET = "desk-identity-secret-0123456789"
+VISITOR_TEXT = "my card number is 4111 1111 1111 1111"
+
+
+def _failed_write() -> DBAPIError:
+    # What a write the database refuses raises: the statement, its bound values and the server's text.
+    return DBAPIError.instance(
+        "UPDATE binding SET identity_secret=%(secret)s",
+        {"secret": SECRET},
+        psycopg.errors.UntranslatableCharacter(f'invalid input: "{VISITOR_TEXT}"'),
+        psycopg.Error,
+    )
+
+
+# The type and SQLSTATE tell failures apart; neither quotes what was written.
+LOGGED_ERROR = "DataError (sqlstate 22P05)"
+
+
+class _FailingConversations(ConversationOrchestrator):
+    async def release_unconfirmed_start(self, conversation_id, run_id):
+        raise _failed_write()
+
+
+class _FailingFlows(DjangoClient):
+    async def run_status(self, org_id, session_id):
+        raise _failed_write()
+
+
+class _FailingTimers(LifecycleTimers):
+    async def hand_back(self, conversation_id, now):
+        raise _failed_write()
+
+    async def close_inactive(self, conversation_id, now):
+        raise _failed_write()
+
+
+async def test_a_failing_write_logs_which_conversation_and_the_error_type_and_sqlstate_but_none_of_its_text(uow_factory, parts, settings, django, redis_client):
+    conversations, _ = parts
+    unconfirmed, _, _ = await _unconfirmed(uow_factory, conversations, django)
+    await _age(uow_factory, unconfirmed.id, 90)
+    stuck = await _stuck(uow_factory, conversations, minutes=10)
+    binding = make_binding(org_id=1, graph_id=5)
+    waiting, idle = _waiting(binding, 60), _idle(binding, 25)
+    await _seed(uow_factory, binding, waiting, idle)
+    flows = _FailingFlows(settings, transport=django.transport)
+    failing = Reconciler(
+        uow_factory,
+        conversations=_FailingConversations(
+            uow_factory, flows=flows, fanout=RedisFanout(redis_client), limiter=RedisRateLimiter(redis_client),
+            config=RunConfig(callback_url="http://chat:8200/cb", ip_message_rate=Rate(30, 60), ip_conversation_rate=Rate(20, 3600)),
+            visitor_token_idle_seconds=30 * 86400,
+        ),
+        flows=flows, timers=_FailingTimers(uow_factory, fanout=RedisFanout(redis_client)),
+        stale_after_seconds=300, unconfirmed_start_release_seconds=60, run_timeout_seconds=1800, retention_seconds=7 * 86400,
+        visitor_token_idle_seconds=30 * 86400,
+    )
+    records: list[str] = []
+    sink_id = logger.add(records.append, level="ERROR", format="{message}")
+    try:
+        assert await failing.run_once(utcnow()) == 0
+    finally:
+        logger.remove(sink_id)
+        await flows.aclose()
+    assert len(records) == 4
+    for conversation in (unconfirmed, stuck, waiting, idle):
+        assert [record for record in records if str(conversation.id) in record and record.strip().endswith(f"failed: {LOGGED_ERROR}")]
+    assert not [record for record in records if SECRET in record or VISITOR_TEXT in record or "4111" in record]
+
+
+async def test_a_failing_pass_logs_the_error_type_and_sqlstate_but_none_of_its_text(settings, session_factory, django, redis_client, monkeypatch):
+    async def failing_pass(self, now):
+        raise _failed_write()
+
+    monkeypatch.setattr(Reconciler, "run_once", failing_pass)
+    app = create_app(settings.model_copy(update={"CHAT_RECONCILE_INTERVAL": 1}), django_transport=django.transport, redis_client=redis_client)
+    expected = f"Reconcile pass failed: {LOGGED_ERROR}"
+    records: list[str] = []
+    async with AsyncTestClient(app=app):
+        sink_id = logger.add(records.append, level="ERROR", format="{message}")
+        try:
+            for _ in range(50):
+                if expected in [record.strip() for record in records]:
+                    break
+                await asyncio.sleep(0.1)
+        finally:
+            logger.remove(sink_id)
+    # Other ERROR lines may share the window; the pass's own must be exact and none may leak.
+    assert expected in [record.strip() for record in records]
+    assert not [record for record in records if SECRET in record or VISITOR_TEXT in record or "4111" in record]

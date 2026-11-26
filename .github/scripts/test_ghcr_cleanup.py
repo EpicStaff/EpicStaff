@@ -5,6 +5,7 @@ No pytest dependency, run directly:
     python3 .github/scripts/test_ghcr_cleanup.py
 """
 
+import io
 import os
 import sys
 import unittest
@@ -15,6 +16,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).parent))
 
 import ghcr_cleanup as cleanup
+import requests
 
 NOW = datetime(2026, 11, 17, tzinfo=UTC)
 OLD = NOW - timedelta(days=30)
@@ -127,6 +129,21 @@ class ReviewFindingsTest(unittest.TestCase):
         signatures = [version(2, f"sha256-{hex_digest}"), version(3, f"sha256-{hex_digest}.sbom")]
         self.assertEqual(deleted_ids([release, *signatures]), set())
 
+    def test_the_manifests_a_kept_signature_index_lists_are_kept(self):
+        # cosign without the registry's referrers API tags an index of the signature and
+        # attestation manifests as sha256-<image hex>; those manifests are untagged versions.
+        release, signature_manifest, orphan = version(1, "v1.5.0"), version(2), version(3)
+        referrers = version(4, release.digest.replace(":", "-"))
+        children = {referrers.digest: {signature_manifest.digest}}
+        self.assertEqual(
+            deleted_ids([release, referrers, signature_manifest, orphan], children), {3}
+        )
+
+    def test_children_of_children_are_kept(self):
+        outer, inner, platform = version(1, "v1.5.0"), version(2), version(3)
+        children = {outer.digest: {inner.digest}, inner.digest: {platform.digest}}
+        self.assertEqual(deleted_ids([outer, inner, platform], children), set())
+
     def test_a_version_listed_twice_is_deleted_once(self):
         stale = version(1, "feat-est-1-gone")
         plan = cleanup.plan_deletions(
@@ -146,7 +163,7 @@ class ReviewFindingsTest(unittest.TestCase):
 
 
 class FakeGhcr:
-    deleted: list[int] = []
+    deleted: list[tuple[str, int]] = []
 
     def __init__(self, token, org):
         FakeGhcr.deleted = []
@@ -164,18 +181,35 @@ class FakeGhcr:
         return lambda digest: set()
 
     def delete(self, package, stale):
-        FakeGhcr.deleted.append(stale.id)
+        FakeGhcr.deleted.append((package, stale.id))
+
+
+class UnreadableManifestGhcr(FakeGhcr):
+    """The registry cannot serve the manifests of one package's kept images."""
+
+    def packages(self, repository):
+        return ["agent", "django_app"]
+
+    def children_of(self, package):
+        def children(digest):
+            if package == "agent":
+                raise requests.HTTPError("503 Service Unavailable")
+            return set()
+
+        return children
 
 
 class MainTest(unittest.TestCase):
-    def run_main(self, **env):
+    def run_main(self, ghcr=FakeGhcr, **env):
         environ = {"GITHUB_TOKEN": "token", "GITHUB_REPOSITORY": "EpicStaff/EpicStaff", **env}
         with (
-            mock.patch.object(cleanup, "Ghcr", FakeGhcr),
+            mock.patch.object(cleanup, "Ghcr", ghcr),
             mock.patch.dict(os.environ, environ, clear=True),
-            mock.patch("sys.stdout"),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as stdout,
         ):
-            return cleanup.main()
+            exit_code = cleanup.main()
+        self.output = stdout.getvalue()
+        return exit_code
 
     def test_without_dry_run_set_nothing_is_deleted(self):
         self.assertEqual(self.run_main(), 0)
@@ -183,7 +217,12 @@ class MainTest(unittest.TestCase):
 
     def test_dry_run_false_deletes(self):
         self.assertEqual(self.run_main(DRY_RUN="false"), 0)
-        self.assertEqual(FakeGhcr.deleted, [1])
+        self.assertEqual(FakeGhcr.deleted, [("django_app", 1)])
+
+    def test_a_package_with_unreadable_manifests_is_skipped_and_the_run_fails(self):
+        self.assertEqual(self.run_main(UnreadableManifestGhcr, DRY_RUN="false"), 1)
+        self.assertEqual(FakeGhcr.deleted, [("django_app", 1)])
+        self.assertIn("::error::agent: skipped, nothing deleted", self.output)
 
 
 if __name__ == "__main__":

@@ -1,9 +1,8 @@
-"""What the manager knows about the worker: boot identity, contact, parked polls.
+"""What the manager knows about the worker: boot identity and contact.
 
 Liveness is judged from contact alone, never from job duration. A new boot id
 supersedes the old one; a superseded id is a zombie and is refused by AGE, so a crash
-loop of any length cannot push a live zombie out of memory. Waiting pollers are the
-intake's free-slot probe and must never go negative or leak.
+loop of any length cannot push a live zombie out of memory.
 """
 
 import pytest
@@ -88,14 +87,3 @@ def test_any_contact_resets_the_workers_silence(contact, clock):
     clock.advance(59.0)
 
     assert contact.worker_is_silent(60.0) is False
-
-
-def test_waiting_pollers_are_counted_and_never_go_negative(contact):
-    contact.add_waiting_poller()
-    contact.add_waiting_poller()
-    assert contact.waiting_pollers == 2
-
-    contact.remove_waiting_poller()
-    contact.remove_waiting_poller()
-    contact.remove_waiting_poller()
-    assert contact.waiting_pollers == 0

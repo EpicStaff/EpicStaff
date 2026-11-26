@@ -16,6 +16,7 @@ from src.shared.public_error import (
     build_public_error_message,
     new_error_correlation_id,
 )
+from src.shared.untrusted_content import wrap_untrusted_tool_result
 from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
@@ -557,7 +558,7 @@ class GeminiRealtimeAgentClient(BaseRealtimeAgentClient):
                     types.FunctionResponse(
                         id=call_id,
                         name=tool_name,
-                        response={"result": result_str},
+                        response={"result": wrap_untrusted_tool_result(result_str)},
                     )
                 ]
             )

@@ -18,7 +18,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Router } from '@angular/router';
 import { AppIconComponent } from '@shared/components';
-import { DEFAULT_ENTITY_ICON, ENTITY_ICONS } from '@shared/constants';
+import { DEFAULT_ENTITY_ICON, ENTITY_ICONS, ENTITY_TYPE_LABELS } from '@shared/constants';
 
 import {
     EntityTypeResult,
@@ -127,26 +127,7 @@ export class ImportResultDialogComponent implements AfterViewInit {
      * Get display name for entity type (e.g., "GRAPH" -> "Flow")
      */
     public getEntityTypeLabel(entityType: string): string {
-        const labelMap: { [key: string]: string } = {
-            Agent: 'Agent',
-            EmbeddingConfig: 'Embedding Config',
-            EmbeddingModel: 'Embedding Model',
-            EmbeddingModelTag: 'Embedding Model Tag',
-            Flow: 'Flow',
-            LLMConfig: 'LLM Config',
-            LLMModel: 'LLM Model',
-            LLMModelTag: 'LLM Model Tag',
-            MCPTool: 'MCP Tool',
-            Project: 'Project',
-            PythonCodeTool: 'Python Code Tool',
-            RealtimeConfig: 'Realtime Config',
-            RealtimeModel: 'Realtime Model',
-            RealtimeTranscriptionConfig: 'Realtime Transcription Config',
-            RealtimeTranscriptionModel: 'Realtime Transcription Model',
-            SourceCollection: 'Knowledge Collection',
-        };
-
-        return labelMap[entityType] || entityType;
+        return ENTITY_TYPE_LABELS[entityType] || entityType;
     }
 
     /**

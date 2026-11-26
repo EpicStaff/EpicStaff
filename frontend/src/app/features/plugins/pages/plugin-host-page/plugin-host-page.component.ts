@@ -7,6 +7,7 @@ import {
     ElementRef,
     inject,
     Renderer2,
+    signal,
     untracked,
     viewChild,
 } from '@angular/core';
@@ -23,7 +24,18 @@ import {
     UrlSegment,
 } from '@angular/router';
 import { FetchErrorStateComponent } from '@shared/components';
-import { asyncScheduler, EMPTY, exhaustMap, filter, map, Subject, switchMap, throttleTime, timer } from 'rxjs';
+import {
+    asyncScheduler,
+    EMPTY,
+    exhaustMap,
+    filter,
+    finalize,
+    map,
+    Subject,
+    switchMap,
+    throttleTime,
+    timer,
+} from 'rxjs';
 
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
@@ -71,6 +83,8 @@ interface MessageView {
     kind: 'message';
     title: string;
     message: string;
+    /** A line under the message; `null` for none. */
+    hint: string | null;
 }
 
 type PluginHostView = ReadyView | MaintenanceView | MessageView;
@@ -120,6 +134,10 @@ export const PLUGIN_AVAILABILITY_CHECK_MS = 10_000;
  * asks the server every 15 seconds (not while the browser tab is hidden) and opens the frame once the plugin is
  * ready. A framed page that reports its API down (`availability.changed`) only makes the page ask the server again,
  * at most once per 10 seconds: the server's answer decides between the frame, the panel and "not available".
+ *
+ * Only `availability: 'ready'` is framed. A plugin whose host is not proved to be served by this EpicStaff
+ * (`unavailable`), or one in a state this build does not know, gets a message with Try again instead; nothing polls
+ * for it, since only an administrator's fix of its address brings it back.
  *
  * Each plugin opened loads the available list again in the background. While the plugin is served from a developer's
  * machine (`development`), a banner above the frame says so; the frame's address does not change.
@@ -171,6 +189,14 @@ export class PluginHostPageComponent {
         return view.kind === 'message' ? view : null;
     });
     private readonly isInMaintenance = computed(() => this.view().kind === 'maintenance');
+    /** Try again's request is under way. */
+    protected readonly isReloading = signal(false);
+    /** The view a finished Try again left as it was, so the status line can say nothing changed while it shows. */
+    private readonly viewUnchangedByReload = signal<PluginHostView | null>(null);
+    /** Announced politely: without it, a Try again that changes nothing gives a screen reader no answer. */
+    protected readonly reloadStatus = computed(() =>
+        this.viewUnchangedByReload() === this.view() ? 'Still unavailable' : ''
+    );
     /**
      * The plugin is served from a developer's machine (development mode), as the available list last said. Not part of
      * the frame target: the frame and its address stay the same either way.
@@ -259,7 +285,20 @@ export class PluginHostPageComponent {
 
     /** Loads the available plugins again; the page opens once its plugin is in the list. */
     protected reload(): void {
-        this.availablePlugins.refresh().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+        const viewBefore = this.view();
+        // Emptied first, so the same answer twice is announced twice.
+        this.viewUnchangedByReload.set(null);
+        this.isReloading.set(true);
+        this.availablePlugins
+            .refresh()
+            .pipe(
+                finalize(() => {
+                    this.isReloading.set(false);
+                    if (this.view() === viewBefore) this.viewUnchangedByReload.set(viewBefore);
+                }),
+                takeUntilDestroyed(this.destroyRef)
+            )
+            .subscribe();
     }
 
     /** The active organization with its name, from the signed-in user's memberships. */
@@ -278,17 +317,35 @@ export class PluginHostPageComponent {
         if (!target.org) {
             return messageView('Choose an organization', 'Plugins open inside an organization you belong to.');
         }
-        if (target.plugin.availability === 'maintenance') return { kind: 'maintenance', name: target.plugin.name };
+        const availability = target.plugin.availability;
+        if (availability === 'maintenance') return { kind: 'maintenance', name: target.plugin.name };
+        // Fails closed: only a plugin the server calls ready is framed, never one in a state this build doesn't know.
+        if (availability === 'unavailable') {
+            return messageView(
+                `${target.plugin.name} isn't available right now`,
+                "EpicStaff couldn't confirm that this plugin's address leads here. Ask your administrator to check it.",
+                // The server keeps a failed check for a minute: an early Try again may still find it unavailable.
+                'Once the address is corrected, it can take up to a minute to be picked up.'
+            );
+        }
+        if (availability !== 'ready') {
+            return messageView(
+                `${target.plugin.name} isn't available right now`,
+                "EpicStaff doesn't know this plugin's state, so its page was not loaded."
+            );
+        }
         // Read now, not when the target changed first: the address may have moved meanwhile.
         const initialPath = this.routeTarget().path;
+        const frameOrigin = target.plugin.frame_origin;
         const frameUrl = toPluginFrameUrl({
-            frameOrigin: target.plugin.frame_origin,
+            frameOrigin,
             identifier: target.identifier,
             navPath: initialPath,
             orgId: target.org.id,
             hostOrigin: this.document.location.origin,
         });
-        if (frameUrl === null) {
+        // A ready plugin without an origin is as unexpected as one with an unsafe origin: nothing is framed.
+        if (frameOrigin === null || frameUrl === null) {
             return messageView(
                 "Couldn't open the plugin",
                 'EpicStaff got an unexpected address for this plugin, so its page was not loaded.'
@@ -296,10 +353,10 @@ export class PluginHostPageComponent {
         }
         return {
             kind: 'ready',
-            frameKey: `${target.identifier}|${target.org.id}|${target.plugin.frame_origin}`,
+            frameKey: `${target.identifier}|${target.org.id}|${frameOrigin}`,
             identifier: target.identifier,
             name: target.plugin.name,
-            frameOrigin: target.plugin.frame_origin,
+            frameOrigin,
             frameUrl,
             initialPath,
             org: target.org,
@@ -419,8 +476,8 @@ export class PluginHostPageComponent {
     }
 }
 
-function messageView(title: string, message: string): MessageView {
-    return { kind: 'message', title, message };
+function messageView(title: string, message: string, hint: string | null = null): MessageView {
+    return { kind: 'message', title, message, hint };
 }
 
 /** The identifier segment the matcher consumed; `""` when there is none. */

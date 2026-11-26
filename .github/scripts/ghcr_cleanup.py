@@ -8,7 +8,8 @@ Run by .github/workflows/ghcr-cleanup.yml. A version is kept when any of its tag
 or when it is younger than KEEP_DAYS. Signature tags (sha256-<digest>.sig/.att) follow the
 image they sign. An untagged version older than KEEP_DAYS goes, unless a kept image index
 lists it: every image is an index whose platform and provenance manifests are untagged
-versions of their own, and deleting those would break the kept image.
+versions of their own, and deleting those would break the kept image. A package whose
+versions or kept manifests cannot all be read from the registry is skipped, not cleaned.
 
 DRY_RUN=true (the default) only reports what would be deleted.
 """
@@ -234,10 +235,22 @@ def main() -> int:
         "|---|---|---|",
     ]
     for package in ghcr.packages(repository):
-        versions = ghcr.versions(package)
-        doomed = plan_deletions(
-            versions, children_of=ghcr.children_of(package), branch_slugs=branch_slugs, now=now
-        )
+        try:
+            versions = ghcr.versions(package)
+            doomed = plan_deletions(
+                versions,
+                children_of=ghcr.children_of(package),
+                branch_slugs=branch_slugs,
+                now=now,
+            )
+        except requests.RequestException as error:
+            # Without the full version list and every kept index's manifest list, the parts of
+            # a kept image cannot be told from stale untagged versions: deleting anything could
+            # break a release.
+            failures += 1
+            summary.append(f"| {package} | ? | skipped: {error} |")
+            print(f"::error::{package}: skipped, nothing deleted: {error}")
+            continue
         summary.append(f"| {package} | {len(versions)} | {len(doomed)} |")
         print(f"== {package}: {len(doomed)} of {len(versions)} versions to delete")
         for version in doomed:

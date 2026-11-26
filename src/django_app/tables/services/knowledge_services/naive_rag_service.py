@@ -1,11 +1,17 @@
 from typing import Any
 
+from ai_models.models import EmbeddingConfig
 from django.db import transaction
 from loguru import logger
 from src.shared.models import UserAction
 from src.shared.models.knowledge_new import ChunkingConfig
 from tables.constants.knowledge_constants import (
     FILE_TYPE_SPECIFIC_STRATEGIES,
+    MAX_CHUNK_REGEX_LENGTH,
+    MAX_HEADERS_LEVEL,
+    MAX_ROWS_IN_CHUNK,
+    MIN_HEADERS_LEVEL,
+    MIN_ROWS_IN_CHUNK,
     UNIVERSAL_STRATEGIES,
 )
 from tables.exceptions import (
@@ -15,7 +21,6 @@ from tables.exceptions import (
     InvalidChunkParametersException,
     NaiveRagNotFoundException,
 )
-from tables.models.embedding_models import EmbeddingConfig
 from tables.models.knowledge_models import (
     BaseRagType,
     DocumentMetadata,
@@ -216,6 +221,82 @@ class NaiveRagService:
 
         return rag
 
+    @staticmethod
+    def validate_additional_params(additional_params: Any) -> None:
+        """Check the per-strategy chunker parameters inside `additional_params`.
+
+        The `csv` and `character` sub-objects are checked whenever present, whichever
+        strategy is selected, because stored params can carry keys of other strategies.
+        Absent keys are allowed: the chunkers apply their own defaults.
+
+        Raises:
+            InvalidChunkParametersException: One error item per invalid parameter.
+        """
+        errors: list[dict[str, Any]] = []
+
+        def add_error(field: str, value: Any, reason: str) -> None:
+            errors.append({"field": f"additional_params.{field}", "value": value, "reason": reason})
+
+        def is_integer(value: Any) -> bool:
+            return isinstance(value, int) and not isinstance(value, bool)
+
+        if not isinstance(additional_params, dict):
+            raise InvalidChunkParametersException(
+                errors=[
+                    {
+                        "field": "additional_params",
+                        "value": additional_params,
+                        "reason": "'additional_params' must be an object",
+                    }
+                ],
+            )
+
+        if "csv" in additional_params:
+            csv_params = additional_params["csv"]
+            if not isinstance(csv_params, dict):
+                add_error("csv", csv_params, "'csv' must be an object")
+            else:
+                if "rows_in_chunk" in csv_params:
+                    rows_in_chunk = csv_params["rows_in_chunk"]
+                    if not is_integer(rows_in_chunk) or not (
+                        MIN_ROWS_IN_CHUNK <= rows_in_chunk <= MAX_ROWS_IN_CHUNK
+                    ):
+                        add_error(
+                            "csv.rows_in_chunk",
+                            rows_in_chunk,
+                            f"'rows_in_chunk' must be an integer between {MIN_ROWS_IN_CHUNK}"
+                            f" and {MAX_ROWS_IN_CHUNK}",
+                        )
+                if "headers_level" in csv_params:
+                    headers_level = csv_params["headers_level"]
+                    if not is_integer(headers_level) or not (
+                        MIN_HEADERS_LEVEL <= headers_level <= MAX_HEADERS_LEVEL
+                    ):
+                        add_error(
+                            "csv.headers_level",
+                            headers_level,
+                            f"'headers_level' must be an integer between {MIN_HEADERS_LEVEL}"
+                            f" and {MAX_HEADERS_LEVEL}",
+                        )
+
+        if "character" in additional_params:
+            character_params = additional_params["character"]
+            if not isinstance(character_params, dict):
+                add_error("character", character_params, "'character' must be an object")
+            else:
+                regex = character_params.get("regex")
+                if regex is not None and not isinstance(regex, str):
+                    add_error("character.regex", regex, "'regex' must be a string")
+                elif regex is not None and len(regex) > MAX_CHUNK_REGEX_LENGTH:
+                    add_error(
+                        "character.regex",
+                        regex,
+                        f"'regex' must be at most {MAX_CHUNK_REGEX_LENGTH} characters long",
+                    )
+
+        if errors:
+            raise InvalidChunkParametersException(errors=errors)
+
     @classmethod
     def _update_document_config(
         cls,
@@ -231,6 +312,9 @@ class NaiveRagService:
             raise InvalidChunkParametersException(
                 errors=[{"field": "chunk_overlap", "value": chunk_overlap, "reason": reason}],
             )
+
+        if data.get("additional_params") is not None:
+            cls.validate_additional_params(data["additional_params"])
 
         chunk_strategy = data.get("chunk_strategy", "")
         is_allowed_strategy = cls.is_strategy_allowed_for_file_type(

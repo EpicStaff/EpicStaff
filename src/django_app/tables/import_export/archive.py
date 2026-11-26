@@ -72,6 +72,49 @@ def invalid_archive(reason: str) -> InvalidArchiveError:
     return InvalidArchiveError({"code": "invalid_archive", "detail": reason})
 
 
+_SIZE_UNITS = (("GB", 1024**3), ("MB", 1024**2), ("KB", 1024))
+
+
+def readable_size(size_in_bytes: int) -> str:
+    """Return a byte size in 1024-based KB/MB/GB, rounded down to one decimal: 1536 is "1.5 KB".
+
+    Rounded down, so "larger than <size>" stays true for anything past the limit.
+    """
+    for unit, unit_bytes in _SIZE_UNITS:
+        if size_in_bytes >= unit_bytes:
+            tenths = size_in_bytes * 10 // unit_bytes
+            return f"{tenths / 10:g} {unit}"
+    return f"{size_in_bytes} bytes"
+
+
+def archive_too_big(max_size: int) -> InvalidArchiveError:
+    """Return the error for an uploaded archive larger than `max_size` bytes."""
+    return invalid_archive(
+        f"The archive is larger than {readable_size(max_size)}, so it can't be imported."
+    )
+
+
+def _too_many_files() -> InvalidArchiveError:
+    return invalid_archive(
+        f"The archive has more than {settings.MAX_KNOWLEDGE_ARCHIVE_ENTRIES:,} files, "
+        "so it can't be imported."
+    )
+
+
+def _too_big_when_unpacked() -> InvalidArchiveError:
+    return invalid_archive(
+        f"The archive is larger than {readable_size(settings.MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE)} "
+        "when unpacked, so it can't be imported."
+    )
+
+
+def _export_json_too_big() -> InvalidArchiveError:
+    return invalid_archive(
+        f"The export data in this archive is larger than {readable_size(settings.MAX_EXPORT_ENVELOPE_SIZE)}, "
+        "so it can't be imported."
+    )
+
+
 class ExportArchiveWriter:
     """Build an export archive in a temporary file.
 
@@ -149,7 +192,7 @@ class ImportArchive:
             # Counts the real central directory, so a false declared total cannot hide entries.
             entry_count = zip_entry_count(file, stop_after=settings.MAX_KNOWLEDGE_ARCHIVE_ENTRIES)
             if entry_count > settings.MAX_KNOWLEDGE_ARCHIVE_ENTRIES:
-                raise invalid_archive(f"more than {settings.MAX_KNOWLEDGE_ARCHIVE_ENTRIES} entries")
+                raise _too_many_files()
             zip_file = zipfile.ZipFile(file)
         except zipfile.BadZipFile as error:
             file.close()
@@ -195,16 +238,12 @@ class ImportArchive:
                 info.filename == ENVELOPE_MEMBER
                 and info.file_size > settings.MAX_EXPORT_ENVELOPE_SIZE
             ):
-                raise invalid_archive(
-                    f"{ENVELOPE_MEMBER} unpacks to more than {settings.MAX_EXPORT_ENVELOPE_SIZE} bytes"
-                )
+                raise _export_json_too_big()
             # zipfile stops reading a member at its declared size, so the declared sizes
             # are a safe upper bound of what the import can unpack.
             total_size += info.file_size
             if total_size > settings.MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE:
-                raise invalid_archive(
-                    f"unpacks to more than {settings.MAX_KNOWLEDGE_ARCHIVE_UNCOMPRESSED_SIZE} bytes"
-                )
+                raise _too_big_when_unpacked()
             seen_names.add(info.filename)
 
         if ENVELOPE_MEMBER not in seen_names:
@@ -224,7 +263,7 @@ class ImportArchive:
         with self.open_member(ENVELOPE_MEMBER) as member:
             data = member.read(cap + 1)
         if len(data) > cap:
-            raise invalid_archive(f"{ENVELOPE_MEMBER} unpacks to more than {cap} bytes")
+            raise _export_json_too_big()
         try:
             return json.loads(data)
         except (json.JSONDecodeError, UnicodeDecodeError) as error:

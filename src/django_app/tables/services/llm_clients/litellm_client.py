@@ -96,10 +96,10 @@ class LiteLLMClient(BaseLLMClient):
         output_schema: dict | None = None,
     ) -> None:
         super().__init__(output_schema=output_schema)
-        self._config = config
+        # The key is resolved by the caller; this class must not touch the ORM (see
+        # get_llm_client).
+        self._config = config.model_copy(update={"api_key": api_key})
         self._provider_name = (provider_name or "").lower().strip()
-        # Resolved by the caller; this class must not touch the ORM (see get_llm_client).
-        self._api_key = api_key
         # Validate and cache the model string eagerly so callers receive
         # UnsupportedLLMProviderError at construction time (fail-fast), not
         # lazily during the first stream_completion call.
@@ -116,7 +116,9 @@ class LiteLLMClient(BaseLLMClient):
         if not model_name:
             raise UnsupportedLLMProviderError("(empty model name)")
 
-        return litellm_call_model(self._provider_name, model_name, self._config.deployment_id)
+        return litellm_call_model(
+            self._provider_name, model_name, self._config.connection.get("deployment_id")
+        )
 
     def _build_tools(self, tools: list[ToolSpec]) -> list[dict] | None:
         if not tools:
@@ -149,12 +151,8 @@ class LiteLLMClient(BaseLLMClient):
         if self._routed_provider in ("openai", "azure"):
             kwargs["store"] = False
 
-        if self._api_key:
-            kwargs["api_key"] = self._api_key
-        if config.base_url:
-            kwargs["base_url"] = config.base_url
-        if config.api_version:
-            kwargs["api_version"] = config.api_version
+        # Holds the resolved secrets: kwargs are never logged whole.
+        kwargs.update(config.connection_kwargs())
         # Flow Assistant and CDT Explain expect a structured JSON reply; stop sequences
         # set on the config for agents could cut that reply short.
         kwargs.update(config.to_litellm_kwargs(provider=self._routed_provider, exclude={"stop"}))

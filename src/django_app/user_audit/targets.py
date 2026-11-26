@@ -130,6 +130,30 @@ def fields_to_describe(model: type[models.Model]) -> list[str]:
     return [name for name in wanted if name in field_names]
 
 
+def parent_path(model: type[models.Model]) -> str | None:
+    """The relation path `target_parent` follows from a row of `model`, for `select_related`;
+    None when its rows have no parent."""
+    return TARGET_PARENT_FIELDS.get(model._meta.label_lower)
+
+
+def fields_to_describe_with_parent(model: type[models.Model]) -> list[str]:
+    """The columns `describe` and `target_parent` read from a row of `model` and its parent.
+
+    For `QuerySet.only()` on a query that select_related `parent_path(model)`, so one query
+    names the row and its parent, with each relation in between.
+    """
+    fields = fields_to_describe(model)
+    path = parent_path(model)
+    if path is None:
+        return fields
+    hops = path.split("__")
+    related_model = model
+    for index, hop in enumerate(hops):
+        related_model = related_model._meta.get_field(hop).related_model
+        fields.append("__".join(hops[: index + 1]))
+    return fields + [f"{path}__{name}" for name in fields_to_describe(related_model)]
+
+
 def describe_reads_the_database(instance: models.Model) -> bool:
     """Whether `describe(instance)` may query: a column it reads was not loaded, or the row
     is named after its parent, which may not be loaded either."""

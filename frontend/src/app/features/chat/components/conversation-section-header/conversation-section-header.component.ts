@@ -2,8 +2,9 @@ import { Component, ElementRef, input, output, viewChild } from '@angular/core';
 import { AppSvgIconComponent } from '@shared/components';
 
 /**
- * A section's header in the conversations column: a heading whose button collapses and expands the section (the
- * accordion pattern). The column makes it sticky, so it stays on top while its section scrolls by.
+ * A section's header in the conversations column: a heading whose button folds and opens its own section (a
+ * disclosure; the other sections stay as they are). The column makes it sticky, so it stays on top while its section
+ * scrolls by.
  */
 @Component({
     selector: 'app-conversation-section-header',

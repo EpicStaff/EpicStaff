@@ -2,7 +2,8 @@
 
 It is what the status endpoint answers from, what makes a re-POST idempotent, and what
 admission control counts. A finished execution answers DONE for a minute and is then
-forgotten; only completions that really ran feed the drain rate.
+forgotten; only completions that really ran feed the drain rate, and only time with
+something queued or running counts toward it.
 """
 
 import pytest
@@ -274,10 +275,17 @@ def test_releasing_a_held_execution_moves_it_to_the_queue(registry):
     assert registry.active_count == 1
 
 
+def keep_busy(registry: ExecutionRegistry) -> None:
+    """Queue a long execution, so the sandbox is never idle while the test runs."""
+    registry.reserve("long-run")
+    registry.mark_queued("long-run")
+
+
 def finish_one_every(
     registry: ExecutionRegistry, clock, count: int, seconds: float, *, prefix: str = "done"
 ) -> None:
     """Finish ``count`` executions that ran, ``seconds`` apart, ending on the last one."""
+    keep_busy(registry)
     for index in range(count):
         if index:
             clock.advance(seconds)
@@ -322,6 +330,27 @@ def test_the_drain_rate_decays_while_nothing_finishes(registry, clock):
     clock.advance(81)
 
     assert registry.drain_rate() == 20 / 100
+
+
+def test_idle_time_does_not_lower_the_drain_rate(registry, clock):
+    finish_one_every(registry, clock, 20, 1.0)
+    registry.finish("long-run", ran=False)
+
+    clock.advance(3600)
+
+    assert registry.drain_rate() == 20 / 19
+
+
+def test_after_idle_time_the_rate_decays_again_while_nothing_finishes(registry, clock):
+    finish_one_every(registry, clock, 20, 1.0)
+    registry.finish("long-run", ran=False)
+    clock.advance(3600)
+
+    registry.reserve("after-idle")
+    registry.mark_queued("after-idle")
+    clock.advance(5)
+
+    assert registry.drain_rate() == 20 / 24
 
 
 def test_only_the_last_twenty_completions_are_kept(registry, clock):

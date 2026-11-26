@@ -116,7 +116,7 @@ def _conversation(user, org) -> FlowAssistantConversation:
     graph = Graph.objects.create(name=f"assistant-flow-{org.pk}", org=org)
     return FlowAssistantConversation.objects.create(
         flow_assistant=FlowAssistant.objects.create(graph=graph),
-        organization_user=OrganizationUser.objects.get(user=user, org=org),
+        user=user,
     )
 
 

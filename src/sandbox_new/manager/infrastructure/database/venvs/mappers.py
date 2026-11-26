@@ -20,7 +20,7 @@ class VenvMapper:
             hash=row.hash,
             status=VenvStatus(row.status),
             error=row.error,
-            is_default=row.is_default,
+            system_key=row.system_key,
             scope=row.scope,
             created_at=row.created_at,
             updated_at=row.updated_at,

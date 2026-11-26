@@ -53,25 +53,6 @@
             <app-validation-errors [control]="form.get('name')!" />
         </div>
 
-        <div class="create-model__field">
-            <app-custom-input
-                label="Base URL"
-                tooltipText="Custom API endpoint for this provider. Leave empty to use the default."
-                placeholder="e.g. https://api.openai.com/v1"
-                formControlName="baseUrl"
-            />
-            <app-validation-errors [control]="form.get('baseUrl')!" />
-        </div>
-
-        <div class="create-model__field">
-            <app-custom-input
-                label="Deployment"
-                tooltipText="The deployment name for this model, used by providers such as Azure OpenAI that deploy models under a custom name."
-                placeholder="Enter deployment name"
-                formControlName="deployment"
-            />
-        </div>
-
         <div class="create-model__field create-model__field--inline">
             <app-toggle-switch
                 label="Visible"

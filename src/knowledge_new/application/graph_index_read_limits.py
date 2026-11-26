@@ -14,6 +14,8 @@ __all__ = [
     "GRAPH_TABLE_MIN_PAGE",
     "GRAPH_TABLE_MIN_PAGE_SIZE",
     "GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES",
+    "GRAPH_VISUALIZATION_MAX_MAX_ENTITIES",
+    "GRAPH_VISUALIZATION_MAX_PAGE_COUNT",
     "GRAPH_VISUALIZATION_MIN_MAX_ENTITIES",
 ]
 
@@ -26,6 +28,11 @@ GRAPH_TABLE_DEFAULT_PAGE_SIZE = 10
 GRAPH_SEARCH_MAX_LENGTH = 200
 
 GRAPH_VISUALIZATION_MIN_MAX_ENTITIES = 1
-# The highest-degree entities are kept. 200 is what a browser renders smoothly;
-# a caller may ask for more, there is no upper cap.
+# The highest-degree entities are kept. 200 is what a browser renders smoothly.
 GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES = 200
+# Per-request cap: one request may not return more than this many entities. Larger
+# totals need parallel requests with `page` + `page_count`; each slice still fits here.
+GRAPH_VISUALIZATION_MAX_MAX_ENTITIES = 1000
+# Cap on `page_count` (and therefore on the total pool size). 5 * 1000 = 5000 entities
+# is as much as the frontend is willing to render in one visualization.
+GRAPH_VISUALIZATION_MAX_PAGE_COUNT = 5

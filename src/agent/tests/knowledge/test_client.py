@@ -148,7 +148,7 @@ async def test_stop_closes_client():
     assert client._client is None
 
 
-async def test_search_sends_target_extra_headers():
+async def test_search_sends_target_extra_headers_and_connections():
     captured: dict = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -159,6 +159,10 @@ async def test_search_sends_target_extra_headers():
         update={
             "embedder_extra_headers": {"X-Emb": "emb-resolved"},
             "llm_extra_headers": {"X-Llm": "llm-resolved"},
+            "embedder_connection": {"api_base": "http://emb-gateway/v1"},
+            "embedder_parameters": {"dimensions": 256},
+            "llm_connection": {"aws_region_name": "eu-west-1"},
+            "llm_parameters": {"temperature": 0.1},
         }
     )
     client = _client_with_handler(handler)
@@ -166,6 +170,10 @@ async def test_search_sends_target_extra_headers():
 
     assert captured["body"]["embedding_extra_headers"] == {"X-Emb": "emb-resolved"}
     assert captured["body"]["llm_extra_headers"] == {"X-Llm": "llm-resolved"}
+    assert captured["body"]["embedding_connection"] == {"api_base": "http://emb-gateway/v1"}
+    assert captured["body"]["embedding_parameters"] == {"dimensions": 256}
+    assert captured["body"]["llm_connection"] == {"aws_region_name": "eu-west-1"}
+    assert captured["body"]["llm_parameters"] == {"temperature": 0.1}
 
     await client.stop()
 
@@ -182,6 +190,10 @@ async def test_search_without_extra_headers_sends_empty_objects():
 
     assert captured["body"]["embedding_extra_headers"] == {}
     assert captured["body"]["llm_extra_headers"] == {}
+    assert captured["body"]["embedding_connection"] == {}
+    assert captured["body"]["embedding_parameters"] == {}
+    assert captured["body"]["llm_connection"] == {}
+    assert captured["body"]["llm_parameters"] == {}
 
     await client.stop()
 
@@ -216,3 +228,12 @@ async def test_search_with_usage_defaults_to_no_usage_when_the_response_has_none
     assert outcome.result == "an answer"
     assert outcome.usage.embedding_tokens == 0
     assert outcome.usage.to_token_usage() == {}
+
+
+def test_a_logged_target_never_shows_its_connection():
+    target = _graph_target().model_copy(
+        update={"llm_connection": {"aws_access_key_id": "resolved-key-id"}}
+    )
+
+    assert "resolved-key-id" not in repr(target)
+    assert "resolved-key-id" not in str(target)

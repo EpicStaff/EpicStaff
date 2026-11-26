@@ -1,6 +1,7 @@
 
 import pytest
 from domain.enums import ChunkStrategyEnum
+from domain.errors import UnsupportedError
 from domain.models import PreviewChunk
 from infrastructure.naive.chunkers.strategies.csv_chunker import CSVChunker
 from tests.services.chunkers.conftest import make_config
@@ -96,3 +97,29 @@ async def test_no_data_rows_returns_empty(text):
     chunker = build_chunker()
     chunks = await chunker.chunk(text)
     assert chunks == []
+
+
+@pytest.mark.parametrize("rows_in_chunk", [0, -1, -150, 1.5, "10", None, True])
+def test_invalid_rows_in_chunk_is_rejected_instead_of_looping(rows_in_chunk):
+    with pytest.raises(UnsupportedError, match="rows_in_chunk"):
+        build_chunker(rows_in_chunk=rows_in_chunk)
+
+
+@pytest.mark.parametrize("csv_params", [None, 5, [1], "x"])
+def test_non_object_csv_params_are_rejected(csv_params):
+    with pytest.raises(UnsupportedError, match="csv params"):
+        CSVChunker(make_config(ChunkStrategyEnum.CSV, extra={"csv": csv_params}))
+
+
+@pytest.mark.parametrize("headers_level", [-1, 1.5, "1", None, True])
+def test_invalid_headers_level_is_rejected(headers_level):
+    with pytest.raises(UnsupportedError, match="headers_level"):
+        build_chunker(headers_level=headers_level)
+
+
+async def test_smallest_rows_in_chunk_gives_one_chunk_per_row():
+    chunks = await build_chunker(rows_in_chunk=1).chunk("h1,h2\na,b\nc,d")
+    assert [chunk.text for chunk in chunks] == [
+        "File name: undefined\n\nh1,h2\na,b",
+        "File name: undefined\n\nh1,h2\nc,d",
+    ]

@@ -17,6 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import get_args
 
+from ai_models.utils.litellm_model_info import resolve_context_window
 from pydantic import BaseModel
 from src.shared.models.knowledge import (
     GraphRagBasicSearchParams,
@@ -30,7 +31,6 @@ from src.shared.models.search_config_suggestion import (
     SuggestedCollectionMetrics,
 )
 from tables.constants.knowledge_constants import MAX_TOKEN_FIELD_VALUE
-from tables.utils.litellm_model_info import resolve_context_window
 
 SAFE_FRACTION = 0.8
 

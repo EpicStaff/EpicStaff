@@ -1,69 +1,24 @@
 import { HttpErrorResponse, HttpInterceptorFn } from '@angular/common/http';
 import { inject } from '@angular/core';
-import { Router } from '@angular/router';
-import { catchError, finalize, from, Observable, of, shareReplay, tap, throwError } from 'rxjs';
-import { map, switchMap } from 'rxjs/operators';
+import { catchError, concatWith, throwError } from 'rxjs';
 
-import { ProfileService } from '../../services/auth/profile.service';
-import { ToastService } from '../../services/notifications';
+import { CurrentUserRefreshService } from '../../services/auth/current-user-refresh.service';
 import { wasHandledByForbiddenInterceptor } from './forbidden-interceptor-handled.util';
 
-let refresh$: Observable<unknown> | null = null;
-
 /**
- * Extracts the server `message` field from an HttpErrorResponse.
- * When the request is issued with `responseType: 'blob'`, Angular delivers `err.error` as a Blob,
- * so we need to read it as text and parse JSON.
+ * Hands a 403 that may mean the user's access changed to `CurrentUserRefreshService` (a toast, a reload of the
+ * user, a re-entry of the current page), then passes the error on once that is done. The caller stays quiet
+ * (`wasHandledByForbiddenInterceptor`).
  */
-function extractErrorMessage(err: HttpErrorResponse): Observable<string | undefined> {
-    const body = err.error;
-    if (body instanceof Blob) {
-        return from(body.text()).pipe(
-            map((text) => {
-                try {
-                    return (JSON.parse(text) as { message?: string })?.message;
-                } catch {
-                    return text || undefined;
-                }
-            }),
-            catchError(() => of(undefined))
-        );
-    }
-    return of(body?.message);
-}
-
 export const forbiddenInterceptor: HttpInterceptorFn = (req, next) => {
-    const profileService = inject(ProfileService);
-    const router = inject(Router);
-    const toast = inject(ToastService);
+    const currentUserRefresh = inject(CurrentUserRefreshService);
 
     return next(req).pipe(
         catchError((err: HttpErrorResponse) => {
             if (!wasHandledByForbiddenInterceptor(err, req.context)) {
                 return throwError(() => err);
             }
-            return extractErrorMessage(err).pipe(
-                switchMap((message) => {
-                    toast.error(message ?? 'Forbidden');
-                    if (!refresh$) {
-                        profileService.clearCurrentUser();
-                        refresh$ = profileService.bootstrapUser().pipe(
-                            tap(() => {
-                                const currentUrl = router.url;
-
-                                void router
-                                    .navigateByUrl('/profile', { skipLocationChange: true })
-                                    .then(() => void router.navigateByUrl(currentUrl));
-                            }),
-                            catchError(() => throwError(() => err)),
-                            finalize(() => (refresh$ = null)),
-                            shareReplay(1)
-                        );
-                    }
-
-                    return refresh$.pipe(switchMap(() => throwError(() => err)));
-                })
-            );
+            return currentUserRefresh.handleForbidden(req, err).pipe(concatWith(throwError(() => err)));
         })
     );
 };

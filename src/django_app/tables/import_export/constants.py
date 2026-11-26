@@ -1,6 +1,6 @@
 import re
 
-from tables.import_export.enums import EntityType
+from tables.import_export.enums import EntityType, NodeType
 
 IMPORT_VERSION = 6
 # The first version an export can be a zip archive; an import job takes nothing older.
@@ -24,6 +24,8 @@ MAX_REUSE_CANDIDATES = 50
 # Import-time only, never written to a file: the Surface entries an
 # AgentDefinition entry owns, attached by nest_owned_surface_entries.
 OWNED_SURFACE_ENTRIES_KEY = "owned_surface_entries"
+
+NODE_ENTITY_TYPES = frozenset(EntityType(node_type) for node_type in NodeType)
 
 # Entities will be imported from top to bottom based on this list
 DEPENDENCY_ORDER = (

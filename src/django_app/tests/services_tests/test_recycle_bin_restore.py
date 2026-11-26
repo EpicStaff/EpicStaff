@@ -10,7 +10,7 @@ from tables.models.graph_models import ScheduleTriggerNode, TelegramTriggerNode
 from tables.models.python_models import PythonCodeTool
 from tables.services.recycle_bin.registry import bin_resource_for
 from tables.services.recycle_bin.restore_service import RestoreService
-from tables.services.secrets import secret_encryption
+from tables.services.secrets import secret_encryption, secret_service
 from tables.services.soft_delete import DeleteService
 from tables.models.webhook_models import WebhookTrigger, WebhookTriggerAuth, WebhookTriggerAuthKind
 from tables.services.telegram_trigger_service import TelegramTriggerService
@@ -87,6 +87,16 @@ class TestRestoreRenamesWhenTheNameIsTaken:
 
         assert result.renamed_from == "KB"
         assert _binned(SourceCollection, collection.pk).collection_name == "KB #2"
+
+    def test_secret_gets_a_dash_number_its_name_rule_allows(self, default_org):
+        secret = secret_service.create(text="sk-old", org=default_org, name="OpenAI key")
+        secret.delete()
+        secret_service.create(text="sk-new", org=default_org, name="OpenAI key")
+
+        result = RestoreService.restore(_binned(Secret, secret.pk))
+
+        assert result.renamed_from == "OpenAI key"
+        assert result.object.name == "OpenAI key-2"
 
     def test_python_tool_treats_built_in_names_as_taken(self, default_org):
         _tool("Fetch", org=None, built_in=True)

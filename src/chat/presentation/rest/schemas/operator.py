@@ -18,7 +18,7 @@ from pydantic import (
     field_validator,
 )
 
-from presentation.rest.schemas.base import BaseSchema, NulFreeStr
+from presentation.rest.schemas.base import BaseSchema, NulFreeStr, refuse_nul
 
 BLOCKS_ALL = "Maximum {}; 0 blocks every message."
 PER_DAY = " Per conversation per UTC day."
@@ -43,7 +43,11 @@ ON_RESPONSE_TIMEOUT = (
 HANDBACK_MESSAGE = "Posted as the bot's message on a hand-back; empty posts nothing."
 CLOSE_AFTER = "Support desks close a conversation silent this long; Ongoing ignores it. "
 
-BindingName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+BindingName = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=255),
+    AfterValidator(refuse_nul),
+]
 PUBLIC_NAME_RULES = (
     f"At most {PUBLIC_NAME_MAX_LENGTH} characters of plain text: no control, invisible "
     "formatting (emoji joiners aside) or bidirectional override characters."
@@ -71,7 +75,7 @@ class BindingInput(BaseSchema):
     operator_display_name: PublicName | None = Field(
         default=None, description=f'{DISPLAYED} {PUBLIC_NAME_RULES} Omitted: "Support".'
     )
-    allowed_origins: list[str] = Field(default_factory=list, max_length=50)
+    allowed_origins: list[NulFreeStr] = Field(default_factory=list, max_length=50)
     identity_mode: Literal["anonymous", "signed"] = "anonymous"
     history_window: int = Field(default=20, ge=0, le=200)
     max_message_length: int = Field(default=4000, ge=1, le=100_000)
@@ -96,7 +100,7 @@ class BindingInput(BaseSchema):
         default=10, ge=0, le=1000, description=BLOCKS_ALL.format("messages per minute")
     )
     on_budget_exhausted: Literal["reply", "handoff"] = "reply"
-    budget_exhausted_message: str = Field(
+    budget_exhausted_message: NulFreeStr = Field(
         default="This conversation has reached its limit.", max_length=4000
     )
     handoff_enabled: bool = True
@@ -157,7 +161,7 @@ class BindingPatch(BaseSchema):
     operator_display_name: PublicName | None = Field(
         default=None, description=f"{DISPLAYED} {PUBLIC_NAME_RULES}"
     )
-    allowed_origins: list[str] | None = Field(default=None, max_length=50)
+    allowed_origins: list[NulFreeStr] | None = Field(default=None, max_length=50)
     identity_mode: Literal["anonymous", "signed"] | None = None
     history_window: int | None = Field(default=None, ge=0, le=200)
     max_message_length: int | None = Field(default=None, ge=1, le=100_000)
@@ -180,7 +184,7 @@ class BindingPatch(BaseSchema):
         default=None, ge=0, le=1000, description=BLOCKS_ALL.format("messages per minute")
     )
     on_budget_exhausted: Literal["reply", "handoff"] | None = None
-    budget_exhausted_message: str | None = Field(default=None, max_length=4000)
+    budget_exhausted_message: NulFreeStr | None = Field(default=None, max_length=4000)
     handoff_enabled: bool | None = None
     style: Literal["support", "ongoing"] | None = Field(default=None, description=STYLE)
     response_time_seconds: int | None = Field(

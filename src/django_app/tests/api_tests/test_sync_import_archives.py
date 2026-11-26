@@ -6,6 +6,7 @@ carrying collections sent to a synchronous import is refused with `use_import_jo
 
 import io
 import json
+import re
 import zipfile
 
 import pytest
@@ -160,6 +161,14 @@ def test_a_sync_import_zip_is_capped_in_size(client, acme, settings, over_the_ca
 
     assert response.status_code == status, response.content
     assert PythonCodeTool.objects.filter(org=acme).count() == (1 if over_the_cap else 2)
+    if over_the_cap:
+        body = response.json()
+        # The limit is shown in words, not as a raw number of bytes. Only the sentence is
+        # checked: the sync error envelope still puts "code: invalid_archive; " before it.
+        assert re.search(
+            r"The archive is larger than \d+(\.\d)? (bytes|KB), so it can't be imported\.",
+            body["message"],
+        ), body
 
 
 @pytest.mark.parametrize(

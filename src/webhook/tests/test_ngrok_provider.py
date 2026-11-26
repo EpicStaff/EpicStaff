@@ -1,15 +1,18 @@
 import asyncio
+import contextlib
 import errno
 import os
 import shutil
 import stat
 import tempfile
 import threading
+import traceback
 
 import pytest
+from pyngrok.exception import PyngrokNgrokError
 from unittest.mock import patch, ANY
 from app.providers.tunnels import ngrok_tunnel as ngrok_tunnel_module
-from app.providers.tunnels.ngrok_tunnel import NgrokTunnel
+from app.providers.tunnels.ngrok_tunnel import NgrokTunnel, NgrokTunnelStartError
 from app.core.settings import settings
 from transport_secrets import sealing_cryptographer, seal
 
@@ -34,6 +37,11 @@ def _make_provider() -> NgrokTunnel:
     )
 
 
+async def _failed_connect(provider: NgrokTunnel) -> None:
+    with pytest.raises(NgrokTunnelStartError):
+        await provider.connect()
+
+
 def _started_config(environment):
     return environment.ngrok.connect.call_args.kwargs["pyngrok_config"]
 
@@ -47,6 +55,13 @@ async def _wait_until(condition, timeout: float = 5.0):
 
 def _is_working_directory(path: str) -> bool:
     return os.path.basename(path).startswith("ngrok_")
+
+
+def test_a_token_that_decrypts_to_empty_is_refused():
+    with pytest.raises(ValueError, match="empty"):
+        NgrokTunnel(
+            port=settings.WEBHOOK_PORT, auth_token=seal(""), cryptographer=sealing_cryptographer()
+        )
 
 
 def test_construction_leaves_no_working_directory(ngrok_environment):
@@ -77,13 +92,49 @@ async def test_connect_uses_private_working_directory(ngrok_environment):
 
 
 @pytest.mark.asyncio
+async def test_start_refused_by_ngrok_raises_without_the_auth_token(ngrok_environment):
+    ngrok_environment.ngrok.connect.side_effect = PyngrokNgrokError(
+        "The ngrok process errored on start: authentication failed: The authtoken you "
+        "specified is properly formed, but it is invalid. Your authtoken: test-token "
+        "ERR_NGROK_107"
+    )
+    provider = _make_provider()
+
+    with pytest.raises(NgrokTunnelStartError) as raised:
+        await provider.connect()
+
+    reported = "".join(traceback.format_exception(raised.value))
+    assert "ERR_NGROK_107" in reported
+    assert "test-token" not in reported
+    # The ngrok error, whose args and logs quote the token, is not reachable either.
+    assert raised.value.__context__ is None
+    assert raised.value.__cause__ is None
+    assert provider.public_url is None
+
+    await provider.disconnect()
+
+
+@pytest.mark.asyncio
+async def test_start_failing_with_an_empty_message_still_names_the_error(ngrok_environment):
+    ngrok_environment.ngrok.connect.side_effect = TimeoutError()
+    provider = _make_provider()
+
+    with pytest.raises(NgrokTunnelStartError) as raised:
+        await provider.connect()
+
+    assert "TimeoutError" in str(raised.value)
+
+    await provider.disconnect()
+
+
+@pytest.mark.asyncio
 async def test_retry_after_failed_start_reuses_working_directory(ngrok_environment):
     ngrok_environment.ngrok.connect.side_effect = [
         RuntimeError("ngrok failed to start"),
         ngrok_environment.ngrok.connect.return_value,
     ]
     provider = _make_provider()
-    await provider.connect()
+    await _failed_connect(provider)
     first_path = _started_config(ngrok_environment).ngrok_path
 
     await provider.connect()
@@ -110,9 +161,9 @@ async def test_preplanted_binary_path_is_not_executed(
     monkeypatch.setattr(tempfile, "mkdtemp", lambda **kwargs: str(planted_directory))
     provider = _make_provider()
 
-    await provider.connect()
+    await _failed_connect(provider)
     # A second attempt must refuse again rather than recover on its own.
-    await provider.connect()
+    await _failed_connect(provider)
 
     ngrok_environment.ngrok.connect.assert_not_called()
     assert planted_directory.is_dir()
@@ -157,7 +208,7 @@ async def test_missing_binary_is_not_downloaded_or_run_and_next_attempt_starts_f
         ngrok_environment.ngrok.connect.return_value,
     ]
     provider = _make_provider()
-    await provider.connect()
+    await _failed_connect(provider)
     first_path = _started_config(ngrok_environment).ngrok_path
     if removal == "binary deleted":
         os.remove(first_path)
@@ -166,7 +217,7 @@ async def test_missing_binary_is_not_downloaded_or_run_and_next_attempt_starts_f
         assert os.path.islink(first_path)
 
     with patch("app.providers.tunnels.ngrok_tunnel.installer") as mock_installer:
-        await provider.connect()
+        await _failed_connect(provider)
 
     # ngrok.connect is where pyngrok would download a replacement into the working directory.
     assert ngrok_environment.ngrok.connect.call_count == 1
@@ -199,7 +250,7 @@ async def test_working_directory_that_is_not_private_is_refused(
     reported_status(_is_working_directory, permissions=0o755)
     provider = _make_provider()
 
-    await provider.connect()
+    await _failed_connect(provider)
 
     ngrok_environment.ngrok.connect.assert_not_called()
     assert list(ngrok_environment.temp_root.iterdir()) == []
@@ -223,7 +274,7 @@ async def test_working_directory_owned_by_another_user_is_refused(
     reported_status(_is_working_directory, permissions=0o700)
     provider = _make_provider()
 
-    await provider.connect()
+    await _failed_connect(provider)
 
     ngrok_environment.ngrok.connect.assert_not_called()
     assert list(ngrok_environment.temp_root.iterdir()) == []
@@ -235,7 +286,7 @@ async def test_working_directory_owned_by_another_user_is_refused(
 async def test_disconnect_after_failed_connect_removes_working_directory(ngrok_environment):
     ngrok_environment.ngrok.connect.side_effect = RuntimeError("ngrok failed to start")
     provider = _make_provider()
-    await provider.connect()
+    await _failed_connect(provider)
     working_directories = list(ngrok_environment.temp_root.iterdir())
     assert len(working_directories) == 1
 
@@ -249,15 +300,15 @@ async def test_disconnect_after_failed_connect_removes_working_directory(ngrok_e
 
 
 @pytest.mark.asyncio
-async def test_disconnect_mid_reconnect_cleans_up_when_ngrok_disconnect_fails(
-    ngrok_environment, provider_blocked_mid_reconnect
+async def test_disconnect_mid_start_cleans_up_when_ngrok_disconnect_fails(
+    ngrok_environment, provider_blocked_mid_start
 ):
-    provider, blocking_connect = provider_blocked_mid_reconnect
+    provider, blocking_start, _ = provider_blocked_mid_start
     ngrok_environment.ngrok.disconnect.side_effect = RuntimeError("ngrok API unreachable")
 
     disconnect_task = asyncio.create_task(provider.disconnect())
-    assert await asyncio.to_thread(blocking_connect.killed.wait, 5)
-    blocking_connect.release.set()
+    assert await asyncio.to_thread(blocking_start.killed.wait, 5)
+    blocking_start.release.set()
     await asyncio.wait_for(disconnect_task, timeout=5)
 
     assert provider.public_url is None
@@ -280,20 +331,16 @@ async def test_reconnect_after_disconnect_uses_fresh_working_directory(ngrok_env
     await provider.disconnect()
 
 
-class _BlockingReconnect:
-    """ngrok.connect stand-in: the first call fails, the monitor's retry blocks until released."""
+class _BlockingStart:
+    """ngrok.connect stand-in that blocks until released, then returns the tunnel."""
 
     def __init__(self, tunnel):
         self.tunnel = tunnel
         self.started = threading.Event()
         self.release = threading.Event()
         self.killed = threading.Event()
-        self.call_count = 0
 
     def __call__(self, *args, **kwargs):
-        self.call_count += 1
-        if self.call_count == 1:
-            raise RuntimeError("initial connect failed")
         self.started.set()
         assert self.release.wait(timeout=5), "test never released the blocked connect"
         return self.tunnel
@@ -303,47 +350,48 @@ class _BlockingReconnect:
 
 
 @pytest.fixture
-async def provider_blocked_mid_reconnect(ngrok_environment):
-    blocking_connect = _BlockingReconnect(ngrok_environment.ngrok.connect.return_value)
-    ngrok_environment.ngrok.connect.side_effect = blocking_connect
-    ngrok_environment.process.kill_process.side_effect = blocking_connect.kill
-    provider = NgrokTunnel(
-        port=settings.WEBHOOK_PORT,
-        auth_token=seal("test-token"),
-        cryptographer=sealing_cryptographer(),
-        reconnect_timeout=0,
-    )
-    await provider.connect()
-    assert await asyncio.to_thread(blocking_connect.started.wait, 5)
-    yield provider, blocking_connect
-    blocking_connect.release.set()
+async def provider_blocked_mid_start(ngrok_environment):
+    """Yields the provider, its blocked start and the task running its `connect()`."""
+    blocking_start = _BlockingStart(ngrok_environment.ngrok.connect.return_value)
+    ngrok_environment.ngrok.connect.side_effect = blocking_start
+    ngrok_environment.process.kill_process.side_effect = blocking_start.kill
+    provider = _make_provider()
+    connect_task = asyncio.create_task(provider.connect())
+    assert await asyncio.to_thread(blocking_start.started.wait, 5)
+    yield provider, blocking_start, connect_task
+    blocking_start.release.set()
     await provider.disconnect()
+    with contextlib.suppress(NgrokTunnelStartError):
+        await asyncio.wait_for(connect_task, timeout=5)
 
 
 @pytest.mark.asyncio
-async def test_disconnect_mid_reconnect_rolls_back_late_tunnel(
-    ngrok_environment, provider_blocked_mid_reconnect
+async def test_disconnect_mid_start_rolls_back_late_tunnel(
+    ngrok_environment, provider_blocked_mid_start
 ):
-    provider, blocking_connect = provider_blocked_mid_reconnect
+    provider, blocking_start, connect_task = provider_blocked_mid_start
 
     disconnect_task = asyncio.create_task(provider.disconnect())
-    assert await asyncio.to_thread(blocking_connect.killed.wait, 5)
-    blocking_connect.release.set()
+    assert await asyncio.to_thread(blocking_start.killed.wait, 5)
+    blocking_start.release.set()
     await asyncio.wait_for(disconnect_task, timeout=5)
 
+    # The start succeeded only after the disconnect, so the caller learns it is not up.
+    with pytest.raises(NgrokTunnelStartError, match="disconnected while starting"):
+        await asyncio.wait_for(connect_task, timeout=5)
     assert provider.public_url is None
     # The tunnel the late start opened is closed rather than left running.
     ngrok_environment.ngrok.disconnect.assert_called_once_with(
-        blocking_connect.tunnel.public_url, pyngrok_config=ANY
+        blocking_start.tunnel.public_url, pyngrok_config=ANY
     )
     assert list(ngrok_environment.temp_root.iterdir()) == []
 
 
 @pytest.mark.asyncio
 async def test_disconnect_wait_for_hung_start_is_bounded(
-    ngrok_environment, provider_blocked_mid_reconnect, monkeypatch
+    ngrok_environment, provider_blocked_mid_start, monkeypatch
 ):
-    provider, blocking_connect = provider_blocked_mid_reconnect
+    provider, blocking_start, _ = provider_blocked_mid_start
     monkeypatch.setattr(ngrok_tunnel_module, "START_WAIT_SLACK_SECONDS", 0.2)
     provider._config.startup_timeout = 0
     provider._config.request_timeout = 0
@@ -351,43 +399,39 @@ async def test_disconnect_wait_for_hung_start_is_bounded(
 
     await asyncio.wait_for(provider.disconnect(), timeout=3)
 
-    assert not blocking_connect.release.is_set()
+    assert not blocking_start.release.is_set()
     # Killing the process is what ends pyngrok's blocking startup read.
     ngrok_environment.process.kill_process.assert_called_with(ngrok_path)
 
     # The abandoned start cleans up after itself once it finally returns.
-    blocking_connect.release.set()
+    blocking_start.release.set()
     await _wait_until(lambda: ngrok_environment.ngrok.disconnect.called)
     await _wait_until(lambda: list(ngrok_environment.temp_root.iterdir()) == [])
     ngrok_environment.ngrok.disconnect.assert_called_once_with(
-        blocking_connect.tunnel.public_url, pyngrok_config=ANY
+        blocking_start.tunnel.public_url, pyngrok_config=ANY
     )
     assert provider.public_url is None
 
 
 @pytest.mark.asyncio
 async def test_hung_url_callback_does_not_block_disconnect(ngrok_environment):
-    ngrok_environment.ngrok.connect.side_effect = [
-        RuntimeError("initial connect failed"),
-        ngrok_environment.ngrok.connect.return_value,
-    ]
     callback_entered = asyncio.Event()
 
     async def hung_set_url(url: str):
         callback_entered.set()
         await asyncio.Event().wait()
 
-    provider = NgrokTunnel(
-        port=settings.WEBHOOK_PORT,
-        auth_token=seal("test-token"),
-        cryptographer=sealing_cryptographer(),
-        reconnect_timeout=0,
-    )
+    provider = _make_provider()
     provider._on_url_set = hung_set_url
-    await provider.connect()
-    await asyncio.wait_for(callback_entered.wait(), timeout=5)
+    connect_task = asyncio.create_task(provider.connect())
+    try:
+        await asyncio.wait_for(callback_entered.wait(), timeout=5)
 
-    await asyncio.wait_for(provider.disconnect(), timeout=3)
+        await asyncio.wait_for(provider.disconnect(), timeout=3)
+    finally:
+        connect_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await connect_task
 
     assert provider.public_url is None
     ngrok_environment.ngrok.disconnect.assert_called_once()
@@ -409,7 +453,7 @@ async def test_failed_copy_placement_recovers_on_next_attempt(ngrok_environment,
     monkeypatch.setattr(shutil, "copyfileobj", copy_fails_once)
     provider = _make_provider()
 
-    await provider.connect()
+    await _failed_connect(provider)
 
     assert list(ngrok_environment.temp_root.iterdir()) == []
 
@@ -442,7 +486,7 @@ async def test_working_directory_removed_before_placement_recovers_on_next_attem
     )
     provider = _make_provider()
 
-    await provider.connect()
+    await _failed_connect(provider)
 
     ngrok_environment.ngrok.connect.assert_not_called()
 
@@ -467,7 +511,7 @@ async def test_symlink_failure_that_is_not_lack_of_support_is_not_copied_around(
     monkeypatch.setattr(os, "symlink", symlink_fails)
     provider = _make_provider()
 
-    await provider.connect()
+    await _failed_connect(provider)
 
     ngrok_environment.ngrok.connect.assert_not_called()
     assert list(ngrok_environment.temp_root.iterdir()) == []
@@ -491,9 +535,9 @@ async def test_occupied_binary_path_is_refused_whatever_error_symlink_reports(
     monkeypatch.setattr(os, "symlink", symlink_access_denied)
     provider = _make_provider()
 
-    await provider.connect()
+    await _failed_connect(provider)
     # The directory is kept, so a second attempt refuses again rather than recovering.
-    await provider.connect()
+    await _failed_connect(provider)
 
     ngrok_environment.ngrok.connect.assert_not_called()
     assert (planted_directory / "ngrok").is_dir()

@@ -116,8 +116,8 @@ class FakeVenvRepository(AbstractVenvRepository):
         row = self.rows.get(id)
         return row.model_copy(deep=True) if row is not None else None
 
-    async def retrieve_default(self) -> Venv | None:
-        row = next((row for row in self.rows.values() if row.is_default), None)
+    async def retrieve_by_system_key(self, system_key: str) -> Venv | None:
+        row = next((row for row in self.rows.values() if row.system_key == system_key), None)
         return row.model_copy(deep=True) if row is not None else None
 
     async def create(self, obj: Venv) -> Venv:
