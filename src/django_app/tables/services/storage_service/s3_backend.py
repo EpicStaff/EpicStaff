@@ -367,6 +367,26 @@ class S3StorageBackend(AbstractStorageBackend):
                 self.delete_keys(keys)
 
     @_outage_as_storage_unreachable()
+    def abort_incomplete_uploads(self, prefix: str) -> int:
+        """Abort every multipart upload not yet completed under `prefix`; return how many.
+
+        Their parts take space, yet no object, listing or notification shows them, so an
+        upload a run started and never completed would stay stored and uncounted.
+        """
+        full_prefix = self._full_path(prefix)
+        if not full_prefix.endswith("/"):
+            full_prefix += "/"
+        aborted = 0
+        paginator = self.client.get_paginator("list_multipart_uploads")
+        for page in paginator.paginate(Bucket=self.bucket_name, Prefix=full_prefix):
+            for upload in page.get("Uploads", []):
+                self.client.abort_multipart_upload(
+                    Bucket=self.bucket_name, Key=upload["Key"], UploadId=upload["UploadId"]
+                )
+                aborted += 1
+        return aborted
+
+    @_outage_as_storage_unreachable()
     def delete_keys(self, keys: list[str]) -> None:
         for start in range(0, len(keys), _DELETE_OBJECTS_BATCH):
             batch = keys[start : start + _DELETE_OBJECTS_BATCH]

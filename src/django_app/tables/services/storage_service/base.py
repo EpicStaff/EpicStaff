@@ -136,6 +136,11 @@ class AbstractStorageBackend(ABC):
     def delete_keys(self, keys: list[str]) -> None:
         """Delete exactly these keys (as copy returns them), nothing else."""
 
+    @abstractmethod
+    def abort_incomplete_uploads(self, prefix: str) -> int:
+        """Abort every multipart upload not yet completed under the folder `prefix`; return
+        how many. Their parts take space no object, listing or notification shows."""
+
     def discard_keys(self, keys: list[str]) -> None:
         """Best-effort removal of the keys a failed write created; failures are only logged."""
         if not keys:

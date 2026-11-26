@@ -97,6 +97,7 @@ from tables.models.webhook_models import (
 from tables.services.rag_assignment_service import SearchConfigService
 from tables.services.rag_registry import resolve_rag_in_collection
 from tables.services.realtime_surface_service import RealtimeSurfaceService
+from tables.services.run_admission import RunAdmissionRefusedError
 from tables.services.secrets import assert_tool_secrets_declared, secret_resolver
 from tables.services.secrets.declaration_validator import binned_secret_names
 from tables.services.storage_grants.flags import storage_grant_of
@@ -461,7 +462,11 @@ class ConverterService(metaclass=SingletonMeta):
                         org_id=ad.org_id,
                     )
                 )
-        except (TemporaryCredentialIssueError, CredentialScopeValidationError):
+        except (
+            TemporaryCredentialIssueError,
+            CredentialScopeValidationError,
+            RunAdmissionRefusedError,
+        ):
             raise
         except Exception as error:
             logger.exception(

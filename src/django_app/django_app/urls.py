@@ -20,6 +20,7 @@ from django.conf.urls.static import static
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include, path
 from tables.views.audit_token_views import AuditTokenView
+from tables.views.storage_bucket_events_view import storage_bucket_events_view
 from user_audit.views import ServiceUserActionView
 
 from .yasg import urlpatterns as doc_urls
@@ -37,6 +38,12 @@ urlpatterns = [
     path("api/", include("agents.urls")),
     path("api/", include("proxies.urls")),
     path("ht/", include("health_check.urls")),
+    # Outside api/: epicstaff-nginx never proxies it, only the storage service calls it.
+    path(
+        "internal/storage-events/",
+        storage_bucket_events_view,
+        name="internal-storage-events",
+    ),
 ]
 
 # With the plugin platform off, every plugin route is a plain 404.

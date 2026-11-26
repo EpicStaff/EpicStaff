@@ -60,6 +60,31 @@ class TestReconcileTree:
         assert not StorageFile.objects.filter(org=org, path="ghost.txt").exists()
         assert StorageFile.objects.filter(org=org, path="real.txt").exists()
 
+    def test_never_indexes_a_key_whose_path_is_not_canonical(self, org, fake_manager_backend):
+        """A backslash key's row would be named by another key: it could never be read,
+        moved, deleted or swept, and it would count bytes nobody can free."""
+        fake_manager_backend.put_raw_key(f"org_{org.id}/a\\b.txt", b"phantom")
+        _seed_file(fake_manager_backend, org.id, "a/c.txt", content=b"ok")
+
+        StorageReconciler(fake_manager_backend).reconcile_tree(org.id, "")
+
+        assert set(
+            StorageFile.objects.filter(org=org, item_type="file").values_list("path", flat=True)
+        ) == {"a/c.txt"}
+
+    def test_a_key_too_long_for_a_row_does_not_fail_the_rows_listed_with_it(
+        self, org, fake_manager_backend
+    ):
+        too_long = "/".join(["s" * 200] * 6)[:1001]
+        fake_manager_backend.put_raw_key(f"org_{org.id}/{too_long}", b"x")
+        _seed_file(fake_manager_backend, org.id, "a/c.txt", content=b"ok")
+
+        StorageReconciler(fake_manager_backend).reconcile_tree(org.id, "")
+
+        assert set(
+            StorageFile.objects.filter(org=org, item_type="file").values_list("path", flat=True)
+        ) == {"a/c.txt"}
+
     def test_preserves_is_system_and_created_at_across_rerun(
         self, org, fake_manager_backend
     ):

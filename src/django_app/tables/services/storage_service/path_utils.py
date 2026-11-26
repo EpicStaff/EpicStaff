@@ -44,6 +44,23 @@ def storage_key(org_id: int, path: str) -> str:
     return f"{org_storage_prefix(org_id)}/{safe_path}"
 
 
+def is_indexable_path(org_id: int, path: str) -> bool:
+    """True when a stored object at `path` can have a StorageFile row.
+
+    Not when `storage_key` would rewrite the path (a backslash): the row would name another
+    key, so it could never be read, moved or deleted through the app. Nor when the path is
+    longer than `StorageFile.path` holds: a store key may be up to 1024 bytes, the row 1000
+    characters, and writing it fails.
+    """
+    try:
+        if sanitize_storage_path(path, allow_empty=False, allow_leading_slash=True) != path:
+            return False
+        check_path_length(org_id, path)
+    except ValueError:
+        return False
+    return True
+
+
 def trash_storage_key(org_id: int, batch, path: str) -> str:
     """Key a recycle-bin batch keeps `path` under: org_<id>/.recycle-bin/<batch>/<path>."""
     safe_path = sanitize_storage_path(path, allow_empty=False, allow_leading_slash=True)

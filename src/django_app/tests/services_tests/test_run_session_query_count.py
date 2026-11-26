@@ -33,8 +33,9 @@ SECRET_NAME = "query-count-key"
 # query; if it lowers it, update the number. It includes run admission, asked
 # before anything is written and again just before the publish: two queries each
 # (the organization is active, and no plugin grant of it is inactive). It also includes the
-# savepoint (SAVEPOINT, RELEASE) the warnings are saved in after the publish.
-RUN_SESSION_QUERY_COUNT = 70
+# savepoint (SAVEPOINT, RELEASE) the warnings are saved in after the publish, and the
+# organization's used storage, summed once before its storage accounts are minted.
+RUN_SESSION_QUERY_COUNT = 71
 
 
 def _python_node(graph: Graph, node_name: str, secret=None) -> PythonNode:

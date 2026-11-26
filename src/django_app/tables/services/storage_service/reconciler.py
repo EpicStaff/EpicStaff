@@ -10,6 +10,7 @@ from tables.services.storage_service.db_sync import (
 )
 from tables.services.storage_service.path_utils import (
     TRASH_DIRECTORY,
+    is_indexable_path,
     is_trash_path,
     storage_key,
 )
@@ -71,7 +72,9 @@ class StorageReconciler:
 
         Objects with a blocked executable extension are never indexed (and any live row
         for one is swept as stale); they are logged, not deleted, because deleting is
-        the mutation handler's job.
+        the mutation handler's job. The same goes for a key no row can hold
+        (`is_indexable_path`: a backslash, or a path too long for the row); one such key must
+        not fail the whole batch of rows written with it.
 
         Recycle-bin rows are left alone: their objects live under the reserved
         trash folder, which is skipped here, so they are neither re-created as
@@ -92,6 +95,7 @@ class StorageReconciler:
         desired: dict[str, StorageFile] = {}
         ancestor_paths: set[str] = set()
         skipped_executables: list[str] = []
+        skipped_unindexable: list[str] = []
 
         for key, size, modified_iso in raw_objects:
             if not key.startswith(org_prefix):
@@ -101,6 +105,9 @@ class StorageReconciler:
                 continue
             if file_validator.is_executable_filename(rel_path):
                 skipped_executables.append(rel_path)
+                continue
+            if not is_indexable_path(org_id, rel_path):
+                skipped_unindexable.append(rel_path)
                 continue
 
             desired[rel_path] = StorageFile(
@@ -120,6 +127,13 @@ class StorageReconciler:
                 len(skipped_executables),
                 org_id,
                 skipped_executables[:_SKIPPED_SAMPLE_SIZE],
+            )
+        if skipped_unindexable:
+            logger.warning(
+                "Not indexing {} object(s) in org {} whose path no index row can hold, e.g. {}",
+                len(skipped_unindexable),
+                org_id,
+                skipped_unindexable[:_SKIPPED_SAMPLE_SIZE],
             )
 
         for folder_path in ancestor_paths:
