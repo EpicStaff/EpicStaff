@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, deque
 
 from django.db import transaction
 from loguru import logger
@@ -236,26 +236,37 @@ class ImportService:
         return subgraph_ids
 
     def _topological_sort(self, graphs: list[dict], dependencies: dict) -> list[dict]:
-        """Sort graphs so dependencies come first"""
+        """Sort graphs so dependencies come first.
+
+        Kahn's algorithm over a reverse-dependency map, so the cost is linear in the
+        number of flows and subgraph references: an import file may hold a very large
+        number of flows, and this runs inside the import transaction.
+
+        Flows with no dependency keep file order; a flow is placed as soon as everything
+        it uses is placed, and flows unblocked by the same flow keep file order.
+        """
         graph_map = {graph["id"]: graph for graph in graphs}
 
+        dependents = defaultdict(list)
         in_degree = defaultdict(int)
         for graph_id, deps in dependencies.items():
             in_degree[graph_id] = len(deps)
+            for dependency_id in deps:
+                dependents[dependency_id].append(graph_id)
 
-        queue = [graph for graph in graphs if in_degree[graph["id"]] == 0]
+        queue = deque(graph for graph in graphs if in_degree[graph["id"]] == 0)
         sorted_graphs = []
 
         while queue:
-            current = queue.pop(0)
+            current = queue.popleft()
             sorted_graphs.append(current)
 
-            for graph_id, deps in dependencies.items():
-                if current["id"] in deps:
-                    deps.discard(current["id"])
-                    in_degree[graph_id] -= 1
-                    if in_degree[graph_id] == 0:
-                        queue.append(graph_map[graph_id])
+            # Popped, not read: a file that repeats a flow id must unblock its
+            # dependents once, not once per copy.
+            for dependent_id in dependents.pop(current["id"], ()):
+                in_degree[dependent_id] -= 1
+                if in_degree[dependent_id] == 0:
+                    queue.append(graph_map[dependent_id])
 
         if len(sorted_graphs) != len(graphs):
             raise ValueError("Circular graph dependency detected!")
