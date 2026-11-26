@@ -127,9 +127,6 @@ class LauncherClient:
         _, descriptors = await self._call(request, expect=1)
         return descriptors[0]
 
-    async def purge_data(self, plugin: str, uid: int) -> None:
-        await self._call(protocol.PurgeData(plugin=plugin, uid=uid))
-
     async def remove_plugin(self, plugin: str, uid: int, *, timeout_seconds: float) -> None:
         """Have the launcher kill the UID's processes and delete what the node keeps for the plugin.
 

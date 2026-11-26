@@ -8,7 +8,7 @@ Loops, all in one event loop:
 - report, every 10 s and right after anything a report shows changed;
 - memory watchdog, every 2 s;
 - socket watchdog, every second;
-- disk watchdog, every 30 s;
+- disk watchdog, every 30 s, and at once when the free space (read every second) falls fast;
 - database limits watchdog, every 60 s.
 
 Before any of them, the agent empties the egress proxy's policy files (no proxy password of an
@@ -43,6 +43,7 @@ from es_plugins.database.backup_store import BackupStore
 from es_plugins.database.connections import DatabaseConnector
 from es_plugins.database.drop_sequence import DatabaseDropper
 from es_plugins.database.limits_watchdog import DatabaseLimitsWatchdog
+from es_plugins.database.plugin_sessions import PluginDatabaseSessions
 from es_plugins.database.postgres_client import PostgresClient
 from es_plugins.database.provisioner import DatabaseProvisioner
 from es_plugins.database.restore_service import RestoreService
@@ -274,6 +275,7 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
         hook_caller=hook_caller,
         provisioner=provisioner,
         dropper=DatabaseDropper(database_connector),
+        database_sessions=PluginDatabaseSessions(database_connector),
         egress=egress,
         backup_store=backup_store,
         backups=backups,
@@ -286,7 +288,7 @@ async def run_agent(settings: AgentSettings, layout: NodeLayout) -> None:
     reconciler = Reconciler(services)
     watchdogs = [
         MemoryWatchdog(ProcessTable(), reconciler.supervisors),
-        SocketWatchdog(reconciler.supervisors),
+        SocketWatchdog(reconciler.supervisors, reserved_ports=ports.reserved_ports),
         DiskWatchdog(
             launcher,
             reconciler.controllers,

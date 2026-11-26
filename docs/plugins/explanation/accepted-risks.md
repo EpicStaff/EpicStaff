@@ -28,15 +28,22 @@ Two things they still share:
 
 - **UNIX sockets in the abstract namespace.** These have no file, so file permissions do not
   apply: a socket one plugin opens there can be reached by every other plugin on the node. Use a
-  socket in your own directory instead, or none.
+  socket in your own directory instead, or none. Two plugins can also pass descriptors to each
+  other this way, a plugin's own listening socket included. The node never hands a socket that
+  served one plugin to the next plugin given its port, and stops a plugin that holds a TCP
+  connection on a port of the node's range other than its own, within a second. Until then such
+  a plugin can answer requests meant for the plugin whose socket it was given. A copy made to
+  listen again after its plugin left the node, before the next plugin given that port starts,
+  keeps that plugin from starting until the copy is closed.
 - **The node's ephemeral ports.** Every plugin on the node shares its ephemeral ports, 21000 to
   65535, about 44,500 of them. A plugin cannot `bind()` a socket, TCP or UDP, and its new TCP
   connections are capped and rate-limited. The node stops a plugin, and keeps it stopped until a
   SuperAdmin restarts it, when the plugin's user has a TCP socket listening on any port (a
-  `listen()` without `bind()`) or holds more than 1,280 network sockets in all, UDP sockets that
-  are connected and never send included. TCP connections it accepted on its own port do not
-  count. The node checks once a second, so a plugin can press on the ports for up to a second
-  before it is stopped ([Runtime](../reference/runtime.md#how-the-backend-is-started)).
+  `listen()` without `bind()`), holds a TCP connection on another plugin's port, or holds more
+  than 1,280 network sockets in all, UDP sockets that are connected and never send included. TCP
+  connections it accepted on its own port do not count. The node checks once a second, so a
+  plugin can press on the ports for up to a second before it is stopped
+  ([Runtime](../reference/runtime.md#how-the-backend-is-started)).
 
 ## A plugin chooses what EpicStaff's own sidebar shows
 
@@ -136,6 +143,22 @@ affix on a zone of the plugins' own.
 Some limits are enforced after the fact. A process may briefly use more memory than its cap
 before it is stopped, and the database statement timeout is a setting of the plugin's role that
 the node puts back when it was changed, rather than a hard limit.
+
+The disk cap is measured too, not enforced by the file system. The node measures every 30
+seconds, and at once when its free space falls fast, so a plugin can write past its cap by a few
+hundred MiB, or for up to 30 seconds while other plugins free space, before it is stopped. No one
+file grows past the cap. On a default install the plugin node's volume shares the host's file
+system with the database and the rest of EpicStaff, so a plugin that writes at the disk's full
+speed when the disk is nearly full can take the free space they need too.
+
+A plugin can also hide what it uses from the measurement. A deleted file whose descriptor the
+plugin sent over a UNIX socket and never received belongs to no process, so the node cannot see
+it, yet its space stays taken. Each plugin can keep up to 256 such files, each up to its cap: about
+512 GiB at the default cap, more than most disks. The node then measures that plugin as almost
+empty, and when the free space falls below the floor it stops the other plugins first. Only file
+system quotas would close this. So give the node a file system of its own
+([Enable plugins](../operator/enable-plugins.md#disk)) wherever its plugins are not all trusted:
+a full plugin volume then stops plugins, never the database or the rest of EpicStaff.
 
 ## One plugin can restart the shared database server
 

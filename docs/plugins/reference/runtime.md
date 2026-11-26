@@ -52,15 +52,26 @@ Outgoing connections are not affected, within the [connection limits](limits.md#
 plugin did not bind still takes a port, and so does a UDP socket that is connected and never
 sends. So the node stops a plugin whose user has a TCP socket in LISTEN on any port, or holds
 more than 1,280 network sockets, TCP and UDP together. TCP connections the plugin accepted on its
-own port do not count. The plugin's Runtime tab then gives the reason,
-"it listened on TCP port … of its own; …" or "it held … network sockets, more than the 1280 a
-plugin may; …", and the plugin stays stopped until a SuperAdmin restarts it.
+own port do not count. It also stops a plugin whose user holds a TCP connection on another
+port of the node's range: one accepted from a copy of another plugin's listening socket, passed
+to it over a UNIX socket. The plugin's Runtime tab then gives the reason,
+"it listened on TCP port … of its own; …", "it held a TCP connection on the node's port …, which
+is not its own; …" or "it held … network sockets, more than the 1280 a plugin may; …", and the
+plugin stays stopped until a SuperAdmin restarts it.
+
+**A listening socket serves one plugin only.** When a plugin leaves the node or is given another
+port, the node shuts its socket down and binds a fresh one for the next plugin given that port.
+A copy of the old socket that another process still holds cannot listen once the fresh one
+does. If that process makes its copy listen again before the next plugin starts, the next plugin
+waits, and starts once the copy is closed.
 
 `io_uring` is not available: `io_uring_setup`, `io_uring_enter` and `io_uring_register` answer
 `EPERM`, as do the System V IPC calls `shmget`, `msgget` and `semget`, and every system call
 made through a 32-bit ABI. So do `unshare`, `setns`, `keyctl`, `add_key`, `request_key`, `bpf`,
 `perf_event_open` and `userfaultfd`, and `clone` with any namespace flag. `clone3` answers
 `ENOSYS`, and glibc then falls back to `clone`, so threads and child processes work.
+`memfd_create` and `memfd_secret` answer `ENOSYS` too, as on a kernel without them: put such data
+in a file under your TMPDIR, where it counts against your disk cap.
 
 So your lock must pin `uvicorn` and `epicstaff-plugin` (upload refuses a lock without them), and
 your app must be an ASGI app: FastAPI, Starlette, Litestar, Django's ASGI handler and so on.
@@ -231,12 +242,12 @@ Hence two rules:
 
 ## Limits
 
-The node caps the memory of all processes of the plugin's user together, and runs them at the
-CPU priority the plugin's limits give. Above the cap it stops every process of the plugin and
-restarts it. The cap counts the resident memory of those processes: memory a plugin holds in a
-memory file (`memfd_create`) or a tmpfs is not counted, though the node's own memory limit still
-bounds it. [Limits](limits.md) gives the details, including by how much the memory cap can be
-overshot.
+The node caps the memory of all processes of the plugin's user together, and runs them at the CPU
+priority the plugin's limits give. Above the cap it stops every process of the plugin and restarts
+it. The cap counts the resident memory of those processes, and a plugin cannot keep memory outside
+that count: `memfd_create` and `memfd_secret` answer `ENOSYS`, and it cannot create files on the
+container's tmpfs mounts (`/tmp`, `/dev/shm`, `/run`). [Limits](limits.md) gives the details,
+including by how much the memory cap can be overshot.
 
 ## A development backend
 

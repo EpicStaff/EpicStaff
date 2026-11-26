@@ -11,7 +11,10 @@ unexpected stop (exit, failed health, over memory) kills whatever is left of the
 restarts after the `RestartPolicy` backoff, or leaves the plugin `failed`. A plugin over its
 disk cap, or holding sockets it may not (`socket_watchdog`), is killed and left `failed` at once
 (`fail_for`): a restart would only fill the disk, or take the ports, again. A deliberate stop
-sends SIGTERM, waits up to the grace period, then SIGKILL.
+sends SIGTERM, waits up to the grace period, then SIGKILL. The kill that ends each process is
+followed by `on_killed` (the placement ends the plugin's database sessions there), once and for at
+most `ON_KILLED_SECONDS`, before anything is started again; a deliberate stop waits for all of it
+(`STOP_WINDOW_SECONDS`).
 """
 
 import asyncio
@@ -19,7 +22,7 @@ import contextlib
 import os
 import signal
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 
 from loguru import logger
@@ -34,6 +37,10 @@ STARTUP_GRACE_SECONDS = 60.0
 HEALTH_INTERVAL_SECONDS = 15.0
 HEALTH_FAILURES_BEFORE_RESTART = 3
 STOP_GRACE_SECONDS = 5.0
+ON_KILLED_SECONDS = 3.0
+# A deliberate stop: SIGTERM and its grace period, the kill, `on_killed`, and room for the
+# launcher's answers.
+STOP_WINDOW_SECONDS = STOP_GRACE_SECONDS + ON_KILLED_SECONDS + 2.0
 
 
 @dataclass(frozen=True)
@@ -80,6 +87,7 @@ class ProcessSupervisor:
         listen_fd: int | None = None,
         policy: RestartPolicy | None = None,
         clock: Callable[[], float] = time.monotonic,
+        on_killed: Callable[[], Awaitable[None]] | None = None,
     ):
         self.plugin = plugin
         self.uid = uid
@@ -90,6 +98,9 @@ class ProcessSupervisor:
         self._listen_fd = listen_fd
         self._policy = policy or RestartPolicy()
         self._clock = clock
+        self._on_killed = on_killed
+        # True from a spawn until `on_killed` has run after the kill that ended that process.
+        self._on_killed_owed = False
         self._lock = asyncio.Lock()
         self._spec: ProcessSpec | None = None
         self._run_task: asyncio.Task | None = None
@@ -265,11 +276,15 @@ class ProcessSupervisor:
         try:
             await self._watch(spec, process, exited)
         finally:
-            await self._terminate(process, exited)
-            _stop_watching(process.pidfd)
-            os.close(process.pidfd)
-            self._pid = None
-            self._rss_mb = None
+            try:
+                await self._terminate(process, exited)
+            finally:
+                # Also when a stop that ran out of time cancels this task: a dead process's pidfd
+                # stays readable, and left watched it would spin the event loop.
+                _stop_watching(process.pidfd)
+                os.close(process.pidfd)
+                self._pid = None
+                self._rss_mb = None
             # The collector ends once the pipe's last writer is gone, i.e. after the kill.
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(collector, STOP_GRACE_SECONDS)
@@ -316,6 +331,7 @@ class ProcessSupervisor:
             os.close(write_end)
         self._pid = process.pid
         self._started_processes += 1
+        self._on_killed_owed = True
         logger.info(
             "Started plugin {} {} as UID {} (pid {})",
             spec.plugin,
@@ -389,7 +405,7 @@ class ProcessSupervisor:
         self._interrupt.set()
         try:
             with contextlib.suppress(asyncio.TimeoutError):
-                await asyncio.wait_for(asyncio.shield(self._run_task), STOP_GRACE_SECONDS + 2)
+                await asyncio.wait_for(asyncio.shield(self._run_task), STOP_WINDOW_SECONDS)
             if not self._run_task.done():
                 self._run_task.cancel()
                 with contextlib.suppress(asyncio.CancelledError):
@@ -409,6 +425,18 @@ class ProcessSupervisor:
             return
         if remaining:
             logger.error("Plugin {} still has processes {} after the kill", self.plugin, remaining)
+        if self._on_killed is None or not self._on_killed_owed:
+            return
+        try:
+            async with asyncio.timeout(ON_KILLED_SECONDS):
+                await self._on_killed()
+        except TimeoutError:
+            logger.warning(
+                "The clean-up after killing plugin {} took more than {} s",
+                self.plugin,
+                ON_KILLED_SECONDS,
+            )
+        self._on_killed_owed = False
 
     def _set_state(self, observed_state: str, health: str) -> None:
         if (observed_state, health) != (self._observed_state, self._health):

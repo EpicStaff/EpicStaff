@@ -1,5 +1,5 @@
-"""The per-plugin socket watchdog: no listening socket of its own, and a bounded number of inet
-sockets, checked every second.
+"""The per-plugin socket watchdog: no listening socket of its own, no connection on another
+placement's port, and a bounded number of inet sockets, checked every second.
 
 A plugin cannot `bind()` an inet socket (`bind_refusal`), but the kernel binds a port by itself,
 without that hook, for `listen()` on an unbound TCP socket, and for a UDP `connect()`. Such a
@@ -10,8 +10,9 @@ the agent unable to reach django_app or plugins_db.
 
 Every second the watchdog reads `/proc/net/{tcp,tcp6,udp,udp6}` of the node's network namespace,
 which the plugins share with the agent, and counts each running plugin's sockets by the `uid`
-column. A plugin breaches when its UID owns a TCP socket in LISTEN, or more than
-`MAX_INET_SOCKETS` inet sockets in all, not counting the TCP connections it accepted.
+column. A plugin breaches when its UID owns a TCP socket in LISTEN, a TCP socket on a port of the
+node's range other than its own, or more than `MAX_INET_SOCKETS` inet sockets in all, not
+counting the TCP connections it accepted.
 
 The socket a plugin serves on is not its own: the agent made it (`PortReservation`), so its
 LISTEN row has the agent's UID. A connection the plugin accepts from it is the plugin's, though:
@@ -21,6 +22,16 @@ is left out of the count; a busy plugin may hold as many as its descriptors allo
 its UID breaches on any port. The rest, the connections it opens and its UDP sockets, is bounded
 by `MAX_INET_SOCKETS`, set above what the connection limits already let a plugin hold
 (`network_limits`).
+
+Plugins can pass descriptors to each other over abstract UNIX sockets, so one may hold a copy of
+another placement's listening socket and accept its connections. The LISTEN row of that socket
+still has the agent's UID, but each connection accepted from it has the thief's UID and the other
+placement's port. No plugin can bind a port, and the node's ports lie below the ephemeral range,
+so the kernel never gives one to a socket of a plugin; a plugin's open TCP connection on one that
+is not its own can only be such a connection, and breaches. Only an open one, `ESTABLISHED` or
+`CLOSE_WAIT`: a connection the kernel is still closing after its process was killed keeps that
+process's UID and port, so it would fail a placement restarted on another port, or a new plugin
+given a removed one's UID.
 
 A breach kills the plugin's UID and leaves the plugin `failed` with the reason in the node's
 report (`ProcessSupervisor.fail_for`), until EpicStaff restarts it or installs another version: a
@@ -36,7 +47,7 @@ Log line: `plugins.socket_watchdog.stopped`.
 import asyncio
 import itertools
 from collections import Counter
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Container, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -59,6 +70,8 @@ MAX_LINES_PER_TABLE = 100_000
 PROC_NET = Path("/proc/net")
 # `st` of a TCP socket in LISTEN (include/net/tcp_states.h).
 TCP_LISTEN = 0x0A
+# `st` of a TCP connection a process still holds open: ESTABLISHED and CLOSE_WAIT.
+TCP_OPEN_STATES = frozenset({0x01, 0x08})
 _TABLES = (("tcp", True), ("tcp6", True), ("udp", False), ("udp6", False))
 
 
@@ -91,11 +104,12 @@ def parse_socket_line(line: str) -> SocketEntry | None:
 
 @dataclass
 class SocketUse:
-    """Each watched UID's inet sockets but the connections it accepted, and a TCP port it listens
-    on (the first found)."""
+    """Each watched UID's inet sockets but the connections it accepted, a TCP port it listens on,
+    and a node port not its own it holds a TCP socket on (the first found of each)."""
 
     sockets: Counter = field(default_factory=Counter)
     listening: dict[int, int] = field(default_factory=dict)
+    foreign_ports: dict[int, int] = field(default_factory=dict)
 
 
 class SocketTables:
@@ -105,11 +119,12 @@ class SocketTables:
         self._root = root
         self._unreadable: set[str] = set()
 
-    def use_of(self, ports: dict[int, int]) -> SocketUse:
+    def use_of(self, ports: dict[int, int], reserved_ports: Container[int]) -> SocketUse:
         """The socket use of each UID of `ports`, from every table that can be read now.
 
         Args:
             ports: Each watched UID and the port its plugin serves on.
+            reserved_ports: Every port of the node's range.
         """
         use = SocketUse()
         for name, is_tcp in _TABLES:
@@ -125,6 +140,12 @@ class SocketTables:
                         elif is_tcp and entry.local_port == ports[entry.uid]:
                             # A connection it accepted: it takes no ephemeral port.
                             continue
+                        elif (
+                            is_tcp
+                            and entry.state in TCP_OPEN_STATES
+                            and entry.local_port in reserved_ports
+                        ):
+                            use.foreign_ports.setdefault(entry.uid, entry.local_port)
                         use.sockets[entry.uid] += 1
             except OSError as error:
                 if name not in self._unreadable:
@@ -140,16 +161,19 @@ class SocketWatchdog:
         self,
         supervisors: Callable[[], Iterable[ProcessSupervisor]],
         *,
+        reserved_ports: Container[int],
         tables: SocketTables | None = None,
         interval: float = POLL_INTERVAL_SECONDS,
     ):
         self._supervisors = supervisors
+        self._reserved_ports = reserved_ports
         self._tables = tables or SocketTables()
         self._interval = interval
 
     async def check_once(self) -> list[ProcessSupervisor]:
-        """Stop every running plugin whose UID listens on a port of its own or holds more than
-        `MAX_INET_SOCKETS` inet sockets, the connections it accepted not counted.
+        """Stop every running plugin whose UID listens on a port of its own, holds a TCP socket on
+        a node port not its own, or holds more than `MAX_INET_SOCKETS` inet sockets, the
+        connections it accepted not counted.
 
         Returns:
             The supervisors stopped by this check.
@@ -160,17 +184,19 @@ class SocketWatchdog:
         if not watched:
             return []
         ports = {uid: supervisor.spec.port for uid, supervisor in watched.items()}
-        use = await asyncio.to_thread(self._tables.use_of, ports)
+        use = await asyncio.to_thread(self._tables.use_of, ports, self._reserved_ports)
         stopped = []
         for uid, supervisor in watched.items():
             reason = _breach(use, uid)
             if reason is None or not supervisor.watching:
                 continue
             logger.error(
-                "plugins.socket_watchdog.stopped plugin={} uid={} listening_port={} sockets={}",
+                "plugins.socket_watchdog.stopped plugin={} uid={} listening_port={} "
+                "foreign_port={} sockets={}",
                 supervisor.plugin,
                 uid,
                 use.listening.get(uid, "none"),
+                use.foreign_ports.get(uid, "none"),
                 use.sockets[uid],
             )
             supervisor.fail_for(reason)
@@ -194,6 +220,12 @@ def _breach(use: SocketUse, uid: int) -> str | None:
         return (
             f"it listened on TCP port {port} of its own; a plugin serves only on the socket the "
             "node hands it, so it stays stopped until it is restarted"
+        )
+    port = use.foreign_ports.get(uid)
+    if port is not None:
+        return (
+            f"it held a TCP connection on the node's port {port}, which is not its own; a plugin "
+            "serves only on the socket the node hands it, so it stays stopped until it is restarted"
         )
     count = use.sockets[uid]
     if count > MAX_INET_SOCKETS:
