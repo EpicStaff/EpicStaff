@@ -133,6 +133,8 @@ TAG_MAP = [
     ("api/notify", "Notifications"),
     # Transfer jobs
     ("api/transfer-jobs", "Transfer Jobs"),
+    # System
+    ("api/system-info", "System"),
 ]
 
 TAGS_ORDER = [
@@ -210,6 +212,7 @@ TAGS_ORDER = [
     "Plugins",
     "Notifications",
     "Transfer Jobs",
+    "System",
     "Other",
 ]
 

@@ -1,0 +1,173 @@
+// Frame, header, spacing and footer follow the shared confirmation dialog (`app-confirmation-dialog`), as the
+// indexing confirmation dialog does.
+.dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 520px;
+    max-width: calc(100vw - 2rem);
+    max-height: calc(100vh - 2rem);
+    padding: 24px 24px 0;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 10px;
+    background: var(--color-modals-background);
+    color: var(--color-text-primary);
+
+    &__header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin: 0 -24px;
+        padding: 0 24px 16px;
+        border-bottom: 1px solid var(--color-divider-subtle);
+    }
+
+    &__title {
+        margin: 0;
+    }
+
+    &__close {
+        margin-right: -8px;
+    }
+
+    // Only the body scrolls, so the buttons stay in view on a short window.
+    &__body {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        min-height: 0;
+        overflow-y: auto;
+    }
+
+    // Spaced as the unsaved-changes dialog (`app-unsaved-changes-dialog`): its message ends with 20px of padding and its
+    // actions have 16px above and below. Here the container's 16px gap plus 4px gives the 20px, so the button sits 36px
+    // under the content and 16px over the bottom edge (the container has no bottom padding).
+    &__actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 4px;
+        padding: 16px 0;
+    }
+
+    &__note {
+        flex-grow: 1;
+        color: var(--color-text-secondary);
+    }
+}
+
+// The build in its short form, then what kind of build it is.
+.build {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+
+    &__label {
+        overflow-wrap: anywhere;
+    }
+}
+
+// One row per field: the label column on the left (left-aligned, at least 120px, wider only to fit
+// "Import/export format" on one line), the value on the right (it wraps: a long branch).
+.details {
+    display: grid;
+    grid-template-columns: minmax(120px, max-content) minmax(0, 1fr);
+    gap: 16px;
+    margin: 0;
+
+    &__label {
+        color: var(--color-text-secondary);
+    }
+
+    &__value {
+        margin: 0;
+        overflow-wrap: anywhere;
+        font-variant-numeric: tabular-nums;
+
+        &--warning {
+            color: var(--color-warning);
+        }
+    }
+
+    &__muted {
+        color: var(--color-text-secondary);
+    }
+}
+
+// The hint keeps its own space above it; the body's gap already separates it.
+.mismatch {
+    margin-top: 0;
+}
+
+.features {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding-top: 24px;
+    border-top: 1px solid var(--color-divider-regular);
+
+    &__heading {
+        margin: 0;
+    }
+
+    &__list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+}
+
+// Each switch in its own block, as the indexing confirmation dialog's estimate tiles
+// (`indexing-confirmation-dialog`, `.estimate__tile`): the field surface, 4px radius; the name on the left, the
+// state badge on the right.
+.feature {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    padding: 8px 12px;
+    border-radius: 4px;
+    background: var(--color-input-background);
+}
+
+// The small status badge of the users, organizations and API keys tables
+// (`features/role-base-access/components/status-badge`): 12px text in a 4px-round tinted box, with the same
+// colours. Drawn here because that component always adds a dot and has no purple; the word carries the state, the
+// colour only repeats it.
+.badge {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+
+    &--on,
+    &--release {
+        background: var(--transparent-green-8);
+        color: var(--color-ks-status-new);
+    }
+
+    &--off {
+        background: var(--transparent-white-4);
+        color: var(--text-secondary-60);
+    }
+
+    // The app's purple badge (webhook triggers' badge, the flows list's selected chip): accent text on the
+    // accent tint.
+    &--developer {
+        background: var(--color-ghost-btn-active);
+        color: var(--accent-color);
+    }
+
+    &--local {
+        background: var(--transparent-white-8);
+        color: var(--color-text-secondary);
+    }
+}
