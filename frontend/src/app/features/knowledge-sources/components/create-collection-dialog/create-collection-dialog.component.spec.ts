@@ -1,7 +1,7 @@
 // Pins the collection wizard's step logic (in-flight guard, indexing confirmation) at the unit layer, and which
 // container the Configure step renders (graph tabbed view or plain) at the component layer through the DOM.
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { Component, input, model, signal } from '@angular/core';
+import { Component, forwardRef, input, model, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ConfirmationDialogService, ConfirmationResult } from '@shared/components';
 import { firstValueFrom, Observable, of, Subject, throwError } from 'rxjs';
@@ -241,6 +241,8 @@ describe('CreateCollectionDialogComponent indexing confirmation', () => {
 
 describe('CreateCollectionDialogComponent graph tabs', () => {
     const GRAPH_RAG_ID = 42;
+    /** What the upload step answers when the dialog asks to leave it (an unsaved document edit). */
+    let leaveAnswer = true;
     const VALID_DOCUMENT: DisplayedListDocument = {
         document_id: 1,
         file_name: 'a.pdf',
@@ -253,6 +255,8 @@ describe('CreateCollectionDialogComponent graph tabs', () => {
     /** Stands in for the upload step (file picker, uploads): "Add file" selects one valid document. */
     @Component({
         selector: 'app-step-upload-files',
+        // Found by the dialog's query for the real step.
+        providers: [{ provide: StepUploadFilesComponent, useExisting: forwardRef(() => StepUploadFilesStubComponent) }],
         template: `<button
             type="button"
             (click)="documents.set([document])"
@@ -265,6 +269,9 @@ describe('CreateCollectionDialogComponent graph tabs', () => {
         readonly initialDocumentId = input<number | undefined>();
         readonly documents = model<DisplayedListDocument[]>([]);
         readonly document = VALID_DOCUMENT;
+        confirmLeave(): Observable<boolean> {
+            return of(leaveAnswer);
+        }
     }
 
     /** Stands in for the RAG picker (model lists, selects): one button per RAG type, one that picks the models. */
@@ -311,7 +318,10 @@ describe('CreateCollectionDialogComponent graph tabs', () => {
 
     let fixture: ComponentFixture<CreateCollectionDialogComponent>;
 
-    beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
+    beforeEach(() => {
+        leaveAnswer = true;
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+    });
     afterEach(() => vi.unstubAllGlobals());
 
     function render(ragId: number | null = GRAPH_RAG_ID): void {
@@ -411,5 +421,41 @@ describe('CreateCollectionDialogComponent graph tabs', () => {
 
         expect(tabbedView()).toBeNull();
         expect(configurationForm()).not.toBeNull();
+    });
+
+    describe('an unsaved document edit on the upload step', () => {
+        function clickClose(): void {
+            (fixture.nativeElement as HTMLElement)
+                .querySelector<HTMLButtonElement>('button[aria-label="Close"]')!
+                .click();
+            fixture.detectChanges();
+        }
+
+        it('keeps the dialog open when the user keeps editing', () => {
+            render();
+            leaveAnswer = false;
+
+            clickClose();
+
+            expect(TestBed.inject(DialogRef).close).not.toHaveBeenCalled();
+        });
+
+        it('closes the dialog once the user drops the edit', () => {
+            render();
+
+            clickClose();
+
+            expect(TestBed.inject(DialogRef).close).toHaveBeenCalled();
+        });
+
+        it('stays on the upload step when the user keeps editing', () => {
+            render();
+            clickButton('Add file');
+            leaveAnswer = false;
+
+            clickButton('Next');
+
+            expect(fixture.componentInstance.currentStepIndex()).toBe(0);
+        });
     });
 });

@@ -109,7 +109,7 @@ export class CreateCollectionDialogComponent {
             id: CreateCollectionStep.UPLOAD_FILES,
             label: 'Upload files',
             proceedLabel: 'Next',
-            onProceed: () => of(true),
+            onProceed: () => this.confirmLeavingUpload(),
             canProceed: () =>
                 this.selectedDocuments().length > 0 &&
                 this.selectedDocuments().every((d) => d.isValidType && d.isValidSize),
@@ -152,6 +152,7 @@ export class CreateCollectionDialogComponent {
     activeTab = computed<GraphRagTab>(() => this.tabbedView()?.activeTab() ?? 'configuration');
 
     private tabbedView = viewChild(GraphRagTabbedViewComponent);
+    private uploadStep = viewChild(StepUploadFilesComponent);
 
     @ViewChild(NgComponentOutlet, { static: false })
     private strategyComponent!: NgComponentOutlet;
@@ -348,8 +349,17 @@ export class CreateCollectionDialogComponent {
     }
 
     onClose() {
-        this.strategy()?.dispose?.();
-        this.dialogRef.close();
+        this.confirmLeavingUpload()
+            .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => {
+                this.strategy()?.dispose?.();
+                this.dialogRef.close();
+            });
+    }
+
+    /** An unsaved document edit on the upload step is dropped only when the user agrees. */
+    private confirmLeavingUpload(): Observable<boolean> {
+        return this.uploadStep()?.confirmLeave() ?? of(true);
     }
 
     protected readonly CreateCollectionStep = CreateCollectionStep;

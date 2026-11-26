@@ -65,6 +65,27 @@ export interface CollectionDocument {
     source_collection: number;
 }
 
+/** Which documents an edit reaches when other collections use the same file. */
+export type DocumentContentScope = 'this_collection' | 'all_collections';
+
+export interface SharedCollection {
+    collection_id: number;
+    collection_name: string;
+}
+
+export interface DocumentDetail extends CollectionDocument {
+    collection_name: string;
+    /** The version an edit sends back, so a save from an older text is refused; null for a document without content. */
+    content_hash: string | null;
+    /** Other collections whose documents use the same file. */
+    shared_with_collections: SharedCollection[];
+}
+
+/** A text document with its current text; `content_hash` is the hash of exactly this text. */
+export interface DocumentText extends DocumentDetail {
+    text: string;
+}
+
 export interface DisplayedListDocument {
     document_id?: number;
     file_name: string;

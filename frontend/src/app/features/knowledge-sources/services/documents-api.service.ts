@@ -7,6 +7,9 @@ import {
     CopyDocumentsRequest,
     CopyDocumentsResponse,
     DeleteDocumentResponse,
+    DocumentContentScope,
+    DocumentDetail,
+    DocumentText,
     ImportFromStorageRequest,
     ImportFromStorageResponse,
     UploadDocumentResponse,
@@ -56,6 +59,30 @@ export class DocumentsApiService {
         return this.http.get(`${this.apiUrl}/${id}/preview/`, {
             responseType: 'blob',
         });
+    }
+
+    getDocument(id: number): Observable<DocumentDetail> {
+        return this.http.get<DocumentDetail>(`${this.apiUrl}/${id}/`);
+    }
+
+    /** The document's text for editing, with the hash of that same text. */
+    getDocumentText(id: number): Observable<DocumentText> {
+        return this.http.get<DocumentText>(`${this.apiUrl}/${id}/content/`);
+    }
+
+    /** Replace a text document's content; the text travels as a file, so the upload limit applies. */
+    updateDocumentContent(
+        id: number,
+        fileName: string,
+        text: string,
+        scope: DocumentContentScope,
+        contentHash: string
+    ): Observable<DocumentDetail> {
+        const formData = new FormData();
+        formData.append('file', new Blob([text], { type: 'text/plain;charset=utf-8' }), fileName);
+        formData.append('scope', scope);
+        formData.append('content_hash', contentHash);
+        return this.http.put<DocumentDetail>(`${this.apiUrl}/${id}/content/`, formData);
     }
 
     copyDocuments(dto: CopyDocumentsRequest): Observable<CopyDocumentsResponse> {

@@ -5,6 +5,8 @@ import { RagName, RagTypeLevel } from '../enums/rag';
 import { Rag, RagStatus, RagType } from '../models/base-rag.model';
 
 export const FILE_TYPES = ['pdf', 'csv', 'md', 'docx', 'txt', 'json', 'html'];
+/** Text formats the document editor may change; mirrors the backend's EDITABLE_FILE_TYPES. */
+export const EDITABLE_FILE_TYPES: readonly string[] = ['txt', 'md', 'csv', 'json', 'html'];
 
 export const CHUNK_STRATEGIES = ['character', 'csv', 'markdown', 'HTML', 'token', 'JSON'];
 export const CHUNK_STRATEGIES_SELECT_ITEMS: SelectItem[] = CHUNK_STRATEGIES.map((t) => ({
