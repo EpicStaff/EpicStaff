@@ -9,7 +9,7 @@ test('allowed licences pass, unreviewed ones are named', () => {
   assert.equal(licenseProblem('MIT'), null);
   assert.equal(licenseProblem('(MIT OR GPL-3.0-or-later)'), null);
   assert.match(licenseProblem('GPL-3.0-or-later'), /only as an alternative/);
-  assert.match(licenseProblem('MIT AND AGPL-3.0-only'), /"AGPL-3.0-only"/);
+  assert.match(licenseProblem('MIT AND SSPL-1.0'), /"SSPL-1.0"/);
   assert.match(licenseProblem('BSD License'), /not a valid SPDX expression/);
 });
 
@@ -25,10 +25,10 @@ const notices = [
   '| Package | Version | License |',
   '| `@angular/core` | 22.0.0 | MIT |',
   '<!-- END GENERATED: frontend -->',
-  '| `outside-any-region` | 1.0 | AGPL-3.0-only |',
+  '| `outside-any-region` | 1.0 | SSPL-1.0 |',
   '<!-- BEGIN GENERATED: backend -->',
   '| `pkg-a` | 1.0 | Apache Software License; MIT License | Copyright \\| A |',
-  '| `pkg-b` | 2.0 | AGPL-3.0-only |  |',
+  '| `pkg-b` | 2.0 | SSPL-1.0 |  |',
   '<!-- END GENERATED: backend -->',
 ].join('\n');
 
@@ -40,7 +40,7 @@ test('reads package rows of both regions only', () => {
 
 test('reports each unacceptable package and an empty region', () => {
   assert.deepEqual(findProblems(notices), [
-    'backend: pkg-b@2.0: licence "AGPL-3.0-only" uses "AGPL-3.0-only", not in scripts/license-policy.json',
+    'backend: pkg-b@2.0: licence "SSPL-1.0" uses "SSPL-1.0", not in scripts/license-policy.json',
   ]);
   const noFrontend = notices.replace('| `@angular/core` | 22.0.0 | MIT |', '');
   assert.match(findProblems(noFrontend)[0], /^frontend: no packages found/);
