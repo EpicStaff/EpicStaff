@@ -49,3 +49,12 @@ def test_swagger_page_keeps_the_drf_spectacular_page_body():
 
 def test_dark_stylesheet_is_found_by_the_static_finders():
     assert finders.find(DARK_THEME_STYLESHEET) is not None
+
+
+def test_swagger_page_loads_the_endpoint_sidebar_after_swagger_ui_is_created():
+    page = _render_swagger_page()
+
+    assert page.index("SwaggerUIBundle({") < page.index("/static/drf_spectacular/swagger_sidebar.js")
+    assert "/static/drf_spectacular/swagger_sidebar.css" in page
+    assert finders.find("drf_spectacular/swagger_sidebar.js") is not None
+    assert finders.find("drf_spectacular/swagger_sidebar.css") is not None
