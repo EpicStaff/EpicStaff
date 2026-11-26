@@ -15,8 +15,10 @@
    among them, are never ended.
 5. **Databases**: every database the owner owns is dropped as the owner, without FORCE, after its
    template mark and connection limit are put back (`database_attributes`: `DROP DATABASE`
-   refuses a template, and the owner may have made it one). A session still connected, a backup
-   in practice, makes PostgreSQL refuse (SQLSTATE 55006): a temporary failure, tried again later.
+   refuses a template, and the owner may have made it one). A database closed to logins (its
+   provisioning stopped before CONNECT was set) is dropped closed, never opened. A session still
+   connected, a backup in practice, makes PostgreSQL refuse (SQLSTATE 55006): a temporary
+   failure, tried again later.
 6. **Other databases**: nothing in another database may still refer to one of the three roles
    (`pg_shdepend`). Another plugin can grant on its own tables to this plugin's app role, and
    PostgreSQL then refuses to drop it; the failure names that database, and is permanent.

@@ -3,12 +3,13 @@
 import os
 import signal
 import sys
+from collections.abc import Mapping
 
 from loguru import logger
 
 from es_plugins.hardening import make_not_dumpable
 from es_plugins.launcher.directory_setup import DirectorySetup
-from es_plugins.launcher.kill_by_uid import signal_uid
+from es_plugins.launcher.kill_by_uid import check_signaller_uid, signal_uid
 from es_plugins.launcher.privileged_launcher import (
     LauncherOperations,
     LauncherServer,
@@ -37,8 +38,12 @@ AGENT_VARIABLES = (
     "PYTHONPATH",
     "VIRTUAL_ENV",
 )
-AGENT_STOP_TIMEOUT_SECONDS = 8.0
+# The agent stops every plugin at once, each within the supervisor's stop window (SIGTERM, its
+# grace period, SIGKILL, the plugin's database sessions ended), then sends its last report.
+# es_plugins' stop_grace_period in docker-compose.yaml leaves the launcher room after it.
+AGENT_STOP_TIMEOUT_SECONDS = 15.0
 EXIT_CONFIGURATION_ERROR = 64
+_MIB = 1024 * 1024
 
 
 def agent_environment(layout: NodeLayout) -> dict[str, str]:
@@ -56,19 +61,44 @@ def agent_environment(layout: NodeLayout) -> dict[str, str]:
     return environment
 
 
+def max_file_bytes(environment: Mapping[str, str]) -> int:
+    """The largest file a plugin process may write: its whole disk cap, `ES_PLUGINS_DISK_MB_PER_PLUGIN`.
+
+    The launcher takes it from its own environment, not from each spawn request: the agent does
+    not choose a limit root enforces on the plugins.
+
+    Raises:
+        ValueError: The variable is missing or not a whole number above 0.
+    """
+    text = environment.get("ES_PLUGINS_DISK_MB_PER_PLUGIN", "")
+    try:
+        megabytes = int(text)
+    except ValueError:
+        megabytes = 0
+    if megabytes < 1:
+        raise ValueError(
+            f"ES_PLUGINS_DISK_MB_PER_PLUGIN must be a whole number above 0, not {text!r}"
+        )
+    return megabytes * _MIB
+
+
 def main() -> int:
     configure_logging("launcher")
     make_not_dumpable()
     os.umask(0o022)
     try:
         uid_range = UidRange.parse(os.environ.get("PLUGINS_NODE_UID_RANGE", ""))
+        check_signaller_uid(uid_range)
+        plugin_max_file_bytes = max_file_bytes(os.environ)
     except ValueError as error:
         logger.error("{}", error)
         return EXIT_CONFIGURATION_ERROR
     layout = NodeLayout()
     directory_setup = DirectorySetup(layout)
     directory_setup.prepare_tree()
-    operations = LauncherOperations(layout, uid_range, directory_setup, ProcessTable())
+    operations = LauncherOperations(
+        layout, uid_range, directory_setup, ProcessTable(), max_file_bytes=plugin_max_file_bytes
+    )
     server = LauncherServer(layout.launcher_socket, operations, agent_uid=AGENT_UID)
     server.listen(group=AGENT_GID)
 

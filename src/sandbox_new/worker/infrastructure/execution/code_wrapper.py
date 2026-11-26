@@ -1,10 +1,19 @@
 """Wraps user code into the source actually run inside the sandbox subprocess.
 
-Builds the preamble that injects globals and secrets, calls the entrypoint, writes
-its return value to the result file, and translates a network denial into a clear
-message. This is mechanism, not policy: the real network/filesystem boundary is the
-kernel-enforced seccomp/Landlock filter the launcher installs before this source
-runs. Pure -- it only formats a string.
+Builds the preamble that injects globals and secrets, runs the user code, calls the
+entrypoint, writes its return value to the result file, and translates a network denial
+into a clear message.
+
+The code goes in as a string literal, never spliced in as text: re-indenting it lets a
+line break the splice misses (a bare carriage return, a form feed) move a line out of the
+block the reviewed source shows it in. Before the code runs, the source refuses an
+entrypoint the code does not bind at its top level, so it cannot name a builtin (`open`)
+or a wrapper import (`get_secret`). That check parses the code, so it runs here, in the
+child under its timeout, not in the manager.
+
+This is mechanism, not policy: the real network/filesystem boundary is the
+kernel-enforced seccomp/Landlock filter the launcher installs before this source runs.
+Pure -- it only formats a string.
 """
 
 from pathlib import Path
@@ -23,15 +32,14 @@ def wrap_code(
     storage_mutations_path: Path | None = None,
 ) -> str:
     global_kwargs = global_kwargs or {}
-    code_lines = code.split("\n")
-    code_lines = ["    " + line for line in code_lines]
-    code = "\n".join(code_lines)
     wrapped_code = f"""
 import errno
 import os
 import socket
 import sys
 import json
+import ast as __sys_ast
+import traceback as __sys_traceback
 
 # Message-quality aid only, NOT a security control -- the real boundary is
 # the kernel-enforced seccomp/Landlock filter launcher.py installs before
@@ -81,19 +89,58 @@ def __sys_is_network_denial(exc):
     return isinstance(exc, OSError) and exc.errno == errno.EACCES and exc.filename is None
 
 
+def __sys_top_level_names(tree):
+    names = set()
+    for statement in tree.body:
+        if isinstance(statement, (__sys_ast.FunctionDef, __sys_ast.AsyncFunctionDef)):
+            names.add(statement.name)
+        elif isinstance(statement, __sys_ast.Assign):
+            names.update(t.id for t in statement.targets if isinstance(t, __sys_ast.Name))
+        # An annotation without a value binds nothing; the name would resolve elsewhere.
+        elif (
+            isinstance(statement, __sys_ast.AnnAssign)
+            and statement.value is not None
+            and isinstance(statement.target, __sys_ast.Name)
+        ):
+            names.add(statement.target.id)
+        elif isinstance(statement, (__sys_ast.Import, __sys_ast.ImportFrom)):
+            names.update(alias.asname or alias.name.partition(".")[0] for alias in statement.names)
+    return names
+
+
 try:
     from dotdict import DotDict, DotObject, DotList
     from epicstaff_secrets import get_secret
     for k, v in {global_kwargs}.items():
         globals()[k] = v
 
-{code}
+    __sys_code = {code!r}
+    # Compiling the parsed tree, not the text again, keeps parser warnings to one copy.
+    __sys_tree = __sys_ast.parse(__sys_code, "<code>")
+    if {entrypoint!r} not in __sys_top_level_names(__sys_tree):
+        print(
+            "entrypoint " + repr({entrypoint!r}) + " is not defined at the top level of code",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    __sys_compiled = compile(__sys_tree, "<code>", "exec")
+    del __sys_tree
+    exec(__sys_compiled, globals())
 
     __sys_dot_kwargs = DotDict({func_kwargs})
 
-    sys_result_variable = {entrypoint}(**__sys_dot_kwargs)
+    sys_result_variable = globals()[{entrypoint!r}](**__sys_dot_kwargs)
     with open(r'{result_file_path.as_posix()}', 'w', encoding='utf-8') as file:
         file.write(json.dumps(sys_result_variable))
+except SyntaxError as e:
+    # Errors found after parsing ('return' outside function) carry no source line,
+    # because "<code>" is not a file Python can read it back from.
+    if e.text is None and e.filename == "<code>" and e.lineno:
+        __sys_lines = __sys_code.replace("\\r\\n", "\\n").replace("\\r", "\\n").split("\\n")
+        if e.lineno <= len(__sys_lines):
+            e.text = __sys_lines[e.lineno - 1]
+    print("".join(__sys_traceback.format_exception_only(e)), end="", file=sys.stderr)
+    sys.exit(1)
 except OSError as e:
     __sys_candidate = getattr(e, "reason", e)
     if __sys_network_block_mode and __sys_is_network_denial(__sys_candidate):

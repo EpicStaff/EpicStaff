@@ -15,9 +15,24 @@ from tables.models.label_models import Label
 
 
 def clean_base_name(base_name: str) -> str:
-    """Strips a trailing "#N" (or "# N") suffix from base_name, if present."""
-    match = re.match(r"^(.+?)\s*#\s*\d+$", base_name.strip())
-    return match.group(1) if match else base_name.strip()
+    """Strips a trailing "#N" (or "# N") suffix from base_name, if present.
+
+    Whitespace around the name is dropped, and so is whitespace before the "#"
+    when the suffix is removed; a name that is only a suffix ("#2") is returned
+    as is. Split at the last "#" rather than matched with a regex: a lazy base
+    group followed by optional whitespace backtracks quadratically over a long
+    run of inner spaces, and Python's `re` holds the GIL meanwhile, freezing
+    every thread of the web worker.
+    """
+    name = base_name.strip()
+    head, _hash_sign, number = name.rpartition("#")
+    base = head.rstrip()
+    # A base that spans lines ("A\nB #2") keeps its suffix, as names were always
+    # parsed; newlines next to the "#" are still stripped. Without a "#", base is
+    # "" and the name is kept.
+    if base and "\n" not in base and number.lstrip().isdecimal():
+        return base
+    return name
 
 
 def slug_base(name: str) -> str:
@@ -34,8 +49,8 @@ def ensure_unique_slug(
 ) -> str:
     """`base_name`, or the first free `base_name-N` (N from 2) when it's taken.
 
-    For identifiers that can only hold letters, digits, "-" and "_" (webhook
-    paths), where ensure_unique_identifier's " #N" isn't allowed. The base is
+    For names that can't hold "#" (webhook paths, secret names), where
+    ensure_unique_identifier's " #N" isn't allowed. The base is
     kept whole: "orders-2024" becomes "orders-2024-2", never "orders-2". With
     `max_length`, the base is shortened so the suffix still fits.
     """

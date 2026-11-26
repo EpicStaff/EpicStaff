@@ -6,6 +6,7 @@ These tests are pure dict-transform tests — no DB access required.
 """
 
 import copy
+import time
 
 import pytest
 
@@ -768,10 +769,40 @@ class TestV2ToV3:
         ("Order #20240101123456", None, ("Order #20240101123456", None)),
         ("Order #20240101123456", 3, ("Order #20240101123456", 3)),
         ("", None, ("", None)),
+        (None, None, (None, None)),
+        (None, 4, (None, 4)),
+        ("  Agent  #  4  ", None, ("  Agent", 4)),
+        ("Agent\n#4\n", None, ("Agent", 4)),
+        ("Agent\u00a0#\u30004", None, ("Agent", 4)),
+        ("Agent #\u0663", None, ("Agent", 3)),
+        ("Agent #\u00b2", None, ("Agent #\u00b2", None)),
+        ("A #1 #2", None, ("A #1", 2)),
+        ("A #2 x", None, ("A #2 x", None)),
+        ("Agent #", None, ("Agent #", None)),
+        ("Agent 4", None, ("Agent 4", None)),
+        ("42", None, ("42", None)),
+        ("   #4", None, ("   #4", 4)),
     ],
 )
 def test_split_legacy_node_name(node_name, metadata_number, expected):
     assert split_legacy_node_name(node_name, metadata_number) == expected
+
+
+@pytest.mark.parametrize(
+    "node_name",
+    [
+        pytest.param("a" + " " * 20_000 + "b", id="no-hash"),
+        pytest.param("a" + " " * 20_000 + "#x", id="hash-no-digits"),
+    ],
+)
+def test_split_legacy_node_name_runs_in_linear_time_on_long_inner_whitespace(node_name):
+    # Sized so the former quadratic regex search took about a second per case.
+    started = time.perf_counter()
+
+    result = split_legacy_node_name(node_name, None)
+
+    assert time.perf_counter() - started < 0.1
+    assert result == (node_name, None)
 
 
 def _v3_bundle(*nodes):

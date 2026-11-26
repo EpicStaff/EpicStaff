@@ -42,6 +42,10 @@ class PlacementDatabase:
         """Provisioned, and not being removed: what the limits watchdog checks."""
         return self._state == "ready" and not self._retired
 
+    @property
+    def retired(self) -> bool:
+        return self._retired
+
     def retire(self) -> None:
         """The placement is being removed: nothing checks or provisions this database again."""
         self._retired = True

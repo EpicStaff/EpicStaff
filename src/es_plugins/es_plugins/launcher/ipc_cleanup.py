@@ -26,6 +26,8 @@ from es_plugins.launcher.kill_by_uid import run_as_user
 SYSVIPC_ROOT = Path("/proc/sysvipc")
 IPC_RMID = 0
 IpcKind = Literal["shm", "msg", "sem"]
+# Removing even thousands of objects takes milliseconds; a helper not done by then is given up.
+IPC_CLEANUP_SECONDS = 10.0
 # The column naming each object's id in /proc/sysvipc/<kind>.
 _ID_COLUMNS: dict[IpcKind, str] = {"shm": "shmid", "msg": "msqid", "sem": "semid"}
 
@@ -74,7 +76,7 @@ def remove_ipc_objects_of(uid: int, *, root: Path = SYSVIPC_ROOT) -> int:
     objects = ipc_objects_of(uid, root)
     if not objects:
         return 0
-    run_as_user(uid, lambda: _remove(objects))
+    run_as_user(uid, lambda: _remove(objects), timeout_seconds=IPC_CLEANUP_SECONDS)
     left = [item for item in ipc_objects_of(uid, root) if item.created]
     if left:
         kinds = ", ".join(sorted({item.kind for item in left}))

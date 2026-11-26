@@ -87,6 +87,19 @@ from the file fails the `sandbox_new` image build.
 make uv-lock-predefined
 ```
 
+### `make uv-lock-system-venvs`
+
+Regenerate `src/sandbox_new/system-venv-requirements/<venv>.txt`: the hash-pinned
+dependencies of the libraries the sandbox's own venvs install (`SYSTEM_VENV_LIBS` in
+`src/sandbox_new/manager/domain/models.py`: `file_extractor`, `audio_transcription`,
+`builtin_tools`). The sandbox manager image downloads exactly these, so the manager builds
+those venvs at startup without the internet. Run after changing a pin in `SYSTEM_VENV_LIBS`;
+`make uv-lock` runs it too. A pin missing from the files fails the `sandbox_new` image build.
+
+```bash
+make uv-lock-system-venvs
+```
+
 ---
 
 ## Local Django Development

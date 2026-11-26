@@ -870,8 +870,8 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
      * around it that does not clip the badge); the label stays outside. jsdom does not resolve the border colour
      * (a CSS variable), so the badge's anchor (`position: relative` only while marked) shows which element is marked.
      * A field whose value has no box of its own gets one drawn (`drawnBox`: what jsdom resolves of it, marked and
-     * plain). The timeout control and the secrets picker only change their border colour, which jsdom cannot
-     * resolve, so only their badge anchor is checked.
+     * plain). The secrets picker only changes its border colour, which jsdom cannot resolve, so only its badge
+     * anchor is checked.
      */
     const READ_ONLY_VALUE_BOX: DrawnBox = {
         marked: { display: 'block', paddingTop: '8px' },
@@ -915,10 +915,9 @@ describe('PythonNodePanelComponent on the Changes tab of a version preview', () 
         {
             change: change('python_code.execution_timeout', 30, 60),
             marked: 'app-execution-timeout-field',
-            // The border goes on the control inside the group; not checked (see above).
-            badgeOn: '.execution-timeout__group',
+            badgeOn: '.execution-timeout__readonly-value',
             label: 'app-tooltip',
-            drawnBox: null,
+            drawnBox: READ_ONLY_VALUE_BOX,
         },
     ];
 

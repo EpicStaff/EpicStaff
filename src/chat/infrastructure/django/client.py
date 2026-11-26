@@ -91,8 +91,9 @@ class DjangoClient(AbstractFlowRunner, AbstractIdentityProvider, AbstractUserAct
             TypeError,
             AttributeError,
         ) as error:  # ValueError covers JSON decoding
+            # The type only: a parse error's text can quote the body (int() of a bad value).
             raise UpstreamUnavailableError(
-                f"Malformed body from {response.request.url.path}: {error!r}"
+                f"Malformed body from {response.request.url.path}: {type(error).__name__}"
             ) from error
 
     def _org_headers(self, org_id: int) -> dict:
@@ -114,7 +115,7 @@ class DjangoClient(AbstractFlowRunner, AbstractIdentityProvider, AbstractUserAct
         if response.status_code == 404:
             raise FlowNotFoundError(graph_id)
         if response.status_code != 201:
-            raise FlowStartError(f"HTTP {response.status_code}: {response.text[:300]}")
+            raise FlowStartError(response.status_code)
         with self._parsing(response):
             return int(response.json()["session_id"])
 

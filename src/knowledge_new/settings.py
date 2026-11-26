@@ -51,8 +51,3 @@ SECRETS_TRANSPORT_HKDF_INFO = env.str("SECRETS_TRANSPORT_HKDF_INFO")
 # Deployment-wide overrides for the embedding endpoint. Unset in every standard
 # install; set only where embeddings are routed through an API gateway.
 CUSTOM_EMBED_BASE_URL = env.str("KNOWLEDGE_CUSTOM_EMBED_BASE_URL", None)
-
-# Path of the gpt2 tokenizer file the image bakes at build time (Dockerfile); the
-# token chunker loads it instead of fetching from huggingface.co. None (the
-# "none" value) only outside the image, where chonkie resolves "gpt2" by name.
-TOKENIZER_PATH = env.str("KNOWLEDGE_TOKENIZER_PATH")

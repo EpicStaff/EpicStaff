@@ -49,6 +49,9 @@ Suspending takes effect at once:
   the organization's own flows that use one of the plugin's resources. That covers flow runs,
   test runs from a trigger node, realtime conversations, voice calls to a channel, and code
   test-runs. The answer names the plugin and the organization, never the resource.
+- **AI features that call one of the plugin's model configurations outside a run** are refused
+  the same way: the flow assistant's replies, decision-table explanations, and knowledge
+  indexing with an embedder or LLM configuration the plugin owns.
 - **Running sessions** of those flows are stopped.
 - **Triggers** of those flows keep firing, and each time the run is refused: a schedule is
   refused at every tick (a one-time schedule that fires while suspended does not run later),
@@ -58,9 +61,9 @@ Suspending takes effect at once:
 A run *uses* a resource the plugin owns when the flow reaches it in any way a run can: a node,
 an agent with its LLM configs, default surfaces and voice configs, a surface's tools, knowledge
 and files, a knowledge collection with every one of its RAGs' embedders and LLMs, a Secret that
-code or a configuration declares, a file under a folder the flow attaches, a subflow, and so on.
-The rule is deliberately broad, so it refuses some runs that would not have touched the
-resource in the end; the preview shows exactly which ones.
+code or a configuration declares, the venv code runs in, a file under a folder the flow
+attaches, a subflow, and so on. The rule is deliberately broad, so it refuses some runs that
+would not have touched the resource in the end; the preview shows exactly which ones.
 
 Runs that use only the organization's own resources are never refused.
 
@@ -79,8 +82,10 @@ at the plugin's configurations, which that page does not show.
 
 ## What a suspension does not stop
 
-- **AI features outside runs**, such as the flow assistant, decision-table explanations,
-  knowledge indexing, and the "test" actions of models and tools.
+- **The "test" actions of models and tools.**
+- **A custom library of the plugin that one of the organization's venvs installs.** A venv
+  names its libraries by name, inside the sandbox, so a run of code in that venv is not seen to
+  use the library and is not refused. The plugin's venvs themselves are seen.
 - **Registering a webhook or a Telegram bot** with a Secret the plugin owns.
 - **Resources a step reaches by name** through EpicStaff's API while it runs, for example a
   key-value table that Python code reads by its id.
@@ -123,9 +128,15 @@ organization, and the grant shows "Deleting data". Two things then happen side b
   else ([Delete your data when an organization leaves](../how-to/org-removed-hook.md)).
 - **EpicStaff deletes everything the plugin created in the organization**, including what it
   made on behalf of people: its flows, agents, surfaces, tools, files, knowledge collections,
-  configurations, models, key-value tables, secrets, voice channels and webhook triggers. They do
-  not go to the recycle bin: they are deleted for good, as if a person had deleted each one and
-  emptied the bin.
+  configurations, models, venvs, the custom libraries it created (with every version uploaded to
+  them, by anyone), key-value tables, secrets, voice channels and webhook triggers. They do not go
+  to the recycle bin: they are deleted for good, as if a person had deleted each one and emptied
+  the bin. A version the plugin uploaded to one of the organization's own custom libraries is not
+  the plugin's and stays, and the organization's venvs that install that library keep installing
+  it ([accepted risks](accepted-risks.md#custom-library-versions-and-links-a-plugin-does-not-own)).
+  Venvs and custom libraries a plugin created before they became its own are matched to it at
+  the upgrade, except the few that cannot be told apart from the organization's
+  ([upgrading](../operator/enable-plugins.md#upgrading-to-this-version)).
 
 The organization's own rows lose what they used, exactly as when a person deletes the item: an
 agent loses the plugin's LLM config, a node loses its tool or file, and a default-model setting
@@ -135,8 +146,19 @@ that delete would change the other organization's data: the grant shows the erro
 tries again every hour until the link is removed by hand. A flow with a running session waits
 until the session ends.
 
-The grant row goes once both are done: nothing the plugin created is left, and its organization
-removed hook succeeded or was skipped. Its service account, keys and custom roles' actions go
+A venv the plugin created that the code of some tool or node still runs in, and a custom library
+it created that some venv of the organization still names, wait instead: the plugin's own tools
+and flows are deleted first, their code with them. Code that no tool or node has any more does not
+keep a venv: it is deleted with the venv. What still uses them once everything else is gone is the
+organization's, so when the grant goes they are handed over to the organization instead of
+deleted. They stay exactly as they are and become the organization's own: its code keeps running,
+and a handed-over venv keeps installing the libraries the plugin chose for it. The `grant_purged`
+event in the plugin's activity names them in its detail, `handed_over_venvs` and
+`handed_over_custom_libraries`, each as `<name> (id <n>)`. Check them, and delete what the
+organization does not want to keep.
+
+The grant row goes once both are done: nothing the plugin created is left but what is handed over,
+and its organization removed hook succeeded or was skipped. Its service account, keys and custom roles' actions go
 with it. Until then, runs that use anything the plugin still owns there are refused, as while
 suspended. The plugin can then be granted to the organization again, as a new grant.
 
@@ -185,6 +207,13 @@ already deleting. It asks for the phrase `purge-<plugin id>`. EpicStaff then:
    taken.** A database that another installation created is never deleted;
 3. once the node reports it done, deletes the plugin's records, frontend files and packages. Its
    port and user id are given to another plugin only after that.
+
+Rows the plugin owns in an organization whose grant is already gone are deleted in step 1 too,
+and a venv or custom library among them that the organization still uses is handed over to it,
+as when a grant goes. No activity event names those: the `grant_purged` event is the grant's,
+and the hand-over can happen ticks before `plugin_purged`. Only Django's log does, one line per
+resource, `plugins.purge.handed_over plugin=<id> org=<organization id>
+model=proxies.SandboxVenvBinding|proxies.SandboxCustomLibraryBinding pk=<id>`; look for it there.
 
 The plugin page shows the progress (organizations left, data removals waiting or failed, the
 plugin node). The plugin's activity is kept, and stays readable for SuperAdmins. The same

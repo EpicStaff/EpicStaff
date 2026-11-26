@@ -81,6 +81,10 @@ class ExecutionRegistry:
         self._done: dict[str, float] = {}
         # Moments of the most recent completions that ran, oldest first.
         self._completions: deque[float] = deque(maxlen=DRAIN_SAMPLE_SIZE)
+        # When the last queued or assigned execution left; None while any is in flight.
+        # Idle time says nothing about how fast the worker drains, so it is cut out of
+        # the drain rate's span.
+        self._idle_since: float | None = None
 
     def status(self, execution_id: str) -> ExecutionStatus | None:
         """Return where the execution is, or None when the sandbox does not know it.
@@ -129,6 +133,14 @@ class ExecutionRegistry:
     def mark_queued(self, execution_id: str) -> None:
         self._reserved.discard(execution_id)
         self._held.discard(execution_id)
+        if self._idle_since is not None:
+            # Move the completions forward by the idle gap, as if it never happened.
+            idle_seconds = self._clock() - self._idle_since
+            self._completions = deque(
+                (moment + idle_seconds for moment in self._completions),
+                maxlen=DRAIN_SAMPLE_SIZE,
+            )
+            self._idle_since = None
         self._queued.add(execution_id)
 
     def mark_assigned(
@@ -237,6 +249,8 @@ class ExecutionRegistry:
         self._queued.discard(execution_id)
         self._assigned.pop(execution_id, None)
         self._done.pop(execution_id, None)
+        if not self._queued and not self._assigned and self._idle_since is None:
+            self._idle_since = self._clock()
 
     def finish(self, execution_id: str, *, ran: bool) -> None:
         """Record that the execution's result was handed on; it answers DONE for a while.
@@ -285,12 +299,15 @@ class ExecutionRegistry:
 
         The span ends now rather than at the latest completion, so the rate decays while
         nothing finishes (every slot held by a long job) and the queue-wait prediction
-        refuses work instead of switching off. None on a cold start: fewer than
-        `MIN_DRAIN_SAMPLES` completions, or none of them before now.
+        refuses work instead of switching off. Time with nothing queued or running is
+        left out of the span: an idle sandbox is not a slow one, and counting it would
+        refuse the first burst after a quiet period. None on a cold start: fewer than
+        `MIN_DRAIN_SAMPLES` completions, or none of them before the span ends.
         """
         if len(self._completions) < MIN_DRAIN_SAMPLES:
             return None
-        elapsed = self._clock() - self._completions[0]
+        span_end = self._clock() if self._idle_since is None else self._idle_since
+        elapsed = span_end - self._completions[0]
         if elapsed <= 0:
             return None
         return len(self._completions) / elapsed

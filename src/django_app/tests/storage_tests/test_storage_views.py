@@ -232,6 +232,37 @@ def test_move_and_copy_within_the_org(auth_client, put, store, default_org, acti
     assert _exists(store, default_org, "a.txt") is source_kept
 
 
+def test_a_folder_cannot_be_renamed_into_its_own_subfolder(auth_client, put, store, default_org):
+    put("docs/sub/a.txt")
+
+    resp = auth_client.post("/api/storage/rename/", {"from_path": "docs", "to_path": "docs/sub/docs"}, format="json")
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert _exists(store, default_org, "docs/sub/a.txt")
+
+
+@pytest.mark.parametrize("destination", ["docs", "docs/sub", "docs/sub/deeper"])
+def test_a_folder_cannot_be_moved_into_itself_or_a_subfolder(auth_client, put, store, default_org, destination):
+    put("docs/a.txt")
+    put("docs/sub/deeper/b.txt")
+
+    resp = auth_client.post("/api/storage/move/", {"from_path": "docs", "to_path": destination}, format="json")
+
+    assert resp.status_code == status.HTTP_400_BAD_REQUEST
+    assert _exists(store, default_org, "docs/a.txt")
+    assert _exists(store, default_org, "docs/sub/deeper/b.txt")
+
+
+def test_a_folder_can_be_moved_into_a_sibling_sharing_its_name_prefix(auth_client, put, store, default_org):
+    put("docs/a.txt")
+    put("docs-archive/keep.txt")
+
+    resp = auth_client.post("/api/storage/move/", {"from_path": "docs", "to_path": "docs-archive"}, format="json")
+
+    assert resp.status_code == status.HTTP_200_OK, resp.data
+    assert _exists(store, default_org, "docs-archive/docs/a.txt")
+
+
 @pytest.mark.parametrize(("action", "source_kept"), [("move", False), ("copy", True)])
 def test_move_and_copy_across_orgs_for_a_superadmin(
     superadmin_client_with_org, put, store, default_org, action, source_kept

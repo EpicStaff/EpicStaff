@@ -21,11 +21,12 @@ from plugins.models import (
     PluginState,
     SuspensionCause,
 )
+from plugins.packages.spa_publisher import SpaPublisher
 from tables.models import Session
 from tables.services.session_manager_service import SessionManagerService
 
 from tests.plugins_tests.conftest import GATEWAY_SECRET, mark_running, upload_file
-from tests.plugins_tests.package_builder import backend_manifest, build_package
+from tests.plugins_tests.package_builder import backend_manifest, build_package, sample_files
 from tests.plugins_tests.suspension_helpers import flow, own
 
 pytestmark = [
@@ -263,6 +264,19 @@ def test_the_gateway_serves_no_path_of_an_uninstalled_plugin_from_the_moment_it_
     assert (response.status_code, response.headers.get("X-Plugin-Deny")) == (403, "not_found")
 
 
+def test_the_host_serves_no_page_of_an_uninstalled_plugin_from_the_moment_it_commits(
+    grants, superadmin_client, weather, spa_root, committed
+):
+    version = weather.current_package.version
+    publisher = SpaPublisher(spa_root)
+    assert publisher.current_version("weather") == version
+
+    committed(lambda: _uninstall(superadmin_client))
+
+    assert publisher.current_version("weather") is None
+    assert publisher.has_version("weather", version)
+
+
 def test_a_report_never_moves_an_uninstalled_or_deleting_plugin(grants, superadmin_client, node_client, weather):
     _uninstall(superadmin_client)
     report = {
@@ -382,6 +396,35 @@ def test_reinstall_resumes_exactly_the_grants_the_uninstall_suspended(
 
     mark_running(weather)
     assert _placement(node_client)["desired_state"] == "running"
+
+
+def test_reinstall_serves_the_plugin_s_page_again_while_it_is_still_provisioning(
+    grants, superadmin_client, weather, spa_root, committed
+):
+    committed(lambda: _uninstall(superadmin_client))
+
+    response = committed(lambda: _reinstall(superadmin_client))
+
+    assert response.json()["state"] == "provisioning"
+    assert SpaPublisher(spa_root).current_version("weather") == weather.current_package.version
+
+
+def test_reinstalling_a_plugin_without_a_page_serves_none_and_logs_no_error(
+    installation, superadmin, superadmin_client, plugin_node, spa_root, committed, caplog
+):
+    manifest = backend_manifest(id="worker")
+    del manifest["spa"]
+    files = {path: data for path, data in sample_files(manifest).items() if not path.startswith("spa/")}
+    data = build_package(files, manifest=manifest)
+    package = installation.upload(upload_file(data), len(data), superadmin)
+    committed(lambda: installation.approve(package.pk, superadmin, untrusted_acknowledged=True))
+    committed(lambda: _uninstall(superadmin_client, "worker"))
+
+    response = committed(lambda: _reinstall(superadmin_client, "worker"))
+
+    assert response.json()["state"] == "provisioning"
+    assert SpaPublisher(spa_root).current_version("worker") is None
+    assert [record for record in caplog.records if record.levelname == "ERROR"] == []
 
 
 def test_a_frontend_only_plugin_is_running_again_at_once(running_plugin, superadmin_client):

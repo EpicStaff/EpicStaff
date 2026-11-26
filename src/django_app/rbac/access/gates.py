@@ -100,8 +100,10 @@ class HasOrgPermission(BaseRbacPermission):
 
         if not effective.can(resource_type, required):
             resource_str = resource_type if isinstance(resource_type, str) else resource_type.value
-            action_name = getattr(view, "action", None)
-            self.message = f"You do not have permission to {action_name} {resource_str}."
+            # Name the missing permission, not the DRF action (`usage`, `partial_update`).
+            # `can` passes on any bit of `required`, so a combined requirement reads as alternatives.
+            verbs = " or ".join(permission.name.lower() for permission in required)
+            self.message = f"You do not have permission to {verbs} {resource_str}."
             return False
         return True
 

@@ -13,6 +13,7 @@ from src.shared.public_error import (
     build_public_error_message,
     new_error_correlation_id,
 )
+from src.shared.untrusted_content import wrap_untrusted_tool_result
 from utils.openai_endpoints import derive_realtime_ws_url
 
 from infrastructure.providers.base_realtime_agent_client import BaseRealtimeAgentClient
@@ -241,7 +242,7 @@ class OpenaiRealtimeAgentClient(BaseRealtimeAgentClient):
                 PublicErrorMessage.TOOL_EXECUTION_FAILED, correlation_id
             )
 
-        await self.send_function_result(call_id, output)
+        await self.send_function_result(call_id, wrap_untrusted_tool_result(output))
 
         if self.is_twilio:
             # Appending a function_call_output item does NOT by itself make the

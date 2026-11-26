@@ -288,12 +288,18 @@ def start_memory_hog(megabytes: int) -> int:
 
 
 def fill_home(megabytes: int) -> dict:
-    """Write `megabytes` of data into HOME, as a plugin with a runaway cache would."""
-    path = os.path.join(os.environ["HOME"], "fill.bin")
+    """Write `megabytes` of data into HOME, as a plugin with a runaway cache would.
+
+    In files of 10 MB: no single file may grow past the plugin's disk cap (RLIMIT_FSIZE).
+    """
     chunk = b"\x01" * (1024 * 1024)
-    with open(path, "wb") as fill:
-        fill.writelines(chunk for _ in range(megabytes))
-    return {"written_mb": megabytes, "path": path}
+    paths = []
+    for first in range(0, megabytes, 10):
+        path = os.path.join(os.environ["HOME"], f"fill-{first // 10}.bin")
+        with open(path, "wb") as fill:
+            fill.writelines(chunk for _ in range(min(10, megabytes - first)))
+        paths.append(path)
+    return {"written_mb": megabytes, "paths": paths}
 
 
 def fork_bomb() -> dict:

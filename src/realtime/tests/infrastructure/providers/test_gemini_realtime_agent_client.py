@@ -21,7 +21,12 @@ from websockets.http11 import Response
 
 from domain.models.realtime_tool import RealtimeTool
 from infrastructure.providers.gemini.gemini_realtime_agent_client import GeminiRealtimeAgentClient
-from tests.conftest import PUBLIC_ERROR_REFERENCE, SECRET_SENTINEL
+from tests.conftest import (
+    INJECTED_TOOL_RESULT,
+    PUBLIC_ERROR_REFERENCE,
+    SECRET_SENTINEL,
+    unwrap_tool_result,
+)
 from tests.infrastructure.providers.gemini_live_fakes import (
     HANG,
     FakeSession,
@@ -586,7 +591,20 @@ async def test_tool_result_is_sent_back_for_its_call(live):
         connection_key="conn_1", tool_name="echo", call_arguments={"text": "hi"}
     )
     (response,) = live.sessions[0].tool_responses
-    assert (response.id, response.name, response.response) == ("c1", "echo", {"result": "ok"})
+    assert (response.id, response.name, response.response.keys()) == ("c1", "echo", {"result"})
+    assert unwrap_tool_result(response.response["result"]) == "ok"
+
+
+async def test_tool_result_reaches_gemini_inside_the_untrusted_data_envelope(live):
+    client = _client(live)
+    client.tool_manager_service.execute = AsyncMock(return_value=INJECTED_TOOL_RESULT)
+    await client.connect()
+
+    await client.call_tool("c1", "echo", {"text": "hi"})
+
+    (response,) = live.sessions[0].tool_responses
+    assert response.response.keys() == {"result"}
+    assert unwrap_tool_result(response.response["result"]) == INJECTED_TOOL_RESULT
 
 
 async def test_a_running_tool_call_survives_garbage_collection_and_is_released_when_done(live):
@@ -625,7 +643,7 @@ async def test_a_running_tool_call_survives_garbage_collection_and_is_released_w
             await asyncio.sleep(0)
 
     (response,) = live.sessions[0].tool_responses
-    assert (response.id, response.name, response.response) == ("c1", "echo", {"result": "ok"})
+    assert (response.id, response.name, unwrap_tool_result(response.response["result"])) == ("c1", "echo", "ok")
     await asyncio.sleep(0)
     gc.collect()
     assert tool_call_task_ref() is None
@@ -669,7 +687,7 @@ async def test_tool_failure_reaches_gemini_without_the_exception_text(live, capt
     await client.call_tool("c1", "echo", {"text": "hi"})
 
     (response,) = live.sessions[0].tool_responses
-    result = response.response["result"]
+    result = unwrap_tool_result(response.response["result"])
     assert result.startswith("Tool execution failed") and SECRET_SENTINEL not in result
     assert live.sessions[0].turns == []
     correlation_id = PUBLIC_ERROR_REFERENCE.search(result).group(1)

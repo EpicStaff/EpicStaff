@@ -99,11 +99,17 @@ jobs:
 
       # The hash-pinned requirements are read from the commit this workflow file
       # came from, not from the ref being built: a branch or tag cut before
-      # .github/requirements/ existed has no such file.
+      # .github/requirements/ existed has no such file. A ref cut before
+      # scripts/envtool.py existed (v1.1.x) has no env.yaml either; its
+      # src/.env.example is what its own compose was validated against.
       - name: Generate dev env from env.yaml
         env:
           WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
+          if [ ! -f scripts/envtool.py ]; then
+            cp src/.env.example src/.env
+            exit 0
+          fi
           git fetch --quiet --depth=1 origin "$WORKFLOW_SHA"
           git show FETCH_HEAD:.github/requirements/pyyaml.txt > "$RUNNER_TEMP/pyyaml.txt"
           python -m pip install --quiet --require-hashes -r "$RUNNER_TEMP/pyyaml.txt"

@@ -37,11 +37,14 @@ __all__ = [
 
 
 class ChatError(Exception):
-    """Base of every error the REST layer turns into `{code, message}`."""
+    """Base of every error the REST layer turns into `{code, message}`.
+
+    A 5xx subclass answers with `default_message` only; its own message goes to the log.
+    """
 
     code = "internal_error"
     status_code = 500
-    default_message = ""
+    default_message = "Internal error."
 
     def __init__(self, message: str = "", /, **extra):
         super().__init__(message or self.default_message)
@@ -262,7 +265,16 @@ class FlowNotFoundError(Exception):
 
 
 class FlowStartError(Exception):
-    """Django refused or failed to start the run (anything but 201 and 404)."""
+    """Django refused or failed to start the run (anything but 201 and 404).
+
+    Carries the status only, never the answer's body: nothing in the chat reads it, and it is
+    text the chat does not control (a refusal can name the flow's secrets, a proxy's error
+    page can hold anything), so it must stay out of the logs.
+    """
+
+    def __init__(self, status_code: int):
+        super().__init__(f"HTTP {status_code}")
+        self.status_code = status_code
 
 
 class RunNotFoundError(Exception):

@@ -47,7 +47,7 @@
         [ngModel]="value()"
         [ngModelOptions]="{ standalone: true }"
         (ngModelChange)="onInputChange($event)"
-        (blur)="onTouched()"
+        (blur)="onInputBlur()"
         (keydown)="onKeyDown($event)"
         [disabled]="isDisabled()"
         [attr.aria-invalid]="isInvalid()"

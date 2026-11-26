@@ -16,42 +16,46 @@ const viewActionColumn = (actionName: string, tooltip: string): GraphGridColumnD
 
 export const GRAPH_TABLE_COLUMNS: Record<string, GraphGridColumnDef[]> = {
     entities: [
-        { key: 'id', width: '150px' },
+        { key: 'id', width: '150px', copyable: true },
         { key: 'title', width: '200px' },
         { key: 'type', width: '150px' },
         { key: 'description' },
         { key: 'degree', width: '100px' },
     ],
     relationships: [
-        { key: 'id', width: '150px' },
+        { key: 'id', width: '150px', copyable: true },
         { key: 'source', width: '200px' },
         { key: 'target', width: '200px' },
         { key: 'description' },
         { key: 'weight', width: '100px' },
     ],
     communities: [
-        { key: 'id', width: '280px' },
+        { key: 'id', width: '280px', copyable: true },
         { key: 'title' },
         { key: 'level', width: '100px' },
         { key: 'size', width: '100px' },
         viewActionColumn(GRAPH_ACTION_VIEW_COMMUNITY_REPORT, 'Open community report'),
     ],
     documents: [
-        { key: 'id', width: '100px' },
+        { key: 'id', width: '100px', copyable: true },
         { key: 'human_readable_id', label: 'Human Readable Id', width: '180px' },
         { key: 'title' },
         viewActionColumn(GRAPH_ACTION_VIEW_DOCUMENT, 'Preview document'),
     ],
-    text_units: [{ key: 'id', width: '280px' }, { key: 'text' }, { key: 'n_tokens', label: 'Tokens', width: '100px' }],
+    text_units: [
+        { key: 'id', width: '280px', copyable: true },
+        { key: 'text' },
+        { key: 'n_tokens', label: 'Tokens', width: '100px' },
+    ],
     community_reports: [
-        { key: 'id', width: '150px' },
+        { key: 'id', width: '150px', copyable: true },
         { key: 'community', label: 'Community', width: '120px' },
         { key: 'title', width: '300px' },
         { key: 'summary' },
         viewActionColumn(GRAPH_ACTION_VIEW_COMMUNITY, 'Open community'),
     ],
     covariates: [
-        { key: 'id', width: '280px' },
+        { key: 'id', width: '280px', copyable: true },
         { key: 'subject_id', width: '200px' },
         { key: 'subject_type', width: '150px' },
         { key: 'covariate_type', width: '150px' },

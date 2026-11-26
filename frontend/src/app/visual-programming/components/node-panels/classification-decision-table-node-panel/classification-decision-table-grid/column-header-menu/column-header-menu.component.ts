@@ -18,6 +18,7 @@ import { Column, GridApi, IHeaderParams } from 'ag-grid-community';
 
 import { AppSvgIconComponent } from '../../../../../../shared/components/app-svg-icon/app-svg-icon.component';
 import { CdtFreezeMenuItem, CdtFreezeSide } from '../shared/column-freeze.util';
+import { listenForHeaderClick } from '../shared/header-click.util';
 import { headerBesideColumns, listenForHeaderActivation } from '../shared/header-keyboard.util';
 import { OverlayMenuController } from '../shared/overlay-menu.util';
 
@@ -47,7 +48,10 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
     imports: [A11yModule, AppSvgIconComponent, MatTooltipModule],
     changeDetection: ChangeDetectionStrategy.OnPush,
     template: `
-        <div class="chm-wrapper">
+        <div
+            class="chm-wrapper"
+            [class.chm-wrapper--menu]="showChevron"
+        >
             @if (label) {
                 <span class="chm-label">{{ label }}</span>
             }
@@ -153,6 +157,11 @@ export interface ColumnHeaderMenuParams extends IHeaderParams {
                 height: 100%;
                 cursor: default;
                 gap: 4px;
+            }
+
+            /* A click anywhere on a header with a menu opens it. */
+            .chm-wrapper--menu {
+                cursor: pointer;
             }
 
             .chm-label {
@@ -281,16 +290,18 @@ export class ColumnHeaderMenuComponent implements IHeaderAngularComp, OnDestroy 
     private gridApi: GridApi | null = null;
     private column: Column | null = null;
     private stopListeningForActivation: (() => void) | null = null;
+    private stopListeningForClick: (() => void) | null = null;
 
     agInit(params: ColumnHeaderMenuParams): void {
         this.gridApi = params.api;
         this.column = params.column;
-        // Enter or Space on the focused header opens its menu, as a click on the chevron does.
-        // A header without one (a variable column) does nothing: its only control removes
-        // the variable and its values, too much for a stray key.
-        this.stopListeningForActivation = listenForHeaderActivation(params.eGridHeader, () =>
-            this.chevronButton()?.nativeElement.click()
-        );
+        // Enter or Space on the focused header, or a click anywhere on it, opens its menu
+        // under the chevron, as a click on the chevron does. A header without one (a variable
+        // column) does nothing: its only control removes the variable and its values, too
+        // much for a stray key or click.
+        const openMenu = (): void => this.chevronButton()?.nativeElement.click();
+        this.stopListeningForActivation = listenForHeaderActivation(params.eGridHeader, openMenu);
+        this.stopListeningForClick = listenForHeaderClick(params.eGridHeader, openMenu);
         this.label = params.label || '';
         this.tooltip = params.tooltip || '';
         this.colId = params.colId || params.column?.getColId() || '';
@@ -351,6 +362,7 @@ export class ColumnHeaderMenuComponent implements IHeaderAngularComp, OnDestroy 
 
     ngOnDestroy(): void {
         this.stopListeningForActivation?.();
+        this.stopListeningForClick?.();
         this.menuCtrl.dispose();
     }
 }

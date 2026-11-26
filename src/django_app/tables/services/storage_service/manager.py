@@ -199,6 +199,15 @@ class StorageManager:
         destination_folder = destination_path.strip("/")
         return f"{destination_folder}/{source_name}" if destination_folder else source_name
 
+    @staticmethod
+    def _refuse_destination_inside_source(source_path: str, destination_path: str) -> None:
+        """Refuse a move whose destination is the source or lies under it: the backend
+        copies the entries, then deletes the source prefix, copies included."""
+        source_clean = source_path.strip("/")
+        destination_clean = destination_path.strip("/")
+        if destination_clean == source_clean or destination_clean.startswith(source_clean + "/"):
+            raise ValueError("Cannot move an entry into itself or one of its subfolders.")
+
     def _validate_transfer(
         self, src_org_id: int, source_path: str, dst_org_id: int, destination_path: str
     ) -> None:
@@ -407,6 +416,7 @@ class StorageManager:
         user: object | None = None,
     ) -> None:
         """Move a file or folder into the destination folder, under a deduplicated name."""
+        self._refuse_destination_inside_source(source_path, destination_path)
         self._validate_transfer(org_id, source_path, org_id, destination_path)
         actual_key = self._backend.move(
             self._build_storage_key(org_id, source_path),
@@ -424,6 +434,7 @@ class StorageManager:
         user: object | None = None,
     ) -> None:
         """Move a file or folder to the exact destination path."""
+        self._refuse_destination_inside_source(source_path, destination_path)
         # Drifts the same way delete already tolerates: a missing source row reads as a file.
         source_is_folder = self._source_is_folder(org_id, source_path)
         self._validate_new_entry_path(org_id, destination_path, is_folder=source_is_folder)

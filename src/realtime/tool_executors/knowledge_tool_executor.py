@@ -93,7 +93,9 @@ class KnowledgeSearchToolExecutor(BaseToolExecutor):
         else:
             knowledges = "\n\n".join(chunk.text for chunk in result)
 
-        return f"\nUse this information for answer: {knowledges}" if knowledges else ""
+        # Neutral framing: the provider wraps this text in the untrusted-data envelope,
+        # so nothing here may tell the model to act on what the documents say.
+        return f"Knowledge base search results:\n{knowledges}" if knowledges else ""
 
     def _gen_knowledge_realtime_tool_model(self) -> RealtimeTool:
         tool_parameters = ToolParameters(

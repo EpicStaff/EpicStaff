@@ -120,7 +120,7 @@ def build_manager(uow, runtime) -> JobOrchestrator:
         JobHoldingRegistry(),
         QueueJobFailureSink(runtime["result_queue"]),
         registry,
-        IntakeGate(registry, lambda: True, max_accepted=10, max_held=10, queue_timeout=120),
+        IntakeGate(registry, lambda: 10, max_accepted=10, max_held=10, queue_timeout=120),
         cryptographer=manager_di.cryptographer(),
         hold_timeout=1800,
         wall_clock=FakeClock(QUEUED_AT),

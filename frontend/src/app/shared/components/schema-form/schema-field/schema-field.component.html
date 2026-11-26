@@ -68,6 +68,15 @@
             [formControl]="control()"
         />
     }
+    @case ('list') {
+        <app-string-list
+            placeholder="Type here..."
+            [label]="label()"
+            [required]="required()"
+            [tooltipText]="helpText()"
+            [formControl]="control()"
+        />
+    }
     @case ('json') {
         <app-json-editor-form-field
             [label]="label()"

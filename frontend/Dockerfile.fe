@@ -47,13 +47,22 @@ COPY 50x.html /usr/share/nginx/html/
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+# Runs as the image's unprivileged nginx user (uid 101). Files stay root-owned and read-only for it;
+# the `user` directive only applies to a root master, and the pid file moves to the /tmp tmpfs.
+# Port 80 needs net.ipv4.ip_unprivileged_port_start=0, set in src/docker-compose.yaml.
+RUN chmod +x /entrypoint.sh \
+ && sed -i -E -e '/^user[[:space:]]/d' -e 's|^pid[[:space:]].*|pid /tmp/nginx.pid;|' /etc/nginx/nginx.conf \
+ && grep -q '^pid /tmp/nginx.pid;$' /etc/nginx/nginx.conf \
+ && ! grep -q '^user[[:space:]]' /etc/nginx/nginx.conf
+
+# The frontend's own commit for the About dialog. The last layer with content, so only it changes per
+# commit; written before USER nginx because the html folder stays root-owned.
+ARG EPICSTAFF_GIT_SHA="" EPICSTAFF_COMMIT_DATE=""
+RUN printf '{"git_sha":"%s","commit_date":"%s"}\n' "$EPICSTAFF_GIT_SHA" "$EPICSTAFF_COMMIT_DATE" > /usr/share/nginx/html/version.json
+
+USER nginx
 
 EXPOSE 80
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
-
-# The frontend's own commit for the About dialog. Last on purpose: only this layer changes per commit.
-ARG EPICSTAFF_GIT_SHA="" EPICSTAFF_COMMIT_DATE=""
-RUN printf '{"git_sha":"%s","commit_date":"%s"}\n' "$EPICSTAFF_GIT_SHA" "$EPICSTAFF_COMMIT_DATE" > /usr/share/nginx/html/version.json

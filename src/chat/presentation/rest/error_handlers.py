@@ -1,5 +1,6 @@
 from collections.abc import Callable
 
+from common.logging import traceback_without_database_text
 from domain.errors import ChatError
 from litestar import Request, Response, status_codes
 from litestar.exceptions import HTTPException
@@ -9,10 +10,14 @@ __all__ = ["get_error_handlers"]
 
 
 def handle_chat_error(request: Request, error: ChatError) -> Response:
+    message = error.message
     if error.status_code >= 500:
         logger.error("{} {}: {}", request.method, request.url.path, error)
+        # A server error's own text is for the log: it can name an internal endpoint or status
+        # ("HTTP 500 from /api/auth/introspect/"). The caller gets the type's fixed message.
+        message = error.default_message
     return Response(
-        content={"code": error.code, "message": error.message, **error.extra},
+        content={"code": error.code, "message": message, **error.extra},
         status_code=error.status_code,
     )
 
@@ -43,7 +48,13 @@ def handle_recursion_error(request: Request, error: RecursionError) -> Response:
 
 
 def handle_unexpected(request: Request, error: Exception) -> Response:
-    logger.exception("Unhandled error on {} {}", request.method, request.url.path)
+    # Not `logger.exception`: it prints a database error's message, which quotes the failing row.
+    logger.error(
+        "Unhandled error on {} {}\n{}",
+        request.method,
+        request.url.path,
+        traceback_without_database_text(error),
+    )
     return Response(
         content={"code": "internal_error", "message": "Internal error."},
         status_code=status_codes.HTTP_500_INTERNAL_SERVER_ERROR,

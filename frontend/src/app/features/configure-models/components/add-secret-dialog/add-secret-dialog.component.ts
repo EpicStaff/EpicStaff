@@ -2,7 +2,14 @@ import { DialogRef } from '@angular/cdk/dialog';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+    AbstractControl,
+    FormBuilder,
+    FormGroup,
+    ReactiveFormsModule,
+    ValidationErrors,
+    Validators,
+} from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import {
     AppSvgIconComponent,
@@ -12,9 +19,18 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { EnterSubmitDirective } from '@shared/directives';
+import { notWhitespaceValidator } from '@shared/form-validators';
 import { Secret } from '@shared/models';
 import { SecretsStorageService } from '@shared/services';
-import { extractHttpErrorMessage } from '@shared/utils';
+import { extractHttpErrorMessage, isAllowedSecretName } from '@shared/utils';
+
+// The shared secret-name rule, identical to the server's: the name is inserted into Python code, also inside strings.
+// An error of its own rather than `Validators.pattern`, whose message does not say which characters a name may use.
+function secretNameValidator(control: AbstractControl): ValidationErrors | null {
+    const value: unknown = control.value;
+    if (typeof value !== 'string' || value === '') return null;
+    return isAllowedSecretName(value) ? null : { secretName: true };
+}
 
 @Component({
     selector: 'app-add-secret-dialog',
@@ -39,10 +55,8 @@ export class AddSecretDialogComponent {
     private readonly destroyRef = inject(DestroyRef);
 
     public readonly form: FormGroup = this.fb.group({
-        // Excludes characters that would inject HTML into the delete-confirmation dialog
-        // ([innerHTML]-bound) or break the get_secret("name") string literal it's inserted into
-        // by the code-editor autocomplete.
-        name: ['', [Validators.required, Validators.pattern(/^[^<>"'&\\]*$/)]],
+        // Checked here as well as on the server so the error shows before the request instead of after it.
+        name: ['', [Validators.required, notWhitespaceValidator(), secretNameValidator]],
         value: ['', Validators.required],
     });
 

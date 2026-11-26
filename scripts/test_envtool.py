@@ -117,6 +117,19 @@ class UpdateEnvFileTest(unittest.TestCase):
         self.assertTrue(data.startswith(original.encode() + b"\r\n"))
         self.assertNotIn(b"\n", data.replace(b"\r\n", b""))
 
+    def test_added_worker_memory_follows_the_worker_counts_in_the_file(self):
+        self.env_file.write_text("CHAT_WORKERS=4\nDJANGO_SGI_WORKERS=6\n", encoding="utf-8")
+        envtool.update_env_file(real_schema(), "prod", self.env_file, TODAY)
+        values = envtool.read_env_values(self.env_file.read_text(encoding="utf-8"))
+        self.assertEqual(values["CHAT_MEMORY"], "1536m")
+        self.assertEqual(values["DJANGO_MEMORY"], "4096m")
+
+    def test_existing_worker_memory_is_left_untouched_on_update(self):
+        self.env_file.write_text("DJANGO_SGI_WORKERS=6\nDJANGO_MEMORY=2g\n", encoding="utf-8")
+        envtool.update_env_file(real_schema(), "prod", self.env_file, TODAY)
+        values = envtool.read_env_values(self.env_file.read_text(encoding="utf-8"))
+        self.assertEqual(values["DJANGO_MEMORY"], "2g")
+
     def test_override_fills_a_required_variable(self):
         self.env_file.write_text("CREW_LOG_LEVEL=INFO\n", encoding="utf-8")
         added, needs_value = envtool.update_env_file(
@@ -599,6 +612,14 @@ class SchemaCoverageTest(unittest.TestCase):
         self.assertEqual(envtool.production_coverage_gaps(schema), ["BRAND_NEW"])
 
 
+# Production: chat on, the rest off, advanced settings declined.
+DECLINE_ADVANCED_ANSWERS = ["https://es.example.com", "1", "y", "n", "n", "n", "v1", "1", "n"]
+NO_FEATURES_DECLINE_ADVANCED_ANSWERS = [
+    "https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "n"
+]  # fmt: skip
+NO_FEATURES_ADVANCED_ANSWERS = ["https://es.example.com", "1", "n", "n", "n", "n", "v1", "1", "y"]
+
+
 class SetupWizardTest(unittest.TestCase):
     def setUp(self):
         self.env_file = Path(tempfile.mkdtemp()) / ".env"
@@ -607,6 +628,10 @@ class SetupWizardTest(unittest.TestCase):
         cpu_count_patch = mock.patch.object(envtool, "detect_cpu_count", return_value=2)
         self.cpu_count = cpu_count_patch.start()
         self.addCleanup(cpu_count_patch.stop)
+        # Production fits the memory limits to the RAM; 64 GiB fits every size and feature.
+        memory_patch = mock.patch.object(envtool, "detect_memory_mb", return_value=65536)
+        self.memory_mb = memory_patch.start()
+        self.addCleanup(memory_patch.stop)
 
     def run_setup(self, target: str, answers: list) -> tuple[dict[str, str], str]:
         output = io.StringIO()
@@ -762,8 +787,7 @@ class SetupWizardTest(unittest.TestCase):
         self.assertEqual(values["DJANGO_LOG_LEVEL"], "DEBUG")
 
     def test_production_sizes_the_server_from_its_cpus(self):
-        # Chat on, advanced settings declined.
-        answers = ["https://es.example.com", "1", "y", "n", "n", "n", "v1", "1", "n"]
+        answers = DECLINE_ADVANCED_ANSWERS
         expected = {
             2: ("1", "1", "Detected 2 CPUs: using the Small server size"),
             4: ("3", "2", "Detected 4 CPUs: using the Medium server size"),
@@ -807,13 +831,15 @@ class SetupWizardTest(unittest.TestCase):
     def test_tune_rewrites_only_its_lines_and_skips_chat_when_off(self):
         envtool.main(["--env-file", str(self.env_file)])
         original = self.env_file.read_text(encoding="utf-8").splitlines()
-        # Tune lists "Keep current" first: medium is 3, five minutes is 2, logging is kept.
-        _, output = self.run_setup("prod", ["2", "3", "2", "1"])
+        # Tune lists "Keep current" first: medium is 3, five minutes is 2, logging is kept;
+        # memory limits are kept (2), but Django's follows the new worker count.
+        _, output = self.run_setup("prod", ["2", "3", "2", "1", "2"])
         changed = set(self.env_file.read_text(encoding="utf-8").splitlines()) - set(original)
         self.assertEqual(
             changed,
             {
                 "DJANGO_SGI_WORKERS=3",
+                "DJANGO_MEMORY=2560m",
                 "SANDBOX_MAX_EXECUTION_TIMEOUT=5m",
                 "CREW_CODE_RESULT_TIMEOUT=15m",
             },
@@ -827,9 +853,9 @@ class SetupWizardTest(unittest.TestCase):
         )
         self.assertIn("back to INFO", created)
         # Tune lists "Keep current" first, so DEBUG is 2 and WARNING is 4.
-        _, tuned = self.run_setup("prod", ["2", "1", "1", "2"])
+        _, tuned = self.run_setup("prod", ["2", "1", "1", "2", "2"])
         self.assertIn("back to INFO", tuned)
-        values, quiet = self.run_setup("prod", ["2", "1", "1", "4"])
+        values, quiet = self.run_setup("prod", ["2", "1", "1", "4", "2"])
         self.assertNotIn("back to INFO", quiet)
         self.assertEqual(values["DJANGO_LOG_LEVEL"], "WARNING")
         self.assertEqual(values["CREW_LOG_LEVEL"], "WARNING")
@@ -855,7 +881,7 @@ class SetupWizardTest(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        values, _ = self.run_setup("prod", ["2", "1", "2", "1"])
+        values, _ = self.run_setup("prod", ["2", "1", "2", "1", "2"])
         self.assertEqual(values["SANDBOX_MAX_EXECUTION_TIMEOUT"], "5m")
         self.assertEqual(values["SANDBOX_DEFAULT_EXECUTION_TIMEOUT"], "5m")
 
@@ -1008,6 +1034,183 @@ class SetupWizardTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.run_setup("prod", ["4", "n", "n"])
         self.assertEqual(self.env_file.read_text(encoding="utf-8"), original)
+
+    def test_first_setup_writes_fitted_memory_and_the_note(self):
+        self.cpu_count.return_value = 16
+        values, output = self.run_setup("prod", DECLINE_ADVANCED_ANSWERS)
+        self.assertEqual(values["DJANGO_MEMORY"], "4096m")
+        self.assertEqual(values["CHAT_MEMORY"], "1536m")
+        self.assertEqual(values["CREW_MEMORY"], "2048m")
+        self.assertIn("Memory limits:", output)
+        self.assertIn("(64 GB detected)", output)
+
+    def test_first_setup_steps_the_size_down_until_memory_fits(self):
+        self.cpu_count.return_value = 4
+        self.memory_mb.return_value = 6144
+        values, output = self.run_setup("prod", NO_FEATURES_DECLINE_ADVANCED_ANSWERS)
+        self.assertEqual(values["DJANGO_SGI_WORKERS"], "1")
+        self.assertEqual(values["DJANGO_MEMORY"], "1536m")
+        self.assertIn("using the Small server size", output)
+        self.assertNotIn("Memory limits do not fit", output)
+        self.env_file.unlink()
+        self.memory_mb.return_value = 8192
+        values, output = self.run_setup("prod", NO_FEATURES_DECLINE_ADVANCED_ANSWERS)
+        self.assertEqual(values["DJANGO_SGI_WORKERS"], "3")
+        self.assertEqual(values["DJANGO_MEMORY"], "2560m")
+        self.assertNotIn("Memory limits do not fit", output)
+
+    def test_first_setup_too_small_asks_and_no_asks_features_again(self):
+        self.memory_mb.return_value = 6144
+        values, output = self.run_setup(
+            "prod",
+            [
+                "https://es.example.com", "1", "y", "y", "y", "y", "{id}-app.example.com", "v1",
+                "1", "n",
+                "",  # Continue anyway? Enter takes the default No.
+                "n", "n", "n", "n", "n",  # features again, all off; advanced declined
+            ],
+        )  # fmt: skip
+        self.assertIn("Memory limits do not fit", output)
+        self.assertIn("ES_PLUGINS_MEMORY", output)
+        self.assertEqual(values["CHAT_ENABLED"], "false")
+        self.assertEqual(values["PLUGINS_ENABLED"], "false")
+        self.assertEqual(values["COMPOSE_PROFILES"], "none")
+        self.assertNotIn("PLUGINS_HOST_TEMPLATE={id}-app.example.com", self.env_file.read_text())
+        self.assertEqual(values["DJANGO_MEMORY"], "1536m")
+        final_screen = output.split("EpicStaff setup")[-1]
+        self.assertIn("Memory limits:", final_screen)
+        self.assertNotIn("ES_PLUGINS_MEMORY", final_screen)
+
+    def test_first_setup_too_small_and_continued_keeps_the_features(self):
+        self.memory_mb.return_value = 4096
+        answers = ["https://es.example.com", "1", "y", "y", "n", "n", "v1", "1", "n", "y"]
+        values, output = self.run_setup("prod", answers)
+        self.assertEqual(values["COMPOSE_PROFILES"], "chat,auditor")
+        self.assertIn("OPENSEARCH_MEMORY", output)
+        self.assertEqual(values["OPENSEARCH_MEMORY"], "1536m")
+        self.assertEqual(values["CREW_MEMORY"], "384m")
+
+    def test_first_setup_keeps_defaults_when_ram_is_unknown(self):
+        self.memory_mb.return_value = None
+        values, output = self.run_setup("prod", DECLINE_ADVANCED_ANSWERS)
+        self.assertEqual(values["CREW_MEMORY"], "2g")
+        self.assertEqual(values["DJANGO_MEMORY"], "1536m")  # still follows the Small size
+        self.assertIn("Could not detect the memory", output)
+
+    def test_first_setup_advanced_fits_at_the_chosen_size_without_asking(self):
+        self.memory_mb.return_value = 8192
+        answers = [*NO_FEATURES_ADVANCED_ANSWERS, "1", "2", "2"]
+        values, output = self.run_setup("prod", answers)
+        self.assertNotIn("Memory limits of the containers?", output)
+        self.assertIn("Memory limits:", output.split("EpicStaff setup")[-1])
+        self.assertEqual(values["DJANGO_MEMORY"], "1536m")
+        self.assertEqual(values["CREW_MEMORY"], "832m")
+
+    def test_first_setup_advanced_size_too_big_warns(self):
+        self.memory_mb.return_value = 6144
+        # Large on 6 GiB: No re-asks the features and the size question.
+        answers = [*NO_FEATURES_ADVANCED_ANSWERS, "3", "2", "2", "n"]
+        answers += ["n", "n", "n", "n", "y", "1", "2", "2"]
+        values, output = self.run_setup("prod", answers)
+        self.assertIn("Memory limits do not fit", output)
+        self.assertEqual(values["DJANGO_SGI_WORKERS"], "1")
+
+    def prod_file_with(self, **values: str) -> None:
+        envtool.main(["--env-file", str(self.env_file)])
+        envtool.rewrite_env_values(self.env_file, values)
+
+    def test_tune_size_change_rewrites_worker_memory_even_when_memory_is_kept(self):
+        self.prod_file_with(DJANGO_SGI_WORKERS="6", DJANGO_MEMORY="4g", CHAT_ENABLED="true",
+                            COMPOSE_PROFILES="chat", CHAT_WORKERS="4", CHAT_MEMORY="1536m")  # fmt: skip
+        # Tune: Small, keep code time, keep logging, keep memory.
+        values, _ = self.run_setup("prod", ["2", "2", "1", "1", "2"])
+        self.assertEqual(values["DJANGO_MEMORY"], "1536m")
+        self.assertEqual(values["CHAT_MEMORY"], "768m")
+        self.assertEqual(values["CREW_MEMORY"], "2g")
+
+    def test_tune_fit_rewrites_only_memory_lines(self):
+        self.memory_mb.return_value = 16384
+        self.prod_file_with(DJANGO_SGI_WORKERS="6")
+        original = set(self.env_file.read_text(encoding="utf-8").splitlines())
+        _, output = self.run_setup("prod", ["2", "1", "1", "1", ""])
+        changed = set(self.env_file.read_text(encoding="utf-8").splitlines()) - original
+        self.assertIn("CREW_MEMORY=1792m", changed)
+        self.assertEqual(
+            {line.split("=")[0] for line in changed if not line.split("=")[0].endswith("_MEMORY")},
+            set(),
+        )
+        self.assertIn("Memory limits:", output)
+
+    def test_change_features_refits_and_warns_when_it_no_longer_fits(self):
+        self.memory_mb.return_value = 8192
+        self.prod_file_with(DJANGO_SGI_WORKERS="1", CHAT_WORKERS="1")
+        # Chat and both audit trails on, No to Continue anyway, then chat alone.
+        answers = ["1", "y", "y", "y", "n", "", "y", "n", "n", "n"]
+        values, output = self.run_setup("prod", answers)
+        self.assertIn("Memory limits do not fit", output)
+        self.assertEqual(values["SESSION_AUDIT_TRAIL_ENABLED"], "false")
+        self.assertEqual(values["COMPOSE_PROFILES"], "chat")
+        self.assertEqual(values["CHAT_MEMORY"], "768m")
+        self.assertEqual(values["DJANGO_MEMORY"], "1536m")
+        self.assertEqual(values["CREW_MEMORY"], "576m")
+        self.assertIn("Memory limits:", output.split("EpicStaff setup")[-1])
+
+    def test_change_features_fits_the_chat_and_auditor_services_it_turns_on(self):
+        self.memory_mb.return_value = 16384
+        self.prod_file_with(DJANGO_SGI_WORKERS="1", CHAT_WORKERS="2")
+        values, output = self.run_setup("prod", ["1", "y", "y", "n", "n"])
+        self.assertNotIn("Memory limits do not fit", output)
+        self.assertEqual(values["COMPOSE_PROFILES"], "chat,auditor")
+        self.assertEqual(values["CHAT_MEMORY"], "1024m")
+        self.assertEqual(values["OPENSEARCH_MEMORY"], "1600m")
+
+    def test_tune_too_small_and_declined_asks_again_and_writes_only_the_new_answers(self):
+        self.memory_mb.return_value = 6144
+        # Tune: Large, five minutes, keep logging, fit memory, No; then Small and keep the rest.
+        declined = ["2", "4", "2", "1", "", ""]
+        for memory_answer, crew_memory in (("2", "1g"), ("", "384m")):
+            with self.subTest(memory=memory_answer or "fit"):
+                self.prod_file_with(DJANGO_SGI_WORKERS="3", DJANGO_MEMORY="2560m", CREW_MEMORY="1g")
+                values, output = self.run_setup("prod", [*declined, "2", "1", "1", memory_answer])
+                self.assertIn("Memory limits do not fit", output)
+                self.assertEqual(values["DJANGO_SGI_WORKERS"], "1")
+                self.assertEqual(values["DJANGO_MEMORY"], "1536m")
+                self.assertEqual(values["SANDBOX_MAX_EXECUTION_TIMEOUT"], "30m")
+                self.assertEqual(values["CREW_MEMORY"], crew_memory)
+                self.assertNotIn("Memory limits do not fit", output.split("EpicStaff setup")[-1])
+
+    def test_tune_too_small_and_continued_writes_the_chosen_size(self):
+        self.memory_mb.return_value = 6144
+        self.prod_file_with(DJANGO_SGI_WORKERS="1", DJANGO_MEMORY="1536m")
+        values, output = self.run_setup("prod", ["2", "4", "1", "1", "", "y"])
+        self.assertIn("Memory limits do not fit", output)
+        self.assertEqual(values["DJANGO_SGI_WORKERS"], "6")
+        self.assertEqual(values["DJANGO_MEMORY"], "4096m")
+
+    def test_change_features_that_change_nothing_keep_hand_edited_memory(self):
+        self.memory_mb.return_value = 4096  # too small: a refit would warn
+        self.prod_file_with(CREW_MEMORY="1234m")
+        values, output = self.run_setup("prod", ["1", "", "", "", ""])
+        self.assertEqual(values["CREW_MEMORY"], "1234m")
+        self.assertNotIn("Memory limits", output)
+
+    def test_change_features_on_dev_does_not_fit(self):
+        self.memory_mb.return_value = 1024
+        envtool.main(["--dev", "--env-file", str(self.env_file)])
+        original = set(self.env_file.read_text(encoding="utf-8").splitlines())
+        _, output = self.run_setup("dev", ["1", "y", "y", "y", ""])
+        changed = set(self.env_file.read_text(encoding="utf-8").splitlines()) - original
+        self.assertNotIn("Memory limits do not fit", output)
+        self.assertNotIn("Memory", output)
+        self.assertEqual([line for line in changed if "_MEMORY=" in line], [])
+
+    def test_dev_setup_writes_dev_defaults_and_asks_nothing_new(self):
+        self.memory_mb.return_value = 1024
+        values, output = self.run_setup("dev", ["n", "y", "y", ""])
+        defaults = envtool.target_defaults(self.schema, "dev")
+        for name in ("DJANGO_MEMORY", "CREW_MEMORY", "OPENSEARCH_MEMORY"):
+            self.assertEqual(values[name], str(defaults[name]), name)
+        self.assertNotIn("Memory", output)
 
     def test_interrupt_writes_nothing(self):
         with self.assertRaises(SystemExit):
@@ -1198,6 +1401,26 @@ class MainTest(unittest.TestCase):
         self.assertIn("without --update", str(raised.exception.code))
         self.assertFalse(missing.exists())
 
+    def test_update_prints_the_tune_hint_when_memory_variables_were_added(self):
+        env_file = Path(tempfile.mkdtemp()) / ".env"
+        schema_file = env_file.with_name("env.yaml")
+        schema_file.write_text(
+            "groups:\n  crew:\n    vars:\n      CREW_PORT:\n        default: 8000\n"
+            "      CREW_MEMORY:\n        default: 2g\n",
+            encoding="utf-8",
+        )
+        arguments = ["--update", "--env-file", str(env_file), "--schema-file", str(schema_file)]
+        env_file.write_text("CREW_PORT=1\n", encoding="utf-8")
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            envtool.main(arguments)
+        self.assertIn('pick "Tune performance and limits"', output.getvalue())
+        self.assertIn("envtool.py --setup", output.getvalue())
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            envtool.main(arguments)  # nothing added the second time
+        self.assertNotIn("Tune performance and limits", output.getvalue())
+
     def test_update_prints_the_summary(self):
         env_file = Path(tempfile.mkdtemp()) / ".env"
         env_file.write_text("CREW_PORT=1\n", encoding="utf-8")
@@ -1214,6 +1437,208 @@ class MainTest(unittest.TestCase):
             )
         self.assertIn("added 1: CREW_HOST", output.getvalue())
         self.assertTrue(env_file.read_text(encoding="utf-8").endswith("\nCREW_HOST=crew\n"))
+
+
+class MemoryFitTests(unittest.TestCase):
+    def test_reserve_is_one_gib_or_ten_percent(self):
+        self.assertEqual(envtool.memory_reserve_mb(4096), 1024)
+        self.assertEqual(envtool.memory_reserve_mb(65536), 6553)
+
+    def test_worker_memory_follows_the_worker_counts(self):
+        self.assertEqual(
+            envtool.worker_memory_values({"DJANGO_SGI_WORKERS": "6", "CHAT_WORKERS": "2"}),
+            {"DJANGO_MEMORY": "4096m", "CHAT_MEMORY": "1024m"},
+        )
+
+    def test_a_big_host_keeps_every_default(self):
+        fit = envtool.fit_memory_limits(65536, [], {"DJANGO_SGI_WORKERS": "6"})
+        self.assertTrue(fit.fits)
+        self.assertEqual(fit.values["CREW_MEMORY"], "2048m")
+        self.assertEqual(fit.values["DJANGO_MEMORY"], "4096m")
+        self.assertNotIn("OPENSEARCH_MEMORY", fit.values)  # auditor profile off
+
+    def test_a_small_host_scales_down_but_never_below_a_floor(self):
+        fit = envtool.fit_memory_limits(8192, [], {"DJANGO_SGI_WORKERS": "1"})
+        self.assertTrue(fit.fits)
+        self.assertLessEqual(fit.total_mb, 8192 - 1024)
+        for limit in envtool.MEMORY_LIMITS:
+            if limit.profile is None:
+                self.assertGreaterEqual(int(fit.values[limit.variable][:-1]), limit.floor_mb)
+            self.assertEqual(int(fit.values.get(limit.variable, "0m")[:-1]) % 64, 0)
+
+    def test_a_6gb_host_fits_at_small_size(self):
+        # 6144 - 1024 reserve - 960 fixed - 1536 Django = 2624 left; floors need 2560.
+        fit = envtool.fit_memory_limits(6144, [], {"DJANGO_SGI_WORKERS": "1"})
+        self.assertTrue(fit.fits)
+        self.assertLessEqual(fit.total_mb, 6144 - 1024)
+        scaled = sum(
+            int(fit.values[limit.variable][:-1])
+            for limit in envtool.MEMORY_LIMITS
+            if limit.profile is None
+        )
+        self.assertEqual(fit.total_mb - scaled, 960 + 1536)  # one-shot containers not counted
+
+    def test_too_small_when_the_floors_do_not_fit(self):
+        # 6 GiB at Medium: 3 Django workers leave 1600 for floors that need 2560.
+        fit = envtool.fit_memory_limits(6144, [], {"DJANGO_SGI_WORKERS": "3"})
+        self.assertFalse(fit.fits)
+        self.assertEqual(fit.largest[0], "DJANGO_MEMORY")
+
+    def test_plugins_memory_counts_but_is_never_written(self):
+        small = envtool.fit_memory_limits(
+            32768, ["plugins"], {"DJANGO_SGI_WORKERS": "1", "ES_PLUGINS_MEMORY": "4g"}
+        )
+        big = envtool.fit_memory_limits(
+            32768, ["plugins"], {"DJANGO_SGI_WORKERS": "1", "ES_PLUGINS_MEMORY": "6144m"}
+        )
+        self.assertNotIn("ES_PLUGINS_MEMORY", small.values)
+        self.assertEqual(big.total_mb - small.total_mb, 2048)
+
+    def test_plugins_db_memory_is_fitted_only_with_the_plugins_profile(self):
+        values = {"DJANGO_SGI_WORKERS": "1", "ES_PLUGINS_MEMORY": "4g"}
+        self.assertNotIn("PLUGINS_DB_MEMORY", envtool.fit_memory_limits(65536, [], values).values)
+        big = envtool.fit_memory_limits(65536, ["plugins"], values)
+        self.assertEqual(big.values["PLUGINS_DB_MEMORY"], "2048m")
+        small = envtool.fit_memory_limits(8192, ["plugins"], values)
+        self.assertEqual(small.values["PLUGINS_DB_MEMORY"], "1024m")  # held at its floor
+
+    def test_too_small_names_the_plugin_node_among_the_largest(self):
+        fit = envtool.fit_memory_limits(
+            4096, ["plugins"], {"DJANGO_SGI_WORKERS": "1", "ES_PLUGINS_MEMORY": "4g"}
+        )
+        self.assertFalse(fit.fits)
+        self.assertEqual(fit.largest[0], "ES_PLUGINS_MEMORY")
+
+    def test_detect_memory_returns_none_when_the_os_cannot_say(self):
+        with mock.patch.object(envtool.os, "sysconf", side_effect=ValueError):
+            self.assertIsNone(envtool.detect_memory_mb())
+
+    def test_memory_note_reads_in_gigabytes(self):
+        fit = envtool.fit_memory_limits(65536, [], {"DJANGO_SGI_WORKERS": "6"})
+        self.assertRegex(
+            envtool.memory_note(fit),
+            r"^Memory limits: \d+\.\d GB for containers, 6\.4 GB kept free for the system \(64 GB detected\)\.$",
+        )
+
+
+def humanize_mb(value) -> int:
+    text = str(value).strip().lower()
+    if text[-1] in "kmg":  # Docker writes 2g / 128m; humanize wants gb / mb
+        text += "b"
+    return envtool.humanize.to_byte_size(text) // 2**20
+
+
+class ComposeLimitTests(unittest.TestCase):
+    def setUp(self):
+        self.compose = yaml.safe_load((envtool.BASE_DIR / "docker-compose.yaml").read_text())[
+            "services"
+        ]
+        self.defaults = envtool.target_defaults(real_schema(), "prod")
+
+    def test_every_service_has_a_memory_and_a_process_limit(self):
+        for name, service in self.compose.items():
+            self.assertIn("mem_limit", service, name)
+            self.assertIn("pids_limit", service, name)
+
+    def test_sized_services_read_their_variable(self):
+        for limit in envtool.MEMORY_LIMITS:
+            for service in limit.services:
+                self.assertEqual(self.compose[service]["mem_limit"], f"${{{limit.variable}:?}}")
+            self.assertEqual(
+                humanize_mb(self.defaults[limit.variable]), limit.default_mb, limit.variable
+            )
+
+    def test_fixed_services_match_the_table(self):
+        for service, (memory_mb, pids, _) in envtool.FIXED_LIMITS.items():
+            self.assertEqual(humanize_mb(self.compose[service]["mem_limit"]), memory_mb, service)
+            self.assertEqual(self.compose[service]["pids_limit"], pids, service)
+
+    def test_every_compose_service_is_accounted_for_with_its_profile(self):
+        profile_of = {}
+        for limit in envtool.MEMORY_LIMITS:
+            profile_of.update(dict.fromkeys(limit.services, limit.profile))
+        profile_of["django_app"] = envtool.WORKER_MEMORY["DJANGO_MEMORY"][3]
+        profile_of["chat"] = envtool.WORKER_MEMORY["CHAT_MEMORY"][3]
+        profile_of["es_plugins"] = "plugins"
+        profile_of.update({service: row[2] for service, row in envtool.FIXED_LIMITS.items()})
+        self.assertEqual(set(self.compose), set(profile_of))
+        for service, profile in profile_of.items():
+            profiles = self.compose[service].get("profiles")
+            self.assertEqual(profiles, None if profile is None else [profile], service)
+
+    def test_sized_services_have_their_process_and_cpu_limits(self):
+        pids = {
+            "crewdb": 512,
+            "plugins_db": 512,
+            "opensearch": 4096,
+            "sandbox_worker": "${SANDBOX_WORKER_PIDS:?}",
+        }
+        sized = {
+            service: limit.variable.removesuffix("_MEMORY")
+            for limit in envtool.MEMORY_LIMITS
+            for service in limit.services
+        }
+        sized |= {"django_app": "DJANGO", "chat": "CHAT"}
+        for service, prefix in sized.items():
+            self.assertEqual(self.compose[service]["pids_limit"], pids.get(service, 1024), service)
+            self.assertEqual(self.compose[service]["cpus"], f"${{{prefix}_CPUS:?}}", service)
+
+    def test_cpu_variables_default_to_no_cap(self):
+        for name, value in self.defaults.items():
+            if name.endswith("_CPUS") and name != "ES_PLUGINS_CPUS":
+                self.assertEqual(str(value), "0", name)
+
+    def test_large_size_django_memory_matches_the_schema_default(self):
+        self.assertEqual(
+            envtool.worker_memory_values(envtool.SERVER_SIZE_VALUES["large"])["DJANGO_MEMORY"],
+            f"{humanize_mb(self.defaults['DJANGO_MEMORY'])}m",
+        )
+
+
+class SizeWorkerMemoryFromTest(unittest.TestCase):
+    ENV_TEXT = (
+        "DJANGO_SGI_WORKERS=1\nDJANGO_MEMORY=1536m  # sized for one worker\n"
+        "CHAT_WORKERS=1\nCHAT_MEMORY=768m\nCREW_MEMORY=2g\n"
+    )
+
+    def size(self, override_text: str) -> str:
+        directory = Path(tempfile.mkdtemp())
+        env_file, override_file = directory / ".env", directory / "deploy.env"
+        env_file.write_text(self.ENV_TEXT, encoding="utf-8")
+        override_file.write_text(override_text, encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            envtool.main(
+                ["--env-file", str(env_file), "--size-worker-memory-from", str(override_file)]
+            )
+        return env_file.read_text(encoding="utf-8")
+
+    def test_override_worker_count_sizes_the_env_file_memory(self):
+        text = self.size("DJANGO_SGI_WORKERS=6\nCHAT_WORKERS=3\n")
+        self.assertEqual(
+            text,
+            "DJANGO_SGI_WORKERS=1\nDJANGO_MEMORY=4096m  # sized for one worker\n"
+            "CHAT_WORKERS=1\nCHAT_MEMORY=1280m\nCREW_MEMORY=2g\n",
+        )
+
+    def test_memory_the_override_sets_itself_is_left_alone(self):
+        text = self.size("DJANGO_SGI_WORKERS=6\nDJANGO_MEMORY=5g\nCHAT_MEMORY=1g\n")
+        self.assertEqual(text, self.ENV_TEXT)
+
+    def test_without_worker_counts_in_the_override_the_env_file_counts_apply(self):
+        self.ENV_TEXT = self.ENV_TEXT.replace("DJANGO_SGI_WORKERS=1", "DJANGO_SGI_WORKERS=2")
+        text = self.size("INSTANCE_PREFIX=dev_\n")
+        self.assertIn("DJANGO_MEMORY=2048m  # sized for one worker\n", text)
+        self.assertIn("CHAT_MEMORY=768m\n", text)
+
+    def test_a_missing_override_file_exits_and_changes_nothing(self):
+        env_file = Path(tempfile.mkdtemp()) / ".env"
+        env_file.write_text(self.ENV_TEXT, encoding="utf-8")
+        with self.assertRaises(SystemExit) as raised:
+            envtool.main(
+                ["--env-file", str(env_file), "--size-worker-memory-from", str(env_file) + ".x"]
+            )
+        self.assertIn("does not exist", str(raised.exception.code))
+        self.assertEqual(env_file.read_text(encoding="utf-8"), self.ENV_TEXT)
 
 
 if __name__ == "__main__":

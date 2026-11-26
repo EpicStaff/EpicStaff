@@ -38,7 +38,7 @@ from src.shared.bench_log import BENCH_LEVEL
 from src.shared.enums.knowledge_new import RAGStrategy
 from src.shared.models import UserAction
 from tables.clients import KnowledgeClient
-from tables.clients.errors import ClientError, ClientResourceNotFoundError
+from tables.clients.errors import ClientResourceNotFoundError
 from tables.exceptions import (
     CodeRunTargetNotFoundError,
     DocumentConfigNotFoundException,
@@ -948,7 +948,7 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
             Permission.UPDATE,
         )
 
-        indexing_data = IndexingService.validate_and_prepare_indexing(rag_id, rag_type)
+        indexing_data = IndexingService.validate_and_prepare_indexing(rag_id, rag_type, org_id)
         principal = pinned_principal_of_user(request.user)
         marker_fields = (
             "embedder_extra_headers",
@@ -1003,23 +1003,20 @@ class ProcessRagIndexingView(RagOrgLookupMixin, OrgScopedServiceViewSetMixin, AP
             context="LLMConfig.connection",
         )
 
-        try:
-            with KnowledgeClient() as client:
-                client.index(
-                    strategy=RAGStrategy(rag_type),
-                    rag_id=rag_id,
-                    document_ids=frozenset(document_config_ids),
-                    embedding_api_key=embedding_api_key,
-                    llm_api_key=llm_api_key,
-                    embedding_extra_headers=embedding_extra_headers,
-                    llm_extra_headers=llm_extra_headers,
-                    embedding_connection=embedding_connection,
-                    llm_connection=llm_connection,
-                    embedding_parameters=indexing_data["embedder_parameters"],
-                    llm_parameters=indexing_data["llm_parameters"],
-                )
-        except ClientError as e:
-            return Response({"error": str(e)}, status=e.status_code)
+        with KnowledgeClient() as client:
+            client.index(
+                strategy=RAGStrategy(rag_type),
+                rag_id=rag_id,
+                document_ids=frozenset(document_config_ids),
+                embedding_api_key=embedding_api_key,
+                llm_api_key=llm_api_key,
+                embedding_extra_headers=embedding_extra_headers,
+                llm_extra_headers=llm_extra_headers,
+                embedding_connection=embedding_connection,
+                llm_connection=llm_connection,
+                embedding_parameters=indexing_data["embedder_parameters"],
+                llm_parameters=indexing_data["llm_parameters"],
+            )
         record_rag_change(rag.base_rag_type.source_collection, changed=True)
 
         return Response(
@@ -1085,16 +1082,13 @@ class ProcessRagIndexingEstimateView(RagOrgLookupMixin, OrgScopedServiceViewSetM
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        try:
-            with KnowledgeClient(timeout=self._KNOWLEDGE_TIMEOUT_SECONDS) as client:
-                estimate = client.index_estimate(
-                    strategy=RAGStrategy(rag_type),
-                    rag_id=rag_id,
-                    document_ids=frozenset(document_config_ids),
-                    chunking_overrides=chunking_overrides,
-                )
-        except ClientError as e:
-            return Response({"error": str(e)}, status=e.status_code)
+        with KnowledgeClient(timeout=self._KNOWLEDGE_TIMEOUT_SECONDS) as client:
+            estimate = client.index_estimate(
+                strategy=RAGStrategy(rag_type),
+                rag_id=rag_id,
+                document_ids=frozenset(document_config_ids),
+                chunking_overrides=chunking_overrides,
+            )
 
         return Response(estimate, status=status.HTTP_200_OK)
 
@@ -1124,8 +1118,6 @@ class CancelRagIndexingView(OrgScopedServiceViewSetMixin, APIView):
                 client.cancel(strategy=RAGStrategy(rag_type), rag_id=rag_id, operation="index")
         except ClientResourceNotFoundError:
             cancelled = False  # No indexing was running.
-        except ClientError as e:
-            return Response({"error": str(e)}, status=e.status_code)
         record_rag_change(rag.base_rag_type.source_collection, changed=cancelled)
         return Response(status=status.HTTP_204_NO_CONTENT)
 

@@ -20,12 +20,13 @@ from app.emitters.base import Emitter
 from app.exceptions import RunCancelled
 from app.llm.client import LLMChunk, LLMClient, ToolCallFragment
 from app.logging_utils import redact_value
-from app.loop.agent_loop import _UNTRUSTED_CONTENT_NOTE, DefaultAgentLoop
+from app.loop.agent_loop import DefaultAgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import MaxIterAndNoToolCalls
 from app.tools.registry import ToolRegistry, ToolSpec
 from shared.models.agent_service import AgentSpec, LoopResult, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
+from shared.untrusted_content import UNTRUSTED_CONTENT_NOTE
 from tests.cancellation import never_cancelled
 from tests.log_capture import assert_masked_exception, log_line_starting_with, capture_logs_at
 from tests.secret_sealing import agent_cryptographer, header_marker, seal, seal_with_foreign_key
@@ -641,7 +642,7 @@ async def test_injected_content_cannot_forge_envelope_keys():
     assert end == len(raw_content)
 
     assert set(envelope.keys()) == {"type", "note", "content"}
-    assert envelope["note"] == _UNTRUSTED_CONTENT_NOTE
+    assert envelope["note"] == UNTRUSTED_CONTENT_NOTE
     assert envelope["content"] == malicious_content
 
 
