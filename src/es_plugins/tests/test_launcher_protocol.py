@@ -1,8 +1,10 @@
 import asyncio
+import contextlib
 import errno
 import json
 import os
 import resource
+import signal
 import socket
 import stat
 import subprocess
@@ -445,6 +447,101 @@ def test_killing_by_uid_reaches_children_that_left_the_session(layout):
     os.waitpid(pid, 0)
     assert outcome.remaining == ()
     assert table.living_pids_of_uid(PLUGIN_UID) == []
+
+
+@pytest.mark.root
+@pytest.mark.linux
+def test_killing_by_uid_reaches_threads_that_outlive_the_main_thread(layout):
+    setup = DirectorySetup(layout)
+    setup.prepare_tree()
+    setup.prepare_plugin("weather", PLUGIN_UID)
+    # glibc behaviour reproduced: pthread_exit on the main thread leaves the process as Z while threads run.
+    script = (
+        "import ctypes, threading, time\n"
+        "threading.Thread(target=time.sleep, args=(60,)).start()\n"
+        "ctypes.CDLL('libc.so.6').pthread_exit(None)\n"
+    )
+    pid = spawn_process(
+        SpawnSpec(
+            uid=PLUGIN_UID,
+            gid=PLUGIN_UID,
+            argv=[SYSTEM_PYTHON, "-c", script],
+            environment={},
+            working_directory=layout.plugin_home("weather"),
+        )
+    )
+    table = ProcessTable()
+    status_path = Path(f"/proc/{pid}/status")
+    try:
+        deadline = time.monotonic() + 5
+        while "State:\tZ" not in status_path.read_text() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert "State:\tZ" in status_path.read_text()
+        assert table.living_pids_of_uid(PLUGIN_UID) == [pid]
+
+        outcome = kill_uid(PLUGIN_UID, table, reap=lambda: None)
+
+        assert outcome.remaining == ()
+        assert table.living_pids_of_uid(PLUGIN_UID) == []
+    finally:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                if os.waitpid(pid, os.WNOHANG)[0] == pid:
+                    break
+            except ChildProcessError:
+                break
+            time.sleep(0.05)
+    assert not status_path.exists()
+
+
+RENAME_TO_NON_UTF8 = (
+    "import ctypes, time\n"
+    "ctypes.CDLL('libc.so.6').prctl(15, b'ab\\xff\\xfecd', 0, 0, 0)\n"
+    "time.sleep(60)\n"
+)
+
+
+@pytest.mark.root
+@pytest.mark.linux
+def test_a_plugin_process_named_with_non_utf8_bytes_is_still_found_and_killed(layout):
+    setup = DirectorySetup(layout)
+    setup.prepare_tree()
+    setup.prepare_plugin("weather", PLUGIN_UID)
+    pid = spawn_process(
+        SpawnSpec(
+            uid=PLUGIN_UID,
+            gid=PLUGIN_UID,
+            argv=[SYSTEM_PYTHON, "-c", RENAME_TO_NON_UTF8],
+            environment={},
+            working_directory=layout.plugin_home("weather"),
+        )
+    )
+    raw_name = b"ab\xff\xfecd"
+    try:
+        deadline = time.monotonic() + 5
+        while raw_name not in Path(f"/proc/{pid}/status").read_bytes() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert raw_name in Path(f"/proc/{pid}/status").read_bytes()
+        table = ProcessTable()
+
+        assert table.living_pids_of_uid(PLUGIN_UID) == [pid]
+        assert kill_uid(PLUGIN_UID, table, reap=lambda: None).remaining == ()
+    finally:
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                if os.waitpid(pid, os.WNOHANG)[0] == pid:
+                    break
+            except ChildProcessError:
+                break
+            time.sleep(0.05)
 
 
 @pytest.mark.linux

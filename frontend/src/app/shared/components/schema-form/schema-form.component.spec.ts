@@ -53,7 +53,7 @@ const PARAMETERS: JsonSchema = {
             title: 'Stop sequences',
             default: null,
             items: { type: 'string' },
-            'x-widget': 'chips',
+            'x-widget': 'list',
             'x-group': 'output',
         },
         logprobs: {
@@ -322,17 +322,19 @@ describe('SchemaFormComponent', () => {
         });
     });
 
-    it('chips: sends each added stop sequence, and leaves an empty list out', () => {
+    it('list: sends each added stop sequence, and leaves an empty list out', () => {
         render(PARAMETERS, { ...DEFAULTS, stop: ['END'] });
-        const chipInput = field('stop').querySelector<HTMLInputElement>('app-chips-input input')!;
+        const rowInputs = () => Array.from(field('stop').querySelectorAll<HTMLInputElement>('.string-list__input'));
 
-        typeInto(chipInput, '###', ['input']);
-        chipInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        field('stop').querySelector<HTMLButtonElement>('.string-list__add-btn')!.click();
         fixture.detectChanges();
+        typeInto(rowInputs()[1], '###', ['input']);
         expect(lastEmitted()?.['stop']).toEqual(['END', '###']);
 
-        for (let removed = 0; removed < 2; removed++) {
-            field('stop').querySelector<HTMLButtonElement>('.chip button')!.click();
+        for (const removeButton of Array.from(
+            field('stop').querySelectorAll<HTMLButtonElement>('.string-list__remove-btn')
+        )) {
+            removeButton.click();
             fixture.detectChanges();
         }
         expect(lastEmitted()).not.toHaveProperty('stop');

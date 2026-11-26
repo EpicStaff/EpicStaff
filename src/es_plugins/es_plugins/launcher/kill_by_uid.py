@@ -144,13 +144,17 @@ def kill_uid(
     """SIGKILL every process of `uid` until none is left, or the timeout passes.
 
     One round usually suffices; another is needed when a process forked between the
-    helper's `kill` and its own exit. `reap`
-    collects the caller's exited children, so a killed child of the launcher does not linger
-    as a zombie.
+    helper's `kill` and its own exit. `reap` collects the caller's exited children, so a
+    killed child of the launcher does not linger as a zombie.
+
+    The first round is unconditional: a process the table cannot see as living is still
+    signalled, so none is missed because of how the table reads its state.
     """
     deadline = time.monotonic() + timeout_seconds
     rounds = 0
-    while process_table.living_pids_of_uid(uid) and (left := deadline - time.monotonic()) > 0:
+    while (rounds == 0 or process_table.living_pids_of_uid(uid)) and (
+        left := deadline - time.monotonic()
+    ) > 0:
         rounds += 1
         signal_uid(uid, signal.SIGKILL, timeout_seconds=min(SIGNAL_SECONDS, left))
         time.sleep(_PAUSE_BETWEEN_ROUNDS_SECONDS)

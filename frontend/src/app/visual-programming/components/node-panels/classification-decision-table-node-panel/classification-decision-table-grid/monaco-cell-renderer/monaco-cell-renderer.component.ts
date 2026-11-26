@@ -14,6 +14,9 @@ import { ICellRendererParams } from 'ag-grid-community';
 import { BaseCellRenderer } from '../shared/base-cell-renderer';
 import { ensureMonacoLoaded, monacoEditorApi } from '../shared/monaco-loader.util';
 
+/** The line break Monaco's `colorize` puts after each line it renders. */
+const TRAILING_LINE_BREAK = /<br\s*\/?>$/;
+
 @Component({
     selector: 'app-monaco-cell-renderer',
     imports: [],
@@ -47,17 +50,19 @@ import { ensureMonacoLoaded, monacoEditorApi } from '../shared/monaco-loader.uti
                 line-height: 1.4;
                 color: #d4d4d4;
             }
+            /* min-width: 0 lets the flex item shrink to the cell, so a long line ends in an ellipsis. */
             .plain-text {
+                min-width: 0;
                 color: #d4d4d4;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
             }
             .colorized-code {
+                min-width: 0;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                display: inline;
             }
         `,
     ],
@@ -131,7 +136,10 @@ export class MonacoCellRendererComponent
                 .colorize(firstLine, 'python', { tabSize: 4 })
                 .then((html: string) => {
                     if (!this.destroyed && this.codeContainer?.nativeElement) {
-                        this.codeContainer.nativeElement.innerHTML = `<span class="colorized-code">${html}${suffix}</span>`;
+                        // `colorize` ends every line it renders with a <br/>; kept, it would push the
+                        // " …" onto a second line, below the row.
+                        const lineHtml = html.replace(TRAILING_LINE_BREAK, '');
+                        this.codeContainer.nativeElement.innerHTML = `<span class="colorized-code">${lineHtml}${suffix}</span>`;
                         this.colorized = true;
                         this.cdr.markForCheck();
                     }

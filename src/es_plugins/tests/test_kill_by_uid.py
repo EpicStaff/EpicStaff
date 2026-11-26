@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from es_plugins.launcher import kill_by_uid
 from es_plugins.launcher.kill_by_uid import SIGNALLER_UID, check_signaller_uid, kill_uid, run_as_user
 from es_plugins.launcher.process_spawn import SpawnSpec, spawn_process
 from es_plugins.process_table import ProcessTable
@@ -134,3 +135,38 @@ def test_the_signalling_uid_is_never_a_plugins_and_a_range_holding_it_is_refused
 
     with pytest.raises(ValueError, match="must be outside PLUGINS_NODE_UID_RANGE"):
         check_signaller_uid(UidRange(SIGNALLER_UID - 5, SIGNALLER_UID + 5))
+
+
+class EmptyProcessTable:
+    def living_pids_of_uid(self, uid):
+        return []
+
+
+def test_a_kill_round_is_sent_even_when_the_table_reports_no_living_process(monkeypatch):
+    sent = []
+    monkeypatch.setattr(kill_by_uid, "signal_uid", lambda uid, number, timeout_seconds: sent.append((uid, number)))
+
+    outcome = kill_by_uid.kill_uid(20001, EmptyProcessTable())
+
+    assert sent == [(20001, signal.SIGKILL)]
+    assert outcome.rounds == 1
+    assert outcome.remaining == ()
+
+
+class TableThatLosesItsProcessAfterOneRead:
+    def __init__(self):
+        self._answers = [[77], []]
+
+    def living_pids_of_uid(self, uid):
+        return self._answers.pop(0) if len(self._answers) > 1 else self._answers[0]
+
+
+def test_another_round_is_sent_while_the_table_still_reports_a_living_process(monkeypatch):
+    sent = []
+    monkeypatch.setattr(kill_by_uid, "signal_uid", lambda uid, number, timeout_seconds: sent.append((uid, number)))
+
+    outcome = kill_by_uid.kill_uid(20001, TableThatLosesItsProcessAfterOneRead())
+
+    assert sent == [(20001, signal.SIGKILL)] * 2
+    assert outcome.rounds == 2
+    assert outcome.remaining == ()
