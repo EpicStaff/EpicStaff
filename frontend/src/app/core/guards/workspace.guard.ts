@@ -44,12 +44,16 @@ export const superAdminGuard: CanActivateFn = () => {
 };
 
 /**
- * Generic permission guard. Reads [ResourceCode, ActionCode] from route.data['permission'].
+ * Generic permission guard. Reads [ResourceCode, ActionCode] from route.data['permission'], or a list of such pairs
+ * from route.data['anyPermission'] when any one of them is enough.
  * Redirects to the first accessible route on failure.
  */
 export const permissionGuard: CanActivateFn = (route) => {
     const permissionsService = inject(PermissionsService);
     const router = inject(Router);
-    const [resource, action] = route.data['permission'] as [ResourceCode, ActionCode];
-    return permissionsService.can(resource, action) ? true : router.parseUrl(permissionsService.resolveDefaultRoute());
+    const anyPermission = route.data['anyPermission'] as [ResourceCode, ActionCode][] | undefined;
+    const allowed = anyPermission
+        ? anyPermission.some(([resource, action]) => permissionsService.can(resource, action))
+        : permissionsService.can(...(route.data['permission'] as [ResourceCode, ActionCode]));
+    return allowed ? true : router.parseUrl(permissionsService.resolveDefaultRoute());
 };

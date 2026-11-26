@@ -429,6 +429,21 @@ describe('LeftSidebarComponent', () => {
         });
     });
 
+    describe('Agents item', () => {
+        it.each<[string, ResourceCode[], boolean]>([
+            ['Agents', [ResourceCode.Agents], true],
+            ['Surfaces', [ResourceCode.Surfaces], true],
+            ['neither', [ResourceCode.Tools], false],
+        ])('with read access to %s: shown is %s', (_name, readable, shown) => {
+            vi.spyOn(TestBed.inject(PermissionsService), 'can').mockImplementation((resource) =>
+                readable.includes(resource)
+            );
+            render(COLLAPSED_WIDTH);
+
+            expect(navLink('Agents') !== undefined).toBe(shown);
+        });
+    });
+
     describe('Recycle Bin item', () => {
         it('is labelled and active on its pages like the other items', async () => {
             render(EXPANDED_WIDTH);

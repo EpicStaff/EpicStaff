@@ -297,7 +297,9 @@ export class LeftSidebarComponent {
                 activePaths: ['/agents'],
                 icon: 'agents',
                 label: 'Agents',
-                isPermitted: () => this.permissionService.can(ResourceCode.Agents, ActionCode.Read),
+                isPermitted: () =>
+                    this.permissionService.can(ResourceCode.Agents, ActionCode.Read) ||
+                    this.permissionService.can(ResourceCode.Surfaces, ActionCode.Read),
             },
             {
                 id: 'tools',

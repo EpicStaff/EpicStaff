@@ -273,13 +273,22 @@ describe('userActionTargetUrl of a target moved to the recycle bin', () => {
     });
 });
 
+describe('a surface link', () => {
+    it('opens for a viewer who reads surfaces but not agents', () => {
+        const event = { ...baseAction, target_type: 'surface', target_id: '5' };
+        expect(userActionTargetUrl(event, pageAccess({ can: denying(ResourceCode.Agents) }))).toBe(
+            '/agents?surfaceId=5'
+        );
+    });
+});
+
 describe('a page the viewer may not open', () => {
     // permissionGuard: read access in the active org
     it.each<[string, Partial<AuditUserAction>, ResourceCode]>([
         ['a flow', { target_type: 'flow', target_id: '4' }, ResourceCode.Flows],
         ['a node', { target_type: 'python code node', target_id: '12', ...inFlow }, ResourceCode.Flows],
         ['a session', { target_type: 'session', target_id: '88', ...inFlow }, ResourceCode.Flows],
-        ['a surface', { target_type: 'surface', target_id: '5' }, ResourceCode.Agents],
+        ['a surface', { target_type: 'surface', target_id: '5' }, ResourceCode.Surfaces],
         ['an agent', { target_type: 'agent', target_id: '7' }, ResourceCode.Agents],
         ['a custom tool', { target_type: 'custom tool', target_id: '3' }, ResourceCode.Tools],
         [

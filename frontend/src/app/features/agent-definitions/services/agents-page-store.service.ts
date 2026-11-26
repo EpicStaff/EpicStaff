@@ -25,11 +25,11 @@ import {
 import {
     AgentFocus,
     AgentSelection,
-    EXPLORER_SECTIONS,
     ExplorerSectionId,
     ExplorerSelection,
     GroupAssignTarget,
     NO_SELECTION,
+    permittedExplorerSections,
 } from '../models/explorer.model';
 import {
     CombinedSurface,
@@ -76,8 +76,9 @@ const SURFACE_PATCH_DEBOUNCE_MS = 400;
 /** Collapsed group blocks, per user: `<prefix>/<user id>` holds an array of `groupBlockKey`s. */
 const COLLAPSED_GROUPS_STORAGE_PREFIX = 'agents-explorer/collapsedGroups';
 
-/** The inline "new group" input in the Agents section; `assign` is moved into the group once it exists. */
+/** The inline "new group" input, shown in `section`; `assign` is moved into the group once it exists. */
 export interface NewGroupDraft {
+    section: GroupedSectionId;
     assign: GroupAssignTarget | null;
 }
 
@@ -102,9 +103,9 @@ function isNode(node: BranchTreeNode | null): node is BranchTreeNode {
 function loadVisibleSections(): Set<ExplorerSectionId> {
     const permissionService = inject(PermissionsService);
 
-    const permittedSections = EXPLORER_SECTIONS.filter((s) =>
-        permissionService.can(s.resourceCode, ActionCode.Read)
-    ).map((s) => s.id);
+    const sections = permittedExplorerSections((resource, action) => permissionService.can(resource, action));
+    const permittedSections = sections.map((section) => section.id);
+    const lockedSections = sections.filter((section) => section.locked).map((section) => section.id);
 
     try {
         const raw = localStorage.getItem(VISIBLE_SECTIONS_STORAGE_KEY);
@@ -112,7 +113,7 @@ function loadVisibleSections(): Set<ExplorerSectionId> {
         const parsed = JSON.parse(raw) as ExplorerSectionId[];
         const valid = parsed.filter((id) => permittedSections.includes(id));
         const set = new Set(valid);
-        set.add('agents');
+        lockedSections.forEach((id) => set.add(id));
         return set;
     } catch {
         return new Set(permittedSections);
@@ -166,7 +167,9 @@ export class AgentsPageStore {
     readonly selectedNode = signal<ExplorerSelection>(NO_SELECTION);
     readonly showSidebar = signal<boolean>(true);
 
-    readonly expandedSections = signal<Set<ExplorerSectionId>>(new Set(['agents']));
+    readonly expandedSections = signal<Set<ExplorerSectionId>>(
+        new Set([this.permissionService.can(ResourceCode.Agents, ActionCode.Read) ? 'agents' : 'surfaces'])
+    );
 
     readonly visibleSections = signal<Set<ExplorerSectionId>>(loadVisibleSections());
 
@@ -228,7 +231,9 @@ export class AgentsPageStore {
 
     setVisibleSections(ids: Set<ExplorerSectionId>): void {
         const next = new Set(ids);
-        next.add('agents');
+        permittedExplorerSections((resource, action) => this.permissionService.can(resource, action))
+            .filter((section) => section.locked)
+            .forEach((section) => next.add(section.id));
         this.visibleSections.set(next);
         this.persistVisibleSections();
     }
@@ -708,11 +713,17 @@ export class AgentsPageStore {
         this.setCollapsedGroups(next);
     }
 
-    /** Opens the inline "new group" input at the top of the Agents section. */
-    startNewGroup(assign: GroupAssignTarget | null = null): void {
+    /**
+     * Opens the inline "new group" input at the top of `section`, by default the one `assign` lives in:
+     * Shared Surfaces for a surface, Agents otherwise. There is a single draft at a time.
+     */
+    startNewGroup(
+        assign: GroupAssignTarget | null = null,
+        section: GroupedSectionId = assign?.kind === 'surface' ? 'surfaces' : 'agents'
+    ): void {
         this.renamingGroupId.set(null);
-        this.newGroupDraft.set({ assign });
-        if (!this.isSectionExpanded('agents')) this.toggleSection('agents');
+        this.newGroupDraft.set({ section, assign });
+        if (!this.isSectionExpanded(section)) this.toggleSection(section);
     }
 
     cancelNewGroup(): void {
@@ -821,12 +832,14 @@ export class AgentsPageStore {
         this.agentsError.set(null);
         this.surfacesError.set(null);
 
-        const agents$ = this.agentsApi.getAgentDefinitions().pipe(
-            catchError((err) => {
-                this.agentsError.set(this.extractError(err, 'Failed to load agents'));
-                return of<AgentDefinition[]>([]);
-            })
-        );
+        const agents$ = this.permissionService.can(ResourceCode.Agents, ActionCode.Read)
+            ? this.agentsApi.getAgentDefinitions().pipe(
+                  catchError((err) => {
+                      this.agentsError.set(this.extractError(err, 'Failed to load agents'));
+                      return of<AgentDefinition[]>([]);
+                  })
+              )
+            : of<AgentDefinition[]>([]);
         const surfaces$ = this.surfacesApi.getSurfaces().pipe(
             catchError((err) => {
                 this.surfacesError.set(this.extractError(err, 'Failed to load surfaces'));

@@ -221,7 +221,7 @@ export class TreeNodeComponent implements OnInit {
             return;
         }
         if (event.dataTransfer) {
-            event.dataTransfer.effectAllowed = 'copy';
+            event.dataTransfer.effectAllowed = 'copyMove';
             event.dataTransfer.setData('text/plain', n.label);
         }
         this.surfaceDrag.start({ id: n.surfaceId, name: n.label });

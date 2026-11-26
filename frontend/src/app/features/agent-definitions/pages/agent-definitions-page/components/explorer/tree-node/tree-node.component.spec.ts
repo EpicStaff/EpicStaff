@@ -52,7 +52,7 @@ function render(
         providers: [
             { provide: PermissionsService, useValue: { can } },
             { provide: StorageDragService, useValue: { isDragging: signal(false) } },
-            { provide: SurfaceDragService, useValue: { isDragging: signal(false) } },
+            { provide: SurfaceDragService, useValue: { isDragging: signal(false), start: vi.fn(), end: vi.fn() } },
             { provide: AgentsPageStore, useValue: store },
         ],
     });
@@ -267,5 +267,21 @@ describe('TreeNodeComponent agent export selection', () => {
         fixture.detectChanges();
 
         expect(row().hasAttribute('draggable')).toBe(false);
+    });
+});
+
+describe('TreeNodeComponent shared surface drag', () => {
+    const SHARED_SURFACE: BranchTreeNode = { kind: 'surface', surfaceId: 7, label: 'Shared', shared: true };
+
+    // The browser drops only where the target's dropEffect is one of the drag's allowed effects:
+    // agent rows and cards take a 'copy' (attach) and group blocks a 'move' (regroup).
+    it('allows both copy and move, so agents and groups both accept the drop', () => {
+        const { fixture } = render(SHARED_SURFACE, FULL_ACCESS);
+        const dataTransfer = { effectAllowed: 'none', setData: vi.fn() };
+
+        fixture.componentInstance.onSurfaceDragStart({ dataTransfer } as unknown as DragEvent);
+
+        expect(dataTransfer.effectAllowed).toBe('copyMove');
+        expect(TestBed.inject(SurfaceDragService).start).toHaveBeenCalledWith({ id: 7, name: 'Shared' });
     });
 });

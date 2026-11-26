@@ -1,3 +1,7 @@
+@if (store.newGroupDraft()?.section === 'surfaces') {
+    <app-new-group-input />
+}
+
 @if (store.surfacesError()) {
     <app-fetch-error-state
         mod="small"

@@ -21,7 +21,7 @@ import { PermissionsService } from '../../../../../../services/auth/permissions.
 import { StorageItem } from '../../../../../files/models/storage.models';
 import { StorageDragService } from '../../../../../files/services/storage-drag.service';
 import { ExplorerSectionId } from '../../../../models/explorer.model';
-import { BranchTreeNode } from '../../../../models/tree-node.model';
+import { BranchTreeNode, GroupedSectionId } from '../../../../models/tree-node.model';
 import { AgentsPageStore } from '../../../../services/agents-page-store.service';
 import { SurfaceDragService } from '../../../../services/surface-drag.service';
 import { AgentsSectionComponent } from './agents-section/agents-section.component';
@@ -208,9 +208,17 @@ export class ExplorerComponent {
     }
 
     onAgentsSectionMenu(event: MouseEvent): void {
+        this.onSectionMenu(event, 'agents', agentsSectionMenuItems());
+    }
+
+    onSurfacesSectionMenu(event: MouseEvent): void {
+        this.onSectionMenu(event, 'surfaces', []);
+    }
+
+    private onSectionMenu(event: MouseEvent, section: GroupedSectionId, items: ExplorerMenuItem[]): void {
         this.onTreeMenuOpen({
-            node: { kind: 'section-header', section: 'agents' },
-            items: agentsSectionMenuItems(),
+            node: { kind: 'section-header', section },
+            items,
             position: menuPositionFromClick(event),
             trigger: event.currentTarget as HTMLElement,
         });

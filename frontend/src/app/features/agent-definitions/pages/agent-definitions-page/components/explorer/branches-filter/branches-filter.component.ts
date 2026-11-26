@@ -14,7 +14,8 @@ import {
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 
-import { EXPLORER_SECTIONS, ExplorerSectionDef, ExplorerSectionId } from '../../../../../models/explorer.model';
+import { PermissionsService } from '../../../../../../../services/auth/permissions.service';
+import { ExplorerSectionDef, ExplorerSectionId, permittedExplorerSections } from '../../../../../models/explorer.model';
 
 @Component({
     selector: 'app-branches-filter',
@@ -25,13 +26,16 @@ import { EXPLORER_SECTIONS, ExplorerSectionDef, ExplorerSectionId } from '../../
 })
 export class BranchesFilterComponent implements AfterViewInit, OnDestroy {
     private readonly ngZone = inject(NgZone);
+    private readonly permissions = inject(PermissionsService);
 
     selected = input.required<Set<ExplorerSectionId>>();
 
     save = output<Set<ExplorerSectionId>>();
     cancel = output<void>();
 
-    readonly sections: ExplorerSectionDef[] = EXPLORER_SECTIONS;
+    readonly sections: ExplorerSectionDef[] = permittedExplorerSections((resource, action) =>
+        this.permissions.can(resource, action)
+    );
 
     readonly draft = signal<Set<ExplorerSectionId> | null>(null);
 

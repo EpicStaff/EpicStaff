@@ -81,6 +81,11 @@ class HasOrgPermission(BaseRbacPermission):
     Authorizes `required` against the caller's permissions in the
     request's **active org**, resolved from the URL kwarg `org_id` or the
     `X-Organization-Id` header (via OrgContextService).
+
+    A view may declare `rbac_alternative_resource_types`, a map from a required
+    `Permission` to resource types that also satisfy it (any-of with
+    `rbac_resource_type`). Only the listed permissions are widened; every other
+    action still needs `rbac_resource_type`. Only this gate reads it.
     """
 
     _org_context = OrgContextService()
@@ -98,7 +103,10 @@ class HasOrgPermission(BaseRbacPermission):
         # Same key `resolve_request_permissions` reads, for serializers behind this gate.
         request._rbac_effective_permissions = effective
 
-        if not effective.can(resource_type, required):
+        alternatives = getattr(view, "rbac_alternative_resource_types", {}).get(required, ())
+        if not any(
+            effective.can(candidate, required) for candidate in (resource_type, *alternatives)
+        ):
             resource_str = resource_type if isinstance(resource_type, str) else resource_type.value
             # Name the missing permission, not the DRF action (`usage`, `partial_update`).
             # `can` passes on any bit of `required`, so a combined requirement reads as alternatives.

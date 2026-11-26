@@ -128,8 +128,11 @@
                         [expanded]="store.isSectionExpanded('surfaces')"
                         [showAdd]="true"
                         [resource]="ResourceCode.Surfaces"
+                        [showMenu]="true"
+                        [menuActions]="[ActionCode.Read]"
                         (toggleSection)="store.toggleSection('surfaces')"
                         (add)="onAdd('surfaces')"
+                        (menu)="onSurfacesSectionMenu($event)"
                     />
                     <div
                         #surfacesBody
