@@ -3923,9 +3923,9 @@ The cycle-removal helper in the same component follows [Douglas Crockford's cycl
 
 <!-- BEGIN GENERATED: backend -->
 <!-- AUTO-GENERATED — do not edit by hand -->
-<!-- generated: 2026-11-26T11:29:07Z UTC -->
-<!-- commit: bedfb1b4f7493a4288523a82c1a705df0f1de0f8 -->
-<!-- lock-hashes: agent:fc6db491b10362f7, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:d70ae5876449fdea, django_app:a46a1a072518e92d, es_plugins:dbaccc6cdbe28892, foundation:eb9639484fc6d726, knowledge_new:ff993b18fd54f3a2, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:eacb693cf9accb5e, sandbox:117c57af453053a0, sandbox_new:a43e19009b028dcd, shared:65c1a59f70ec0dc0, webhook:be4edcbb5252064a -->
+<!-- generated: 2026-11-26T13:20:04Z UTC -->
+<!-- commit: 1f23de097bfb7ebd5b3a9590635f62a70bd478fe -->
+<!-- lock-hashes: agent:fc6db491b10362f7, auditor:4841e321a589ae7d, chat:fb358a7c21109217, crew:d70ae5876449fdea, django_app:a46a1a072518e92d, es_plugins:dbaccc6cdbe28892, foundation:eb9639484fc6d726, knowledge_new:52b034c6d59b3142, manager:513718c9414fe824, plugin_sdk:2f2809aa77721c49, plugins_egress:9a5691273399ac26, realtime:eacb693cf9accb5e, sandbox:117c57af453053a0, sandbox_new:a43e19009b028dcd, shared:65c1a59f70ec0dc0, webhook:be4edcbb5252064a -->
 
 ## Backend (Python)
 
@@ -4109,9 +4109,9 @@ This section lists third-party Python packages bundled into EpicStaff backend mi
 | `jsonschema` | 4.26.0 | MIT | Copyright (c) 2013 Julian Berman |
 | `jsonschema-path` | 0.5.0 | Apache Software License | copyright notice that is included in or attached to the work |
 | `jsonschema-specifications` | 2025.9.1 | MIT | Copyright (c) 2022 Julian Berman |
-| `lance-namespace` | 0.9.0 | Apache-2.0 | Copyright (c) LanceDB Devs <dev@lancedb.com> |
-| `lance-namespace-urllib3-client` | 0.9.0 | Apache-2.0 | Copyright (c) Lance Devs <dev@lance.org> |
-| `lancedb` | 0.34.0 | Apache Software License | copyright notice that is included in or attached to the work |
+| `lance-namespace` | 0.13.0 | Apache-2.0 | Copyright (c) LanceDB Devs <dev@lancedb.com> |
+| `lance-namespace-urllib3-client` | 0.13.0 | Apache-2.0 | Copyright (c) Lance Devs <dev@lance.org> |
+| `lancedb-compat` | 0.41.0 | Apache Software License | copyright notice that is included in or attached to the work |
 | `langchain-core` | 1.6.2 | MIT License | Copyright (c) LangChain, Inc. |
 | `langchain-protocol` | 0.0.18 | MIT License | Copyright (c) 2026 LangChain, Inc. |
 | `langchain-protocol` | 0.0.19 | MIT License | Copyright (c) 2026 LangChain, Inc. |
@@ -14536,7 +14536,7 @@ THE SOFTWARE.
 
 > No NOTICE file shipped by upstream.
 
-#### lance-namespace@0.9.0
+#### lance-namespace@0.13.0
 
 - **License:** Apache-2.0
 - **Author:** LanceDB Devs <dev@lancedb.com>
@@ -14544,7 +14544,7 @@ THE SOFTWARE.
 > No LICENSE file shipped by upstream wheel.
 > No NOTICE file shipped by upstream.
 
-#### lance-namespace-urllib3-client@0.9.0
+#### lance-namespace-urllib3-client@0.13.0
 
 - **License:** Apache-2.0
 - **Author:** Lance Devs <dev@lance.org>
@@ -14552,7 +14552,7 @@ THE SOFTWARE.
 > No LICENSE file shipped by upstream wheel.
 > No NOTICE file shipped by upstream.
 
-#### lancedb@0.34.0
+#### lancedb-compat@0.41.0
 
 - **License:** Apache Software License
 - **Author:** LanceDB Devs <dev@lancedb.com>

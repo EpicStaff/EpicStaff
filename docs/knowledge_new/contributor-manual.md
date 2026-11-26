@@ -333,7 +333,12 @@ the handler registry. Don't build ad-hoc HTTP responses in controllers.
   code — read its docs rather than documenting internals here.
 - **`miniopy_async`** (MinIO's S3 client) — talks to the S3 server (RustFS by
   default) for both graph inputs/outputs and vector data.
-- **LanceDB** — vector store for graph RAG, S3-backed via `aws_endpoint`.
+- **LanceDB** — vector store for graph RAG, S3-backed via `aws_endpoint`. One build
+  per platform, chosen in `pyproject.toml`: Linux x86_64 installs `lancedb-compat`
+  (the official LanceDB build for CPUs without AVX2, same `lancedb` import and API),
+  every other platform installs plain `lancedb`. The Dockerfile asserts the expected
+  build right after `uv sync`, and the service logs `LanceDB build: …` at startup.
+  Native Windows/macOS without AVX2 is not covered: no compat wheel exists there.
 - **LiteLLM** — the embedder adapters route provider calls through it.
 - **Litestar** — HTTP framework; auto-generates OpenAPI (the endpoint reference
   lives at `/schema`, not in this doc).
