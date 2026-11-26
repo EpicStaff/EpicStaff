@@ -9,7 +9,7 @@
             <p class="blob-preview__empty-text">Select a file to preview</p>
         </div>
     } @else {
-        @if (previewBadge && previewType() !== 'pdf') {
+        @if (showBadge() && previewBadge && previewType() !== 'pdf') {
             <div class="blob-preview__badge">
                 <span class="blob-preview__badge-type">{{ previewBadge }}</span>
                 <span class="blob-preview__badge-suffix">only view</span>
