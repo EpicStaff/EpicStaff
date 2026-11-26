@@ -1,8 +1,16 @@
 import pytest
+import redis.exceptions
 from app.core.settings import settings
+from app.services import tunnel_config_listener as tunnel_config_listener_module
+from app.services.tunnel_registry import ConfigsFailedToRegisterError
 from foundation.cryptographer import FernetRotatedCryptographer
 from loguru import logger
-from src.shared.models import LocalhostConfigData, WebhookTriggerAuthData
+from src.shared.models import (
+    LocalhostConfigData,
+    NgrokConfigData,
+    WebhookConfigData,
+    WebhookTriggerAuthData,
+)
 from transport_secrets import TRANSPORT_HKDF_INFO, seal
 
 PREVIOUS_TRANSPORT_KEY = "webhook-tests-previous-transport-key"
@@ -189,3 +197,100 @@ async def test_returns_503_when_no_received_events_receives_the_event(client, tu
 
     assert response.status_code == 503
     assert response.headers["Retry-After"] == "30"
+
+
+@pytest.mark.parametrize(
+    "redis_error", [redis.exceptions.ConnectionError, redis.exceptions.TimeoutError]
+)
+async def test_returns_503_when_redis_fails_on_publish(
+    client, tunnel_registry, redis_service, monkeypatch, redis_error
+):
+    """Redis down or past its socket timeout: the event was not handed over, so the
+    sender must be asked to retry, not handed a 500."""
+    await _register(tunnel_registry, "telegram-trigger/bot", auth=_auth("telegram", "tg-secret"))
+
+    async def failing_publish(channel, message):
+        raise redis_error("Redis is unreachable")
+
+    monkeypatch.setattr(redis_service.client, "publish", failing_publish)
+
+    response = await client.post(
+        "/webhooks/telegram-trigger/bot",
+        json={"update_id": 1},
+        headers={"X-Telegram-Bot-Api-Secret-Token": "tg-secret"},
+    )
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
+    # The sender is on the internet: the Redis error and channel stay in the server log.
+    assert settings.WEBHOOK_MESSAGE_CHANNEL not in response.text
+    assert "Redis is unreachable" not in response.text
+
+
+async def test_webhook_before_the_first_config_sync_returns_503_not_404(
+    unsynced_client, received_events
+):
+    """Before Django's configs arrive every path is unknown; a 404 would tell the sender
+    the URL is wrong instead of asking it to retry."""
+    response = await unsynced_client.post("/webhooks/hook", json={"a": 1})
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
+    assert await received_events() == []
+
+
+async def test_webhook_registered_by_the_first_config_sync_is_forwarded(
+    unsynced_client, tunnel_registry, received_events
+):
+    auth = _auth("webhook", "secret")
+    await tunnel_registry.register_many(
+        WebhookConfigData(localhost_configs=[LocalhostConfigData(name="hook", org_id=1, auth=auth)])
+    )
+
+    response = await unsynced_client.post(
+        "/webhooks/hook", json={"a": 1}, headers={"EPICSTAFF_API_KEY": "secret"}
+    )
+
+    assert response.status_code == 200
+    assert [event["path"] for event in await received_events()] == ["hook"]
+
+
+async def test_health_check_passes_until_the_config_listener_is_unsynced_too_long(client):
+    response = await client.get("/")
+
+    assert response.status_code == 200
+
+
+async def test_health_check_fails_once_the_config_listener_is_unsynced_too_long(
+    client, monkeypatch
+):
+    # The client's listener never ran, so it has been unsynced since it was created.
+    monkeypatch.setattr(tunnel_config_listener_module, "UNHEALTHY_AFTER_UNSYNCED_SECONDS", 0)
+
+    response = await client.get("/")
+
+    assert response.status_code == 503
+
+
+async def test_webhook_whose_restart_failed_answers_503_and_rejects_its_old_secret(
+    client, tunnel_registry, received_events, ngrok_environment
+):
+    """The old tunnel is gone, so its old secret no longer gets an event through; the
+    sender is asked to retry because the webhook still exists in Django."""
+    hook = NgrokConfigData(
+        name="hook", org_id=1, auth_token=seal("old-token"), auth=_auth("webhook", "old-secret")
+    )
+    await tunnel_registry.register_many(WebhookConfigData(ngrok_configs=[hook]))
+    unusable_hook = hook.model_copy(
+        update={"auth_token": "gAAAAAforged-ngrok-token", "auth": _auth("webhook", "new-secret")}
+    )
+    with pytest.raises(ConfigsFailedToRegisterError):
+        await tunnel_registry.register_many(WebhookConfigData(ngrok_configs=[unusable_hook]))
+
+    response = await client.post(
+        "/webhooks/hook", json={"a": 1}, headers={"EPICSTAFF_API_KEY": "old-secret"}
+    )
+
+    assert response.status_code == 503
+    assert response.headers["Retry-After"] == "30"
+    assert await received_events() == []

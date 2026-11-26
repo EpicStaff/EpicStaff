@@ -18,6 +18,7 @@ from plugins.views.admin_plugins import ADMIN_AUTHENTICATION, ADMIN_PERMISSIONS,
 class PluginGrantSuspendPreviewView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
     @extend_schema(responses=SuspendPreviewSerializer)
     def get(self, request, identifier: str, grant_id: int):
@@ -30,6 +31,7 @@ class PluginGrantSuspendView(APIView):
 
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
     @extend_schema(request=None, responses=PluginGrantSerializer)
     def post(self, request, identifier: str, grant_id: int):
@@ -40,6 +42,7 @@ class PluginGrantSuspendView(APIView):
 class PluginGrantResumeView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
     @extend_schema(request=None, responses=PluginGrantSerializer)
     def post(self, request, identifier: str, grant_id: int):

@@ -203,6 +203,85 @@ describe('CodeEditorComponent', () => {
         });
     });
 
+    describe('secret completions', () => {
+        interface CompletionSuggestion {
+            label: string;
+            detail: string;
+            insertText: string;
+        }
+        interface CompletionProvider {
+            provideCompletionItems(model: unknown, position: unknown): { suggestions: CompletionSuggestion[] };
+        }
+
+        class ResizeObserverStub {
+            observe(): void {}
+            disconnect(): void {}
+        }
+
+        let provider: CompletionProvider | null;
+
+        beforeEach(() => {
+            provider = null;
+            vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+            // Monaco itself does not run in jsdom; this stands in for the global the real editor loads.
+            vi.stubGlobal('monaco', {
+                languages: {
+                    CompletionItemKind: { Variable: 4, Constant: 14 },
+                    registerCompletionItemProvider: (_language: string, registered: CompletionProvider) => {
+                        provider = registered;
+                        return { dispose: () => {} };
+                    },
+                },
+            });
+        });
+
+        afterEach(() => vi.unstubAllGlobals());
+
+        function suggestionsFor(secretNames: string[], inputMapKeys: string[] = []): CompletionSuggestion[] {
+            fixture.componentRef.setInput('secretNames', secretNames);
+            fixture.componentRef.setInput('inputMapKeys', inputMapKeys);
+            fixture.detectChanges();
+            const position = { lineNumber: 1, column: 7 };
+            const model = { getWordUntilPosition: () => ({ startColumn: 7, endColumn: 7 }) };
+            const editor = { updateOptions: () => {}, getModel: () => model, layout: () => {} };
+            fixture.componentInstance.onEditorInit(
+                editor as unknown as Parameters<CodeEditorComponent['onEditorInit']>[0]
+            );
+            return provider!.provideCompletionItems(model, position).suggestions;
+        }
+
+        function labels(suggestions: CompletionSuggestion[]): string[] {
+            return suggestions.map((suggestion) => suggestion.label);
+        }
+
+        it('inserts a plain get_secret call for an allowed name', () => {
+            const [suggestion] = suggestionsFor(['api_key']);
+
+            expect(suggestion.label).toBe('api_key');
+            expect(suggestion.insertText).toBe('get_secret("api_key")');
+            expect(suggestion.detail).toBe('get_secret("api_key")');
+        });
+
+        it('offers a name with non-Latin letters, spaces, dashes and dots', () => {
+            const [suggestion] = suggestionsFor(['Ключ API-v2.0']);
+
+            expect(suggestion.insertText).toBe('get_secret("Ключ API-v2.0")');
+        });
+
+        // Stored before the secret-name rule existed: inside an f-string `{…}` runs as code, a quote ends the string.
+        it.each([
+            ['an f-string expression', "{__import__('os')}"],
+            ['an operator', 'a+b'],
+            ['quotes and parentheses', 'x") or y("'],
+        ])('does not offer a legacy name with %s', (_case, legacyName) => {
+            expect(labels(suggestionsFor(['api_key', legacyName]))).toEqual(['api_key']);
+        });
+
+        it('still offers Input List arguments when no secret name is allowed', () => {
+            expect(labels(suggestionsFor(['a+b'], ['city']))).toEqual(['city']);
+        });
+    });
+
     it('renders no action by default', () => {
         fixture.componentRef.setInput('compactHeader', true);
         fixture.detectChanges();

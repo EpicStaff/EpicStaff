@@ -16,12 +16,15 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import timedelta
 
+from ai_models.models import DefaultModels, LLMConfig
 from asgiref.sync import sync_to_async
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db import close_old_connections, transaction
 from django.db.models import Max
 from django.utils import timezone
+from rbac.access.org_context import OrgContextService
 from tables.exceptions import (
+    ConfigNeedsReviewError,
     LLMConfigInvalidError,
     LLMConfigMissingError,
 )
@@ -43,7 +46,7 @@ from tables.services.llm_clients import (
     UnsupportedLLMProviderError,
     get_llm_client,
 )
-from tables.services.secrets import secret_resolver
+from tables.services.run_admission import RunKind, RunSubject, assert_run_admitted
 from utils.logger import logger
 
 from . import partial_json as _partial_json
@@ -195,20 +198,43 @@ class FlowAssistantService:
         )
         return build_system_prompt(
             inputs,
-            anthropic_tables=uses_anthropic_structured_output(flow_assistant.llm_config),
+            anthropic_tables=uses_anthropic_structured_output(
+                self.resolve_llm_config(flow_assistant)
+            ),
         )
 
-    def start_conversation(
-        self, flow_assistant: FlowAssistant, organization_user
-    ) -> FlowAssistantConversation:
-        """Create a new conversation, seeding the system prompt as the first message."""
+    @staticmethod
+    def resolve_llm_config(flow_assistant: FlowAssistant) -> LLMConfig | None:
+        """The LLM config the assistant runs on: its own, else its org's default agent LLM.
+
+        Read on every call, so a change to the org default applies without re-saving the
+        assistant. None when neither is set.
+        """
+        if flow_assistant.llm_config is not None:
+            return flow_assistant.llm_config
+        default_models = (
+            DefaultModels.objects.select_related("agent_llm_config__model__llm_provider")
+            .filter(org_id=flow_assistant.graph.org_id)
+            .first()
+        )
+        return default_models.agent_llm_config if default_models else None
+
+    def start_conversation(self, flow_assistant: FlowAssistant, user) -> FlowAssistantConversation:
+        """Create a new conversation of `user`, seeding the system prompt as the first message.
+
+        Holds `user`'s membership in the flow's org `FOR UPDATE` while inserting, so a
+        concurrent membership removal either waits and deletes this conversation with the
+        others, or commits first and this call is refused.
+
+        Raises:
+            OrgMembershipRequiredError: `user` is no longer a member of the flow's org
+                (superadmins excepted), or the org is inactive.
+        """
         system_prompt = self.build_system_prompt(flow_assistant)
-        # Count prior conversations by a *different* user (not a different
-        # org membership of the same user) — the relevant security signal is
-        # whether data from a different human user is present.
+        # The relevant security signal is whether data from a different human user is present.
         other_user_count = (
             FlowAssistantConversation.objects.filter(flow_assistant=flow_assistant)
-            .exclude(organization_user__user_id=organization_user.user_id)
+            .exclude(user_id=user.pk)
             .count()
         )
         if other_user_count > 0:
@@ -216,19 +242,23 @@ class FlowAssistantService:
                 "FlowAssistant {} (graph {}): user {} starting new conversation; {} prior conversation(s) by other users.",
                 flow_assistant.pk,
                 flow_assistant.graph_id,
-                organization_user.user_id,
+                user.pk,
                 other_user_count,
             )
-        conversation = FlowAssistantConversation.objects.create(
-            flow_assistant=flow_assistant,
-            organization_user=organization_user,
-        )
-        FlowAssistantMessage.objects.create(
-            conversation=conversation,
-            message_index=0,
-            role="system",
-            content=system_prompt,
-        )
+        with transaction.atomic():
+            OrgContextService().assert_membership(
+                user=user, org_id=flow_assistant.graph.org_id, lock=True
+            )
+            conversation = FlowAssistantConversation.objects.create(
+                flow_assistant=flow_assistant,
+                user=user,
+            )
+            FlowAssistantMessage.objects.create(
+                conversation=conversation,
+                message_index=0,
+                role="system",
+                content=system_prompt,
+            )
         logger.info(
             "Started FlowAssistantConversation {} for graph {}",
             conversation.pk,
@@ -246,6 +276,23 @@ class FlowAssistantService:
         title = _derive_title(message)
         conversation.title = title
         conversation.save(update_fields=["title"])
+
+    def assert_reply_admitted(self, flow_assistant: FlowAssistant, organization_id: int) -> None:
+        """Refuse a reply that calls an LLM config no run could use now.
+
+        A reply calls the model as a run would, so it is admitted like one: a config of a
+        plugin that is not active in the organization is refused, as in a flow. The config
+        admitted is the one the reply calls, `resolve_llm_config`: the assistant's own, else
+        the org's default agent LLM. When neither is set there is nothing to admit, and the
+        reply fails on the missing config.
+
+        Raises:
+            RunAdmissionRefusedError: The reply may not call the LLM config it would use.
+        """
+        llm_config = self.resolve_llm_config(flow_assistant)
+        if llm_config is None:
+            return
+        assert_run_admitted(RunSubject(RunKind.LLM_CONFIG, llm_config.pk, organization_id))
 
     def append_user_message(
         self, conversation: FlowAssistantConversation, content: str
@@ -290,29 +337,25 @@ class FlowAssistantService:
             ).get(pk=conversation.flow_assistant_id)
         )()
 
-        if flow_assistant.llm_config is None:
-            raise LLMConfigMissingError(
-                f"FlowAssistant for graph {flow_assistant.graph_id} has no llm_config set."
-            )
-
-        # sync_to_async: stream_reply is an async generator, so the ORM lookup cannot run inline.
-        api_key = await sync_to_async(secret_resolver.resolve)(
-            secret_id=flow_assistant.llm_config.api_key_secret_id,
-            org_id=flow_assistant.llm_config.org_id,
-            context="FlowAssistant.llm_config.api_key",
-        )
+        llm_config = await sync_to_async(self.resolve_llm_config)(flow_assistant)
+        if llm_config is None:
+            raise LLMConfigMissingError()
 
         try:
-            client = get_llm_client(
-                flow_assistant.llm_config,
+            # sync_to_async: stream_reply is an async generator, and resolving the
+            # config's secrets queries the database.
+            client = await sync_to_async(get_llm_client)(
+                llm_config,
                 output_schema=(
                     ANTHROPIC_FLOW_ASSISTANT_OUTPUT_SCHEMA
-                    if uses_anthropic_structured_output(flow_assistant.llm_config)
+                    if uses_anthropic_structured_output(llm_config)
                     else FLOW_ASSISTANT_OUTPUT_SCHEMA
                 ),
-                api_key=api_key,
+                # A person's: the stream is opened with an SSE ticket, which no plugin
+                # credential can get.
+                principal=None,
             )
-        except (UnsupportedLLMProviderError, InvalidLLMConfigError) as exc:
+        except (UnsupportedLLMProviderError, InvalidLLMConfigError, ConfigNeedsReviewError) as exc:
             raise LLMConfigInvalidError(str(exc)) from exc
 
         graph_id = flow_assistant.graph_id

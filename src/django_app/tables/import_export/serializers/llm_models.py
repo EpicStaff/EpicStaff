@@ -1,14 +1,13 @@
-from rest_framework import serializers
-
-from tables.models import (
+from ai_models.models import (
     EmbeddingModel,
     EmbeddingModelTag,
     LLMModel,
     LLMModelTag,
     Provider,
-    RealtimeModel,
-    RealtimeTranscriptionModel,
 )
+from rest_framework import serializers
+
+from tables.models import RealtimeModel, RealtimeTranscriptionModel
 
 
 class BaseModelImportSerializer(serializers.ModelSerializer):

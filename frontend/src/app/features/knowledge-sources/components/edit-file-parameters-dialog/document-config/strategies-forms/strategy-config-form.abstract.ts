@@ -32,5 +32,9 @@ export abstract class StrategyForm<T extends StrategyModel> implements OnChanges
         return this.strategyForm.get('mainParams')?.get(control);
     }
 
+    getAdditionalParamControl(control: string): AbstractControl | null | undefined {
+        return this.strategyForm.get('additionalParams')?.get(control);
+    }
+
     protected abstract initializeForm(config: T): FormGroup;
 }

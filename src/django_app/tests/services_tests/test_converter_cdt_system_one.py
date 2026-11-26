@@ -1,13 +1,7 @@
 import pytest
 from rbac.models import Organization
-from tables.models import (
-    ClassificationDecisionTableNode,
-    Graph,
-    LLMConfig,
-    LLMModel,
-    Provider,
-    SystemOneConfig,
-)
+from tables.models import ClassificationDecisionTableNode, Graph, SystemOneConfig
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tables.models.graph_models import ClassificationDecisionTablePrompt
 from tables.services.converter_service import ConverterService
 from tables.services.secrets import secret_resolver, secret_service

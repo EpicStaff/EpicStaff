@@ -583,5 +583,11 @@ def log_development_runtime_file_issued(actor, *, identifier: str, organizations
     )
 
 
+def log_plugin_host_unverified(*, host: str, reason: str) -> None:
+    """Log a plugin host that did not prove it reaches this deployment; `reason` is
+    `unreachable`, `too_slow`, `status_<code>`, `not_a_proof` or `wrong_proof`."""
+    logger.warning("plugins.host_unverified host={host} reason={reason}", host=host, reason=reason)
+
+
 def log_development_host_unresolved(host: str) -> None:
     logger.warning("plugins.development.host_unresolved host={host}", host=host)

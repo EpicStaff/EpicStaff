@@ -20,6 +20,7 @@ from plugins.views.admin_plugins import ADMIN_AUTHENTICATION, ADMIN_PERMISSIONS,
 class PluginUpgradeAdminView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
 
 class PluginUpgradeCancelView(PluginUpgradeAdminView):

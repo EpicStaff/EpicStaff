@@ -152,7 +152,7 @@ def test_template_agent_referencing_two_organizations_survives_deleting_one_of_t
     actor, acme, beta
 ):
     from tables.models.crew_models import TemplateAgent
-    from tables.models.llm_models import LLMConfig
+    from ai_models.models import LLMConfig
 
     acme_config = LLMConfig.objects.create(custom_name="acme-llm", org=acme)
     beta_config = LLMConfig.objects.create(custom_name="beta-llm", org=beta)
@@ -174,7 +174,7 @@ def test_agent_definitions_with_a_fallback_config_survive_deleting_the_org_that_
     actor, acme, beta
 ):
     from agents.models import AgentDefinition
-    from tables.models.llm_models import LLMConfig
+    from ai_models.models import LLMConfig
 
     acme_primary = LLMConfig.objects.create(custom_name="acme-primary", org=acme)
     acme_fallback = LLMConfig.objects.create(custom_name="acme-fallback", org=acme)
@@ -237,7 +237,7 @@ def test_preview_counts_equal_real_delete_counts_with_the_participant_in_place(a
         DocumentMetadata,
         SourceCollection,
     )
-    from tables.models.llm_models import LLMConfig
+    from ai_models.models import LLMConfig
     from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgentChat
 
     crew = Crew.objects.create(org=acme, name="c")

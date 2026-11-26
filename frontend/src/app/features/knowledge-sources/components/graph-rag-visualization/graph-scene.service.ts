@@ -44,11 +44,18 @@ import {
     HOVERED_BORDER_COLOR,
     INITIAL_LAYOUT_SPREAD,
     LABEL_BACKGROUND_COLOR,
+    LABEL_BORDER_COLOR,
+    LABEL_BORDER_WIDTH,
     LABEL_CANVAS_HEIGHT,
     LABEL_FONT_FAMILY,
     LABEL_FONT_SIZE,
+    LABEL_FONT_WEIGHT,
     LABEL_HORIZONTAL_PADDING,
+    LABEL_MIN_NODE_PIXEL_RADIUS_2D,
+    LABEL_MIN_NODE_PIXEL_RADIUS_3D,
     LABEL_OFFSET_ABOVE_NODE,
+    LABEL_SCREEN_SIZE_SCALE_2D,
+    LABEL_SIZE_INFLUENCE_2D,
     LABEL_SPRITE_HEIGHT,
     LABEL_TEXT_COLOR,
     MAX_FRAME_DELTA_SECONDS,
@@ -85,6 +92,9 @@ export class GraphSceneService {
     private resizeObserver: ResizeObserver | null = null;
     private readonly controlsChangeHandler = (): void => {
         this.depthOrderStale = true;
+        // Nodes have not moved, but their distance to the camera (3D) or the ortho zoom (2D) has —
+        // re-evaluate per-label distance culling. The call is cheap: a vector subtract + length per sprite.
+        this.updateLabelPositions();
         this.requestRender();
     };
 
@@ -92,7 +102,6 @@ export class GraphSceneService {
     private edges: GraphEdge[] = [];
     private titleToIndex = new Map<string, number>();
     private is3D = false;
-    private labelsVisible = false;
     /** When true, nodes are colored by community instead of by entity type. */
     private colorByCommunity = false;
 
@@ -104,7 +113,8 @@ export class GraphSceneService {
     private hoveredEdgeIndex: number | null = null;
     /** Node currently shown in the detail panel — keeps its border + a persistent label. */
     private selectedNodeIndex: number | null = null;
-    private selectedLabelSprite: Sprite | null = null;
+    /** Fires at the end of every rendered frame, so the component can reposition HTML overlays (e.g. selected-node label) during camera motion. */
+    private afterRenderCallback: (() => void) | null = null;
     /** Nodes outlined while the user hovers a sidebar type-filter item. Null when no filter is hovered. */
     private typeHoverNodeIndices: Set<number> | null = null;
     private connectedEdgeIndices: Set<number> = new Set();
@@ -272,10 +282,7 @@ export class GraphSceneService {
         ) {
             this.updateHoverVisuals();
         }
-        if (this.labelsVisible) {
-            this.updateLabelPositions();
-        }
-        this.updateSelectedLabelPosition();
+        this.updateLabelPositions();
         this.requestRender();
     }
 
@@ -400,9 +407,7 @@ export class GraphSceneService {
         this.updateInstanceColors();
         this.updateEdgePositions();
         this.updateHoverVisuals();
-        if (this.labelsVisible) {
-            this.updateLabelPositions();
-        }
+        this.updateLabelPositions();
         this.requestRender();
     }
 
@@ -431,9 +436,8 @@ export class GraphSceneService {
 
     /** Write the current graph state (positions, colors, visibility, labels) into freshly created meshes. */
     private applyGraphState(): void {
-        if (this.labelsVisible) {
-            this.createLabelSprites();
-        }
+        this.createLabelSprites();
+        this.updateLabelPositions();
         this.updateInstanceMatrices();
         this.updateInstanceColors();
         this.updateEdgePositions();
@@ -547,7 +551,6 @@ export class GraphSceneService {
     private disposeGraphMeshes(scene: Scene): void {
         const { nodesMesh, edgesMesh } = this.resources!;
         this.disposeLabelSprites();
-        this.disposeSelectedLabelSprite();
 
         // Depth-only node proxy shares geometry + instanceMatrix with nodesMesh — dispose only its material
         if (this.depthNodesMesh) {
@@ -607,19 +610,6 @@ export class GraphSceneService {
     setVisibleTypes(types: Set<string | null> | null): void {
         this.visibleTypeSet = types;
         this.applyVisibilityChange();
-    }
-
-    /** Toggle labels on/off. */
-    setLabelsVisible(visible: boolean): void {
-        this.labelsVisible = visible;
-        if (!this.resources) return;
-
-        if (visible && this.resources.labelSprites.length === 0) {
-            this.createLabelSprites();
-        } else if (!visible) {
-            this.disposeLabelSprites();
-        }
-        this.requestRender();
     }
 
     /** Color nodes by community (true) or by entity type (false). Search highlight and dimming still apply on top. */
@@ -756,56 +746,30 @@ export class GraphSceneService {
         };
     }
 
-    /** Set which node is selected — persistent border + label while the detail panel is open. Pass null to clear. */
+    /** Set which node is selected — persistent border while the detail panel is open. The label is an HTML overlay owned by the component. Pass null to clear. */
     setSelectedNode(nodeIndex: number | null): void {
         if (nodeIndex === this.selectedNodeIndex) return;
         this.selectedNodeIndex = nodeIndex;
-
-        // The selected node suppresses hover visuals on itself; clear any lingering hover on the same index.
-        if (nodeIndex !== null && this.hoveredNodeIndex === nodeIndex) {
-            this.hoveredNodeIndex = null;
-            this.connectedEdgeIndices.clear();
-            this.connectedNodeIndices.clear();
-            this.clearDots();
-            this.updateEdgeColors();
-        }
-
-        this.disposeSelectedLabelSprite();
-        if (nodeIndex !== null && this.resources && this.three) {
-            const node = this.nodes[nodeIndex];
-            if (node) {
-                const sprite = this.createLabelSprite(node.title);
-                sprite.position.set(node.x, node.y + node.radius + LABEL_OFFSET_ABOVE_NODE, node.z);
-                sprite.visible = this.isNodeVisible(node);
-                this.resources.scene.add(sprite);
-                this.selectedLabelSprite = sprite;
-            }
-        }
-
         this.updateHoverVisuals();
+        // Sprite labels hide the currently-selected one; re-run the visibility pass so switching
+        // selection (including clearing it) takes effect without waiting for the next sim tick.
+        this.updateLabelPositions();
         this.requestRender();
     }
 
-    private disposeSelectedLabelSprite(): void {
-        if (!this.selectedLabelSprite) return;
-        this.resources?.scene.remove(this.selectedLabelSprite);
-        this.selectedLabelSprite.material.map?.dispose();
-        this.selectedLabelSprite.material.dispose();
-        this.selectedLabelSprite = null;
+    /** Component hook: fires after every rendered frame so an HTML overlay can follow the projected node. */
+    setAfterRenderCallback(callback: (() => void) | null): void {
+        this.afterRenderCallback = callback;
     }
 
-    private updateSelectedLabelPosition(): void {
-        if (!this.selectedLabelSprite || this.selectedNodeIndex === null) return;
-        const node = this.nodes[this.selectedNodeIndex];
-        if (!node) return;
-        this.selectedLabelSprite.position.set(node.x, node.y + node.radius + LABEL_OFFSET_ABOVE_NODE, node.z);
-        this.selectedLabelSprite.visible = this.isNodeVisible(node);
+    /** Whether a node's current position passes the visibility filters — used by the component to show/hide its HTML overlays. */
+    isNodeIndexVisible(nodeIndex: number): boolean {
+        const node = this.nodes[nodeIndex];
+        return node ? this.isNodeVisible(node) : false;
     }
 
     /** Set which node is hovered — highlights connected edges/nodes and shows outline. Pass null to clear. */
     setHoveredNode(nodeIndex: number | null): void {
-        // The selected node already carries a persistent border + label — hover must not layer on top of it.
-        if (nodeIndex !== null && nodeIndex === this.selectedNodeIndex) nodeIndex = null;
         if (nodeIndex === this.hoveredNodeIndex) return;
         this.hoveredNodeIndex = nodeIndex;
         this.hoveredEdgeIndex = null;
@@ -821,6 +785,9 @@ export class GraphSceneService {
 
         this.updateEdgeColors();
         this.updateHoverVisuals();
+        // Sprite labels hide the currently-hovered one; re-run the visibility pass so entering/leaving a
+        // node takes effect immediately without waiting for the next sim tick.
+        this.updateLabelPositions();
         this.requestRender();
     }
 
@@ -942,7 +909,22 @@ export class GraphSceneService {
     zoomToType(type: string | null, durationMs = 400): void {
         if (!this.resources || type === null) return;
         const visibleNodes = this.nodes.filter((n) => n.type === type && this.isNodeVisible(n));
-        if (visibleNodes.length === 0) return;
+        this.fitCameraToNodes(visibleNodes, durationMs);
+    }
+
+    /**
+     * Smoothly animate the camera to frame every visible node in the scene. Does nothing if nothing is visible
+     * or the scene is not yet initialised. Handles both "zoomed out too far" and "some nodes off-screen".
+     */
+    fitToView(durationMs = 400): void {
+        if (!this.resources) return;
+        const visibleNodes = this.nodes.filter((n) => this.isNodeVisible(n));
+        this.fitCameraToNodes(visibleNodes, durationMs);
+    }
+
+    /** Shared camera animation used by zoomToType and fitToView — see zoomToType for the per-camera behaviour. */
+    private fitCameraToNodes(visibleNodes: readonly GraphNode[], durationMs: number): void {
+        if (!this.resources || visibleNodes.length === 0) return;
 
         let minX = Infinity;
         let minY = Infinity;
@@ -1151,10 +1133,7 @@ export class GraphSceneService {
         this.updateInstanceMatrices();
         this.updateInstanceColors();
         this.updateEdgePositions();
-        if (this.labelsVisible) {
-            this.updateLabelPositions();
-        }
-        this.updateSelectedLabelPosition();
+        this.updateLabelPositions();
         this.requestRender();
     }
 
@@ -1280,17 +1259,66 @@ export class GraphSceneService {
 
     private updateLabelPositions(): void {
         if (!this.resources) return;
-        for (let i = 0; i < this.resources.labelSprites.length && i < this.nodes.length; i++) {
+        const { camera, labelSprites, renderer } = this.resources;
+        const perspective = (camera as PerspectiveCamera).isPerspectiveCamera === true;
+        const zoom = perspective ? 0 : (camera as OrthographicCamera).zoom;
+        const cameraInverse = perspective ? camera.matrixWorldInverse : null;
+        const nodeInView = perspective ? new this.three!.Vector3() : null;
+        // Half the canvas height in device-independent pixels; perspective projection maps a world
+        // segment of length `L` at view depth `d` to `L · halfHeightPx / (d · tan(fov/2))` pixels.
+        const halfHeightPx = perspective ? renderer.domElement.clientHeight / 2 : 0;
+        const tanHalfFov = perspective ? Math.tan(((camera as PerspectiveCamera).fov * Math.PI) / 360) : 0;
+        // Reference radius used for the 3D culling metric: by using a fixed radius instead of each
+        // node's own, visibility depends solely on view depth, so a bigger-but-farther node can never
+        // win a label while a smaller-but-closer one has none.
+        const referenceRadius3D = NODE_MIN_RADIUS;
+        // 2D radius pivot: the influence coefficient blends each node's radius toward this midpoint, so
+        // a node whose radius equals the midpoint keeps the same toggle zoom regardless of the setting.
+        const midpointRadius2D = (NODE_MIN_RADIUS + NODE_MAX_RADIUS) / 2;
+
+        for (let i = 0; i < labelSprites.length && i < this.nodes.length; i++) {
             const node = this.nodes[i];
-            const sprite = this.resources.labelSprites[i];
+            const sprite = labelSprites[i];
             sprite.position.set(node.x, node.y + node.radius + LABEL_OFFSET_ABOVE_NODE, node.z);
-            sprite.visible = this.isNodeVisible(node);
+            // Hide the sprite label for the selected or hovered node — their HTML overlays already show
+            // the title (in the accent-purple style), and keeping both would stack two pills over the node.
+            const allowedByNode =
+                i !== this.selectedNodeIndex && i !== this.hoveredNodeIndex && this.isNodeVisible(node);
+            if (!allowedByNode) {
+                sprite.visible = false;
+                continue;
+            }
+
+            if (perspective) {
+                // Pixel radius of a reference-sized node at this node's view depth; view-depth-based
+                // so panning (which does not change view depth) leaves labels alone, and the reference
+                // radius makes the metric node-size-independent.
+                nodeInView!.set(node.x, node.y, node.z).applyMatrix4(cameraInverse!);
+                const viewDepth = -nodeInView!.z;
+                const pixelRadius = viewDepth > 0 ? (referenceRadius3D * halfHeightPx) / (viewDepth * tanHalfFov) : 0;
+                sprite.visible = pixelRadius > LABEL_MIN_NODE_PIXEL_RADIUS_3D;
+                // Restore base world-space scale; a prior 2D pass may have shrunk it to counter ortho zoom.
+                sprite.scale.set(sprite.userData['baseScaleX'], sprite.userData['baseScaleY'], 1);
+            } else {
+                // 2D ortho: 1 world unit = 1 pixel at zoom = 1, so pixel radius = radius × zoom.
+                // Influence coefficient dampens how strongly node size spreads the toggle zoom across nodes.
+                const effectiveRadius = midpointRadius2D + (node.radius - midpointRadius2D) * LABEL_SIZE_INFLUENCE_2D;
+                sprite.visible = effectiveRadius * zoom > LABEL_MIN_NODE_PIXEL_RADIUS_2D;
+                // Keep labels at a constant on-screen size in 2D by countering the ortho zoom: world
+                // extent of a pixel = 1 / zoom, so scale = baseScale / zoom renders at a fixed pixel size.
+                const screenSizeScale = LABEL_SCREEN_SIZE_SCALE_2D / zoom;
+                sprite.scale.set(
+                    sprite.userData['baseScaleX'] * screenSizeScale,
+                    sprite.userData['baseScaleY'] * screenSizeScale,
+                    1
+                );
+            }
         }
     }
 
     private createLabelSprite(text: string): Sprite {
         const THREE = this.three!;
-        const font = `${LABEL_FONT_SIZE}px ${LABEL_FONT_FAMILY}`;
+        const font = `${LABEL_FONT_WEIGHT} ${LABEL_FONT_SIZE}px ${LABEL_FONT_FAMILY}`;
 
         // Measure text width first
         const measureCanvas = document.createElement('canvas');
@@ -1306,12 +1334,19 @@ export class GraphSceneService {
         canvas.height = canvasHeight;
         const context = canvas.getContext('2d')!;
 
-        // Background pill
-        context.fillStyle = LABEL_BACKGROUND_COLOR;
-        const radius = canvasHeight / 2;
+        // Background pill — inset by half the stroke so the border is drawn fully inside the canvas.
+        const borderWidth = LABEL_BORDER_WIDTH;
+        const strokeInset = borderWidth / 2;
+        const pillWidth = canvasWidth - borderWidth;
+        const pillHeight = canvasHeight - borderWidth;
+        const radius = pillHeight / 2;
         context.beginPath();
-        context.roundRect(0, 0, canvasWidth, canvasHeight, radius);
+        context.roundRect(strokeInset, strokeInset, pillWidth, pillHeight, radius);
+        context.fillStyle = LABEL_BACKGROUND_COLOR;
         context.fill();
+        context.lineWidth = borderWidth;
+        context.strokeStyle = LABEL_BORDER_COLOR;
+        context.stroke();
 
         // Text
         context.font = font;
@@ -1321,12 +1356,32 @@ export class GraphSceneService {
         context.fillText(text, canvasWidth / 2, canvasHeight / 2);
 
         const texture = new THREE.CanvasTexture(canvas);
+        // Canvas 2D paints in sRGB; without this three.js treats the texels as linear and the
+        // renderer's sRGB output re-encodes them, lightening every pill color.
+        texture.colorSpace = THREE.SRGBColorSpace;
         texture.needsUpdate = true;
-        const material = new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false });
+        // `transparent` lands the sprite in three.js's transparent render group — otherwise alphaTest
+        // alone marks it opaque, and three.js draws opaque before transparent, so the semi-transparent
+        // nodes in the 3D pass end up blending over the "opaque" pill.
+        // `alphaTest` still discards the fully transparent canvas pixels outside the pill, so the pill
+        // stays sharp instead of blending a halo.
+        const material = new THREE.SpriteMaterial({
+            map: texture,
+            transparent: true,
+            alphaTest: 0.5,
+            depthTest: false,
+        });
         const sprite = new THREE.Sprite(material);
-        // Scale proportional to canvas aspect ratio
+        // Scale proportional to canvas aspect ratio. The base scale is stashed on `userData` so the 2D
+        // branch of `updateLabelPositions` can counter the ortho zoom and keep the pill at a constant
+        // on-screen size, while 3D keeps the raw world-size scaling for natural perspective shrinkage.
         const spriteWidth = LABEL_SPRITE_HEIGHT * (canvasWidth / canvasHeight);
         sprite.scale.set(spriteWidth, LABEL_SPRITE_HEIGHT, 1);
+        sprite.userData['baseScaleX'] = spriteWidth;
+        sprite.userData['baseScaleY'] = LABEL_SPRITE_HEIGHT;
+        // Within transparent group, higher renderOrder draws later — so the pill sits on top of the
+        // back-to-front-sorted node mesh in the 3D multi-pass.
+        sprite.renderOrder = FOREGROUND_RENDER_ORDER;
         return sprite;
     }
 
@@ -1655,6 +1710,9 @@ export class GraphSceneService {
         } else {
             this.lastFrameTimestamp = null;
         }
+
+        // After the frame is on screen, let the component reposition HTML overlays that follow projected nodes.
+        this.afterRenderCallback?.();
     }
 
     /**
@@ -1671,7 +1729,6 @@ export class GraphSceneService {
         const nodeMat = nodesMesh.material as InstanceType<typeof import('three').MeshPhongMaterial>;
 
         const savedLabelVis = labelSprites.map((s) => s.visible);
-        const savedSelectedLabelVis = this.selectedLabelSprite?.visible ?? false;
         const savedBackground = scene.background;
         const prevAutoClear = renderer.autoClear;
         renderer.autoClear = false;
@@ -1684,7 +1741,6 @@ export class GraphSceneService {
         if (this.highlightLinesObj) this.highlightLinesObj.visible = false;
         if (this.dotsMesh) this.dotsMesh.visible = false;
         for (const s of labelSprites) s.visible = false;
-        if (this.selectedLabelSprite) this.selectedLabelSprite.visible = false;
         depthMesh.visible = true;
         renderer.render(scene, camera);
 
@@ -1706,7 +1762,6 @@ export class GraphSceneService {
         labelSprites.forEach((s, i) => {
             s.visible = savedLabelVis[i];
         });
-        if (this.selectedLabelSprite) this.selectedLabelSprite.visible = savedSelectedLabelVis;
         renderer.render(scene, camera);
         nodeMat.depthTest = true;
 
@@ -1714,7 +1769,6 @@ export class GraphSceneService {
         nodesMesh.visible = false;
         if (this.outlineMesh) this.outlineMesh.visible = false;
         for (const s of labelSprites) s.visible = false;
-        if (this.selectedLabelSprite) this.selectedLabelSprite.visible = false;
         if (edgesMesh) edgesMesh.visible = true;
         if (this.highlightLinesObj) this.highlightLinesObj.visible = true;
         if (this.dotsMesh) this.dotsMesh.visible = true;
@@ -1724,7 +1778,6 @@ export class GraphSceneService {
         labelSprites.forEach((s, i) => {
             s.visible = savedLabelVis[i];
         });
-        if (this.selectedLabelSprite) this.selectedLabelSprite.visible = savedSelectedLabelVis;
 
         scene.background = savedBackground;
         renderer.autoClear = prevAutoClear;

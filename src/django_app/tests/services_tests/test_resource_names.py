@@ -79,7 +79,7 @@ def rich_org(default_org):
         DocumentMetadata,
         SourceCollection,
     )
-    from tables.models.llm_models import LLMConfig
+    from ai_models.models import LLMConfig
     from rbac.models import Role
     from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgentChat
     from tables.models.session_models import Session

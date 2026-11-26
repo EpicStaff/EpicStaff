@@ -42,6 +42,25 @@ class VersionConverter:
         return decorator
 
     @classmethod
+    def supported_version(cls, data: dict) -> int:
+        """Return the file's version when this release reads it.
+
+        Raises:
+            UnsupportedImportVersionError: The version is not a whole number, is
+                below 1 (no release wrote one), or is newer than IMPORT_VERSION.
+        """
+        version = file_version(data)
+        if version < 1:
+            raise UnsupportedImportVersionError(
+                f"File version {version} is older than the first export version 1"
+            )
+        if version > IMPORT_VERSION:
+            raise UnsupportedImportVersionError(
+                f"File version {version} is newer than supported {IMPORT_VERSION}"
+            )
+        return version
+
+    @classmethod
     def convert(cls, data: dict) -> dict:
         """
         Convert import data dict to the current IMPORT_VERSION via chain of conversions
@@ -50,6 +69,9 @@ class VersionConverter:
             - data is non-empty dict
             - Partial data bundle is allowed (missing key are allowed)
             - Convertions MUST guard against missing keys
+            - Entries and the nested values convertions read have the shape an
+              export writes; an uploaded file is checked first by
+              preparation.convert_to_current_version
             - data["version"] is an int <= IMPORT_VERSION (default to 1 if absent)
             - A migration func is registered for every version
         Postconditions
@@ -58,15 +80,10 @@ class VersionConverter:
         Raises
             - UnsupportedImportVersionError:
                 - if data["version"] is not a whole number
-                - if data["version"] > IMPORT_VERSION
+                - if data["version"] < 1 or > IMPORT_VERSION
                 - if no convertion path exists for an intermediate version
         """
-        version = file_version(data)
-
-        if version > IMPORT_VERSION:
-            raise UnsupportedImportVersionError(
-                f"File version {version} is newer than supported {IMPORT_VERSION}"
-            )
+        version = cls.supported_version(data)
 
         while version < IMPORT_VERSION:
             if version not in cls._conversions:

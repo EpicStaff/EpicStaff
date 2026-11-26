@@ -6,7 +6,7 @@ import pytest
 from transport_secrets import sealing_cryptographer, seal
 
 from app.core.settings import settings
-from app.providers.tunnels.ngrok_tunnel import NgrokTunnel
+from app.providers.tunnels.ngrok_tunnel import NgrokTunnel, NgrokTunnelStartError
 from app.providers.tunnels.ngrok_working_directory import temp_root_unsafe_reason
 
 # Patched rather than real, so the owner cases run the same as root, as a user and on
@@ -62,7 +62,8 @@ async def test_tunnel_creates_nothing_and_never_starts_in_an_unsafe_temp_root(
     temp_root_status(mode=stat.S_IFDIR | 0o777, uid=CURRENT_UID)
     provider = _make_provider()
 
-    await provider.connect()
+    with pytest.raises(NgrokTunnelStartError):
+        await provider.connect()
 
     ngrok_environment.ngrok.connect.assert_not_called()
     assert list(ngrok_environment.temp_root.iterdir()) == []
@@ -110,7 +111,8 @@ async def test_symlinked_temp_root_is_checked_at_its_target(
     temp_root_status(mode=stat.S_IFDIR | 0o777, uid=CURRENT_UID)
     provider = _make_provider()
 
-    await provider.connect()
+    with pytest.raises(NgrokTunnelStartError):
+        await provider.connect()
 
     ngrok_environment.ngrok.connect.assert_not_called()
 

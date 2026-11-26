@@ -2,7 +2,9 @@
 
 Every redirect goes either to the plugin's own callback page (`frame_origin(plugin)` plus a
 fixed path, with the result in the fragment) or to one of EpicStaff's own pages (login, the
-organization chooser). No target is ever taken from the request.
+organization chooser). No target is ever taken from the request, and there is no redirect at
+all, not even an error one, unless the plugin's host proves it is served by this deployment
+(`PluginHostVerifier`): a code sent to a name another server holds would be that server's.
 """
 
 import time
@@ -16,6 +18,7 @@ from plugins.access.plugin_access import (
     resolve_person_plugin_access,
 )
 from plugins.audit import log_login_access_denied
+from plugins.gateway.host_verifier import PluginHostVerifier
 from plugins.identity.authorization_codes import (
     AuthorizationCodeRecord,
     PluginAuthorizationCodeService,
@@ -72,8 +75,13 @@ class AuthorizeQuery:
 class PluginAuthorizationService:
     """Decides the answer to one authorize request."""
 
-    def __init__(self, codes: PluginAuthorizationCodeService | None = None):
+    def __init__(
+        self,
+        codes: PluginAuthorizationCodeService | None = None,
+        hosts: PluginHostVerifier | None = None,
+    ):
         self._codes = codes or PluginAuthorizationCodeService()
+        self._hosts = hosts or PluginHostVerifier()
 
     def redirect_target(self, query: AuthorizeQuery, plugin: Plugin, user) -> str:
         """Return the URL to send the browser to.
@@ -85,7 +93,12 @@ class PluginAuthorizationService:
         `interaction_required`). A person who may use it nowhere asked gets
         `temporarily_unavailable` when they may once an upgrade there finishes, else
         `access_denied`. Otherwise a code is issued for the plugin's callback.
+
+        Raises:
+            PluginHostNotServedHereError: The plugin's host is not served by this deployment;
+                no answer may go there, so the view answers on EpicStaff's own origin.
         """
+        self._hosts.assert_served_here(query.plugin)
         origins = PluginOrigins()
         if user is None:
             if query.silent:

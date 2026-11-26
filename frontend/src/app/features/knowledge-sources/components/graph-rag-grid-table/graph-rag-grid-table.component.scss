@@ -151,6 +151,27 @@
     min-width: 0;
 }
 
+// The resize line of the header handle, continued down the column's right edge in every body row. Mirrors the
+// pattern in the shared app-table so dragging a boundary shows a full-height guide line, not just a header tick.
+.grid-table-cell--resize-line {
+    &::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        bottom: -1px;
+        right: 0;
+        width: 2px;
+        background: var(--accent-color);
+        pointer-events: none;
+        z-index: 2;
+    }
+
+    // The last row has no bottom border; 1px more would overflow and could flash a scrollbar.
+    .grid-table-row:last-child > &::before {
+        bottom: 0;
+    }
+}
+
 // ===== RESIZE HANDLE =====
 .grid-table-resize-handle {
     position: absolute;
@@ -185,6 +206,17 @@
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
+}
+
+// ===== COPY BUTTON =====
+// The shared app-copy-button is absolutely positioned and hover-revealed by default; inside a grid cell
+// we want it inline so it pushes the id text, and always visible so clicks don't need a hover first.
+.grid-table-copy-btn {
+    position: static;
+    opacity: 1;
+    margin-left: auto;
+    margin-right: -0.25rem;
+    flex-shrink: 0;
 }
 
 // ===== HIGHLIGHT =====

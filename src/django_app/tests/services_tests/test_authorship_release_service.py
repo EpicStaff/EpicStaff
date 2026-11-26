@@ -7,7 +7,8 @@ from agents.models.surface_models import Surface
 from rbac.authorship.registry import author_tracked_models
 from rbac.governance.authorship import AuthorshipReleaseService
 from rbac.models import OrganizationUser
-from tables.models import Graph, GraphNote, Label, LLMModel, StorageFile
+from tables.models import Graph, GraphNote, Label, StorageFile
+from ai_models.models import LLMModel
 from tables.models.audit_filter_preset_models import AuditFilterPreset
 from tables.models.flow_filter_preset_models import FlowFilterPreset
 from tables.models.tool_filter_preset_models import ToolFilterPreset

@@ -3,7 +3,6 @@
     position: relative;
     overflow: hidden;
     color: var(--color-text-primary);
-    background: var(--color-ks-transparent-black-60);
 
     &__empty {
         display: flex;
@@ -56,6 +55,7 @@
         overflow: auto;
         padding: 28px 24px 24px;
         box-sizing: border-box;
+        background: var(--color-ks-transparent-black-60);
 
         &--pdf {
             overflow: hidden;

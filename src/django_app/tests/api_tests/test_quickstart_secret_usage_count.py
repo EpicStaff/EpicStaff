@@ -12,9 +12,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from tables.models import Secret
-from tables.models.embedding_models import EmbeddingModel
-from tables.models.llm_models import LLMModel
-from tables.models.provider import Provider
+from ai_models.models import EmbeddingModel, LLMModel, Provider
 from rbac.models import Organization, OrganizationUser, Role
 from rbac.models.enums import BuiltInRole
 from tables.services.secrets.usage_service import secret_usage_service
@@ -67,9 +65,9 @@ def openai_seeded(db):
 @pytest.fixture
 def gemini_seeded(db):
     provider = Provider.objects.create(name="gemini")
-    LLMModel.objects.get_or_create(name="gemini-1.5-pro", llm_provider=provider)
+    LLMModel.objects.get_or_create(name="gemini-3.8-flash", llm_provider=provider)
     EmbeddingModel.objects.get_or_create(
-        name="text-embedding-004", embedding_provider=provider
+        name="gemini-embedding-001", embedding_provider=provider
     )
     return provider
 

@@ -31,6 +31,7 @@ from plugins.views.admin_plugins import (
 class PluginAdminView(APIView):
     authentication_classes = ADMIN_AUTHENTICATION
     permission_classes = ADMIN_PERMISSIONS
+    uses_organization_context = False
 
 
 class PluginUninstallView(PluginAdminView):

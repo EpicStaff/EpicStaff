@@ -8,7 +8,8 @@ from rest_framework.exceptions import ValidationError
 
 from tables.import_export.id_mapper import IDMapper
 from tables.import_export.strategies.configs import OpenAIRealtimeConfigStrategy
-from tables.models import Provider, RealtimeModel
+from tables.models import RealtimeModel
+from ai_models.models import Provider
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 DEAD_MODEL_NAME = "gpt-4o-realtime-preview-2024-12-17"

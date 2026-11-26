@@ -140,6 +140,7 @@ from .tools import (
     PythonCodeToolData,
 )
 from .variable_conversion import (
+    InvalidInputTypeError,
     _normalize_type,
     args_schema_to_variables,
     json_schema_node_to_nested_variable,
@@ -220,6 +221,7 @@ __all__ = [
     "GraphSearchConfig",
     "GraphSessionMessageData",
     "IndexRequest",
+    "InvalidInputTypeError",
     "KeyValueNodeData",
     "KnowledgeChunkResponse",
     "KnowledgeNodeData",

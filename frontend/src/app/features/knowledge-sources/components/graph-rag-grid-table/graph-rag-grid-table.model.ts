@@ -4,6 +4,8 @@ export interface GraphGridColumnDef {
     width?: string;
     /** End-pinned columns stay fixed on the right while the grid scrolls horizontally. */
     pinned?: 'end';
+    /** Adds a copy-to-clipboard button to the right edge of each body cell in this column. */
+    copyable?: boolean;
     /**
      * Render this column as a row-level icon button instead of a value cell. Clicking it (or activating
      * the cell via Enter/Space) emits `actionClick` carrying `name` and the row. The column has no header.

@@ -2,11 +2,11 @@ import { Component, signal, WritableSignal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
-import { of, Subject } from 'rxjs';
+import { of, Subject, tap } from 'rxjs';
 
 import { ActiveOrgService } from '../../../../services/auth/active-org.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
-import { AvailablePlugin } from '../../models/available-plugin.model';
+import { AvailablePlugin, AvailablePluginAvailability } from '../../models/available-plugin.model';
 import { PluginTheme } from '../../models/plugin-frame-protocol.model';
 import { AvailablePluginsStorageService } from '../../services/available-plugins-storage.service';
 import { PluginHostThemeService } from '../../services/plugin-host-theme.service';
@@ -20,7 +20,8 @@ import {
 import { pluginPageMatcher } from './plugin-page.matcher';
 
 const FRAME_ORIGIN = 'https://weather.plugins.example.com';
-const ATLAS_ORIGIN = 'https://atlas.plugins.example.com';
+// A flat host (`{id}-app.example.com`), as most deployments name their plugins.
+const ATLAS_ORIGIN = 'https://atlas-app.example.com';
 const SANDBOX =
     'allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals';
 
@@ -94,6 +95,21 @@ describe('PluginHostPageComponent', () => {
 
     function frame(): HTMLIFrameElement | null {
         return (harness.routeNativeElement as HTMLElement | null)?.querySelector('iframe') ?? null;
+    }
+
+    function tryAgainButton(): HTMLButtonElement {
+        const button = Array.from(
+            (harness.routeNativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('button')
+        ).find((candidate) => candidate.textContent?.trim() === 'Try again');
+        if (!button) throw new Error('no Try again button');
+        return button;
+    }
+
+    /** The next refresh answers only when the test says so, and lands its list as the real storage does. */
+    function holdNextRefresh(): Subject<AvailablePlugin[]> {
+        const response = new Subject<AvailablePlugin[]>();
+        refresh.mockImplementationOnce(() => response.pipe(tap((list) => plugins.set(list))));
+        return response;
     }
 
     /** The frame now shown, with what EpicStaff posts to its window recorded in `posted`. */
@@ -231,13 +247,12 @@ describe('PluginHostPageComponent', () => {
         harness.detectChanges();
         expect(frame()).toBeNull();
 
-        const tryAgain = Array.from(
-            (harness.routeNativeElement as HTMLElement).querySelectorAll<HTMLButtonElement>('button')
-        ).find((button) => button.textContent?.trim() === 'Try again');
         // Once when the plugin opened, then for Try again.
         expect(refresh).toHaveBeenCalledTimes(1);
-        tryAgain?.click();
-        plugins.set([buildAvailablePlugin()]);
+        const response = holdNextRefresh();
+        tryAgainButton().click();
+        response.next([buildAvailablePlugin()]);
+        response.complete();
         harness.detectChanges();
 
         expect(refresh).toHaveBeenCalledTimes(2);
@@ -373,6 +388,125 @@ describe('PluginHostPageComponent', () => {
         });
     });
 
+    describe('when the plugin is not ready', () => {
+        const UNAVAILABLE_MESSAGE =
+            "EpicStaff couldn't confirm that this plugin's address leads here. Ask your administrator to check it.";
+
+        function text(): string {
+            return (harness.routeNativeElement as HTMLElement | null)?.textContent ?? '';
+        }
+
+        /** The polite status line under the message. */
+        function status(): string | null {
+            const line = (harness.routeNativeElement as HTMLElement | null)?.querySelector('[role="status"]');
+            return line ? (line.textContent?.trim() ?? '') : null;
+        }
+
+        it.each([
+            {
+                availability: 'unavailable',
+                frameOrigin: null,
+                message: UNAVAILABLE_MESSAGE,
+            },
+            {
+                // A stale or careless response: the state alone keeps a safe origin from being framed.
+                availability: 'unavailable',
+                frameOrigin: FRAME_ORIGIN,
+                message: UNAVAILABLE_MESSAGE,
+            },
+            {
+                // A state a newer backend may send: never framed by a build that doesn't know it.
+                availability: 'suspended',
+                frameOrigin: FRAME_ORIGIN,
+                message: "EpicStaff doesn't know this plugin's state, so its page was not loaded.",
+            },
+        ])(
+            'frames nothing for $availability with origin $frameOrigin and says why',
+            async ({ availability, frameOrigin, message }) => {
+                plugins.set([
+                    buildAvailablePlugin({
+                        availability: availability as AvailablePluginAvailability,
+                        frame_origin: frameOrigin,
+                    }),
+                ]);
+                await harness.navigateByUrl('/plugins/weather');
+                harness.detectChanges();
+
+                expect(frame()).toBeNull();
+                expect(text()).toContain("Weather isn't available right now");
+                expect(text()).toContain(message);
+            }
+        );
+
+        it('removes the frame once the server says the plugin is unavailable', async () => {
+            await open('/plugins/weather');
+
+            plugins.set([buildAvailablePlugin({ availability: 'unavailable', frame_origin: null })]);
+            harness.detectChanges();
+
+            expect(frame()).toBeNull();
+            expect(text()).toContain("Weather isn't available right now");
+            expect(text()).toContain('Once the address is corrected, it can take up to a minute to be picked up.');
+        });
+
+        it('shows Try again busy while the server is asked, then frames the plugin it says is ready', async () => {
+            plugins.set([buildAvailablePlugin({ availability: 'unavailable', frame_origin: null })]);
+            await harness.navigateByUrl('/plugins/weather');
+            harness.detectChanges();
+            refresh.mockClear();
+            const response = holdNextRefresh();
+
+            tryAgainButton().click();
+            harness.detectChanges();
+            expect(tryAgainButton().getAttribute('aria-disabled')).toBe('true');
+            tryAgainButton().click();
+            expect(refresh).toHaveBeenCalledTimes(1);
+
+            response.next([buildAvailablePlugin()]);
+            response.complete();
+            harness.detectChanges();
+
+            expect(frame()?.getAttribute('src')).toBe(`${FRAME_ORIGIN}/?es_org=3`);
+        });
+
+        it('makes Try again usable again and says so when the server still says unavailable', async () => {
+            const unavailable = (): AvailablePlugin =>
+                buildAvailablePlugin({ availability: 'unavailable', frame_origin: null });
+            plugins.set([unavailable()]);
+            await harness.navigateByUrl('/plugins/weather');
+            harness.detectChanges();
+            expect(status()).toBe('');
+
+            for (const attempt of [1, 2]) {
+                const response = holdNextRefresh();
+                tryAgainButton().click();
+                harness.detectChanges();
+                // Emptied while asking, so the same answer is announced again.
+                expect(status()).toBe('');
+                response.next([unavailable()]);
+                response.complete();
+                harness.detectChanges();
+
+                expect(frame(), `attempt ${attempt}`).toBeNull();
+                expect(tryAgainButton().getAttribute('aria-disabled')).toBeNull();
+                expect(status()).toBe('Still unavailable');
+            }
+        });
+
+        it('does not poll the server, unlike maintenance', async () => {
+            await open('/plugins/weather');
+            refresh.mockClear();
+            // Before the state changes, so a poll it started would run on these timers.
+            vi.useFakeTimers();
+            plugins.set([buildAvailablePlugin({ availability: 'unavailable', frame_origin: null })]);
+            harness.detectChanges();
+
+            vi.advanceTimersByTime(PLUGIN_MAINTENANCE_POLL_MS * 3);
+
+            expect(refresh).not.toHaveBeenCalled();
+        });
+    });
+
     describe('availability.changed from the framed page', () => {
         it('asks the server again at once, then at most once per 10 seconds, the last report answered late', async () => {
             const port = handshake(await open('/plugins/weather'));
@@ -432,5 +566,17 @@ describe('PluginHostPageComponent', () => {
         harness.detectChanges();
         expect(frame()).toBeNull();
         expect(harness.routeNativeElement?.textContent).toContain("Couldn't open the plugin");
+    });
+
+    it('frames nothing for a ready plugin without an origin', async () => {
+        plugins.set([buildAvailablePlugin({ frame_origin: null })]);
+        await harness.navigateByUrl('/plugins/weather');
+        harness.detectChanges();
+
+        expect(frame()).toBeNull();
+        expect(harness.routeNativeElement?.textContent).toContain("Couldn't open the plugin");
+        expect(harness.routeNativeElement?.textContent).toContain(
+            'EpicStaff got an unexpected address for this plugin, so its page was not loaded.'
+        );
     });
 });

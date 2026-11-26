@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import errno
 import os
 import shutil
@@ -35,6 +34,10 @@ def _means_symlinks_unsupported(error: OSError) -> bool:
     )
 
 
+class NgrokTunnelStartError(Exception):
+    """Raised by `NgrokTunnel.connect` when the tunnel is not up once it returns."""
+
+
 class NgrokTunnel(AbstractTunnelProvider):
     def __init__(
         self,
@@ -43,7 +46,6 @@ class NgrokTunnel(AbstractTunnelProvider):
         auth_token: str | None = None,
         domain: str | None = None,
         region: str | None = None,
-        reconnect_timeout: int = 10,
         *,
         cryptographer: AbstractCryptographer,
     ):
@@ -53,8 +55,9 @@ class NgrokTunnel(AbstractTunnelProvider):
             cryptographer: Opens `auth_token`.
 
         Raises:
-            ValueError: `auth_token` is missing, or is not a transport ciphertext this
-                service can decrypt. The message never carries the token.
+            ValueError: `auth_token` is missing, is not a transport ciphertext this
+                service can decrypt, or decrypts to an empty token. The message never
+                carries the token.
         """
         if not auth_token:
             raise ValueError("NgrokTunnel requires an auth_token.")
@@ -64,15 +67,17 @@ class NgrokTunnel(AbstractTunnelProvider):
             auth_token = cryptographer.decrypt(auth_token)
         except CryptographerError:
             raise ValueError("NgrokTunnel auth_token could not be decrypted.") from None
+        # Also keeps _redact_auth_token sound: replacing "" would insert the marker
+        # between every character of the message.
+        if not auth_token:
+            raise ValueError("NgrokTunnel auth_token decrypts to an empty token.")
 
         super().__init__(port, auth_token, domain=domain)
         self._host = host
         self._tunnel = None
         self._region = region
-        self._reconnect_timeout = reconnect_timeout
 
         self._is_running = False
-        self._monitor_task: asyncio.Task | None = None
         self._lock = asyncio.Lock()
 
         # Private per-instance directory holding the ngrok config and binary. The binary
@@ -85,17 +90,33 @@ class NgrokTunnel(AbstractTunnelProvider):
         self._start_task: asyncio.Task | None = None
 
     async def connect(self):
+        """Start the tunnel and publish its public URL.
+
+        A start that fails is not retried here: whoever registers the tunnel decides
+        whether to try again, and its path is not served meanwhile.
+
+        Raises:
+            NgrokTunnelStartError: The tunnel is not up: ngrok refused to start (a revoked
+                auth token, ngrok unreachable, an unsafe working directory), its URL could
+                not be published, or the tunnel was disconnected while starting. The caller
+                still owns the tunnel and must disconnect() it, which stops an ngrok process
+                the failed start may have left running and removes its working directory.
+        """
         self._is_running = True
-        if self._monitor_task is None or self._monitor_task.done():
-            self._monitor_task = asyncio.create_task(self._monitor_connection())
+        failure_reason = None
         try:
             await self._establish_connection()
-        except Exception as e:
-            logger.warning(
-                "Initial ngrok connection failed on port {}, monitor will retry in {}s: {}",
-                self._port,
-                self._reconnect_timeout,
-                e,
+        except Exception as error:
+            failure_reason = f"{type(error).__name__}: {self._redact_auth_token(str(error))}"
+        # Raised outside the except block so the original error, whose message and
+        # attributes (`ngrok_logs`) may quote the token, is not even kept as __context__.
+        if failure_reason is not None:
+            raise NgrokTunnelStartError(
+                f"ngrok tunnel on port {self._port} failed to start: {failure_reason}"
+            )
+        if self._tunnel is None:
+            raise NgrokTunnelStartError(
+                f"ngrok tunnel on port {self._port} was disconnected while starting."
             )
 
     async def _establish_connection(self):
@@ -262,30 +283,10 @@ class NgrokTunnel(AbstractTunnelProvider):
         self._working_directory_lock = None
         self._binary_placed = False
 
-    async def _monitor_connection(self):
-        try:
-            while self._is_running:
-                await asyncio.sleep(self._reconnect_timeout)
-                if not self._is_running:
-                    break
-                async with self._lock:
-                    needs_reconnect = self._tunnel is None
-                if needs_reconnect:
-                    try:
-                        await self._establish_connection()
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as e:
-                        logger.warning(
-                            "Reconnection attempt failed: {}. Next try in {}s",
-                            e,
-                            self._reconnect_timeout,
-                        )
-        except asyncio.CancelledError:
-            logger.debug("Monitor task received cancellation.")
-            raise
-        finally:
-            self._is_running = False
+    def _redact_auth_token(self, message: str) -> str:
+        # ngrok can quote a rejected auth token in its errors ("Your authtoken: ..."), and
+        # these messages are logged.
+        return message.replace(self._auth_token, "[redacted]")
 
     async def _stop_in_flight_start(self, start_task: asyncio.Task) -> bool:
         """Kill the starting ngrok process, then wait a bounded time for the start task.
@@ -317,19 +318,18 @@ class NgrokTunnel(AbstractTunnelProvider):
                 timeout,
             )
             return False
-        except Exception as e:
-            logger.debug("ngrok start on port {} failed during disconnect: {}", self._port, e)
+        except Exception as error:
+            logger.debug(
+                "ngrok start on port {} failed during disconnect: {}: {}",
+                self._port,
+                type(error).__name__,
+                self._redact_auth_token(str(error)),
+            )
         return True
 
     async def disconnect(self):
         logger.info("Disconnecting ngrok tunnel on port {}...", self._port)
         self._is_running = False
-
-        if self._monitor_task:
-            self._monitor_task.cancel()
-            with contextlib.suppress(TimeoutError, asyncio.CancelledError):
-                await asyncio.wait_for(self._monitor_task, timeout=1.0)
-            self._monitor_task = None
 
         # Not under the lock: the start task takes it to clean up. If the start is still
         # running after the wait, it owns the process and directory, so stop here.

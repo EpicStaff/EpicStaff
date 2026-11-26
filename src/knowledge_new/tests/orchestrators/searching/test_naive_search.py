@@ -79,9 +79,7 @@ def _make_command(
     query: str = "find me",
     search_config: NaiveSearchConfig | None = None,
     embedding_api_key: str | None = None,
-    llm_api_key: str | None = None,
-    embedding_extra_headers: dict[str, str] | None = None,
-    llm_extra_headers: dict[str, str] | None = None,
+    **command_fields,
 ) -> RunSearch:
     if search_config is None:
         search_config = NaiveSearchConfig(search_limit=5, similarity_threshold=0.3)
@@ -90,9 +88,7 @@ def _make_command(
         query=query,
         search_config=search_config,
         embedding_api_key=embedding_api_key or seal("sk-test"),
-        llm_api_key=llm_api_key,
-        embedding_extra_headers=embedding_extra_headers or {},
-        llm_extra_headers=llm_extra_headers or {},
+        **command_fields,
     )
 
 
@@ -134,6 +130,23 @@ async def test_embedding_extra_headers_reach_the_embedding_provider(embedding_ap
     assert embedding_api.await_args.kwargs["extra_headers"] == {"X-Gateway-Key": "resolved-value"}
 
 
+async def test_request_connection_and_settings_reach_the_embedding_provider(
+    embedding_api, monkeypatch
+):
+    monkeypatch.setattr(litellm_embedder.settings, "CUSTOM_EMBED_BASE_URL", None)
+    repo = FakeNaiveRagRepo(embedding_config=_EMBEDDING_CONFIG, found_chunks=[])
+
+    await NaiveSearchOrchestrator(FakeUoW(repo), CRYPTOGRAPHER).execute(
+        _make_command(
+            embedding_connection={"api_base": "http://gateway/v1"},
+            embedding_parameters={"dimensions": 256},
+        )
+    )
+
+    assert embedding_api.await_args.kwargs["api_base"] == "http://gateway/v1"
+    assert embedding_api.await_args.kwargs["dimensions"] == 256
+
+
 async def test_sealed_header_markers_reach_the_embedding_provider_decrypted(
     embedding_api, monkeypatch
 ):
@@ -173,14 +186,21 @@ async def test_secret_that_cannot_be_decrypted_fails_the_search_without_its_valu
     assert "sk-never-sealed" not in str(raised.value)
 
 
-def test_resolved_headers_are_kept_out_of_the_command_repr():
+def test_resolved_headers_and_connection_are_kept_out_of_the_command_repr():
     command = _make_command(
         embedding_extra_headers={"X-Gateway-Key": "resolved-secret"},
         llm_extra_headers={"X-Llm-Key": "resolved-llm-secret"},
+        embedding_connection={"api_base": "http://user:resolved-emb-password@gw/v1"},
+        llm_connection={"aws_access_key_id": "resolved-llm-key-id"},
     )
 
-    assert "resolved-secret" not in repr(command)
-    assert "resolved-llm-secret" not in repr(command)
+    for secret in (
+        "resolved-secret",
+        "resolved-llm-secret",
+        "resolved-emb-password",
+        "resolved-llm-key-id",
+    ):
+        assert secret not in repr(command)
 
 
 async def test_search_reports_embedding_tokens_and_priced_cost(embedding_api, monkeypatch):

@@ -6,7 +6,7 @@ Fixtures that take `client_as`, `admin_acme` or `acme` need the cross-org fixtur
 
 import pytest
 from rbac.models.enums import Permission, ResourceType
-from tables.models import LLMConfig
+from ai_models.models import LLMConfig
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.services.secrets import secret_service
 from tests.api_tests.role_grant_clients import FULL_CRUD, client_with_grants

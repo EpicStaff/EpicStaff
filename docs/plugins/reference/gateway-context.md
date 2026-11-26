@@ -12,7 +12,7 @@ without a valid context before it reaches your app.
 ## How a request reaches the plugin
 
 ```
-browser ── https://weather.plugins.example.com/api/ping ──▶ EpicStaff's gateway
+browser ── https://weather-app.example.com/api/ping ──────▶ EpicStaff's gateway
                                                            │ 1. is this plugin running?
                                                            │ 2. is the path canonical?
                                                            │ 3. public path, or a logged-in person?
@@ -20,7 +20,7 @@ browser ── https://weather.plugins.example.com/api/ping ──▶ EpicStaff'
                         plugin process ◀── same request + X-EpicStaff-Plugin-Context: <signed context>
 ```
 
-The gateway decides every request to `https://<id>.<plugins base domain>/api/**` before the
+The gateway decides every request to `https://<plugin host>/api/**` before the
 plugin sees it, and adds the context in the `X-EpicStaff-Plugin-Context` header. While the
 plugin is stopped for an upgrade, it refuses every path, public ones included, with the deny
 reason `maintenance` (the client gets `503 plugin_maintenance`); once the plugin is back, it

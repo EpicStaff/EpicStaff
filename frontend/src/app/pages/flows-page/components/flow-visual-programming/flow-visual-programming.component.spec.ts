@@ -1248,7 +1248,9 @@ describe('FlowVisualProgrammingComponent', () => {
             expect(command).toContain('"graph_uuid": "graph-uuid"');
             expect(command).toContain('"topic": "pricing"');
             expect(command).toContain('/api/run-session/');
-            expect(toast['success']).toHaveBeenCalledWith('cURL command copied to clipboard!');
+            expect(toast['success']).toHaveBeenCalledWith(
+                'cURL command copied! Keep only one auth header: access token or API key.'
+            );
         });
 
         it.each([

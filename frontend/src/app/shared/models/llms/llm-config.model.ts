@@ -1,5 +1,6 @@
 import { AuthorshipFields } from '../authorship.model';
 import { Tag } from '../tag.model';
+import { CatalogConfigFields, ConfigModelReference } from './model-catalog.model';
 
 /** How hard a reasoning model thinks before answering. `null` on a config means the provider's own default. */
 export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -15,21 +16,12 @@ export const REASONING_EFFORT_LABELS: Record<ReasoningEffort, string> = {
     max: 'Max',
 };
 
-export interface GetLlmConfigRequest extends AuthorshipFields {
+export interface GetLlmConfigRequest extends AuthorshipFields, CatalogConfigFields {
     id: number;
     custom_name: string;
     model: number;
     api_key_secret_id: number | null;
-    temperature: number | null;
-    top_p: number | null;
-    stop: string[] | null;
-    max_tokens: number | null;
-    presence_penalty: number | null;
-    frequency_penalty: number | null;
-    logit_bias: Record<string, number> | null;
-    seed: number | null;
     timeout: number | null;
-    reasoning_effort: ReasoningEffort | null;
     is_visible: boolean;
     extra_headers?: Record<string, string>;
     /** USD per token; null means the provider's published pricing. Set together with `output_cost_per_token`. */
@@ -41,20 +33,13 @@ export interface GetLlmConfigRequest extends AuthorshipFields {
     created_at: string | null;
 }
 
-export interface CreateLLMConfigRequest {
+/** The writable fields of an LLM config besides its model. A create without `parameters` gets the model's defaults. */
+interface LlmConfigWriteFields {
     custom_name: string;
-    model: number;
     api_key_secret_id: number | null;
-    temperature?: number | null;
-    top_p?: number | null;
-    stop?: string[] | null;
-    max_tokens?: number | null;
-    presence_penalty?: number | null;
-    frequency_penalty?: number | null;
-    logit_bias?: Record<string, number> | null;
-    seed?: number | null;
+    parameters?: Record<string, unknown>;
+    connection?: Record<string, unknown>;
     timeout?: number | null;
-    reasoning_effort?: ReasoningEffort | null;
     is_visible?: boolean;
     extra_headers?: Record<string, string>;
     input_cost_per_token?: number | null;
@@ -62,24 +47,6 @@ export interface CreateLLMConfigRequest {
     tags?: Tag[];
 }
 
-export interface UpdateLLMConfigRequest {
-    id: number;
-    custom_name: string;
-    model: number;
-    api_key_secret_id: number | null;
-    temperature?: number | null;
-    top_p?: number | null;
-    stop?: string[] | null;
-    max_tokens?: number | null;
-    presence_penalty?: number | null;
-    frequency_penalty?: number | null;
-    logit_bias?: Record<string, number> | null;
-    seed?: number | null;
-    timeout?: number | null;
-    reasoning_effort?: ReasoningEffort | null;
-    is_visible?: boolean;
-    extra_headers?: Record<string, string>;
-    input_cost_per_token?: number | null;
-    output_cost_per_token?: number | null;
-    tags?: Tag[];
-}
+export type CreateLLMConfigRequest = LlmConfigWriteFields & ConfigModelReference;
+
+export type UpdateLLMConfigRequest = LlmConfigWriteFields & ConfigModelReference & { id: number };

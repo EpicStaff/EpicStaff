@@ -1,7 +1,8 @@
 import pytest
 from django.db import IntegrityError, transaction
 
-from tables.models import LLMConfig, SystemOneConfig
+from tables.models import SystemOneConfig
+from ai_models.models import LLMConfig
 from tables.services.secrets import secret_service
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 

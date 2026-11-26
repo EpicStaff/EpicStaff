@@ -1,15 +1,17 @@
 # Enable the plugin platform
 
-Plugins add pages to EpicStaff. A SuperAdmin uploads a plugin package, reviews it, approves it and
-grants it to organizations; members of those organizations then find the plugin in the Apps list.
-Each plugin is served from its own host name, `<identifier>.<PLUGINS_BASE_DOMAIN>` (for example
-`weather.plugins.example.com`), and shown inside EpicStaff in a frame. This page is what an
-operator sets up for that. How to build and sign a package is in [the plugin docs](../README.md).
+Plugins add pages to EpicStaff. A SuperAdmin uploads a plugin package, reviews it (the review
+lists the package's warnings, [Review warnings](../reference/manifest.md#review-warnings)), approves
+it and grants it to organizations; members of those organizations then find the plugin in the Apps list.
+Each plugin is served from its own host name, built from `PLUGINS_HOST_TEMPLATE` and the plugin's
+identifier (with the template `{id}-app.example.com`, the plugin `weather` is at
+`weather-app.example.com`), and shown inside EpicStaff in a frame. This page is what an operator
+sets up for that. How to build and sign a package is in [the plugin docs](../README.md).
 
 A plugin is a web page, which nginx serves, and may have a Python backend. Backends run on the
 **plugin node**, the `es_plugins` container, each as a process and Unix user of its own; nginx's
-**gateway** asks Django about every request to `<identifier>.<PLUGINS_BASE_DOMAIN>/api/` before
-passing it on. A backend calls EpicStaff's API as the plugin's **service account** in each
+**gateway** asks Django about every request to a plugin host's `/api/` before passing it on. A
+backend calls EpicStaff's API as the plugin's **service account** in each
 organization the plugin is granted to, within the access its package declares (see
 [Service accounts](#service-accounts)). A backend may also keep its data in a database of its own
 on `plugins_db` (see [Plugin databases](#plugin-databases)), and reach the internet hosts its
@@ -25,37 +27,157 @@ need the node.
 - **A domain name.** EpicStaff must be reached by a domain name; a deployment reached by an IP
   address cannot use plugins.
 - **EpicStaff and the plugins on one site.** EpicStaff's host and the plugin hosts must share a
-  registrable domain: `epicstaff.example.com` with `plugins.example.com` works,
-  `epicstaff.example.com` with `plugins.example.net` does not. A plugin shown in EpicStaff's frame
-  signs its user in through EpicStaff inside that frame, and the browser sends EpicStaff's login
-  cookie (`SameSite=Lax`) there only when the frame and the page around it are the same site.
-  Otherwise sign-in works only when the plugin is opened in a tab of its own.
-- **EpicStaff outside the plugin domain.** EpicStaff's own host must not be the base domain or a
-  name under it (`plugins.example.com`, `app.plugins.example.com`); Django refuses to start then
-  (`plugins.E010`).
-- **One wildcard DNS record**, `*.plugins.example.com`, pointing at the same address as EpicStaff.
-- **One wildcard TLS certificate** for `*.plugins.example.com`. Let's Encrypt issues wildcard
-  certificates only through the DNS-01 challenge.
-- **A base domain you will keep.** Every plugin's address is built from it. Browsers keep each
-  plugin's data under its address, and plugins may register their address with outside services
-  (for example as an OAuth callback). Changing the base domain later breaks all of that.
+  registrable domain: `epicstaff.example.com` with `weather-app.example.com` works,
+  `epicstaff.example.com` with `weather-app.example.net` does not, and Django refuses to start
+  then (`plugins.E014`). A plugin shown in EpicStaff's frame signs its user in through EpicStaff
+  inside that frame, and the browser sends EpicStaff's login cookie (`SameSite=Lax`) there only
+  when the frame and the page around it are the same site.
+- **EpicStaff outside the plugin addresses.** EpicStaff's own host must not match the template:
+  with `{id}.example.com`, EpicStaff at `staff.example.com` would look like the plugin `staff`.
+  Django refuses to start then (`plugins.E010`).
+- **One wildcard DNS record and one wildcard TLS certificate** for the template's parent (see
+  [1. Plugin addresses](#1-plugin-addresses)).
+- **Addresses you will keep.** Every plugin's address is built from `PLUGINS_HOST_TEMPLATE`.
+  Browsers keep each plugin's data under its address, and plugins may register their address with
+  outside services (for example as an OAuth callback). Changing the template or EpicStaff's
+  domain later is possible, but costs every person a new login and needs those registrations
+  redone (see [Changing the domain](#changing-the-domain)).
 - **For plugin backends:** a range of Unix user ids that nothing else on the Docker host uses (see
   `PLUGINS_NODE_UID_RANGE` below), and the architecture of the host (`x86_64` or `aarch64`) among
   the ones a plugin was packed for.
 
-## 1. DNS
+## 1. Plugin addresses
 
-Add one record, `*.plugins.example.com`, with the same target as EpicStaff's own name (an `A`/`AAAA`
-record, or a `CNAME` to EpicStaff's name). No record per plugin is needed.
+`PLUGINS_HOST_TEMPLATE` is a host name with `{id}` in its first label: `<prefix>{id}<suffix>.<parent>`.
+EpicStaff puts the plugin's identifier (the `id` of its manifest) in place of `{id}`. A SuperAdmin
+never types a plugin's address: it is computed from the template and the identifier, and never
+stored.
+
+| Template | The plugin `weather` | DNS record and certificate |
+|---|---|---|
+| `{id}-app.example.com` (suggested) | `weather-app.example.com` | `*.example.com` |
+| `{id}.plugins.example.com` | `weather.plugins.example.com` | `*.plugins.example.com` |
+| `app-{id}.example.com` | `app-weather.example.com` | `*.example.com` |
+| `{id}-ext.example.com` | `weather-ext.example.com` | `*.example.com` |
+
+**Flat or nested.** A flat template such as `{id}-app.example.com` puts every plugin one level
+under `example.com`, beside `epicstaff.example.com`, so the `*.example.com` record and certificate cover it, and a
+`*.example.com` wildcard certificate you already have for EpicStaff can serve the plugins too. On
+Cloudflare, the free Universal SSL certificate covers it with the proxy on. A nested template such
+as `{id}.plugins.example.com` needs a second-level wildcard, `*.plugins.example.com`; behind
+Cloudflare's proxy that needs the paid Advanced Certificate Manager. The other way is a DNS-only
+record with a Let's Encrypt wildcard certificate (DNS-01 challenge), which gives up Cloudflare's
+proxy and shows your server's address.
+
+**Choose an affix nothing else uses.** Every host that matches the template is treated as a plugin
+host, whether a plugin of that identifier exists or not: its pages cannot call EpicStaff's API.
+With a flat template the plugins share your organization's DNS zone, and a specific record beats
+the wildcard: if `crm-app.example.com` points at another server (or is a `CNAME` to a SaaS), that
+server, not EpicStaff, answers for the plugin `crm`. Whoever serves a plugin's host name receives
+the login codes of that plugin's users, and could act as them in the plugin. Pick a prefix or
+suffix no other host of the zone uses; EpicStaff also checks every such host before it trusts it
+(below).
+
+### The host check
+
+With a template that has a prefix or a suffix (`{id}-app.example.com`, `app-{id}.example.com`),
+EpicStaff proves that a plugin's host is served by this EpicStaff before it frames the plugin,
+issues a login code for it, or approves its package. A template without one
+(`{id}.plugins.example.com`, the layout of every deployment upgraded from v1.5.0) is not checked:
+its zone belongs to the plugins alone. `.localhost` templates, development mode included, are never
+checked.
+
+django_app sends a fresh challenge to
+`https://<plugin host>/.well-known/epicstaff/instance?challenge=<challenge>`, follows no redirect,
+gives up after about 3 seconds in all and reads at most 1 KB of the answer. nginx answers with a proof that only this deployment can compute,
+bound to that host name (its key is derived from `PLUGINS_GATEWAY_SECRET`, so rotating the secret
+changes it). The certificate is not checked: the proof is what counts, so deployments with an
+internal certificate authority or behind a VPN keep working.
+
+django_app keeps each answer for a while:
+
+| Answer | Kept for |
+|---|---|
+| The right proof: the host is verified | 10 minutes |
+| Another server answered: a wrong proof, no proof, or another status such as `404` | 1 minute, so a fixed DNS record is picked up within a minute |
+| Inconclusive: no answer, a timeout, `429` or a `5xx` status | 15 seconds; it never replaces a verified answer still kept |
+
+It runs one probe per host at a time. A request that arrives while the host's probe runs treats the
+host as unverified, so the very first sign-in to a plugin can answer `503` once and succeed when
+tried again.
+
+**What you need:** django_app must reach `https://<plugin host>` by its public name: the container
+must resolve the name, and have a route back to this server's nginx (hairpin NAT on your router, a
+Cloudflare-proxied record, or split DNS). django_app honours the usual proxy variables
+(`HTTPS_PROXY`, `NO_PROXY`). Without that route, every plugin fails the check.
+
+**When a host fails it**, django_app logs `plugins.host_unverified host=<host> reason=<reason>`,
+with the reason `unreachable`, `too_slow`, `status_<code>`, `not_a_proof` or `wrong_proof`, and:
+
+- approving the plugin's package is refused (`503 plugin_host_not_served_here`), and the package
+  review shows the warning `host_not_served_here`. An upgrade starts only through approving its
+  package, so it passes the same check;
+- sign-in to the plugin answers `503 plugin_host_not_served_here` as JSON on EpicStaff's own
+  origin, without redirecting anyone to that host;
+- opening the plugin shows, instead of its frame, "<plugin name> isn't available right now" with
+  "EpicStaff couldn't confirm that this plugin's address leads here. Ask your administrator to
+  check it.", the hint "Once the address is corrected, it can take up to a minute to be picked
+  up." and a Try again button; the plugin stays in the Apps list.
+
+The first sign-in or Apps-list load after a kept answer expires may wait up to about 3 seconds for
+the probe. The check stops a name in your zone that points
+elsewhere by accident or is hosted by someone else; it does not stop someone who controls such a
+name and relays the challenge to this deployment's nginx (see
+[Accepted risks](../explanation/accepted-risks.md#a-plugin-host-name-belongs-to-whoever-controls-its-dns)).
+
+**Rules.** EpicStaff refuses to start with plugins on (`plugins.E002`) unless the template:
+
+- holds only lower-case letters, digits, hyphens and dots;
+- holds `{id}` exactly once, in its first label;
+- has a parent of two or more labels (`example.com`, not `com`);
+- keeps its first label at 63 characters or fewer with the longest identifier (32 characters);
+- does not risk `--` as the third and fourth characters of the first label, which are reserved
+  for internationalized names. A prefix of one character is refused (`x{id}` would turn the
+  valid identifier `a--b` into `xa--b`); a prefix of two or three characters is always fine; a
+  prefix of four or more characters must not have `--` there (`xn--{id}`); with no prefix, the
+  suffix must not start with `--`;
+- is not the placeholder `{id}-app.example.invalid`, the production default.
+
+`python scripts/envtool.py` asks for it as **Plugin hosts**, pre-filled with
+`{id}-app.<the domain EpicStaff's host is in>` (`epicstaff.example.com` gives
+`{id}-app.example.com`): press Enter to take it, or type another template. It uses EpicStaff's
+whole host instead when that host has two labels (`acme.com`, `epicstaff.localhost`) or when
+the rest after its first label looks like a country-code suffix, two labels the first of at
+most three characters (`acme.co.uk` gives `{id}-app.acme.co.uk`). When EpicStaff's own host
+already has the `-app` shape (`staff-app.example.com`) it suggests `{id}.plugins.<parent>`.
+When the suggestion's parent has two labels taken from a three-label host, the wizard reminds
+you that it must be a domain you control, not a shared suffix such as `co.uk` or `github.io`,
+which it cannot tell apart.
+
+### DNS
+
+Add one record, `*.<parent>` (for `{id}-app.example.com`, `*.example.com`), with the same target
+as EpicStaff's own name (an `A`/`AAAA` record, or a `CNAME` to EpicStaff's name). No record per
+plugin is needed.
+
+With plugins on, nginx closes the connection without an answer (444) for a name under the parent
+that is neither a plugin host, EpicStaff's own host, nor a plain host name listed in
+`NGINX_SERVER_NAME` (wildcard and regex names there are not exempted), also for a first label
+too long to be a plugin identifier (33 characters or more). The parent itself, IP addresses and
+names outside the parent still reach EpicStaff. With a flat template the parent is your whole
+zone, so list any alias of EpicStaff that lives there in `NGINX_SERVER_NAME`.
 
 ## 2. Certificate
 
 Put the wildcard certificate and its key next to EpicStaff's own (see [SSL](../../setup/ssl.md)):
 
 ```
-src/nginx/certs/plugins-fullchain.pem   # certificate for *.plugins.example.com
+src/nginx/certs/plugins-fullchain.pem   # certificate for *.<parent>, such as *.example.com
 src/nginx/certs/plugins-privkey.pem     # its private key
 ```
+
+With a flat template, these can be copies of EpicStaff's own certificate and key when that is a
+`*.example.com` wildcard.
 
 With `NGINX_SSL_MODE="on"` and plugins on, nginx does not start without these two files. After a
 renewal, reload nginx: `docker compose exec epicstaff-nginx nginx -s reload`.
@@ -66,7 +188,7 @@ A self-signed wildcard certificate for testing, from the repo root (replace the 
 docker run --rm -v "$(pwd)/src/nginx/certs:/certs" -w /certs alpine \
   sh -c "apk add openssl && openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout plugins-privkey.pem -out plugins-fullchain.pem \
-    -subj '/CN=*.plugins.example.com' -addext 'subjectAltName=DNS:*.plugins.example.com'"
+    -subj '/CN=*.example.com' -addext 'subjectAltName=DNS:*.example.com'"
 ```
 
 ## 3. Settings
@@ -80,7 +202,7 @@ without one. `make env-update` adds the ones your file lacks, with their default
 | Variable | Default | What to set |
 |---|---|---|
 | `PLUGINS_ENABLED` | `false` | `true` turns on the plugin API in Django, the plugin hosts, the gateway and the upload route in nginx, and the plugin pages in the UI. The same spellings as `CHAT_ENABLED` are accepted. |
-| `PLUGINS_BASE_DOMAIN` | `plugins.invalid` (production), `plugins.epicstaff.localhost` (development) | The parent of every plugin host, in lower case: `plugins.example.com`. The production default is a placeholder that EpicStaff refuses with plugins on. |
+| `PLUGINS_HOST_TEMPLATE` | `{id}-app.example.invalid` (production), `{id}.plugins.epicstaff.localhost` (development) | The pattern of every plugin host, with `{id}` in its first label: `{id}-app.example.com` (see [1. Plugin addresses](#1-plugin-addresses)). The production default is a placeholder that EpicStaff refuses with plugins on (`plugins.E002`). It replaces `PLUGINS_BASE_DOMAIN` (see [Upgrading to this version](#upgrading-to-this-version)). |
 | `PLUGINS_TRUSTED_SIGNING_KEYS` | `none` | The publishers you trust, comma-separated `<name>:<minisign public key>`. Packages signed by one of these keys are shown as Trusted; see [trust and signing](../explanation/trust-and-signing.md). |
 | `PLUGINS_MAX_PACKAGE_MB` | `300` | The largest package an upload may carry, in MiB (1 MiB = 1,048,576 bytes). Django applies it to the package; nginx accepts a request body one MiB larger, for the multipart framing. Before nginx reads any of an upload, it asks Django (without the body) whether the caller is a logged-in SuperAdmin, and refuses everyone else with 401 or 403, so nobody else can make EpicStaff store a large body. A proxy in front of EpicStaff must allow that size too. |
 | `PLUGINS_GRACE_PERIOD_DAYS` | `30` | Days a suspended or uninstalled plugin keeps its data before it is deleted. Resuming or reinstalling within this time restores everything. A whole number from 1 to 3650; EpicStaff refuses to start with plugins on otherwise (`plugins.E011`). Each suspension records its deadline when it happens, so a changed value applies only to later suspensions: set it before the first suspension. A suspended plugin's process keeps running, for the other organizations it is granted to; suspending stops it only in the one organization (see [Suspending a plugin in an organization](#suspending-a-plugin-in-an-organization)). |
@@ -88,7 +210,7 @@ without one. `make env-update` adds the ones your file lacks, with their default
 | `PLUGINS_GATEWAY_SECRET` | `none` | A random value of at least 32 characters, made of letters, digits and `. _ ~ + / = -`: `openssl rand -hex 32`. nginx sends it with every gateway check and with every request that comes through its internal API listener. Django answers a check without it with 404, and accepts a plugin's service-account key or the node's key only on a request that carries it. Required with plugins on. |
 | `DJANGO_FRONTEND_BASE_URL` | already set | The exact origin people open EpicStaff at, such as `https://epicstaff.example.com`: scheme, host and port only, no path (a trailing `/` is allowed). Only this origin may frame a plugin page, so any other value (the development default `http://localhost:4200`, a different port) leaves every plugin page blank. It is also the issuer of the signed context plugin backends verify. |
 | `DJANGO_REFRESH_COOKIE_SECURE` | already set | `true` on HTTPS. It also chooses the name and path of EpicStaff's login cookie (see [Sign-in and EpicStaff's login cookie](#sign-in-and-epicstaffs-login-cookie)). |
-| `DJANGO_ALLOWED_HOSTS` | already set | Only if you restrict it (the default is `*`): add `.plugins.example.com`, because each plugin host fetches its configuration from Django under its own host name, and keep `localhost`, the host name of nginx's gateway checks and of the plugin node's requests. |
+| `DJANGO_ALLOWED_HOSTS` | already set | Only if you restrict it (the default is `*`): add the template's parent with a leading dot (`.example.com` for `{id}-app.example.com`), because each plugin host fetches its configuration from Django under its own host name, and keep `localhost`, the host name of nginx's gateway checks and of the plugin node's requests. |
 | `DJANGO_SGI_WORKERS` | `6` (production), `1` (development) | **Keep it at `2` or more** once plugins have real traffic, also when you lower it to fit a small host. Every request to a plugin's `/api/` asks Django first (the gateway check), and each Django worker is replaced after `DJANGO_SGI_MAX_REQUESTS` requests. With one worker, every replacement pauses all of EpicStaff and every plugin for a few seconds, and plugin traffic makes replacements frequent. With two or more, the others keep answering while one is replaced; only the requests that reach that one (from nginx, or from a service calling Django directly) wait a few seconds until its new worker starts. Each worker has a port of its own from `DJANGO_PORT` + 1 up, and nginx sends each request to the worker with the fewest active requests; services that call Django directly use `DJANGO_PORT`, which every worker shares. Each worker adds Django's memory and its database connections (see `DJANGO_DB_POOL_MAX_SIZE`). |
 
 **The plugin node**
@@ -114,6 +236,7 @@ without one. `make env-update` adds the ones your file lacks, with their default
 | `PLUGINS_DB_ADMIN_PASSWORD` | `none` | `openssl rand -hex 32`. The password of `plugins_admin`, the plugin node's login on `plugins_db`, which creates every plugin's database and roles. `plugins_db` sets it at its first start and es_plugins logs in with it, so both must have the same value. It can read every plugin's data: keep it like a root password. |
 | `PLUGINS_DB_BACKUP_PASSWORD` | `none` | `openssl rand -hex 32`. The password of `plugins_backup`, the login the plugin node backs plugin databases up with before an upgrade (see [Backups](#backups)). `plugins_db` sets it at its first start and es_plugins logs in with it, so both must have the same value. It can read every plugin's data: keep it like a root password. |
 | `PLUGINS_DB_MAX_CONNECTIONS` | `200` | `plugins_db`'s connection limit: at least the number of plugin backends times `PLUGINS_MAX_DB_CONNECTIONS`, plus 10. 5 of these are kept for the plugin node (see [Plugin databases](#plugin-databases)). |
+| `PLUGINS_DB_MEMORY`, `PLUGINS_DB_CPUS` | `2g`, `0` | Memory and CPUs (`0` is no cap) of `plugins_db`, every plugin database together. The setup wizard fits the memory to the host. A query that needs more memory makes Postgres recover and drops every plugin's connections (see [Accepted risks](../explanation/accepted-risks.md#one-plugin-can-restart-the-shared-database-server)). |
 
 The three passwords must each be at least 32 characters, and `none` is refused, whenever the
 `plugins` profile runs. `plugins_db` reads them only when it initializes an empty volume: changing
@@ -136,7 +259,7 @@ a value in `src/.env` later changes nothing in the database (see
 
 | Variable | Default | What to set |
 |---|---|---|
-| `PLUGINS_DEV_MODE` | `false` | Leave `false` on every deployment other people use: with `true`, django_app and epicstaff-nginx refuse to start unless `DJANGO_DEBUG=true`, EpicStaff and `PLUGINS_BASE_DOMAIN` use `.localhost` names, and the stack runs with `docker-compose.plugins-dev.yaml`, which it requires (which alone sets `PLUGINS_DEV_LOOPBACK_ONLY`; never put it in `.env`). The same spellings as `PLUGINS_ENABLED` are accepted. |
+| `PLUGINS_DEV_MODE` | `false` | Leave `false` on every deployment other people use: with `true`, django_app and epicstaff-nginx refuse to start unless `DJANGO_DEBUG=true`, EpicStaff and the parent of `PLUGINS_HOST_TEMPLATE` use `.localhost` names, and the stack runs with `docker-compose.plugins-dev.yaml`, which it requires (which alone sets `PLUGINS_DEV_LOOPBACK_ONLY`; never put it in `.env`). The same spellings as `PLUGINS_ENABLED` are accepted. |
 | `PLUGINS_DEV_API_PORT` | `8082` | The port on `127.0.0.1` where a development backend reaches EpicStaff's API. Only `docker-compose.plugins-dev.yaml` publishes it. A whole number from 1024 to 65535 (`plugins.E013`), checked only while the mode is on. |
 
 ## 4. Apply
@@ -173,31 +296,34 @@ Wrong values stop a container with a message instead of serving a broken plugin 
 
 | Check | Fails when |
 |---|---|
-| `plugins.E001` | `DJANGO_REFRESH_COOKIE_SECURE` is false and `PLUGINS_BASE_DOMAIN` does not end in `.localhost`. Over plain http a plugin page could plant cookies that EpicStaff would trust. |
-| `plugins.E002` | `PLUGINS_BASE_DOMAIN` is not a lower-case DNS name, or ends in `.invalid`. |
+| `plugins.E001` | `DJANGO_REFRESH_COOKIE_SECURE` is false and the parent of `PLUGINS_HOST_TEMPLATE` does not end in `.localhost`. Over plain http a plugin page could plant cookies that EpicStaff would trust. |
+| `plugins.E002` | `PLUGINS_HOST_TEMPLATE` breaks one of the rules in [1. Plugin addresses](#1-plugin-addresses), or is still the placeholder `{id}-app.example.invalid`. |
 | `plugins.E003` | `DJANGO_FRONTEND_BASE_URL` is not an `http://` or `https://` origin with a host name (letters, digits and hyphens, not an IP address) and an optional port (anything after the host and port but a trailing `/` counts as not an origin), or is `http://` on a host that does not end in `.localhost`. |
 | `plugins.E004` | An entry of `PLUGINS_TRUSTED_SIGNING_KEYS` is not `<name>:<public key>`, or two entries have the same name or the same public key. |
-| `plugins.E005` | `DJANGO_CORS_ALLOWED_ORIGINS` lists a plugin host (`PLUGINS_BASE_DOMAIN` or a name under it). Cross-origin calls to EpicStaff carry the person's login, so a plugin page must never be allowed one. |
+| `plugins.E005` | `DJANGO_CORS_ALLOWED_ORIGINS` lists a plugin host (a host that matches `PLUGINS_HOST_TEMPLATE`). Cross-origin calls to EpicStaff carry the person's login, so a plugin page must never be allowed one. |
 | `plugins.E006` | `PLUGINS_GATEWAY_SECRET` is `none` or shorter than 32 characters. |
 | `plugins.E007` | `PLUGINS_NODE_KEY` is `none` or shorter than 32 characters. |
 | `plugins.E008` | `PLUGINS_NODE_UID_RANGE` is not `<start>-<end>` with 10000 < start ≤ end < 60000 and at least 10 ids. |
 | `plugins.E009` | A `PLUGINS_MAX_*` value is not a positive whole number. |
-| `plugins.E010` | The host of `DJANGO_FRONTEND_BASE_URL` is `PLUGINS_BASE_DOMAIN` or a name under it. A plugin's address could then be EpicStaff's own, and EpicStaff would refuse its own pages as a plugin's. |
+| `plugins.E010` | The host of `DJANGO_FRONTEND_BASE_URL` matches `PLUGINS_HOST_TEMPLATE`, as `staff.example.com` matches `{id}.example.com`. A plugin's address could then be EpicStaff's own, and EpicStaff would refuse its own pages as a plugin's. |
 | `plugins.E011` | `PLUGINS_GRACE_PERIOD_DAYS` is not a whole number from 1 to 3650. |
-| `plugins.E012` | `PLUGINS_DEV_MODE` is true on a deployment that is not on your own machine: `DJANGO_DEBUG` is not true, `PLUGINS_BASE_DOMAIN` does not end in `.localhost`, the host of `DJANGO_FRONTEND_BASE_URL` is neither `localhost` nor a `.localhost` name, or, when Django runs under compose, `PLUGINS_DEV_LOOPBACK_ONLY` is not true, which only `docker-compose.plugins-dev.yaml` sets. Compose sets `RUN_IN_DOCKER` for every service; a `manage.py` run on the host is not checked for the marker. The problem text for it begins "PLUGINS_DEV_LOOPBACK_ONLY is not true in this container, so …". The message names each condition that fails (see [Plugin development mode](#plugin-development-mode)). |
+| `plugins.E012` | `PLUGINS_DEV_MODE` is true on a deployment that is not on your own machine: `DJANGO_DEBUG` is not true, the parent of `PLUGINS_HOST_TEMPLATE` does not end in `.localhost`, the host of `DJANGO_FRONTEND_BASE_URL` is neither `localhost` nor a `.localhost` name, or, when Django runs under compose, `PLUGINS_DEV_LOOPBACK_ONLY` is not true, which only `docker-compose.plugins-dev.yaml` sets. Compose sets `RUN_IN_DOCKER` for every service; a `manage.py` run on the host is not checked for the marker. The problem text for it begins "PLUGINS_DEV_LOOPBACK_ONLY is not true in this container, so …". The message names each condition that fails (see [Plugin development mode](#plugin-development-mode)). |
 | `plugins.E013` | `PLUGINS_DEV_MODE` is true and `PLUGINS_DEV_API_PORT` is not a whole number from 1024 to 65535. |
+| `plugins.E014` | EpicStaff and the plugin hosts are not on the same site, as when EpicStaff is at `staff.example.io` while the template still says `{id}-app.example.com`, or at `epicstaff.localhost` with `{id}.plugins.localhost`. With EpicStaff at plain `localhost` it always fails, since no plugin host can share that site: use `epicstaff.localhost`. (A one-label parent such as `{id}-app.localhost` is refused by `plugins.E002` first.) Sign-in inside EpicStaff's frame needs the same site (see [Before you start](#before-you-start)). The check looks for a shared domain of two or more labels; it does not know public suffixes such as `co.uk`, so `epicstaff.example.co.uk` with `{id}-app.other.co.uk` passes it and still fails in the browser. |
 
 `plugins.W001` is a warning and stops nothing: plugin development mode is on, where it is allowed.
 
 **epicstaff-nginx** exits with an `ERROR:` line when `PLUGINS_ENABLED` is not a boolean, and, with
-plugins on, when `PLUGINS_BASE_DOMAIN` is not a lower-case DNS name of two or more labels,
+plugins on, when `PLUGINS_HOST_TEMPLATE` breaks a rule of
+[1. Plugin addresses](#1-plugin-addresses) (as Django's `plugins.E002` does) or is still the
+`.invalid` placeholder,
 `DJANGO_FRONTEND_BASE_URL` is not `http(s)://<host>[:<port>]` with at most a trailing `/` (a
 path, query or fragment is refused, as Django's `plugins.E003` does), `PLUGINS_MAX_PACKAGE_MB` or
 `PLUGINS_MAX_REQUEST_BODY_MB` is not a whole number of MiB above 0, or `PLUGINS_GATEWAY_SECRET` is
 `none`, shorter than 32 characters or holds another character than the ones above (the value is
 never printed), or `PLUGINS_NETWORK_SUBNET` is not an IPv4 CIDR such as `10.235.0.0/24`. It also
 exits, with plugins on, when `PLUGINS_DEV_MODE` is not a boolean, and when it is true while
-`PLUGINS_BASE_DOMAIN` does not end in `.localhost` or the host of `DJANGO_FRONTEND_BASE_URL` is
+the parent of `PLUGINS_HOST_TEMPLATE` does not end in `.localhost` or the host of `DJANGO_FRONTEND_BASE_URL` is
 neither `localhost` nor a `.localhost` name, or when `PLUGINS_DEV_LOOPBACK_ONLY` is not true
 (the development compose file is not in use; nginx always runs under compose): nginx's own refusal of plugin development mode,
 whatever Django decides. With plugins off nginx does not read the plugin values at all.
@@ -231,7 +357,7 @@ answers its public path `GET /api/ping`, and `GET /api/whoami` for a signed-in p
 nginx's plugin routes and the gateway from any machine that reaches EpicStaff:
 
 ```bash
-EPICSTAFF_URL=https://epicstaff.example.com PLUGINS_BASE_DOMAIN=plugins.example.com \
+EPICSTAFF_URL=https://epicstaff.example.com PLUGINS_HOST_TEMPLATE='{id}-app.example.com' \
 PLUGIN_IDENTIFIER=weather PLUGINS_MAX_PACKAGE_MB=300 bash src/nginx/tests/plugins_smoke.sh
 ```
 
@@ -327,7 +453,7 @@ Last, and only on a stack you can lose the plugin on, check deleting. **It delet
 good**, so it refuses to run without `--yes`:
 
 ```bash
-SMOKE_BASE_URL=https://epicstaff.example.com SMOKE_PLUGINS_BASE_DOMAIN=plugins.example.com \
+SMOKE_BASE_URL=https://epicstaff.example.com SMOKE_PLUGINS_HOST_TEMPLATE='{id}-app.example.com' \
 SMOKE_PLUGIN=weather SMOKE_ORG_ID=3 SMOKE_ORG_NAME=Acme \
 SMOKE_SUPERADMIN_EMAIL=root@example.com SMOKE_SUPERADMIN_PASSWORD='…' \
 bash src/nginx/tests/purge_smoke.sh --yes
@@ -522,7 +648,7 @@ A plugin backend reaches the internet only through `plugins_egress`, a Squid pro
 gives each backend its proxy URL in `HTTPS_PROXY` (and `https_proxy`, `HTTP_PROXY`, `http_proxy`).
 The proxy allows a plugin an HTTPS tunnel (`CONNECT`) to port 443 of the hosts its package declares
 in `outbound_hosts`, which the review shows before approval, and nothing else. This binds the
-backend's process. Code a plugin gets run through flows or tools runs in EpicStaff's sandbox, which has its own
+backend's process. Code a plugin gets run through flows, tools, venvs or custom libraries runs in EpicStaff's sandbox, which has its own
 network access, and the review warns about it (`runs_code_in_sandbox`). Writing a backend
 for it is in [Call the internet from your backend](../how-to/outbound-hosts.md).
 
@@ -657,7 +783,9 @@ the operator:
 A SuperAdmin starts each upgrade. Uploading a newer version of an installed plugin only puts it up
 for review: the review shows what the new version may do that the installed one may not (new
 access, which the SuperAdmin approves explicitly), its database migrations, and how big the
-database's backup will be. "Upgrade to <version>" then runs it:
+database's backup will be. Like the review of a first install, it warns `host_not_served_here`
+when the plugin's host fails [the host check](#the-host-check), and the upgrade cannot be approved
+until it passes. "Upgrade to <version>" then runs it:
 
 1. **Preparing.** The plugin keeps running while the node downloads, checks and builds the new
    version next to the installed one. Most failures happen here (a package without wheels for the
@@ -929,8 +1057,10 @@ memory, the last error and, for a failed plugin, the end of its log.
 | The backend's outbound requests fail with `403` and `ERR_HOST_NOT_ALLOWED` | The host is not in the package's `outbound_hosts`. The publisher declares it in a new version. |
 | The backend's outbound requests time out or fail with `Connection refused` | `plugins_egress` is not running, or still waits for the node's policy files: `docker compose logs plugins_egress`. |
 | Restarts with `more than its memory limit` | The plugin needs more memory than its effective limit: remove a lower override on the Limits tab, or ask the publisher to request more (up to `PLUGINS_MAX_PROCESS_MEMORY_MB`). |
-| Sign-in works when the plugin is opened in its own tab, not inside EpicStaff | EpicStaff and the plugin hosts are not on the same registrable domain, so the browser does not send EpicStaff's login cookie inside the frame (see [Before you start](#before-you-start)). |
+| Sign-in works when the plugin is opened in its own tab, not inside EpicStaff | EpicStaff and the plugin hosts are not on the same registrable domain, so the browser does not send EpicStaff's login cookie inside the frame (see [Before you start](#before-you-start)). `plugins.E014` catches most such cases, but not a public suffix such as `co.uk`. |
 | A person sees "You do not have access to <plugin> in this organization" | Their role in that organization gives no View on the plugin, the plugin is not granted to the organization (or the grant is suspended), or they are not a member of it. A SuperAdmin is no exception: only a membership counts. |
+| A browser or `curl` gets no answer at all (connection closed) on a name under the template's parent | nginx closes the connection (444) for every name under the parent that is neither a plugin host, EpicStaff's own host nor a plain host name in `NGINX_SERVER_NAME`, and for a first label of 33 characters or more. Check the name against `PLUGINS_HOST_TEMPLATE`, `DJANGO_FRONTEND_BASE_URL` and `NGINX_SERVER_NAME`; give other services of the zone their own names outside the pattern or an explicit DNS record to another server (see [1. Plugin addresses](#1-plugin-addresses)). |
+| The plugin shows "<plugin name> isn't available right now" when opened, or sign-in answers `503 plugin_host_not_served_here`, or approving its package is refused with it | The plugin's host failed [the host check](#the-host-check). Look for `plugins.host_unverified` in django_app's log (`docker compose logs django_app`): `wrong_proof` or `not_a_proof` means the name is answered by another server, so check DNS for that name (a specific record beats the wildcard); `unreachable`, `too_slow` or a `5xx` status usually means django_app cannot reach the name, or reaches it too slowly, so check that the container resolves it and has a route back to this server; another `status_<code>` such as `status_404` means another server answered. A fixed record is picked up within a minute. A plugin that answers `503` only on its very first sign-in and works when tried again was being checked at that moment. |
 | A plugin page reports `insecure_context` | The plugin host is served over plain http on a name that does not end in `.localhost`; browsers allow sign-in only in a secure context. Use HTTPS. |
 
 A backend's output is also in the node's log, each line prefixed with `[<identifier>]`
@@ -976,8 +1106,8 @@ send plugin traffic to any other host.
 
 **Where it can run.** With `PLUGINS_DEV_MODE=true`:
 
-- django_app refuses to start (`plugins.E012`) unless `DJANGO_DEBUG=true`, `PLUGINS_BASE_DOMAIN`
-  ends in `.localhost`, the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or ends in
+- django_app refuses to start (`plugins.E012`) unless `DJANGO_DEBUG=true`, the parent of
+  `PLUGINS_HOST_TEMPLATE` ends in `.localhost`, the host of `DJANGO_FRONTEND_BASE_URL` is `localhost` or ends in
   `.localhost`, and, when Django runs under compose (`RUN_IN_DOCKER`, which compose sets for
   every service), `PLUGINS_DEV_LOOPBACK_ONLY` is true. A `manage.py` run on the host with
   `PLUGINS_DEV_MODE=true` is not refused for the marker, though the other conditions still apply;
@@ -1068,7 +1198,7 @@ plugins run again.
 
 ## Behind another proxy or load balancer
 
-If TLS ends in front of EpicStaff, route `*.plugins.example.com` to EpicStaff's nginx as well, keep
+If TLS ends in front of EpicStaff, route the template's parent (`*.example.com` for `{id}-app.example.com`) to EpicStaff's nginx as well, keep
 the `Host` and `Origin` headers as the browser sent them (Django refuses plugin pages by their
 `Origin`, and binds each sign-in to it), pass the response header `X-EpicStaff-Gateway-Deny` on
 unchanged (it marks the gateway's own refusals, by which a plugin's page tells "sign in again"
@@ -1111,10 +1241,70 @@ extra privileges). It lets nginx reuse closed connections' local ports, so a bus
 (a plugin backend gets a new connection per request) does not run out of them and start
 answering 502.
 
+## Changing the domain
+
+To move EpicStaff to another domain, or to change the plugin addresses, set
+`DJANGO_FRONTEND_BASE_URL` and `PLUGINS_HOST_TEMPLATE` together in `src/.env` (EpicStaff refuses
+to start when the two are not on the same site, `plugins.E014`), put the DNS record and the
+certificates in place for the new names (see [1. Plugin addresses](#1-plugin-addresses) and
+[2. Certificate](#2-certificate)), and recreate the containers as in [4. Apply](#4-apply).
+
+**What stays.** The database, every plugin's data in `plugins_db`, and the installed plugins,
+which are kept by identifier, not by address. The addresses EpicStaff frames are computed, so
+nothing stored needs changing. Plugin backends get the new public address by themselves: the node
+rewrites their runtime file (`public_url`) without restarting them. A backend that reads the
+`EPICSTAFF_PLUGIN_PUBLIC_URL` environment variable instead keeps the old address until its process
+restarts: restart the stack, or the plugin (Restart on its Runtime tab).
+
+**What is lost or has to be redone.**
+
+- When EpicStaff's own host changes, everyone signs in once more: EpicStaff's login cookie
+  (`__Host-auth.refresh`) belongs to its host alone.
+- What the browser kept for EpicStaff and for each plugin (local storage, IndexedDB, cookies)
+  belongs to the old address and is not seen at the new one.
+- Registrations with outside services carry the old address and must be made again: inbound
+  webhooks (Telegram, Twilio, chat channels, plugins' public paths) and OAuth callbacks. Many
+  senders do not follow a redirect on a `POST`, so a redirect does not save them.
+- API clients and MCP clients need the new URL.
+
+**Keep the old names redirecting** for a while, at the DNS or CDN edge, not in EpicStaff's nginx,
+which no longer knows the old names. With Cloudflare, two redirect rules with status 308 do it:
+`old.com/*` to `new.com/${1}`, and `*-app.old.com/*` to `${1}-app.new.com/${2}`. Remove them after
+a grace period.
+
 ## Upgrading to this version
 
-This version adds required variables: `PLUGINS_GATEWAY_SECRET`, `PLUGINS_NODE_NAME`,
-`PLUGINS_NODE_KEY`, `PLUGINS_NODE_UID_RANGE`, `PLUGINS_INTERNAL_API_URL`,
+**From a version where venvs and custom libraries were not a plugin's own, with plugins on.**
+Venvs and custom libraries a plugin creates are now its own: suspending it refuses runs of code
+in them, and deleting its data deletes them. Those it created before this version are matched to
+it by a migration that runs with the upgrade, nothing to do by hand. A venv or library has no
+field naming its creator plugin, so the migration matches each one to the plugin's activity event
+for the request that created it: the venv or library created without an author in the same
+organization, less than 2 seconds before the event, and after the previous such event of any
+plugin in that organization. A create request writes its event a few milliseconds after the venv
+or library, with no network call in between, so 2 seconds leaves room for a stalled database.
+When two were created in that time (two plugins at once, or the system API key while the plugin
+was creating one), it cannot tell which was the plugin's and leaves both as the organization's;
+Django's log at the upgrade says how many it left (`… create event(s) matched more than one
+binding`). One a plugin created through an import is never matched either. Such a venv or
+library stays after the plugin's data is deleted: delete it by hand if the organization does not
+use it. One wrong match is left: when the venv or library the plugin created has been deleted
+since, and the organization created one without an author (through the system API key, or by a
+person deleted since) in those 2 seconds, that one is matched to the plugin. Deleting the
+plugin's data then deletes it, unless code of the organization runs in it (a venv) or one of its
+venvs names it (a custom library): then it is handed over to the organization instead.
+
+**From v1.5.0.** `PLUGINS_HOST_TEMPLATE` replaces `PLUGINS_BASE_DOMAIN`, and `docker compose`
+requires it: without it, compose stops with `required variable PLUGINS_HOST_TEMPLATE is missing a
+value`. Before `docker compose up -d`, run `python scripts/envtool.py --update` (or `make
+env-update`). It writes `PLUGINS_HOST_TEMPLATE={id}.<your PLUGINS_BASE_DOMAIN>`, so
+`PLUGINS_BASE_DOMAIN=plugins.example.com` becomes `PLUGINS_HOST_TEMPLATE={id}.plugins.example.com`
+and every plugin keeps its address. The `PLUGINS_BASE_DOMAIN` line is no longer read; you can
+delete it. To move to the flat layout (`{id}-app.example.com`) later, follow
+[Changing the domain](#changing-the-domain): the plugins' addresses change then.
+
+**From earlier versions.** This version adds required variables: `PLUGINS_GATEWAY_SECRET`,
+`PLUGINS_NODE_NAME`, `PLUGINS_NODE_KEY`, `PLUGINS_NODE_UID_RANGE`, `PLUGINS_INTERNAL_API_URL`,
 `PLUGINS_NETWORK_SUBNET`, `PLUGINS_MAX_PROCESS_MEMORY_MB`, `PLUGINS_MAX_DB_CONNECTIONS`,
 `PLUGINS_MAX_STATEMENT_TIMEOUT_SECONDS`, `PLUGINS_MAX_REQUESTS_PER_MINUTE`,
 `PLUGINS_MAX_PUBLIC_REQUESTS_PER_MINUTE`, `PLUGINS_MAX_REQUEST_BODY_MB`, `ES_PLUGINS_CPUS`,

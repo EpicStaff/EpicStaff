@@ -75,6 +75,77 @@ def test_a_lock_that_is_not_utf8_is_refused():
         parse_requirements_lock(b"\xff\xfe")
 
 
+UTF7_LOCK = (
+    b"# -*- coding: utf-7 -*-\n"
+    b"# note +AAo-./wheels/evil-1.0.tar.gz --hash=sha256:" + HASH_A.encode() + b"\n"
+    b"uvicorn==0.52.3 --hash=sha256:" + HASH_B.encode() + b"\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        (UTF7_LOCK, "line 1: a coding declaration is not allowed"),
+        (b"#!/usr/bin/env python\n# vim: set fileencoding=latin-1 coding=latin-1\n", "line 2: a coding declaration"),
+        (b"# a\x1cb\n# coding: utf-7\n", "line 2: a coding declaration"),
+        (b"\xef\xbb\xbfuvicorn==0.52.3 --hash=sha256:" + HASH_A.encode() + b"\n", "starts with a byte order mark"),
+        (f"uvicorn==0.52.3 --hash=sha256:{HASH_A} ; python_version > '${{V}}'\n".encode(), r"line 1: '\$\{' is not allowed"),
+        (
+            f"uvicorn==0.52.3 --hash=sha256:{HASH_A} # note \\\nevil==1 --hash=sha256:{HASH_B}\n".encode(),
+            "line 1: a comment may not end with a backslash",
+        ),
+    ],
+)
+def test_a_lock_pip_would_read_differently_is_refused(raw, message):
+    with pytest.raises(PackageProblemsError, match=message):
+        parse_requirements_lock(raw)
+
+
+def test_a_comment_line_ending_in_a_backslash_or_holding_an_expansion_is_harmless():
+    lock = parse_requirements_lock(
+        f"# header \\\n# ${{HOME}} is only a comment\nuvicorn==0.52.3 --hash=sha256:{HASH_A} # ${{X}}\n".encode()
+    )
+
+    assert [pin.name for pin in lock.requirements] == ["uvicorn"]
+
+
+def test_a_coding_word_in_a_comment_after_the_first_two_lines_is_harmless():
+    lock = parse_requirements_lock(
+        f"# a\n# b\nuvicorn==0.52.3 --hash=sha256:{HASH_A}\n# set coding: utf-7\n".encode()
+    )
+
+    assert [pin.name for pin in lock.requirements] == ["uvicorn"]
+
+
+def test_the_canonical_text_is_one_plain_line_per_pin():
+    assert parse_requirements_lock(UV_LOCK).canonical_text() == (
+        f'colorama==0.4.6 ; sys_platform == "win32" --hash=sha256:{HASH_A}\n'
+        f"epicstaff-plugin==0.1.0 --hash=sha256:{HASH_B}\n"
+        f"uvicorn[standard]==0.52.3 --hash=sha256:{HASH_B} --hash=sha256:{HASH_C}\n"
+    )
+
+
+def test_the_canonical_text_parses_back_to_the_same_requirements():
+    lock = parse_requirements_lock(
+        UV_LOCK
+        + f"alpha==1.0.post1 --hash=sha256:{HASH_A}\ntorch==2.0+cpu --hash=sha256:{HASH_B}\n".encode()
+    )
+
+    again = parse_requirements_lock(lock.canonical_text().encode("utf-8"))
+
+    assert [(pin.name, pin.version, str(pin.marker), pin.sha256, pin.extras) for pin in again.requirements] == [
+        (pin.name, pin.version, str(pin.marker), pin.sha256, pin.extras) for pin in lock.requirements
+    ]
+    assert again.pins("uvicorn")[0].extras == frozenset({"standard"})
+    assert [str(pin.version) for pin in again.requirements][-2:] == ["1.0.post1", "2.0+cpu"]
+
+
+def test_the_canonical_text_sorts_extras():
+    lock = parse_requirements_lock(f"uvicorn[zeta,Alpha]==0.52.3 --hash=sha256:{HASH_A}\n".encode())
+
+    assert lock.canonical_text() == f"uvicorn[alpha,zeta]==0.52.3 --hash=sha256:{HASH_A}\n"
+
+
 def test_lock_line_pins_a_wheel_by_its_normalized_name():
     assert lock_line("EpicStaff_Plugin", "0.1.0", HASH_A) == f"epicstaff-plugin==0.1.0 --hash=sha256:{HASH_A}"
 

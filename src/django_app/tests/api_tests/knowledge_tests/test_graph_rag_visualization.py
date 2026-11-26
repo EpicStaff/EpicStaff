@@ -32,6 +32,8 @@ ENTITY_DETAIL_URL = "/api/graph-rag/{pk}/entity/{entity_id}/"
 RELATIONSHIP_DETAIL_URL = "/api/graph-rag/{pk}/relationship/{relationship_id}/"
 TABLE_SUMMARY_URL = "/api/graph-rag/{pk}/table-summary/"
 TABLE_DATA_URL = "/api/graph-rag/{pk}/tables/{table_name}/"
+# table-link-pairs is not per-rag: the body is a static per-service matrix.
+TABLE_LINK_PAIRS_URL = "/api/graph-rag/table-link-pairs/"
 
 _CLIENT = "tables.clients.knowledge.KnowledgeClient"
 _VISUALIZATION_CLIENT = f"{_CLIENT}.get_visualization"
@@ -39,6 +41,7 @@ _ENTITY_CLIENT = f"{_CLIENT}.get_entity_detail"
 _RELATIONSHIP_CLIENT = f"{_CLIENT}.get_relationship_detail"
 _TABLE_SUMMARY_CLIENT = f"{_CLIENT}.get_table_summary"
 _TABLE_DATA_CLIENT = f"{_CLIENT}.get_table_data"
+_TABLE_LINK_PAIRS_CLIENT = f"{_CLIENT}.get_table_link_pairs"
 
 SAMPLE_VISUALIZATION = {
     "entities": [
@@ -64,8 +67,19 @@ SAMPLE_TABLE_DATA = {
     "page": 1,
     "page_size": 10,
 }
+SAMPLE_TABLE_LINK_PAIRS = {
+    "entities": ["communities", "entities", "relationships"],
+    "relationships": ["entities"],
+    "communities": ["entities"],
+    "community_reports": ["communities"],
+    "text_units": ["entities"],
+    "documents": ["entities"],
+    "covariates": ["entities"],
+}
 
-# Every endpoint as (url template kwargs, client method patched, sample upstream body).
+# Every per-rag endpoint as (url template kwargs, client method patched, sample upstream body).
+# `table-link-pairs` is intentionally excluded: its upstream body is a static per-service
+# matrix, so the Django endpoint carries no rag id and has dedicated tests below.
 _ENDPOINTS = {
     "visualization": (VISUALIZATION_URL, {}, _VISUALIZATION_CLIENT, SAMPLE_VISUALIZATION),
     "entity-detail": (ENTITY_DETAIL_URL, {"entity_id": "e1"}, _ENTITY_CLIENT, {"description": "d"}),
@@ -80,7 +94,7 @@ _ENDPOINTS = {
 }
 _ENDPOINT_NAMES = list(_ENDPOINTS)
 
-# The knowledge_new path each endpoint is proxied to.
+# The knowledge_new path each per-rag endpoint is proxied to.
 _UPSTREAM_PATHS = {
     "visualization": "/rags/graph/{rag_id}/visualization/",
     "entity-detail": "/rags/graph/{rag_id}/entity/e1/",
@@ -117,6 +131,83 @@ def test_endpoint_returns_upstream_data(auth_client, default_org, endpoint_name)
 
     assert response.status_code == status.HTTP_200_OK
     assert response.data == upstream_body
+
+
+# -- Table link pairs: the one endpoint with no rag id in the URL --
+
+
+def test_table_link_pairs_returns_upstream_data(auth_client):
+    with patch(_TABLE_LINK_PAIRS_CLIENT, return_value=SAMPLE_TABLE_LINK_PAIRS):
+        response = auth_client.get(TABLE_LINK_PAIRS_URL)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data == SAMPLE_TABLE_LINK_PAIRS
+
+
+def test_table_link_pairs_response_is_cacheable(auth_client):
+    # The matrix is a module-level constant per deploy. The proxy sets Cache-Control so
+    # the browser stops re-hitting the Django layer every time the picker opens.
+    with patch(_TABLE_LINK_PAIRS_CLIENT, return_value=SAMPLE_TABLE_LINK_PAIRS):
+        response = auth_client.get(TABLE_LINK_PAIRS_URL)
+
+    assert response.status_code == status.HTTP_200_OK
+    cache_control = response.headers.get("Cache-Control", "")
+    # `private` because the endpoint is behind org-level auth: shared caches must
+    # not pool responses across principals, even though the body is identical today.
+    assert "private" in cache_control
+    assert "public" not in cache_control
+    assert "max-age=3600" in cache_control
+
+
+def test_table_link_pairs_rejects_unauthenticated_caller():
+    # No per-rag binding, but still behind org-level auth: an unauthenticated caller
+    # must not read the matrix.
+    client = APIClient()
+    with patch(_TABLE_LINK_PAIRS_CLIENT) as upstream:
+        response = client.get(TABLE_LINK_PAIRS_URL)
+
+    assert response.status_code in (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN)
+    upstream.assert_not_called()
+
+
+def test_table_link_pairs_refuses_member_without_knowledge_read(
+    custom_role_user,  # noqa: F811
+    default_org,
+):
+    user = custom_role_user(
+        default_org,
+        "link-pairs-no-knowledge@example.com",
+        {ResourceType.FLOWS: Permission.READ},
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+    client.credentials(HTTP_X_ORGANIZATION_ID=str(default_org.id))
+
+    with patch(_TABLE_LINK_PAIRS_CLIENT) as upstream:
+        response = client.get(TABLE_LINK_PAIRS_URL)
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    upstream.assert_not_called()
+
+
+def test_table_link_pairs_proxies_to_upstream_with_no_rag_id(auth_client):
+    # The real client runs; only its transport stands in for knowledge_new. Pins the
+    # upstream URL (no rag id) so a client refactor cannot silently drift from the
+    # knowledge_new route.
+    seen_paths: list[str] = []
+
+    def knowledge_new_ok(request: httpx.Request) -> httpx.Response:
+        seen_paths.append(request.url.path)
+        return httpx.Response(200, json=SAMPLE_TABLE_LINK_PAIRS)
+
+    client_over_fake_upstream = partial(
+        KnowledgeClient, transport=httpx.MockTransport(knowledge_new_ok)
+    )
+    with patch(_VIEW_KNOWLEDGE_CLIENT, client_over_fake_upstream):
+        response = auth_client.get(TABLE_LINK_PAIRS_URL)
+
+    assert response.status_code == status.HTTP_200_OK
+    assert seen_paths == ["/rags/graph/table-link-pairs/"]
 
 
 @pytest.mark.parametrize("endpoint_name", _ENDPOINT_NAMES)

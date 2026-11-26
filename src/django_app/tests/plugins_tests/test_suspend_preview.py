@@ -13,7 +13,6 @@ from plugins.models import GrantState
 from plugins.runs.run_guard import PluginRunGuard
 from rest_framework.test import APIClient
 from tables.models import (
-    DefaultModels,
     Graph,
     OpenAIRealtimeConfig,
     RealtimeAgentDefinition,
@@ -21,6 +20,7 @@ from tables.models import (
     Session,
     StorageFile,
 )
+from ai_models.models import DefaultModels
 from tables.models.graph_models import PythonNode, ScheduleTriggerNode, TelegramTriggerNode, WebhookTriggerNode
 from tables.services.run_admission import RunKind, RunSubject
 
@@ -48,7 +48,7 @@ def grant(weather, grant_to, acme):
 @pytest.fixture
 def digest_setup(grant, acme):
     """Olga's Acme, as the acceptance walk prepares it."""
-    key = secret_row(acme, "Weather · LLM key")
+    key = secret_row(acme, "Weather - LLM key")
     summaries = llm_config(acme, "Weather summaries", api_key_secret=key)
     readme = StorageFile.objects.create(org=acme, path="weather/README.md", name="README.md", parent_path="weather/")
     forecast = flow(acme, "Weather forecast")
@@ -79,7 +79,7 @@ def test_the_preview_lists_what_suspending_stops(digest_setup, superadmin_client
         "owned_resources": [
             {"model": "tables.StorageFile", "label": "Files", "count": 1},
             {"model": "tables.Graph", "label": "Flows", "count": 1},
-            {"model": "tables.LLMConfig", "label": "LLM configs", "count": 1},
+            {"model": "ai_models.LLMConfig", "label": "LLM configs", "count": 1},
             {"model": "tables.Secret", "label": "Secrets", "count": 1},
         ],
         "flows": {
@@ -181,7 +181,7 @@ def test_a_list_holds_at_most_a_hundred_items_and_its_total(grant, acme, superad
 
 
 def _queries_of_a_preview(grant, acme, flow_count):
-    secret = secret_row(acme, f"Weather · key {flow_count}")
+    secret = secret_row(acme, f"Weather - key {flow_count}")
     own(secret, grant)
     voice_config = OpenAIRealtimeConfig.objects.create(org=acme, custom_name=f"Weather voice {flow_count}")
     own(voice_config, grant)

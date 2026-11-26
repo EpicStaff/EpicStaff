@@ -25,7 +25,7 @@ from tables.import_export.registry import entity_registry
 from tables.import_export.services.export_service import ExportService
 from tables.import_export.services.import_service import ImportService
 from tables.import_export.strategies import source_collection as strategy_module
-from tables.models import EmbeddingConfig, LLMConfig
+from ai_models.models import EmbeddingConfig, LLMConfig
 from tables.models.knowledge_models import (
     GraphRag,
     GraphRagDocument,

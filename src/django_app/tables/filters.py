@@ -7,12 +7,7 @@ from django.db.models.functions import Cast, Extract
 from django_filters import rest_framework as filters
 from rest_framework.filters import BaseFilterBackend, OrderingFilter
 
-from tables.models import (
-    GraphSessionMessage,
-    Provider,  # SourceCollection,
-)
-from tables.models.embedding_models import EmbeddingModel
-from tables.models.llm_models import LLMModel
+from tables.models import GraphSessionMessage
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCodeTool
 from tables.models.session_models import Session, SessionTrigger
@@ -234,63 +229,6 @@ class SessionFilter(filters.FilterSet):
 #     class Meta:
 #         model = SourceCollection
 #         fields = ["collection_id"]
-
-
-class ProviderFilter(filters.FilterSet):
-    model_type = filters.CharFilter(method="filter_by_model_type")
-
-    class Meta:
-        model = Provider
-        fields = ["name", "model_type"]
-
-    def filter_by_model_type(self, queryset, name, value):
-        mapping = {
-            "llm": "llmmodel",
-            "embedding": "embeddingmodel",
-            "realtime": "realtimemodel",
-            "transcription": "realtimetranscriptionmodel",
-        }
-
-        relation = mapping.get(value)
-        if relation:
-            return queryset.filter(**{f"{relation}__isnull": False}).distinct()
-
-        return queryset
-
-
-class BaseTagFilter(filters.FilterSet):
-    tags = filters.CharFilter(method="filter_by_tags")
-
-    def filter_by_tags(self, queryset, name, value):
-        tag_names = [tag.strip() for tag in value.split(",") if tag.strip()]
-
-        if not tag_names:
-            return queryset
-
-        return queryset.filter(tags__name__in=tag_names).distinct()
-
-
-class LLMModelFilter(BaseTagFilter):
-    class Meta:
-        model = LLMModel
-
-        fields = {
-            "name": ["exact", "icontains"],
-            "llm_provider": ["exact"],
-            "predefined": ["exact"],
-            "is_visible": ["exact"],
-        }
-
-
-class EmbeddingModelFilter(BaseTagFilter):
-    class Meta:
-        model = EmbeddingModel
-        fields = {
-            "name": ["exact", "icontains"],
-            "embedding_provider": ["exact"],
-            "predefined": ["exact"],
-            "is_visible": ["exact"],
-        }
 
 
 class IsFavoriteFilterMixin(filters.FilterSet):

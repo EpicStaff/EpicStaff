@@ -33,7 +33,7 @@ const SUSPENDED: PluginGrant = {
 const ORGANIZATION_FLOWS = 'Flows of this organization that will stop';
 const DEFAULT_MODELS = "Default-model settings that use Weather's configs";
 const BASE_HINT = 'New agents and features outside runs, such as the flow assistant, keep using these settings.';
-const REPOINT_HINT = 'Repoint them in Settings → Default LLMs.';
+const REPOINT_HINT = 'Repoint them in Settings → AI Models.';
 const SETTINGS_ON_THE_PAGE: PluginDefaultModelSetting[] = ['agent_llm_config', 'agent_fcm_llm_config'];
 const SETTINGS_WITHOUT_A_PAGE: PluginDefaultModelSetting[] = [
     'voice_llm_config',
@@ -299,7 +299,7 @@ describe('PluginSuspendDialogComponent', () => {
         expect(text(section(DEFAULT_MODELS)?.querySelector('.section__hint'))).toBe(hint);
     });
 
-    it('uses the titles of the Default LLMs settings page, and knows which settings it shows', () => {
+    it('uses the titles of the AI Models default roles, and knows which settings it shows', () => {
         const cards = DEFAULT_LLMS_SECTIONS.flatMap((pageSection) => pageSection.cards);
         expect(cards.length).toBeGreaterThan(0);
 

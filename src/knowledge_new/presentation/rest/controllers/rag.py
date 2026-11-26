@@ -22,6 +22,8 @@ from application.graph_index_read_limits import (
     GRAPH_TABLE_MIN_PAGE,
     GRAPH_TABLE_MIN_PAGE_SIZE,
     GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
+    GRAPH_VISUALIZATION_MAX_MAX_ENTITIES,
+    GRAPH_VISUALIZATION_MAX_PAGE_COUNT,
     GRAPH_VISUALIZATION_MIN_MAX_ENTITIES,
 )
 from application.orchestrators.estimating import build_estimator
@@ -29,6 +31,7 @@ from application.orchestrators.graph_table_data import (
     build_graph_table_data,
     build_graph_table_summary,
 )
+from application.orchestrators.graph_table_data.link_resolver import ALLOWED_PAIRS
 from application.orchestrators.graph_visualization import (
     build_entity_detail,
     build_graph_visualization,
@@ -48,18 +51,19 @@ from application.ports import AbstractDocumentContentReader, AbstractUnitOfWork
 from application.ports.artifact_store import AbstractArtifactStore
 from application.ports.task_register import AbstractTaskRegister
 from common.utils import make_key
-from domain.enums import RAGStrategy
+from domain.enums import GraphOutputTableEnum, GraphTableSearchScope, RAGStrategy
 from domain.errors import NotRunningOperationError
 from foundation.cryptographer import AbstractCryptographer
 from infrastructure.graphrag.availability import is_graphrag_available
-from litestar import Controller, Request, delete, get, post, put, status_codes
+from litestar import Controller, Request, Response, delete, get, post, put, status_codes
 from litestar.connection import ASGIConnection
-from litestar.exceptions import HTTPException
+from litestar.datastructures import CacheControlHeader
+from litestar.exceptions import HTTPException, ValidationException
 from litestar.handlers.base import BaseRouteHandler
 from litestar.params import Parameter
 from litestar.response import Stream
 from presentation.rest import schemas
-from presentation.rest.disconnect import cancel_on_disconnect
+from presentation.rest.disconnect import HTTP_499_CLIENT_CLOSED_REQUEST, run_until_disconnect
 
 
 def require_graphrag_available(connection: ASGIConnection, _: BaseRouteHandler) -> None:
@@ -70,6 +74,47 @@ def require_graphrag_available(connection: ASGIConnection, _: BaseRouteHandler) 
             status_code=status_codes.HTTP_503_SERVICE_UNAVAILABLE,
             detail="GraphRAG is unavailable on this server: the CPU does not support AVX2.",
         )
+
+
+def require_graphrag_available_unconditionally(
+    connection: ASGIConnection, _: BaseRouteHandler
+) -> None:
+    """Reject requests with 503 when graphrag cannot run on this host.
+
+    Used on routes with a literal `graph` prefix (no `strategy` path param to check).
+    """
+    if not is_graphrag_available():
+        raise HTTPException(
+            status_code=status_codes.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="GraphRAG is unavailable on this server: the CPU does not support AVX2.",
+        )
+
+
+class GraphRagReadController(Controller):
+    """Graph RAG read endpoints whose response does not depend on a specific rag id.
+
+    Sits next to `RagController` so the handler is reachable at the literal
+    `/rags/graph/` prefix rather than embedded under `/rags/{strategy}/{rag_id}/`.
+    """
+
+    path = "rags/graph/"
+    tags = ("RAG",)
+    guards = [require_graphrag_available_unconditionally]
+
+    @get(
+        path="table-link-pairs/",
+        status_code=status_codes.HTTP_200_OK,
+        summary="Allowed (subject, target) pairs for the linked_to filter",
+        # The body is a module-level constant per deploy — safe to cache for an hour.
+        # `private` because this endpoint is behind org-level auth: shared caches must
+        # not pool responses across principals, even though the body is the same today.
+        cache_control=CacheControlHeader(max_age=3600, private=True),
+    )
+    async def table_link_pairs(self) -> dict[str, list[str]]:
+        return {
+            subject.value: sorted(target.value for target in targets)
+            for subject, targets in ALLOWED_PAIRS.items()
+        }
 
 
 class RagController(Controller):
@@ -99,6 +144,10 @@ class RagController(Controller):
             llm_api_key=data.llm_api_key,
             embedding_extra_headers=data.embedding_extra_headers,
             llm_extra_headers=data.llm_extra_headers,
+            embedding_connection=data.embedding_connection,
+            embedding_parameters=data.embedding_parameters,
+            llm_connection=data.llm_connection,
+            llm_parameters=data.llm_parameters,
         )
         orchestrator = build_indexer(strategy, uow, cryptographer, content_reader)
         task = asyncio.create_task(orchestrator.execute(command))
@@ -118,7 +167,7 @@ class RagController(Controller):
         data: schemas.SearchInputSchema,
         uow: AbstractUnitOfWork,
         cryptographer: AbstractCryptographer,
-    ) -> schemas.SearchOutputSchema:
+    ) -> Response[schemas.SearchOutputSchema]:
         command = commands.RunSearch(
             rag_id=rag_id,
             query=data.query,
@@ -127,11 +176,16 @@ class RagController(Controller):
             llm_api_key=data.llm_api_key,
             embedding_extra_headers=data.embedding_extra_headers,
             llm_extra_headers=data.llm_extra_headers,
+            embedding_connection=data.embedding_connection,
+            embedding_parameters=data.embedding_parameters,
+            llm_connection=data.llm_connection,
+            llm_parameters=data.llm_parameters,
         )
         orchestrator = build_search(strategy, uow, cryptographer)
-        async with cancel_on_disconnect(request):
-            result = await orchestrator.execute(command)
-        return schemas.SearchOutputSchema.model_validate(result)
+        result = await run_until_disconnect(request, orchestrator.execute(command))
+        if result is None:
+            return Response(content=b"", status_code=HTTP_499_CLIENT_CLOSED_REQUEST)
+        return Response(schemas.SearchOutputSchema.model_validate(result))
 
     @post(
         path="{rag_id:int}/prechunk/",
@@ -229,6 +283,17 @@ class RagController(Controller):
             int, Parameter(ge=GRAPH_TABLE_MIN_PAGE_SIZE, le=GRAPH_TABLE_MAX_PAGE_SIZE)
         ] = GRAPH_TABLE_DEFAULT_PAGE_SIZE,
         search: Annotated[str | None, Parameter(max_length=GRAPH_SEARCH_MAX_LENGTH)] = None,
+        search_scope: Annotated[
+            GraphTableSearchScope,
+            Parameter(
+                query="search_scope",
+                description=(
+                    "Which columns `search` matches: `all` (default) scans every user-facing "
+                    "column; `identity` restricts to id + the per-table label column (used by "
+                    "the linked-to picker so body-text hits do not pollute the list)."
+                ),
+            ),
+        ] = GraphTableSearchScope.ALL,
         filter_column: Annotated[
             str | None,
             Parameter(
@@ -249,16 +314,42 @@ class RagController(Controller):
                 ),
             ),
         ] = None,
+        linked_to_type: Annotated[
+            GraphOutputTableEnum | None,
+            Parameter(
+                query="linked_to_type",
+                description=(
+                    "Graph-relation filter: the table the picked row belongs to. "
+                    "Set together with linked_to_id; applied before every other filter."
+                ),
+            ),
+        ] = None,
+        linked_to_id: Annotated[
+            str | None,
+            Parameter(
+                query="linked_to_id",
+                description=(
+                    "Graph-relation filter: id of the row to be linked to. Set together "
+                    "with linked_to_type."
+                ),
+            ),
+        ] = None,
     ) -> schemas.GraphTableDataOutputSchema:
-        command = GetGraphTableData(
-            rag_id=rag_id,
-            table_name=table_name,
-            page=page,
-            page_size=page_size,
-            search=search,
-            filter_column=filter_column,
-            filter_value=filter_value,
-        )
+        try:
+            command = GetGraphTableData(
+                rag_id=rag_id,
+                table_name=table_name,
+                page=page,
+                page_size=page_size,
+                search=search,
+                search_scope=search_scope,
+                filter_column=filter_column,
+                filter_value=filter_value,
+                linked_to_type=linked_to_type,
+                linked_to_id=linked_to_id,
+            )
+        except ValueError as exc:
+            raise ValidationException(str(exc)) from exc
         orchestrator = build_graph_table_data(strategy, uow)
         result = await orchestrator.execute(command)
         return schemas.GraphTableDataOutputSchema.model_validate(result)
@@ -274,11 +365,25 @@ class RagController(Controller):
         rag_id: int,
         uow: AbstractUnitOfWork,
         max_entities: Annotated[
-            int, Parameter(ge=GRAPH_VISUALIZATION_MIN_MAX_ENTITIES)
+            int,
+            Parameter(
+                ge=GRAPH_VISUALIZATION_MIN_MAX_ENTITIES, le=GRAPH_VISUALIZATION_MAX_MAX_ENTITIES
+            ),
         ] = GRAPH_VISUALIZATION_DEFAULT_MAX_ENTITIES,
         search: Annotated[str | None, Parameter(max_length=GRAPH_SEARCH_MAX_LENGTH)] = None,
+        page: Annotated[int, Parameter(ge=0)] = 0,
+        page_count: Annotated[int, Parameter(ge=1, le=GRAPH_VISUALIZATION_MAX_PAGE_COUNT)] = 1,
     ) -> schemas.GraphVisualizationOutputSchema:
-        command = GetGraphVisualization(rag_id=rag_id, max_entities=max_entities, search=search)
+        try:
+            command = GetGraphVisualization(
+                rag_id=rag_id,
+                max_entities=max_entities,
+                search=search,
+                page=page,
+                page_count=page_count,
+            )
+        except ValueError as exc:
+            raise ValidationException(str(exc)) from exc
         orchestrator = build_graph_visualization(strategy, uow)
         result = await orchestrator.execute(command)
         return schemas.GraphVisualizationOutputSchema.model_validate(result)

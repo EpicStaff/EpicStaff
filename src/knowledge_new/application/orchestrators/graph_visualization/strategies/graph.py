@@ -118,21 +118,37 @@ def _keep_top_entities(
     entities: pandas.DataFrame,
     relationships: pandas.DataFrame,
     max_entities: int,
+    page: int,
+    page_count: int,
 ) -> tuple[pandas.DataFrame, pandas.DataFrame]:
-    """Keep `max_entities` entities and the relationships between them.
+    """Return the `page`-th slice of the top pool and that page's share of its edges.
 
-    Search matches rank ahead of their neighbours, so the cap never drops a match in
-    favour of a better-connected neighbour; within each group the highest degree wins.
+    The pool is the top `max_entities * page_count` entities (search matches first,
+    then highest degree), always computed in full so every page sees the same pool.
+    Entities on this page are pool slice `[page * max_entities : (page + 1) * max_entities]`.
+
+    Relationships are first filtered to those whose endpoints are both in the pool,
+    then partitioned across pages by `edge_position % page_count == page` on a
+    stable, id-sorted order. Each in-pool edge is therefore delivered exactly once
+    across the paged responses, even when it connects entities on different pages.
     """
     # A multi-column sort_values is a stable lexsort, so ties keep the file order.
-    entities = entities.sort_values(["matches_search", "degree"], ascending=False).head(
-        max_entities
+    pool = entities.sort_values(["matches_search", "degree"], ascending=False).head(
+        max_entities * page_count
     )
-    kept_titles = set(entities["title"])
-    relationships = relationships[
-        relationships["source"].isin(kept_titles) & relationships["target"].isin(kept_titles)
+    pool_titles = set(pool["title"])
+    pool_relationships = relationships[
+        relationships["source"].isin(pool_titles) & relationships["target"].isin(pool_titles)
     ]
-    return entities, relationships
+
+    page_entities = pool.iloc[page * max_entities : (page + 1) * max_entities]
+    # Sort by id so partitioning is deterministic across the paged requests even when
+    # the relationships parquet row order is not.
+    ordered_relationships = pool_relationships.sort_values("id", kind="stable")
+    page_relationships = (
+        ordered_relationships.iloc[page::page_count] if page_count > 1 else ordered_relationships
+    )
+    return page_entities, page_relationships
 
 
 def _community_ids_by_entity(
@@ -168,6 +184,8 @@ def _build_visualization(
     communities: pandas.DataFrame,
     search: str | None,
     max_entities: int,
+    page: int,
+    page_count: int,
 ) -> GraphVisualizationResult:
     total_entities = len(entities)
     total_relationships = len(relationships)
@@ -178,7 +196,9 @@ def _build_visualization(
 
     if search:
         entities, relationships = _keep_search_matches(entities, relationships, search)
-    entities, relationships = _keep_top_entities(entities, relationships, max_entities)
+    entities, relationships = _keep_top_entities(
+        entities, relationships, max_entities, page, page_count
+    )
     # Mapped after the cap, so only the entities in the response are grouped.
     community_ids = _community_ids_by_entity(communities, set(entities["id"].astype(str)))
 
@@ -237,6 +257,8 @@ class GraphVisualizationOrchestrator(AbstractGraphVisualizationOrchestrator):
             communities_task.result(),
             command.search,
             command.max_entities,
+            command.page,
+            command.page_count,
         )
 
 

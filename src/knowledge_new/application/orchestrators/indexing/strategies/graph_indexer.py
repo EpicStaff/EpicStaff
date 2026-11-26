@@ -19,8 +19,13 @@ from graphrag.api import build_index
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag_input import TextDocument
 from graphrag_storage import create_storage
+from infrastructure.database.mappers.embedding_arguments import embedding_call_arguments
+from infrastructure.database.mappers.graph import graph_rag_cache_config
 from infrastructure.file_text_extractors import build_file_text_extractor
-from infrastructure.graphrag.model_headers import set_extra_headers
+from infrastructure.graphrag.model_access import (
+    apply_request_access,
+    completion_call_arguments,
+)
 from infrastructure.graphrag.storages import create_storage_config
 from infrastructure.graphrag.usage_metrics import track_usage
 from infrastructure.graphrag.vector_stores import create_vector_store_config
@@ -49,15 +54,28 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
                 is_update_run = True
 
         secrets = open_sealed_secrets(command, self.cryptographer)
-        config = await self._get_config_under_uow(
-            rag.id, target_slot, secrets.embedding_api_key, secrets.llm_api_key
+        config = await self._get_config_under_uow(rag.id, target_slot)
+        embedding_model = config.embedding_models["default_embedding_model"]
+        completion_model = config.completion_models["default_completion_model"]
+        embedding_arguments = embedding_call_arguments(command.embedding_parameters)
+        completion_arguments = completion_call_arguments(completion_model, command.llm_parameters)
+        apply_request_access(
+            embedding_model,
+            api_key=secrets.embedding_api_key,
+            extra_headers=secrets.embedding_extra_headers,
+            connection=secrets.embedding_connection,
+            call_arguments=embedding_arguments,
         )
-        set_extra_headers(
-            config.embedding_models["default_embedding_model"],
-            secrets.embedding_extra_headers,
+        apply_request_access(
+            completion_model,
+            api_key=secrets.llm_api_key,
+            extra_headers=secrets.llm_extra_headers,
+            connection=secrets.llm_connection,
+            call_arguments=completion_arguments,
         )
-        set_extra_headers(
-            config.completion_models["default_completion_model"], secrets.llm_extra_headers
+        config.cache = graph_rag_cache_config(
+            rag.id,
+            [(completion_model, completion_arguments), (embedding_model, embedding_arguments)],
         )
 
         text_documents = await self._read_texts(documents)
@@ -125,15 +143,11 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
         self.state["rag"] = rag
         return rag
 
-    async def _get_config_under_uow(
-        self, rag_id: int, slot: SlotEnum, embedding_api_key: str, llm_api_key: str
-    ):
+    async def _get_config_under_uow(self, rag_id: int, slot: SlotEnum) -> GraphRagConfig:
         async with self.uow:
             config = await self.uow.graph_rag_repo.get_config(rag_id=rag_id, slot=slot)
         if not config:
             raise GraphRagConfigNotFoundError(rag_id=rag_id)
-        config.embedding_models["default_embedding_model"].api_key = embedding_api_key
-        config.completion_models["default_completion_model"].api_key = llm_api_key
         return config
 
     async def _record_usage(self, rag_id: int):

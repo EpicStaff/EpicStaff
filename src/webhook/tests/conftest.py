@@ -32,7 +32,9 @@ for _variable, _value in {
 from app.core.settings import settings
 from app.main import create_app
 from app.services.redis_service import RedisService, get_redis_service
+from app.services.tunnel_config_listener import TunnelConfigListener, get_tunnel_config_listener
 from app.services.tunnel_registry import TunnelRegistry, get_tunnel_registry
+from src.shared.models import WebhookConfigData
 from transport_secrets import TRANSPORT_KEY, sealing_cryptographer
 
 
@@ -86,14 +88,32 @@ def tunnel_registry(redis_service):
 
 
 @pytest.fixture
-async def client(redis_service, tunnel_registry):
-    """HTTP client for the app; no lifespan runs, so no tunnel or listener starts."""
+def tunnel_config_listener(redis_service, tunnel_registry):
+    """A listener that is never run: healthy until it has been unsynced too long."""
+    return TunnelConfigListener(redis_service, tunnel_registry)
+
+
+@pytest.fixture
+async def unsynced_client(redis_service, tunnel_registry, tunnel_config_listener):
+    """HTTP client for the app before Django's first config set reached the registry.
+
+    No lifespan runs, so no tunnel or listener starts.
+    """
     app = create_app()
     app.dependency_overrides[get_redis_service] = lambda: redis_service
     app.dependency_overrides[get_tunnel_registry] = lambda: tunnel_registry
+    app.dependency_overrides[get_tunnel_config_listener] = lambda: tunnel_config_listener
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://webhook") as http_client:
         yield http_client
+
+
+@pytest.fixture
+async def client(unsynced_client, tunnel_registry):
+    """HTTP client for the app once Django's first config set, an empty one, was applied;
+    tests register their webhooks on `tunnel_registry` themselves."""
+    await tunnel_registry.register_many(WebhookConfigData())
+    return unsynced_client
 
 
 @pytest.fixture
@@ -108,7 +128,7 @@ def lifespan_dependencies():
     with (
         patch("app.main.get_redis_service", new=AsyncMock(return_value=redis_service)),
         patch("app.main.close_redis_connection", new=close_redis_connection),
-        patch("app.main.listen_redis", new=AsyncMock()),
+        patch("app.main.TunnelConfigListener.run", new=AsyncMock()),
         patch("app.main.remove_stale_working_directories"),
     ):
         yield close_redis_connection

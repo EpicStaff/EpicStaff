@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from domain.enums import (
     DocumentStatusEnum,
@@ -149,11 +150,17 @@ class GraphDocument(Entity):
 
 
 class EmbeddingConfig(ValueObject):
-    """Configuration for an embedding provider client."""
+    """Configuration for an embedding provider client.
+
+    `parameters` (dimensions, task_type...), `connection` and `extra_headers` come with each
+    request: the settings the model catalog allows, and the resolved connection and headers,
+    which can hold secrets and stay out of repr.
+    """
 
     provider: EmbedderProviderEnum
     model: str
-    base_url: str | None = None
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    connection: dict[str, str] = Field(default_factory=dict, repr=False)
     extra_headers: dict[str, str] = Field(default_factory=dict, repr=False)
     extra: dict = Field(default_factory=dict)
 

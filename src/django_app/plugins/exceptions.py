@@ -526,3 +526,18 @@ class OrgRemovedHookNotSkippableError(CustomAPIExeption):
     status_code = 409
     default_detail = "Only a waiting or failed data removal can be skipped."
     default_code = "org_removed_hook_not_skippable"
+
+
+class PluginHostNotServedHereError(CustomAPIExeption):
+    """The plugin's host does not reach this deployment (`PluginHostVerifier`)."""
+
+    status_code = 503
+    default_detail = "The plugin's host is served by another server, not this EpicStaff."
+    default_code = "plugin_host_not_served_here"
+
+    def __init__(self, host: str):
+        super().__init__(
+            detail=(
+                f"{host} is served by another server, not this EpicStaff: check DNS for that name."
+            )
+        )

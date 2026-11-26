@@ -3,6 +3,7 @@ from collections import Counter, defaultdict
 from copy import deepcopy
 
 from agents.models import AgentDefaultSurface, AgentDefinition
+from ai_models.models import LLMConfig
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db.models import Q
 from rbac.authorship import record_last_edits, resolve_author
@@ -25,7 +26,6 @@ from tables.import_export.utils import (
     import_values,
     resolve_import_organization,
 )
-from tables.models import LLMConfig
 
 # Scalar fields compared for reuse, next to the rename-aware name match, the
 # llm configs and the owned/default surfaces. Explicit allowlist (not

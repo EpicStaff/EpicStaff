@@ -228,6 +228,24 @@ async def test_mcp_tool_ref_resolves_to_registry():
     assert "mcp_tool" in names
 
 
+async def test_two_mcp_tools_with_one_server_tool_name_each_reach_their_own_server():
+    gateway = _fake_gateway()
+    first = McpToolData(transport="http://server-a/sse", tool_name="echo", name="echo-a")
+    second = McpToolData(transport="http://server-b/sse", tool_name="echo", name="echo-b")
+    agent = _agent_spec(tool_refs=["mcp-tool:4", "mcp-tool:12"])
+    request = _request([agent], tools=[_base_tool("mcp-tool:4", first), _base_tool("mcp-tool:12", second)])
+
+    resolved = await _resolver(gateway).resolve(agent, request, is_cancelled=never_cancelled)
+
+    assert {"echo", "echo-b"} <= {spec.name for spec in resolved.tools.tool_specs()}
+    await resolved.tools.execute("echo", {"text": "a"})
+    await resolved.tools.execute("echo-b", {"text": "b"})
+    assert [call.args for call in gateway.call.await_args_list] == [
+        (first, {"text": "a"}),
+        (second, {"text": "b"}),
+    ]
+
+
 async def test_mcp_tool_schema_reaches_the_model_cleaned():
     """The registered spec, which is what the model receives, carries the external
     server's input schema without control characters and with free text capped."""

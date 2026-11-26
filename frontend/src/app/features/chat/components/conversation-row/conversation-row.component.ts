@@ -1,14 +1,4 @@
-import {
-    Component,
-    computed,
-    ElementRef,
-    inject,
-    input,
-    linkedSignal,
-    LOCALE_ID,
-    output,
-    viewChild,
-} from '@angular/core';
+import { Component, computed, ElementRef, inject, input, LOCALE_ID, output, viewChild } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 
@@ -16,17 +6,19 @@ import { ProfileService } from '../../../../services/auth/profile.service';
 import { ChatConversation } from '../../models/chat.model';
 import { ConversationReadMarksService } from '../../services/conversation-read-marks.service';
 import { closeReasonLabel, closeReasonWord, isClosed } from '../../utils/conversation-close.util';
+import { holderName } from '../../utils/conversation-holder.util';
+import { ConversationListSection } from '../../utils/conversation-list-tab.util';
 import {
     ConversationDeskRules,
     conversationTime,
     conversationTimeLabel,
-    operatorName,
     senderPrefix,
     visitorName,
     waitDuration,
 } from '../../utils/conversation-row.util';
 import { isWaitingForPerson, isWaitOverdue, WAIT_OVERDUE_NOTE } from '../../utils/conversation-wait.util';
 import { ConversationAvatarComponent } from '../conversation-avatar/conversation-avatar.component';
+import { ConversationSectionBadgeComponent } from '../conversation-section-badge/conversation-section-badge.component';
 
 export type ConversationRowMove = 'next' | 'previous' | 'first' | 'last';
 
@@ -37,29 +29,30 @@ const ROW_MOVES: Record<string, ConversationRowMove> = {
     End: 'last',
 };
 
-interface ConversationHolder {
-    /** Only the current user's is known; anyone else's badge shows a person icon. */
-    avatarUrl: string | null;
-    /** "you", their name, or "Operator #7". */
-    label: string;
-}
-
 /**
  * One conversation in the list, as chat apps draw it: the visitor's avatar, name and last activity, then the last
- * message after who wrote it ("Bot is replying..." while a run is in flight). A taken one has its operator's badge on the
- * avatar's corner. A conversation where the visitor waits for a person has a bold name and, on its right, how long they
- * have waited and Take over (unless the current user holds it); the wait gets an alert icon and the error colour once
- * overdue. In progress, one with news the user has not opened has a green dot by its time and a brighter preview. A
- * closed one says why and when it closed.
+ * message after who wrote it ("Bot is replying..." while a run is in flight). The avatar's corner has the icon of the
+ * section it is listed in, which says who took it, when someone did. A conversation where the visitor waits for a person
+ * has a bold name and, on its right, how long they have waited and Take over (unless the current user holds it); the
+ * wait gets an alert icon and the error colour once overdue. In progress, one with news the user has not opened has a
+ * green dot by its time and a brighter preview. A closed one says why and when it closed.
  */
 @Component({
     selector: 'app-conversation-row',
-    imports: [MatTooltipModule, AppSvgIconComponent, ButtonComponent, ConversationAvatarComponent],
+    imports: [
+        MatTooltipModule,
+        AppSvgIconComponent,
+        ButtonComponent,
+        ConversationAvatarComponent,
+        ConversationSectionBadgeComponent,
+    ],
     templateUrl: './conversation-row.component.html',
     styleUrl: './conversation-row.component.scss',
 })
 export class ConversationRowComponent {
     readonly conversation = input.required<ChatConversation>();
+    /** The section the row is listed in: its icon goes on the avatar's corner, as on the section's header. */
+    readonly section = input.required<ConversationListSection>();
     /** The current time, ticking, for the relative time. */
     readonly now = input.required<number>();
     /** Shown under the visitor's name on All desks; null on a desk's own list. */
@@ -117,23 +110,8 @@ export class ConversationRowComponent {
     protected readonly isSystemNote = computed(
         () => !this.isReplying() && this.conversation().last_message_role === 'system'
     );
-    /** Nobody is on a closed conversation, so it shows no holder. */
-    protected readonly holder = computed((): ConversationHolder | null => {
-        const { assigned_operator_id: operatorId, assigned_operator_name: operatorDisplayName } = this.conversation();
-        if (operatorId === null || this.isClosed()) return null;
-        const me = this.profileService.currentUserSignal();
-        if (me?.id === operatorId) return { avatarUrl: me.avatar_url, label: 'you' };
-        return { avatarUrl: null, label: operatorName(operatorId, operatorDisplayName) };
-    });
-    // Resets on every new URL, so a fresh link (an expired signed one renewed) gets a fresh try.
-    protected readonly holderImageFailed = linkedSignal({
-        source: () => this.holder()?.avatarUrl ?? null,
-        computation: () => false,
-    });
-    /** The badge is too small for initials: the holder's picture, or else a person icon. */
-    protected readonly holderImageUrl = computed(() =>
-        this.holderImageFailed() ? null : (this.holder()?.avatarUrl ?? null)
-    );
+    /** Who holds the conversation: "you", their name, or "Operator #7" (see `holderName`). */
+    protected readonly holder = computed(() => holderName(this.conversation(), this.myUserId()));
     /** Why it closed, in a word ("Resolved"), with the full reason ("Resolved by Mike") as its tooltip. */
     protected readonly closeWord = computed(() =>
         this.isClosed() ? closeReasonWord(this.conversation().close_reason, this.rules()?.style ?? null) : ''
@@ -166,7 +144,7 @@ export class ConversationRowComponent {
             closeReason ? lowerFirst(closeReason) : null,
             waitingSince ? `waiting for a person since ${waitingSince}` : null,
             this.isOverdue() ? 'overdue' : null,
-            holder ? `taken by ${holder.label}` : null,
+            holder ? `taken by ${holder}` : null,
             this.isReplying() ? 'bot is replying' : null,
             this.isUnread() ? 'unread' : null,
         ]

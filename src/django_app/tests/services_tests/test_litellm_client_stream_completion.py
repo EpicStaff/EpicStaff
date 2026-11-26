@@ -89,13 +89,15 @@ async def test_finish_reason_is_none_when_provider_reports_none():
 @pytest.mark.asyncio
 async def test_generation_params_except_stop_reach_litellm_acompletion():
     received_kwargs: dict = {}
-    client = make_client(reasoning_effort="low", stop=["END"], logit_bias={50256: -100.0})
+    client = make_client(
+        parameters={"reasoning_effort": "low", "stop": ["END"], "logit_bias": {"50256": -100.0}}
+    )
 
     await collect_events([make_chunk(content="ok", finish_reason="stop")], client, received_kwargs)
 
     assert received_kwargs["reasoning_effort"] == "low"
     assert "stop" not in received_kwargs
-    assert received_kwargs["logit_bias"] == {50256: -100.0}
+    assert received_kwargs["logit_bias"] == {"50256": -100.0}
 
 
 @pytest.mark.asyncio

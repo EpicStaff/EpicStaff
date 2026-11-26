@@ -371,7 +371,7 @@ def test_org_delete_sweeps_orphaned_document_content(
 def test_org_delete_sweeps_orphan_prone_deprecated_rows(actor, populated_org, _surviving_org):
     """A real org delete removes Task/TemplateAgent/RealtimeAgentChat rows currently linked to the org's Crew/Agent/LLMConfig/realtime configs, instead of leaving them behind with nulled FKs and unreachable prompt/config text."""
     from tables.models.crew_models import Agent, Crew, Task, TemplateAgent
-    from tables.models.llm_models import LLMConfig
+    from ai_models.models import LLMConfig
     from tables.models.realtime_models import OpenAIRealtimeConfig, RealtimeAgentChat
 
     crew = Crew.objects.create(org=populated_org, name="c")
@@ -716,7 +716,7 @@ def test_org_delete_clears_the_platform_default_config_cache(
 ):
     """Platform defaults pointing at the org's configs are nulled, and the process cache stops serving the dead row."""
     from tables.models.crew_models import DefaultAgentConfig
-    from tables.models.llm_models import LLMConfig
+    from ai_models.models import LLMConfig
 
     config = LLMConfig.objects.create(custom_name="doomed-llm", org=populated_org)
     defaults = DefaultAgentConfig.load()
@@ -739,8 +739,7 @@ def test_org_delete_cascades_the_orgs_default_models_row(
     actor, populated_org, _surviving_org, django_capture_on_commit_callbacks
 ):
     """The deleted org's DefaultModels row goes with it; another org's row and its configs survive."""
-    from tables.models.default_models import DefaultModels
-    from tables.models.llm_models import LLMConfig
+    from ai_models.models import DefaultModels, LLMConfig
 
     doomed_config = LLMConfig.objects.create(custom_name="doomed-llm", org=populated_org)
     doomed_defaults = DefaultModels.load_for_org(populated_org.pk)

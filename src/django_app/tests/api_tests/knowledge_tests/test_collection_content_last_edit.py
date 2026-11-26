@@ -14,14 +14,12 @@ from rest_framework import status
 from rbac.authorship import record_last_edit
 from rbac.models import OrganizationUser, ResourceLastEdit
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection, StorageFile
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
 from tables.models.knowledge_models import (
     BaseRagType,
     NaiveRag,
     NaiveRagDocumentConfig,
 )
-from tables.models.llm_models import LLMConfig, LLMModel
-from tables.models.provider import Provider
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.storage_service.manager import StorageManager

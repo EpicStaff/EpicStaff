@@ -1,5 +1,5 @@
-"""Importing an LLM config whose extra_headers carry a new `epicstaff_secret(<name>)`
-marker needs secrets:USE, through the real import endpoints. A denied import rolls
+"""Importing an LLM config whose extra_headers or connection carry a new
+`epicstaff_secret(<name>)` marker needs secrets:USE, through the real import endpoints. A denied import rolls
 back everything it had already created; a config reused as-is needs no USE."""
 
 import pytest
@@ -15,12 +15,18 @@ from tables.import_export.services.partial_export_service import (
     NodeRef,
 )
 from tables.import_export.strategies.nodes.node_maps import NODE_TYPE_TO_ENTITY_TYPE
-from tables.models import Graph, LLMConfig
-from tables.models.llm_models import LLMModel
+from tables.models import Graph
+from ai_models.models import LLMConfig, LLMModel, Provider
+from tables.services.secrets import secret_service
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 MARKER_HEADERS = {"Authorization": "Bearer epicstaff_secret(GATEWAY_TOKEN)"}
+MARKER_CONNECTION = {
+    "aws_access_key_id": "epicstaff_secret(GATEWAY_TOKEN)",
+    "aws_region_name": "eu-west-1",
+}
+MARKED_FIELDS = pytest.mark.parametrize("marked_field", ["extra_headers", "connection"])
 CRUD = Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
 
 
@@ -42,20 +48,34 @@ def importer_without_use(custom_role_user, default_org):
     return client
 
 
-def _with_new_model_and_marked_config(export_data: dict) -> dict:
+def _with_new_model_and_marked_config(export_data: dict, marked_field: str = "extra_headers") -> dict:
     # Renaming the model and the config makes find_existing miss both, so the import
     # creates the LLM model first and then reaches the config carrying the new marker.
-    export_data[EntityType.LLM_MODEL][0]["name"] = "marker-import-model"
+    model = export_data[EntityType.LLM_MODEL][0]
+    model["name"] = "marker-import-model"
     config = export_data[EntityType.LLM_CONFIG][0]
     config["custom_name"] = "marker-import-config"
-    config["extra_headers"] = MARKER_HEADERS
+    if marked_field == "extra_headers":
+        config["extra_headers"] = MARKER_HEADERS
+    else:
+        # A connection marker sits in a secret field, which Bedrock has; the secret
+        # exists, so only the missing secrets:USE refuses the import.
+        Provider.objects.get_or_create(name="bedrock")
+        model["provider_name"] = "bedrock"
+        config["connection"] = MARKER_CONNECTION
     return export_data
+
+
+@pytest.fixture
+def gateway_token(default_org):
+    return secret_service.create(text="token", org=default_org, name="GATEWAY_TOKEN")
 
 
 @pytest.mark.django_db
 class TestGraphImportEndpoint:
+    @MARKED_FIELDS
     def test_new_marker_without_use_is_rejected_and_rolled_back(
-        self, importer_without_use, exportable_graph_with_agent_node
+        self, importer_without_use, exportable_graph_with_agent_node, gateway_token, marked_field
     ):
         export_data = _with_new_model_and_marked_config(
             ExportService(entity_registry)
@@ -64,7 +84,8 @@ class TestGraphImportEndpoint:
                 [exportable_graph_with_agent_node.id],
                 policy=UNRESTRICTED_EXPORT_POLICY,
             )
-            .data
+            .data,
+            marked_field,
         )
         graphs_before = Graph.objects.count()
         configs_before = LLMConfig.objects.count()
@@ -76,7 +97,7 @@ class TestGraphImportEndpoint:
         )
 
         assert response.status_code == 400, response.json()
-        assert "extra_headers" in response.json()["message"]
+        assert marked_field in response.json()["message"]
         # The LLM model was created earlier in this import; it must be rolled back too.
         assert not LLMModel.objects.filter(name="marker-import-model").exists()
         assert LLMConfig.objects.count() == configs_before
@@ -113,8 +134,9 @@ class TestGraphImportEndpoint:
 
 
 @pytest.mark.django_db
+@MARKED_FIELDS
 def test_partial_import_of_a_new_marker_without_use_is_rejected_and_rolled_back(
-    importer_without_use, exportable_graph_with_agent_node, default_org
+    importer_without_use, exportable_graph_with_agent_node, default_org, gateway_token, marked_field
 ):
     agent_node = exportable_graph_with_agent_node.agent_node_list.get()
     export_data = _with_new_model_and_marked_config(
@@ -129,7 +151,8 @@ def test_partial_import_of_a_new_marker_without_use_is_rejected_and_rolled_back(
             org_id=default_org.id,
             policy=UNRESTRICTED_EXPORT_POLICY,
         )
-        .data
+        .data,
+        marked_field,
     )
     target = Graph.objects.create(name="partial-target", org=default_org)
     nodes_before = target.agent_node_list.count()
@@ -142,7 +165,7 @@ def test_partial_import_of_a_new_marker_without_use_is_rejected_and_rolled_back(
     )
 
     assert response.status_code == 400, response.json()
-    assert "extra_headers" in response.json()["message"]
+    assert marked_field in response.json()["message"]
     assert not LLMModel.objects.filter(name="marker-import-model").exists()
     assert LLMConfig.objects.count() == configs_before
     assert target.agent_node_list.count() == nodes_before

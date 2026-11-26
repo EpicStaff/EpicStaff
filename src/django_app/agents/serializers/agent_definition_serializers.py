@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from ai_models.models import LLMConfig
 from django.db import IntegrityError
 from rbac.authorship import AuthorStampingSerializerMixin, LastEditFieldsSerializerMixin
 from rbac.scoping.fields import OrgScopedPrimaryKeyRelatedField, OrgScopedUniqueValidator
 from rest_framework import serializers
 from tables.models.label_models import Label
-from tables.models.llm_models import LLMConfig
 
 from agents.models.agent_models import (
     AgentDefaultSurface,

@@ -4,10 +4,13 @@ from epicstaff_plugin.contracts.manifest import NavigationItem
 
 from plugins.access.plugin_access import accesses_in_organization
 from plugins.development.development_targets import served_from_development
+from plugins.gateway.host_verifier import PluginHostVerifier
 from plugins.models import GrantState, Plugin, PluginGrant, PluginState
 
 READY = "ready"
 MAINTENANCE = "maintenance"
+UNAVAILABLE = "unavailable"
+AVAILABILITIES = (READY, MAINTENANCE, UNAVAILABLE)
 
 
 @dataclass(frozen=True)
@@ -16,8 +19,10 @@ class AvailablePlugin:
 
     `availability` is `maintenance` while the plugin is stopped for an upgrade, or the
     organization's upgrade has not finished; the plugin's page then says it is being updated.
+    It is `unavailable` when the plugin's host does not prove it is served by this deployment
+    (`PluginHostVerifier`): EpicStaff must not frame it, as another server holds that name.
     `development` is true while development mode serves some part of it from a developer's
-    machine, never while it is in maintenance; a member never sees where.
+    machine, never while it is in maintenance or unavailable; a member never sees where.
     """
 
     plugin: Plugin
@@ -50,7 +55,12 @@ def plugins_available_to(user, org_id: int) -> list[AvailablePlugin]:
     once an upgrade finishes (`PluginGrantQuerySet.listed`): a SuperAdmin who is not a
     member, or a caller that is not a user (the system API key), gets none. At most three
     queries (the third only for a custom role), whatever the number of plugins.
+
+    A plugin whose host does not prove it is served by this deployment is `unavailable`
+    (`PluginHostVerifier`: one request per plugin host at most once a minute, cached; none
+    for a plugin in maintenance, which is not framed either).
     """
+    hosts = PluginHostVerifier()
     accesses = accesses_in_organization(
         user,
         org_id,
@@ -58,15 +68,23 @@ def plugins_available_to(user, org_id: int) -> list[AvailablePlugin]:
         .listed()
         .select_related("plugin__development_target"),
     )
-    return [_available(access.grant, access.actions) for access in accesses]
+    return [_available(access.grant, access.actions, hosts) for access in accesses]
 
 
-def _available(grant: PluginGrant, permissions: list[str]) -> AvailablePlugin:
+def _available(
+    grant: PluginGrant, permissions: list[str], hosts: PluginHostVerifier
+) -> AvailablePlugin:
     plugin = grant.plugin
     in_maintenance = grant.state == GrantState.UPGRADING or plugin.state == PluginState.MAINTENANCE
+    if in_maintenance:
+        availability = MAINTENANCE
+    elif hosts.is_served_here(plugin.identifier):
+        availability = READY
+    else:
+        availability = UNAVAILABLE
     return AvailablePlugin(
         plugin=plugin,
         permissions=permissions,
-        availability=MAINTENANCE if in_maintenance else READY,
-        development=not in_maintenance and served_from_development(plugin),
+        availability=availability,
+        development=availability == READY and served_from_development(plugin),
     )

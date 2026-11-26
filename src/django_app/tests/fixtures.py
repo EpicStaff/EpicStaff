@@ -27,7 +27,8 @@ from tables.services.redis_service import RedisService
 from tables.services.session_manager_service import SessionManagerService
 from tables.services.trigger_spec import TriggerSpec
 from rbac.models import Organization
-from tables.models import LLMConfig, EmbeddingConfig, EmbeddingModel, LLMModel, Provider, Agent, Session, Graph, StartNode, PythonCodeTool, PythonCode, Secret
+from tables.models import Agent, Session, Graph, StartNode, PythonCodeTool, PythonCode, Secret
+from ai_models.models import LLMConfig, EmbeddingConfig, EmbeddingModel, LLMModel, Provider
 from tables.services.secrets import secret_encryption
 
 from tests.helpers import data_to_json_file
@@ -85,7 +86,7 @@ def llm_config(gpt_4o_llm, default_org) -> LLMConfig:
     llm_config = LLMConfig(
         custom_name="MyGPT-4o",
         model=gpt_4o_llm,
-        temperature=0.5,
+        parameters={"temperature": 0.5},
         is_visible=True,
         org=default_org,
     )
@@ -106,8 +107,7 @@ def default_agent_config(llm_config) -> DefaultAgentConfig:
 def new_llm_config(gpt_4o_llm, default_org):
     llm_config = LLMConfig(
         model=gpt_4o_llm,
-        temperature=0.9,
-        num_ctx=1024,
+        parameters={"temperature": 0.9},
         is_visible=True,
         org=default_org,
     )
@@ -151,7 +151,7 @@ def embedding_config(embedding_model: EmbeddingModel, default_org) -> EmbeddingC
     embedding_config = EmbeddingConfig(
         custom_name="MyEmbedder",
         model=embedding_model,
-        task_type="retrieval_document",
+        parameters={"dimensions": 256},
         org=default_org,
     )
     embedding_config.save()
@@ -199,6 +199,8 @@ class RecordingSandboxIntake:
         # Set to raise instead of answering: the sandbox could not be reached at all,
         # which the transport reports as a raw httpx error rather than a ClientError.
         self.transport_error: Exception | None = None
+        # The body of an error answer; the sandbox's own envelope when a test needs it.
+        self.error_body: dict = {"detail": "rejected"}
 
     def client(self) -> SandboxExecutionClient:
         return SandboxExecutionClient(
@@ -212,7 +214,7 @@ class RecordingSandboxIntake:
         if self.transport_error is not None:
             raise self.transport_error
         if self.status_code >= 400:
-            return httpx.Response(self.status_code, json={"detail": "rejected"})
+            return httpx.Response(self.status_code, json=self.error_body)
         return httpx.Response(
             self.status_code,
             json={"execution_id": body["execution_id"], "status": "pending"},

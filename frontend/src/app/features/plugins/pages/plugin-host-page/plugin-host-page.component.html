@@ -29,9 +29,17 @@
                 <app-fetch-error-state
                     [title]="message.title"
                     [message]="message.message"
+                    [hint]="message.hint"
                     retryLabel="Try again"
+                    [busy]="isReloading()"
                     (retry)="reload()"
                 />
+                <p
+                    class="visually-hidden"
+                    role="status"
+                >
+                    {{ reloadStatus() }}
+                </p>
             </div>
         }
     }

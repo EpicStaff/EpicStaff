@@ -743,6 +743,30 @@ class GraphRagLlmNotConfiguredException(RagException):
         super().__init__(f"GraphRag for collection {collection_id} has no LLM config.")
 
 
+class GraphRagEmbedderNotConfiguredException(RagException):
+    """Raised when GraphRag has no embedder config, e.g. after its embedder was deleted."""
+
+    status_code = 409
+    default_code = "graph_rag_embedder_not_configured"
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(f"GraphRag for collection {collection_id} has no embedder config.")
+
+
+class GraphRagLlmAndEmbedderNotConfiguredException(RagException):
+    """Raised when GraphRag has neither an LLM nor an embedder config."""
+
+    status_code = 409
+    default_code = "graph_rag_llm_and_embedder_not_configured"
+
+    def __init__(self, collection_id):
+        self.collection_id = collection_id
+        super().__init__(
+            f"GraphRag for collection {collection_id} has no LLM config and no embedder config."
+        )
+
+
 class GraphRagMetricsUnavailableException(RagException):
     """Raised when chunk metrics can't be fetched from the knowledge service."""
 
@@ -782,11 +806,12 @@ class NaiveRagIndexNotReadyException(RagIndexNotReadyException):
 
 
 class LLMConfigMissingError(CustomAPIExeption):
-    """Raised when FlowAssistant.llm_config is None."""
+    """Raised when the Flow Assistant has no LLM config and its org has no default agent LLM."""
 
     status_code = 400
     default_detail = (
-        "No LLM config is set for this flow assistant. Please configure one in the settings panel."
+        "No LLM is set for the Flow Assistant. Choose one in the assistant settings, "
+        "or set a default agent LLM in Settings → AI Models."
     )
     default_code = "flow_assistant_llm_config_missing"
 
@@ -821,21 +846,49 @@ class ConfigProviderMissingError(CustomAPIExeption):
         )
 
 
-class UnsupportedReasoningEffortError(CustomAPIExeption):
-    """Raised when an LLM config's reasoning effort is one its model cannot take.
+class ConfigNeedsReviewError(CustomAPIExeption):
+    """Raised when a run would send a config's stored settings that its model does not accept.
 
-    The response carries `errors=[{"field", "value", "reason"}]` for the client to mark
-    the field. Deliberately not a ValidationError: DRF's Serializer.run_validation
-    re-raises a ValidationError from validate() as a new one, which drops `errors`.
+    A catalog update can lower a model's limit, drop a choice or drop a setting under a
+    config that stored it. The run refuses instead of sending something other than what
+    the user set. One class for both kinds: only the label in the message differs.
     """
 
     status_code = 400
-    default_detail = "The reasoning effort is not supported."
-    default_code = "unsupported_reasoning_effort"
+    default_detail = "The config's settings need review before it can run."
+    default_code = "config_needs_review"
 
-    def __init__(self, reasoning_effort: str, reason: str):
-        self.errors = [{"field": "reasoning_effort", "value": reasoning_effort, "reason": reason}]
-        super().__init__(detail=reason)
+    def __init__(self, config_kind: str, config_name: str, problems: list[str]):
+        self.config_kind = config_kind
+        self.config_name = config_name
+        self.problems = problems
+        super().__init__(
+            f"{config_kind} config '{config_name}' has settings its model does not accept: "
+            # A problem line may end with its own period.
+            f"{'; '.join(problem.rstrip('.') for problem in problems)}. "
+            "Edit the config in Settings → AI Models and try again.",
+            code=self.default_code,
+        )
+
+
+class ConfigValidationError(CustomAPIExeption):
+    """Raised when a model config's `parameters` or `connection` break the model catalog.
+
+    `detail` holds the field errors a ValidationError would, so the response `message`
+    reads the same; `errors=[{"field", "value", "reason"}]` names each field by its dotted
+    path (`parameters.temperature`) for the client to mark it, without the value of a
+    secret connection field. Deliberately not a ValidationError: DRF's
+    Serializer.run_validation re-raises a ValidationError from validate() as a new one,
+    which drops `errors`.
+    """
+
+    status_code = 400
+    default_detail = "The config's settings are not valid for its model."
+    default_code = "invalid"
+
+    def __init__(self, detail: dict, errors: list[dict]):
+        self.errors = errors
+        super().__init__(detail=detail)
 
 
 class ToolExecutionError(CustomAPIExeption):
