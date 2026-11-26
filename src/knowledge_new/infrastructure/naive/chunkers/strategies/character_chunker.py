@@ -1,6 +1,7 @@
 import re
 
 from application.ports import AbstractChunker
+from domain.errors import UnsupportedError
 from domain.models import ChunkingConfig, PreviewChunk
 from infrastructure.processing_run import run_in_process
 
@@ -10,7 +11,16 @@ class CharacterChunker(AbstractChunker):
         super().__init__(config)
         self.chunk_size = self.config.chunk_size
         self.chunk_overlap = self.config.chunk_overlap
-        self.regex_pattern = self.config.extra.get("character", {}).get("regex")
+        character_params = self.config.extra.get("character", {})
+        if not isinstance(character_params, dict):
+            raise UnsupportedError(
+                that="character params (must be an object)", got=character_params
+            )
+        self.regex_pattern = character_params.get("regex")
+        if self.regex_pattern is not None and not isinstance(self.regex_pattern, str):
+            raise UnsupportedError(
+                that="character regex (must be a string)", got=self.regex_pattern
+            )
 
     @run_in_process
     def _chunk(self, text: str) -> list[PreviewChunk]:

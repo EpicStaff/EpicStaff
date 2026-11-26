@@ -12,6 +12,14 @@ export const CHUNK_STRATEGIES_SELECT_ITEMS: SelectItem[] = CHUNK_STRATEGIES.map(
     value: t.toLowerCase(),
 }));
 
+/** CSV chunking parameters; defaults and limits match the backend validation of the csv strategy. */
+export const CSV_ROWS_IN_CHUNK_DEFAULT = 150;
+export const CSV_ROWS_IN_CHUNK_MIN = 1;
+export const CSV_ROWS_IN_CHUNK_MAX = 10000;
+export const CSV_HEADERS_LEVEL_DEFAULT = 1;
+export const CSV_HEADERS_LEVEL_MIN = 0;
+export const CSV_HEADERS_LEVEL_MAX = 100;
+
 export const MAX_DOCUMENT_SIZE = 20 * 1024 * 1024; // 20 MB
 
 /** Longest "Guidance for Agents" (collection description) the backend accepts — keep in sync with
