@@ -10,6 +10,7 @@ import { takeQueryParams } from '@shared/utils';
 import { finalize } from 'rxjs/operators';
 
 import { ToastService } from '../../../../services/notifications';
+import { NewCollectionDropZoneComponent } from '../../components/new-collection-drop-zone/new-collection-drop-zone.component';
 import { NaiveRagConfigurationDialog } from '../../components/rag-configuration-dialog/naive-rag-configuration-dialog/naive-rag-configuration-dialog.component';
 import { ChunkDeepLinkService } from '../../services/chunk-deep-link.service';
 import { CollectionsStorageService } from '../../services/collections-storage.service';
@@ -28,6 +29,7 @@ import { CollectionsListItemSidebarComponent } from './components/collections-li
         SpinnerComponent,
         FetchErrorStateComponent,
         ResizableSidebarDirective,
+        NewCollectionDropZoneComponent,
     ],
 })
 export class CollectionsListPageComponent implements OnInit, OnDestroy {

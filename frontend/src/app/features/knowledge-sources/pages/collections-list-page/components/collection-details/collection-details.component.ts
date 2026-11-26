@@ -33,6 +33,7 @@ import { ToastService } from '../../../../../../services/notifications';
 import { RecycleBinSettingsService } from '../../../../../../services/recycle-bin';
 import { CopyCollectionFilesDialogComponent } from '../../../../components/copy-collection-files-dialog/copy-collection-files-dialog.component';
 import { CreateCollectionDialogComponent } from '../../../../components/create-collection-dialog/create-collection-dialog.component';
+import { NewCollectionDropZoneComponent } from '../../../../components/new-collection-drop-zone/new-collection-drop-zone.component';
 import { FILE_TYPES } from '../../../../constants/constants';
 import { CollectionDropTargetDirective } from '../../../../directives/collection-drop-target.directive';
 import { collectFileTypes, isStoredDocument } from '../../../../helpers/collection-stats.util';
@@ -65,6 +66,7 @@ const ALL_FILE_TYPES_ITEM: SelectItem<string | null> = { name: 'All types', valu
         MatTooltipModule,
         HasPermissionDirective,
         CollectionDropTargetDirective,
+        NewCollectionDropZoneComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

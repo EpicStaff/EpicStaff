@@ -14,7 +14,7 @@ import { ToastService } from '../../../../services/notifications';
 import { KeyValueTablesPageComponent } from '../../../key-value-tables/pages/key-value-tables-page/key-value-tables-page.component';
 import { CollectionsImportComponent } from '../../../knowledge-sources/components/collections-import/collections-import.component';
 import { CollectionsListPageComponent } from '../../../knowledge-sources/pages/collections-list-page/collections-list-page.component';
-import { CollectionsStorageService } from '../../../knowledge-sources/services/collections-storage.service';
+import { CollectionCreationService } from '../../../knowledge-sources/services/collection-creation.service';
 import { StorageItem } from '../../models/storage.models';
 import { FilesSearchService } from '../../services/files-search.service';
 import { StorageApiService } from '../../services/storage-api.service';
@@ -129,7 +129,7 @@ describe('FilesListPageComponent', () => {
                 ]),
                 { provide: Dialog, useValue: { open: vi.fn() } },
                 { provide: StorageApiService, useValue: { triggerRefresh: vi.fn() } },
-                { provide: CollectionsStorageService, useValue: {} },
+                { provide: CollectionCreationService, useValue: { createCollection: vi.fn() } },
                 { provide: ToastService, useValue: { success: vi.fn(), error: vi.fn() } },
                 {
                     provide: PermissionsService,

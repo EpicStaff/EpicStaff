@@ -290,6 +290,15 @@ describe('DocumentsStorageService — imported documents in the document cache',
         expect(documentIdsOf(4)).toEqual([9]);
     });
 
+    it('shows documents imported into a collection just created, without fetching its empty list', () => {
+        service.registerNewCollection(4);
+
+        service.importFromStorage(4, [candidate(1)]).subscribe();
+
+        expect(documentIdsOf(4)).toEqual([9]);
+        expect(collectionsApi.getDocumentsByCollectionId).not.toHaveBeenCalled();
+    });
+
     it('does not start a partial cache for a collection whose documents were never fetched', () => {
         service.importFromStorage(4, [candidate(1)]).subscribe();
 

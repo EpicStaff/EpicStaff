@@ -1,0 +1,34 @@
+@use '../../directives/collection-drop-target' as drop-target;
+
+:host {
+    display: block;
+    height: 100%;
+}
+
+.new-collection-drop-zone {
+    height: 100%;
+    @include drop-target.collection-drop-target(0, new-collection-drop-zone);
+
+    // Pinned to the bottom, clear of the collection cards a sidebar zone holds; it never takes the pointer,
+    // so the drag keeps reaching whatever lies under it.
+    &__hint {
+        position: absolute;
+        left: 50%;
+        bottom: 1.5rem;
+        z-index: 1;
+        transform: translateX(-50%);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: max-content;
+        max-width: calc(100% - 2rem);
+        padding: 0.5rem 1rem;
+        border-radius: 999px;
+        background-color: var(--accent-color);
+        box-shadow: var(--shadow-panel-elevated);
+        color: var(--white);
+        font-size: var(--text-body-size);
+        text-align: center;
+        pointer-events: none;
+    }
+}

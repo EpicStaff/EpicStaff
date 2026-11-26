@@ -21,7 +21,9 @@
                 class="collections-page__sidebar"
                 [style.width.px]="sidebarWidth()"
             >
-                <app-collections-list-sidebar [collections]="collections()" />
+                <app-new-collection-drop-zone>
+                    <app-collections-list-sidebar [collections]="collections()" />
+                </app-new-collection-drop-zone>
 
                 <div
                     class="resizable-sidebar-handle"

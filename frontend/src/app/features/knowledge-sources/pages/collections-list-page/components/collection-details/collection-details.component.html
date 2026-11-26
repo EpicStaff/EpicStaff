@@ -8,14 +8,16 @@
             ></app-spinner>
         </div>
     } @else if (!loadingCollection() && !fullCollection()) {
-        <div class="details__empty">
-            <app-svg-icon
-                icon="folder"
-                class="details__empty-icon"
-                size="3.125rem"
-            />
-            <p class="details__empty-text">Select a collection to view files</p>
-        </div>
+        <app-new-collection-drop-zone>
+            <div class="details__empty">
+                <app-svg-icon
+                    icon="folder"
+                    class="details__empty-icon"
+                    size="3.125rem"
+                />
+                <p class="details__empty-text">Select a collection to view files</p>
+            </div>
+        </app-new-collection-drop-zone>
     } @else {
         <app-collection-basics
             [collection]="fullCollection()!"

@@ -1,0 +1,18 @@
+<div
+    class="new-collection-drop-zone"
+    [class.new-collection-drop-zone--armed]="isArmed()"
+    [class.new-collection-drop-zone--hovered]="isHovered()"
+    [class.new-collection-drop-zone--busy]="isBusy()"
+>
+    <ng-content />
+
+    @if (isHovered()) {
+        <div class="new-collection-drop-zone__hint">
+            <app-svg-icon
+                icon="plus"
+                size="1rem"
+            />
+            <span>Drop to create a new collection</span>
+        </div>
+    }
+</div>

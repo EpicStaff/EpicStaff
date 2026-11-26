@@ -5,6 +5,9 @@ import { StorageDragService } from '../../files/services/storage-drag.service';
 import { canImportStorageToKnowledge } from '../helpers/storage-import.util';
 import { DocumentsStorageService } from '../services/documents-storage.service';
 
+/** Matches every element carrying `appCollectionDropTarget`, i.e. every existing collection on the page. */
+export const COLLECTION_DROP_TARGET_SELECTOR = '.collection-drop-target';
+
 /**
  * Makes the host a native HTML5 drop target that imports the storage items being dragged
  * (`StorageDragService`) into the bound knowledge collection.
@@ -13,15 +16,17 @@ import { DocumentsStorageService } from '../services/documents-storage.service';
  * untouched, so an enclosing upload area keeps working. While armed it claims the drag
  * (`preventDefault` + `stopPropagation`), so nested/enclosing handlers never see it.
  *
- * Host classes for styling: `collection-drop-target--armed` (a storage drag is live and the
- * user may import), `--hovered` (the drag is over this target), `--busy` (an import into
- * this collection is in flight; drops are refused).
+ * Host classes: `collection-drop-target` always — `COLLECTION_DROP_TARGET_SELECTOR`, so an enclosing
+ * `app-new-collection-drop-zone` leaves drags over an existing collection alone — and, for styling,
+ * `--armed` (a storage drag is live and the user may import), `--hovered` (the drag is over this
+ * target), `--busy` (an import into this collection is in flight; drops are refused).
  *
  * The import runs in the root `DocumentsStorageService`, so it survives the host.
  */
 @Directive({
     selector: '[appCollectionDropTarget]',
     host: {
+        class: 'collection-drop-target',
         '[class.collection-drop-target--armed]': 'isArmed()',
         '[class.collection-drop-target--hovered]': 'isHovered()',
         '[class.collection-drop-target--busy]': 'isBusy()',

@@ -139,6 +139,14 @@ export class DocumentsStorageService implements StorageService {
         return result.asObservable();
     }
 
+    /**
+     * A collection just created holds no documents, so its empty list counts as fetched: documents imported
+     * into it then show at once (see `mergeImportedDocuments`) instead of only after a refetch.
+     */
+    registerNewCollection(collectionId: number): void {
+        this.fetchedCollectionIds.add(collectionId);
+    }
+
     isImporting(collectionId: number): boolean {
         return (this.importCountsByCollectionSignal().get(collectionId) ?? 0) > 0;
     }

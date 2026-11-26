@@ -1,11 +1,12 @@
-// Visual states for an element carrying `appCollectionDropTarget`, keyed on the host classes
-// the directive sets: `collection-drop-target--armed | --hovered | --busy`.
+// Visual states for a knowledge drop target, keyed on the host classes it carries:
+// `#{$block}--armed | --hovered | --busy`. `$block` defaults to the classes `appCollectionDropTarget`
+// sets; `app-new-collection-drop-zone` passes its own block.
 //
 // The ring is an inset `::after` (not an outline), so no ancestor `overflow` can clip it and,
 // being positioned and painted last, no child background can cover it. No z-index needed.
 // Armed targets only get the dashed ring; the background "haze" (same as a hovered chat in the
 // chat list) is reserved for the target under the pointer, so it stays the one clear signal.
-@mixin collection-drop-target($radius) {
+@mixin collection-drop-target($radius, $block: collection-drop-target) {
     position: relative;
     border-radius: $radius;
     transition: background-color 0.15s ease;
@@ -20,20 +21,22 @@
         transition: border-color 0.15s ease;
     }
 
-    &.collection-drop-target--armed::after {
+    &.#{$block}--armed::after {
         border-color: var(--accent-color);
     }
 
-    &.collection-drop-target--hovered {
+    &.#{$block}--hovered {
         background-color: var(--color-ks-hover-row);
 
         &::after {
             border-style: solid;
             border-width: 2px;
+            // A target with no storage drag live (a dragged OS file) is hovered without being armed first.
+            border-color: var(--accent-color);
         }
     }
 
-    &.collection-drop-target--busy {
+    &.#{$block}--busy {
         opacity: 0.6;
     }
 }

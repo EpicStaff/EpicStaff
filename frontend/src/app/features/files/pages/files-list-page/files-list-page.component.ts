@@ -17,16 +17,14 @@ import { AppSvgIconComponent, ButtonComponent, SpinnerComponent, TabButtonCompon
 import { DragHoverDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
 import { filter, map, startWith } from 'rxjs';
-import { switchMap } from 'rxjs/operators';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../services/notifications';
 import { KeyValueTablesPageComponent } from '../../../key-value-tables/pages/key-value-tables-page/key-value-tables-page.component';
 import { CollectionsImportComponent } from '../../../knowledge-sources/components/collections-import/collections-import.component';
-import { CreateCollectionDialogComponent } from '../../../knowledge-sources/components/create-collection-dialog/create-collection-dialog.component';
 import { canImportStorageToKnowledge } from '../../../knowledge-sources/helpers/storage-import.util';
 import { CollectionsListPageComponent } from '../../../knowledge-sources/pages/collections-list-page/collections-list-page.component';
-import { CollectionsStorageService } from '../../../knowledge-sources/services/collections-storage.service';
+import { CollectionCreationService } from '../../../knowledge-sources/services/collection-creation.service';
 import {
     CreateFolderDialogComponent,
     CreateFolderDialogResult,
@@ -81,7 +79,7 @@ export class FilesListPageComponent {
     private readonly route = inject(ActivatedRoute);
     private readonly destroyRef = inject(DestroyRef);
     private readonly storageApiService = inject(StorageApiService);
-    private readonly collectionsStorageService = inject(CollectionsStorageService);
+    private readonly collectionCreation = inject(CollectionCreationService);
     private readonly toastService = inject(ToastService);
     private readonly permissionService = inject(PermissionsService);
     private readonly storageDrag = inject(StorageDragService);
@@ -196,41 +194,13 @@ export class FilesListPageComponent {
     }
 
     public onCreateCollectionClick(): void {
-        this.collectionsStorageService
-            .createCollection()
-            .pipe(takeUntilDestroyed(this.destroyRef))
-            .subscribe({
-                next: ({ collection_id }) => {
-                    if (!collection_id) return;
-                    this.collectionsStorageService.setSelectedCollectionId(collection_id);
-                    this.openCreateCollectionModal(collection_id);
-                },
-                error: () => this.toastService.error('Failed to create collection'),
-            });
+        this.collectionCreation.createCollection();
     }
 
     private readActiveTab(): FilesTab | null {
         // `routeConfig` (not `snapshot`): the child snapshot is not set yet while this page is being activated.
         const path = this.route.firstChild?.routeConfig?.path;
         return this.tabs.find((tab) => tab.link === path)?.link ?? null;
-    }
-
-    private openCreateCollectionModal(collectionId: number): void {
-        const dialogRef = this.dialog.open(CreateCollectionDialogComponent, {
-            width: 'calc(100vw - 2rem)',
-            height: 'calc(100vh - 2rem)',
-            data: { collection_id: collectionId },
-            disableClose: true,
-        });
-
-        dialogRef.closed
-            .pipe(
-                takeUntilDestroyed(this.destroyRef),
-                switchMap(() => this.collectionsStorageService.getFullCollection(collectionId, true))
-            )
-            .subscribe({
-                error: () => this.toastService.error('Failed to get collection data'),
-            });
     }
 
     protected readonly ResourceCode = ResourceCode;
