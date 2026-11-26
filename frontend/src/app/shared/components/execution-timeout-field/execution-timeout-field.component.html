@@ -3,93 +3,94 @@
         [label]="label()"
         [tooltipText]="tooltipText()"
     />
-    <div class="execution-timeout__group">
-        <div
-            class="execution-timeout__control"
-            role="group"
-            [attr.aria-label]="label()"
-        >
-            <button
-                type="button"
-                class="execution-timeout__step"
-                [class.execution-timeout__step--unavailable]="!canDecrease()"
-                [attr.aria-label]="decreaseLabel"
-                [matTooltip]="decreaseLabel"
-                [attr.aria-disabled]="!canDecrease()"
-                [disabled]="readonly()"
-                (click)="step(-stepSeconds)"
+    @if (readonly()) {
+        <span class="execution-timeout__readonly-value text-body">{{ text() }}</span>
+    } @else {
+        <div class="execution-timeout__group">
+            <div
+                class="execution-timeout__control"
+                role="group"
+                [attr.aria-label]="label()"
             >
-                <app-svg-icon
-                    icon="minus-fit"
-                    size="14px"
-                />
-            </button>
-            <div class="execution-timeout__field">
-                <span
-                    class="execution-timeout__mirror text-body"
-                    aria-hidden="true"
+                <button
+                    type="button"
+                    class="execution-timeout__step"
+                    [class.execution-timeout__step--unavailable]="!canDecrease()"
+                    [attr.aria-label]="decreaseLabel"
+                    [matTooltip]="decreaseLabel"
+                    [attr.aria-disabled]="!canDecrease()"
+                    (click)="step(-stepSeconds)"
                 >
-                    @for (cell of cells(); track $index) {
-                        <span
-                            [class.execution-timeout__cell--untyped]="cell.untyped"
-                            [class.execution-timeout__cell--separator]="cell.separator"
-                            >{{ cell.character }}</span
-                        >
-                    }
-                </span>
-                <input
-                    #timeoutInput
-                    type="text"
-                    class="execution-timeout__input text-body"
-                    [attr.aria-label]="inputLabel()"
-                    [matTooltip]="label()"
-                    inputmode="numeric"
-                    autocomplete="off"
-                    spellcheck="false"
-                    [attr.aria-invalid]="!!errorMessage()"
-                    [attr.aria-describedby]="describedBy()"
-                    [disabled]="readonly()"
-                    [value]="text()"
-                    (beforeinput)="onBeforeInput($event, timeoutInput)"
-                    (input)="onInputEvent($event, timeoutInput)"
-                    (compositionstart)="onCompositionStart(timeoutInput)"
-                    (compositionend)="onCompositionEnd($event, timeoutInput)"
-                    (blur)="commit()"
-                    (keydown.enter)="commit(); $event.preventDefault()"
-                    (keydown.arrowleft)="moveCaret($event, false, timeoutInput)"
-                    (keydown.arrowright)="moveCaret($event, true, timeoutInput)"
-                />
+                    <app-svg-icon
+                        icon="minus-fit"
+                        size="14px"
+                    />
+                </button>
+                <div class="execution-timeout__field">
+                    <span
+                        class="execution-timeout__mirror text-body"
+                        aria-hidden="true"
+                    >
+                        @for (cell of cells(); track $index) {
+                            <span
+                                [class.execution-timeout__cell--untyped]="cell.untyped"
+                                [class.execution-timeout__cell--separator]="cell.separator"
+                                >{{ cell.character }}</span
+                            >
+                        }
+                    </span>
+                    <input
+                        #timeoutInput
+                        type="text"
+                        class="execution-timeout__input text-body"
+                        [attr.aria-label]="inputLabel()"
+                        [matTooltip]="label()"
+                        inputmode="numeric"
+                        autocomplete="off"
+                        spellcheck="false"
+                        [attr.aria-invalid]="!!errorMessage()"
+                        [attr.aria-describedby]="describedBy()"
+                        [value]="text()"
+                        (beforeinput)="onBeforeInput($event, timeoutInput)"
+                        (input)="onInputEvent($event, timeoutInput)"
+                        (compositionstart)="onCompositionStart(timeoutInput)"
+                        (compositionend)="onCompositionEnd($event, timeoutInput)"
+                        (blur)="commit()"
+                        (keydown.enter)="commit(); $event.preventDefault()"
+                        (keydown.arrowleft)="moveCaret($event, false, timeoutInput)"
+                        (keydown.arrowright)="moveCaret($event, true, timeoutInput)"
+                    />
+                </div>
+                <button
+                    type="button"
+                    class="execution-timeout__step"
+                    [class.execution-timeout__step--unavailable]="!canIncrease()"
+                    [attr.aria-label]="increaseLabel"
+                    [matTooltip]="increaseLabel"
+                    [attr.aria-disabled]="!canIncrease()"
+                    (click)="step(stepSeconds)"
+                >
+                    <app-svg-icon
+                        icon="plus-fit"
+                        size="14px"
+                    />
+                </button>
             </div>
-            <button
-                type="button"
-                class="execution-timeout__step"
-                [class.execution-timeout__step--unavailable]="!canIncrease()"
-                [attr.aria-label]="increaseLabel"
-                [matTooltip]="increaseLabel"
-                [attr.aria-disabled]="!canIncrease()"
-                [disabled]="readonly()"
-                (click)="step(stepSeconds)"
+            <span
+                class="execution-timeout__visually-hidden"
+                [id]="typingHintId"
+                >{{ typingHint }}</span
             >
-                <app-svg-icon
-                    icon="plus-fit"
-                    size="14px"
-                />
-            </button>
+            <div
+                aria-live="polite"
+                [id]="messageId"
+            >
+                @if (errorMessage()) {
+                    <p class="execution-timeout__message text-body-small">{{ errorMessage() }}</p>
+                }
+            </div>
         </div>
-        <span
-            class="execution-timeout__visually-hidden"
-            [id]="typingHintId"
-            >{{ typingHint }}</span
-        >
-        <div
-            aria-live="polite"
-            [id]="messageId"
-        >
-            @if (errorMessage()) {
-                <p class="execution-timeout__message text-body-small">{{ errorMessage() }}</p>
-            }
-        </div>
-    </div>
+    }
     @if (hint()) {
         <p
             class="execution-timeout__hint text-body-small"

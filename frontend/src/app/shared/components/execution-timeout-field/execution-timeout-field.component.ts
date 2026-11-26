@@ -69,7 +69,7 @@ interface ClockCell {
 })
 export class ExecutionTimeoutFieldComponent {
     public readonly field = input.required<ExecutionTimeoutFormField>();
-    /** Disables the input and both buttons. */
+    /** Shows the timeout as plain `hh:mm:ss` text in place of the input and its buttons. */
     public readonly readonly = input(false);
     /** Shown under the field, and read with it by screen readers. */
     public readonly hint = input('');
@@ -220,7 +220,7 @@ export class ExecutionTimeoutFieldComponent {
 
     /** `−` and `+`: moves the timeout by `deltaSeconds` within the limits, and shows it as left. */
     protected step(deltaSeconds: number): void {
-        if (this.readonly() || !(deltaSeconds < 0 ? this.canDecrease() : this.canIncrease())) return;
+        if (!(deltaSeconds < 0 ? this.canDecrease() : this.canIncrease())) return;
         this.field().step(deltaSeconds);
         this.commit();
     }
