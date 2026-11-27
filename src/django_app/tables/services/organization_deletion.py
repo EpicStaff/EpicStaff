@@ -208,6 +208,8 @@ TABLES_EXCLUDED_RESOURCE_LABELS: frozenset[str] = frozenset(
         # shortcuts on the user row -- part of the deleted user, not a resource
         # to report:
         "tables.UserTourProgress",
+        # A user's own view settings for a flow, implied by "flow":
+        "tables.UserGraphViewSettings",
     }
 )
 

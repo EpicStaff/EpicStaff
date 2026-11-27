@@ -19,6 +19,7 @@ from tables.views.flow_assistant_views import (
     FlowAssistantSendMessageView,
     FlowAssistantStreamView,
 )
+from tables.views.graph_view_settings_views import GraphViewSettingsView
 from tables.views.key_value_runtime_views import KeyValueRuntimeAPIView
 from tables.views.knowledge_views.collection_management_views import (
     SourceCollectionViewSet,
@@ -207,6 +208,11 @@ urlpatterns = [
         name="document-bulk-delete",
     ),
     path("", include(router.urls)),
+    path(
+        "graphs/<int:graph_id>/my-view-settings/",
+        GraphViewSettingsView.as_view(),
+        name="graph-my-view-settings",
+    ),
     path("run-session/", RunSession.as_view(), name="run-session"),
     path("run-session/test/", SessionTestRunView.as_view(), name="run-session-test"),
     path(

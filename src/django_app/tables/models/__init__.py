@@ -137,6 +137,7 @@ from .tag_models import (
 from .tool_filter_preset_models import ToolFilterPreset
 from .transfer_job_models import TransferJob
 from .user import User, UserTourProgress
+from .user_graph_view_settings import UserGraphViewSettings
 from .webhook_models import (
     LOCAL_ONLY_PROVIDERS,
     LocalhostWebhookConfig,
@@ -273,6 +274,7 @@ __all__ = [
     "TunnelConfig",
     "TwilioChannel",
     "User",
+    "UserGraphViewSettings",
     "UserSessionMessage",
     "UserTourProgress",
     "WebhookTrigger",

@@ -129,6 +129,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_superadmin = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     custom_shortcuts = models.JSONField(default=default_custom_shortcuts, blank=True)
+    # Sparse: a section or key that is missing means its default. The keys, types and
+    # defaults are the section serializers' in rbac/profile/preferences/sections.py.
+    preferences = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -29,10 +29,12 @@ from rbac.views.auth import (
     WsTicketView,
 )
 from rbac.views.profile import PasswordChangeRequestView, ProfileTourCompleteView
+from rbac.views.profile_preferences import ProfilePreferenceSectionView
 from rest_framework.permissions import SAFE_METHODS
 from rest_framework.response import Response
 from src.shared.models import UserAction
 from tables.views.audit_token_views import AuditTokenView
+from tables.views.graph_view_settings_views import GraphViewSettingsView
 from utils.logger import logger
 from utils.request_target import (
     id_from_response,
@@ -88,6 +90,8 @@ FALLBACK_EXCLUDED_VIEWS = frozenset(
         ResetUserView,
         # The caller's own UI state, like FALLBACK_EXCLUDED_ACTIONS.
         ProfileTourCompleteView,
+        ProfilePreferenceSectionView,
+        GraphViewSettingsView,
     }
 )
 # DRF actions that change only the caller's own preferences, never anything the org shares.
