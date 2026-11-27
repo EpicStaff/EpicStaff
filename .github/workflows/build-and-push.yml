@@ -99,11 +99,17 @@ jobs:
 
       # The hash-pinned requirements are read from the commit this workflow file
       # came from, not from the ref being built: a branch or tag cut before
-      # .github/requirements/ existed has no such file.
+      # .github/requirements/ existed has no such file. A ref cut before
+      # scripts/envtool.py existed (v1.1.x) has no env.yaml either; its
+      # src/.env.example is what its own compose was validated against.
       - name: Generate dev env from env.yaml
         env:
           WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
+          if [ ! -f scripts/envtool.py ]; then
+            cp src/.env.example src/.env
+            exit 0
+          fi
           git fetch --quiet --depth=1 origin "$WORKFLOW_SHA"
           git show FETCH_HEAD:.github/requirements/pyyaml.txt > "$RUNNER_TEMP/pyyaml.txt"
           python -m pip install --quiet --require-hashes -r "$RUNNER_TEMP/pyyaml.txt"
@@ -164,6 +170,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # The commit comes from the checked-out tree, not github.sha: on the hand-run
+      # branch path github.sha is the workflow's commit, not the one being built.
+      - name: Compute build identity
+        id: identity
+        shell: bash
+        env:
+          IS_RELEASE: ${{ inputs.is_release }}
+          RESOLVED_TAG: ${{ needs.resolve.outputs.tag }}
+          RESOLVED_REF: ${{ needs.resolve.outputs.ref }}
+        run: |
+          set -euo pipefail
+          VERSION=""
+          if [ "$IS_RELEASE" = "true" ]; then
+            VERSION="$RESOLVED_TAG"
+          fi
+          GIT_SHA=$(git rev-parse HEAD)
+          COMMIT_DATE=$(git log -1 --format=%cI)
+          {
+            echo "version=${VERSION}"
+            echo "git_ref=${RESOLVED_REF}"
+            echo "git_sha=${GIT_SHA}"
+            echo "commit_date=${COMMIT_DATE}"
+          } >> "$GITHUB_OUTPUT"
+          echo ">> build identity: version=${VERSION} ref=${RESOLVED_REF} sha=${GIT_SHA} date=${COMMIT_DATE}"
+
       - name: Compute tags
         id: tags
         shell: bash
@@ -194,6 +225,17 @@ jobs:
           file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+          # Services that don't declare these ARGs ignore them (buildx only warns).
+          build-args: |
+            EPICSTAFF_VERSION=${{ steps.identity.outputs.version }}
+            EPICSTAFF_GIT_REF=${{ steps.identity.outputs.git_ref }}
+            EPICSTAFF_GIT_SHA=${{ steps.identity.outputs.git_sha }}
+            EPICSTAFF_COMMIT_DATE=${{ steps.identity.outputs.commit_date }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.identity.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.identity.outputs.git_sha }}
+            org.opencontainers.image.created=${{ steps.identity.outputs.commit_date }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 

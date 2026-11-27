@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os
 import signal
 import time
 
@@ -427,6 +428,142 @@ async def test_a_plugin_failed_for_its_disk_during_a_backoff_is_not_started_agai
         await supervisor.stop()
         launcher.stop_all()
         await health_checker.aclose()
+
+
+@pytest.mark.linux
+async def test_every_kill_is_followed_by_on_killed_before_anything_starts_again(tmp_path, held_port):
+    launcher = FakeLauncher()
+    health_checker = HealthChecker()
+    port, listen_fd = held_port
+
+    async def sessions_ended():
+        launcher.operations.append(("sessions_ended", UID))
+
+    supervisor = ProcessSupervisor(
+        "weather",
+        UID,
+        launcher,
+        health_checker,
+        LogCollector("weather", RotatingLogFile(tmp_path / "logs"), io.StringIO()),
+        lambda: None,
+        listen_fd=listen_fd,
+        policy=RestartPolicy(initial_delay=0.05),
+        on_killed=sessions_ended,
+    )
+    try:
+        await supervisor.start(spec(port))
+        await wait_until(lambda: supervisor.status().observed_state == "running")
+        # A crash, a restart, then a disk failure: two kills.
+        launcher.kill_running(UID, signal.SIGKILL)
+        await wait_until(lambda: len(launcher.spawned) == 2)
+        supervisor.fail_for("uses 70 MB of disk, more than its limit of 64 MB")
+        await wait_until(lambda: supervisor.failed)
+        # A deliberate start and stop: the third.
+        await supervisor.start(spec(port))
+        await wait_until(lambda: supervisor.status().observed_state == "running")
+        await supervisor.stop()
+    finally:
+        await supervisor.stop()
+        launcher.stop_all()
+        await health_checker.aclose()
+
+    steps = [step for step, *_ in launcher.operations if step in ("spawn", "kill_uid", "sessions_ended")]
+    assert steps == ["spawn", "kill_uid", "sessions_ended"] * 3
+
+
+def is_open_pidfd(descriptor: int) -> bool:
+    try:
+        return "pidfd" in os.readlink(f"/proc/self/fd/{descriptor}")
+    except FileNotFoundError:
+        return False
+
+
+@pytest.mark.linux
+async def test_a_stop_through_the_whole_grace_period_and_a_slow_on_killed_ends_cleanly(tmp_path, held_port):
+    launcher = FakeLauncher()
+    # Like a server holding long requests open: only the SIGKILL after the grace period stops it.
+    launcher.ignore_sigterm = True
+    pidfds = []
+    real_spawn = launcher.spawn
+
+    async def spawn(*arguments):
+        process = await real_spawn(*arguments)
+        pidfds.append(process.pidfd)
+        return process
+
+    launcher.spawn = spawn
+    calls = []
+
+    async def slow_on_killed():
+        calls.append("on_killed")
+        await asyncio.sleep(2.5)
+
+    health_checker = HealthChecker()
+    port, listen_fd = held_port
+    supervisor = ProcessSupervisor(
+        "weather",
+        UID,
+        launcher,
+        health_checker,
+        LogCollector("weather", RotatingLogFile(tmp_path / "logs"), io.StringIO()),
+        lambda: None,
+        listen_fd=listen_fd,
+        on_killed=slow_on_killed,
+    )
+    loop = asyncio.get_running_loop()
+    try:
+        await supervisor.start(spec(port))
+        await wait_until(lambda: supervisor.status().observed_state == "running")
+        started = loop.time()
+        await supervisor.stop()
+        took = loop.time() - started
+    finally:
+        await supervisor.stop()
+        launcher.stop_all()
+        await health_checker.aclose()
+
+    assert calls == ["on_killed"]
+    assert took < process_supervisor.STOP_GRACE_SECONDS + process_supervisor.ON_KILLED_SECONDS + 2
+    # Neither left open nor watched: a dead pidfd stays readable and would spin the agent's loop.
+    assert not is_open_pidfd(pidfds[0])
+
+
+@pytest.mark.linux
+async def test_a_stop_that_runs_out_of_time_still_closes_the_pidfd_and_kills_once_more(
+    tmp_path, held_port, monkeypatch
+):
+    monkeypatch.setattr(process_supervisor, "STOP_WINDOW_SECONDS", 1.0)
+    launcher = FakeLauncher()
+    pidfds = []
+    real_spawn, real_kill = launcher.spawn, launcher.kill_uid
+
+    async def spawn(*arguments):
+        process = await real_spawn(*arguments)
+        pidfds.append(process.pidfd)
+        return process
+
+    async def kill_uid(uid):
+        # The first kill hangs in the launcher; the stop gives up on it.
+        if not [operation for operation in launcher.operations if operation[0] == "kill_uid"]:
+            launcher.operations.append(("kill_uid", uid))
+            await asyncio.sleep(30)
+        return await real_kill(uid)
+
+    launcher.spawn, launcher.kill_uid = spawn, kill_uid
+    health_checker = HealthChecker()
+    port, listen_fd = held_port
+    supervisor = make_supervisor(tmp_path, launcher, health_checker, listen_fd)
+    try:
+        await supervisor.start(spec(port))
+        await wait_until(lambda: supervisor.status().observed_state == "running")
+        await supervisor.stop()
+    finally:
+        await supervisor.stop()
+        launcher.stop_all()
+        await health_checker.aclose()
+
+    assert [operation for operation in launcher.operations if operation[0] == "kill_uid"] == [("kill_uid", UID)] * 2
+    assert not is_open_pidfd(pidfds[0])
 
 
 @pytest.mark.linux

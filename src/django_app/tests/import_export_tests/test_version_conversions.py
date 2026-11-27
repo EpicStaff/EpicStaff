@@ -1,11 +1,12 @@
 """
-Tests for v1→v2, v2→v3, v3→v4 and v4→v5 import/export version conversion,
+Tests for v1→v2, v2→v3, v3→v4, v4→v5 and v5→v6 import/export version conversion,
 and the shared variable_conversion helper.
 
 These tests are pure dict-transform tests — no DB access required.
 """
 
 import copy
+import time
 
 import pytest
 
@@ -24,6 +25,7 @@ from tables.import_export.version_conversions.convertions import (
     v2_to_v3,
     v3_to_v4,
     v4_to_v5,
+    v5_to_v6,
 )
 from tables.utils.legacy_node_number import split_legacy_node_name
 
@@ -767,10 +769,40 @@ class TestV2ToV3:
         ("Order #20240101123456", None, ("Order #20240101123456", None)),
         ("Order #20240101123456", 3, ("Order #20240101123456", 3)),
         ("", None, ("", None)),
+        (None, None, (None, None)),
+        (None, 4, (None, 4)),
+        ("  Agent  #  4  ", None, ("  Agent", 4)),
+        ("Agent\n#4\n", None, ("Agent", 4)),
+        ("Agent\u00a0#\u30004", None, ("Agent", 4)),
+        ("Agent #\u0663", None, ("Agent", 3)),
+        ("Agent #\u00b2", None, ("Agent #\u00b2", None)),
+        ("A #1 #2", None, ("A #1", 2)),
+        ("A #2 x", None, ("A #2 x", None)),
+        ("Agent #", None, ("Agent #", None)),
+        ("Agent 4", None, ("Agent 4", None)),
+        ("42", None, ("42", None)),
+        ("   #4", None, ("   #4", 4)),
     ],
 )
 def test_split_legacy_node_name(node_name, metadata_number, expected):
     assert split_legacy_node_name(node_name, metadata_number) == expected
+
+
+@pytest.mark.parametrize(
+    "node_name",
+    [
+        pytest.param("a" + " " * 20_000 + "b", id="no-hash"),
+        pytest.param("a" + " " * 20_000 + "#x", id="hash-no-digits"),
+    ],
+)
+def test_split_legacy_node_name_runs_in_linear_time_on_long_inner_whitespace(node_name):
+    # Sized so the former quadratic regex search took about a second per case.
+    started = time.perf_counter()
+
+    result = split_legacy_node_name(node_name, None)
+
+    assert time.perf_counter() - started < 0.1
+    assert result == (node_name, None)
 
 
 def _v3_bundle(*nodes):
@@ -982,3 +1014,271 @@ class TestV4ToV5:
         for venv in data.get(EntityType.VENV, []):
             serializer = VenvImportSerializer(data=venv)
             assert serializer.is_valid(), serializer.errors
+
+
+GATEWAY = "https://gateway.example/openai"
+
+
+def _v5_llm_model(**fields) -> dict:
+    return {"id": 7, "name": "gateway-gpt", "provider_name": "azure", "is_custom": True, **fields}
+
+
+def _v5_llm_config(**fields) -> dict:
+    return {"id": 70, "custom_name": "gateway config", "model": 7, **fields}
+
+
+class TestV5ToV6:
+    """Setting columns fold into `parameters`, endpoint columns into `connection`.
+
+    The same fold the database migration did: only non-null settings, only non-empty
+    endpoints, and a model row's endpoint only when the row is the organization's own.
+    """
+
+    def test_llm_setting_columns_become_parameters(self):
+        data = v5_to_v6(
+            {
+                EntityType.LLM_CONFIG: [
+                    _v5_llm_config(temperature=0.3, max_tokens=1000, top_p=None, stop=["END"])
+                ]
+            }
+        )
+
+        [config] = data[EntityType.LLM_CONFIG]
+        assert config["parameters"] == {"temperature": 0.3, "max_tokens": 1000, "stop": ["END"]}
+        assert "temperature" not in config and "top_p" not in config
+
+    def test_a_custom_model_s_endpoint_moves_onto_the_config(self):
+        data = v5_to_v6(
+            {
+                EntityType.LLM_MODEL: [
+                    _v5_llm_model(base_url=GATEWAY, api_version="2024-06-01", deployment_id="prod")
+                ],
+                EntityType.LLM_CONFIG: [_v5_llm_config(base_url=None, api_version=None)],
+            }
+        )
+
+        assert data[EntityType.LLM_CONFIG][0]["connection"] == {
+            "base_url": GATEWAY,
+            "api_version": "2024-06-01",
+            "deployment_id": "prod",
+        }
+        model = data[EntityType.LLM_MODEL][0]
+        assert not {"base_url", "api_version", "deployment_id"} & model.keys()
+
+    def test_the_model_s_endpoint_wins_over_the_config_s_own(self):
+        # Runs read the endpoint from the model row only; the config's fills what the row lacks.
+        data = v5_to_v6(
+            {
+                EntityType.LLM_MODEL: [_v5_llm_model(base_url=GATEWAY, api_version="")],
+                EntityType.LLM_CONFIG: [
+                    _v5_llm_config(base_url="https://own.example", api_version="2024-06-01")
+                ],
+            }
+        )
+
+        assert data[EntityType.LLM_CONFIG][0]["connection"] == {
+            "base_url": GATEWAY,
+            "api_version": "2024-06-01",
+        }
+
+    def test_a_built_in_model_s_endpoint_is_not_copied(self):
+        data = v5_to_v6(
+            {
+                EntityType.LLM_MODEL: [_v5_llm_model(is_custom=False, base_url=GATEWAY)],
+                EntityType.LLM_CONFIG: [_v5_llm_config()],
+            }
+        )
+
+        assert data[EntityType.LLM_CONFIG][0]["connection"] == {}
+        assert "base_url" not in data[EntityType.LLM_MODEL][0]
+
+    def test_embedding_task_type_and_model_endpoint_are_folded(self):
+        data = v5_to_v6(
+            {
+                EntityType.EMBEDDING_MODEL: [
+                    {"id": 3, "name": "embedder", "is_custom": True, "base_url": GATEWAY, "deployment": "emb"}
+                ],
+                EntityType.EMBEDDING_CONFIG: [
+                    {"id": 30, "custom_name": "embed", "model": 3, "task_type": "retrieval_document"}
+                ],
+            }
+        )
+
+        [config] = data[EntityType.EMBEDDING_CONFIG]
+        assert config["parameters"] == {"task_type": "retrieval_document"}
+        assert config["connection"] == {"base_url": GATEWAY, "deployment_id": "emb"}
+        assert "task_type" not in config
+        assert not {"base_url", "deployment"} & data[EntityType.EMBEDDING_MODEL][0].keys()
+
+    def test_a_config_whose_model_is_not_in_the_file_gets_only_its_own_values(self):
+        data = v5_to_v6({EntityType.LLM_CONFIG: [_v5_llm_config(model=999, base_url=GATEWAY)]})
+
+        assert data[EntityType.LLM_CONFIG][0]["connection"] == {"base_url": GATEWAY}
+
+    def test_a_file_without_configs_passes_through(self):
+        bundle = {"version": 5, EntityType.GRAPH: [{"id": 1, "nodes": []}]}
+
+        assert v5_to_v6(copy.deepcopy(bundle)) == bundle
+
+    def test_a_version_1_file_reaches_the_current_version_with_its_settings(self):
+        """v2->v3 strips fields the current model lacks; the folded columns must survive it."""
+        bundle = {
+            EntityType.LLM_MODEL: [_v5_llm_model(base_url=GATEWAY)],
+            EntityType.LLM_CONFIG: [
+                _v5_llm_config(temperature=0.2, base_url=None, headers={"X-Legacy": "1"})
+            ],
+            EntityType.EMBEDDING_CONFIG: [
+                {"id": 30, "custom_name": "embed", "model": 3, "task_type": "retrieval_query"}
+            ],
+        }
+
+        converted = VersionConverter.convert(bundle)
+
+        assert converted["version"] == IMPORT_VERSION == 6
+        [config] = converted[EntityType.LLM_CONFIG]
+        assert config["parameters"] == {"temperature": 0.2}
+        assert config["connection"] == {"base_url": GATEWAY}
+        assert config["extra_headers"] == {"X-Legacy": "1"}
+        assert converted[EntityType.EMBEDDING_CONFIG][0]["parameters"] == {
+            "task_type": "retrieval_query"
+        }
+
+
+# ──────────────────────────────────────────
+# Node files (partial exports) and entries already in a newer shape
+# ──────────────────────────────────────────
+
+
+class TestNodeFileConversion:
+    """A node file lists its nodes at the top level, untagged, and may carry no version.
+
+    Without a version it runs through every conversion, so each one converts the nodes
+    of a node file as it does a flow's, and leaves what is already newer as it is.
+    """
+
+    def test_python_node_stream_config_is_removed_from_a_node_file(self):
+        data = v2_to_v3({EntityType.PYTHON_NODE: [{"id": 1, "stream_config": {"enabled": True}}]})
+
+        assert data[EntityType.PYTHON_NODE] == [{"id": 1}]
+
+    def test_classification_prompt_id_is_remapped_in_a_node_file(self):
+        data = v2_to_v3(
+            {
+                EntityType.CLASSIFICATION_DECISION_TABLE_NODE: [
+                    {
+                        "id": 1,
+                        "prompt_configs": [{"prompt_key": "triage", "prompt_text": "..."}],
+                        "condition_groups": [{"group_name": "a", "prompt_id": "triage"}],
+                    }
+                ]
+            }
+        )
+
+        [node] = data[EntityType.CLASSIFICATION_DECISION_TABLE_NODE]
+        assert node["condition_groups"] == [{"group_name": "a", "prompt": "triage"}]
+
+    def test_badge_moves_into_node_number_in_a_node_file(self):
+        data = v3_to_v4(
+            {EntityType.AGENT_NODE: [{"id": 1, "node_name": "Agent #4", "metadata": {"nodeNumber": 4}}]}
+        )
+
+        assert data[EntityType.AGENT_NODE] == [
+            {"id": 1, "node_name": "Agent", "node_number": 4, "metadata": {}}
+        ]
+
+    def test_libraries_of_a_node_file_become_an_environment(self):
+        data = v4_to_v5(
+            {
+                EntityType.PYTHON_NODE: [
+                    {
+                        "id": 1,
+                        "node_name": "fetch",
+                        "python_code": {"code": "...", "libraries": "httpx>=0.28"},
+                    }
+                ],
+                EntityType.CLASSIFICATION_DECISION_TABLE_NODE: [
+                    {
+                        "id": 2,
+                        "node_name": "route",
+                        "pre_python_code": {"code": "...", "libraries": "httpx>=0.28"},
+                        "post_python_code": {"code": "...", "libraries": ""},
+                    }
+                ],
+            }
+        )
+
+        [venv] = data[EntityType.VENV]
+        assert venv["libs"] == [{"name": "httpx", "specification": ">=0.28"}]
+        [python_node] = data[EntityType.PYTHON_NODE]
+        [table] = data[EntityType.CLASSIFICATION_DECISION_TABLE_NODE]
+        assert python_node["python_code"] == {"code": "...", "venv": venv["id"]}
+        assert table["pre_python_code"] == {"code": "...", "venv": venv["id"]}
+        assert table["post_python_code"] == {"code": "..."}
+
+    def test_an_unversioned_release_1_3_node_file_reaches_the_current_shape(self):
+        node_file = {
+            EntityType.PYTHON_NODE: [
+                {
+                    "id": 1,
+                    "node_name": "Fetch #2",
+                    "metadata": {"nodeNumber": 2},
+                    "python_code": {"code": "...", "libraries": "httpx"},
+                }
+            ],
+            EntityType.PYTHON_CODE_TOOL: [
+                {
+                    "id": 5,
+                    "name": "lookup",
+                    "args_schema": {"type": "object", "properties": {"q": {"type": "string"}}},
+                    "python_code_tool_config_fields": [],
+                    "python_code": {"code": "...", "libraries": ""},
+                }
+            ],
+        }
+
+        converted = VersionConverter.convert(node_file)
+
+        assert converted["version"] == IMPORT_VERSION
+        [python_node] = converted[EntityType.PYTHON_NODE]
+        assert (python_node["node_name"], python_node["node_number"]) == ("Fetch", 2)
+        [venv] = converted[EntityType.VENV]
+        assert python_node["python_code"]["venv"] == venv["id"]
+        [tool] = converted[EntityType.PYTHON_CODE_TOOL]
+        assert [variable["name"] for variable in tool["variables"]] == ["q"]
+        assert "args_schema" not in tool
+
+    def test_a_tool_already_in_the_v2_shape_keeps_its_variables(self):
+        variables = [{"name": "q", "type": "string", "input_type": "agent_input"}]
+        tool = {"id": 5, "name": "lookup", "variables": variables}
+
+        data = v1_to_v2({EntityType.PYTHON_CODE_TOOL: [copy.deepcopy(tool)]})
+
+        assert data[EntityType.PYTHON_CODE_TOOL] == [tool]
+
+    def test_code_already_naming_an_environment_is_left_as_it_is(self):
+        node_file = {
+            EntityType.VENV: [{"id": 3, "name": "fetch-venv", "libs": []}],
+            EntityType.PYTHON_NODE: [{"id": 1, "python_code": {"code": "...", "venv": 3}}],
+        }
+
+        assert v4_to_v5(copy.deepcopy(node_file)) == node_file
+
+    def test_a_config_already_in_the_v6_shape_keeps_its_parameters_and_connection(self):
+        node_file = {
+            EntityType.LLM_MODEL: [_v5_llm_model()],
+            EntityType.LLM_CONFIG: [
+                _v5_llm_config(
+                    parameters={"temperature": 0.7}, connection={"base_url": GATEWAY}
+                )
+            ],
+            EntityType.EMBEDDING_CONFIG: [
+                {
+                    "id": 30,
+                    "model": 3,
+                    "parameters": {"task_type": "retrieval_query"},
+                    "connection": {},
+                }
+            ],
+        }
+
+        assert v5_to_v6(copy.deepcopy(node_file)) == node_file

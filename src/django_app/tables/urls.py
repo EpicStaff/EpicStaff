@@ -1,10 +1,15 @@
+from ai_models.views.default_config import DefaultModelsAPIView
+from ai_models.views.model_view_sets import (
+    EmbeddingConfigReadWriteViewSet,
+    EmbeddingModelReadWriteViewSet,
+    LLMConfigReadWriteViewSet,
+    LLMModelReadWriteViewSet,
+    ProviderReadWriteViewSet,
+)
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from tables.views.dashboard_views import DashboardReportView, DashboardStatsView
-from tables.views.default_config import (
-    DefaultModelsAPIView,
-)
 from tables.views.execution_timeout_limits_views import ExecutionTimeoutLimitsAPIView
 from tables.views.flow_assistant_views import (
     FlowAssistantAuditView,
@@ -52,8 +57,6 @@ from tables.views.model_view_sets import (
     DecisionTableNodeModelViewSet,
     EdgeViewSet,
     ElevenLabsRealtimeConfigViewSet,
-    EmbeddingConfigReadWriteViewSet,
-    EmbeddingModelReadWriteViewSet,
     EndNodeModelViewSet,
     FileExtractorNodeViewSet,
     FlowFilterPresetViewSet,
@@ -69,11 +72,8 @@ from tables.views.model_view_sets import (
     KeyValueTableViewSet,
     KnowledgeNodeViewSet,
     LabelViewSet,
-    LLMConfigReadWriteViewSet,
-    LLMModelReadWriteViewSet,
     McpToolViewSet,
     OpenAIRealtimeConfigViewSet,
-    ProviderReadWriteViewSet,
     PythonCodeResultReadViewSet,
     PythonCodeToolConfigViewSet,
     PythonCodeToolViewSet,
@@ -419,6 +419,11 @@ urlpatterns = [
         "graph-rag/<int:pk>/table-summary/",
         GraphRagViewSet.as_view({"get": "table_summary"}),
         name="graph-rag-table-summary",
+    ),
+    path(
+        "graph-rag/table-link-pairs/",
+        GraphRagViewSet.as_view({"get": "table_link_pairs"}),
+        name="graph-rag-table-link-pairs",
     ),
     path(
         "graph-rag/<int:pk>/tables/<str:table_name>/",

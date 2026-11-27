@@ -89,15 +89,10 @@ jobs:
           git show FETCH_HEAD:.github/requirements/ruamel-yaml.txt > "$RUNNER_TEMP/ruamel-yaml.txt"
           python -m pip install --require-hashes -r "$RUNNER_TEMP/ruamel-yaml.txt"
 
-      # This uploads a two-file asset (docker-compose.yaml + .env.example), NOT a
-      # standalone install bundle. That compose file still mounts configuration from
-      # the source tree relative to itself (./redis.conf, ./nginx/..., and more for the
-      # optional profiles), and none of it ships here -- it works only
-      # as an overlay on an existing git-cloned checkout (README's "How to verify a
-      # release" flow: pin/verify image digests, not `docker compose up` from this
-      # asset alone). GitHub's own auto-generated "Source code (zip/tar.gz)" on the
-      # same release page is the full, installable checkout -- don't confuse the two
-      # when reasoning about what a downloader gets.
+      # The release carries the bundle epicstaff-<tag>.tar.gz, a standalone install: the
+      # digest-pinned compose file, every file it bind-mounts, the envtool kit and
+      # INSTALL.md (see build_release_bundle.py). docker-compose.yaml and .env.example
+      # are also uploaded on their own, for checking image digests without the bundle.
       - name: Prepare release-archives dir
         shell: bash
         run: mkdir -p release-archives
@@ -137,8 +132,37 @@ jobs:
             exit 1
           fi
 
+      - name: Build release bundle
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A tag cut before the bundle existed has no builder: publish its other files as before.
+          if [ ! -f .github/scripts/build_release_bundle.py ]; then
+            echo ">> no bundle builder in $TAG, skipping the release bundle"
+            exit 0
+          fi
+          python ./.github/scripts/build_release_bundle.py . release-archives/docker-compose.yaml "$TAG" release-archives
+
+      # Written outside release-archives/, whose files are all uploaded. The notes start with a
+      # rule so they never run into the last paragraph of notes already on the release.
+      - name: Write release notes
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/release-notes.md"
+          printf '\n---\n\n' > "$notes"
+          if [ -f "release-archives/epicstaff-${TAG}.tar.gz" ]; then
+            printf '%s\n' "**Installing this release:** download \`epicstaff-${TAG}.tar.gz\`, verify it as described under \"How to verify a release\" in the README, unpack it and follow its \`INSTALL.md\`; no clone of the source is needed. The separate \`docker-compose.yaml\` and \`.env.example\` are the same files as in the bundle, for checking image digests without downloading it." >> "$notes"
+          else
+            printf '%s\n' "**About the attached \`docker-compose.yaml\` and \`.env.example\`:** they are for verifying this release's image digests and signatures, not a standalone install. The compose file mounts configuration from the source tree next to it (\`redis.conf\`, the \`nginx/\` templates, start-up scripts and certificates, and more), and none of it is in the download. To run this release, clone the source at \`${TAG}\` and use the compose file as an overlay, as described under \"Running a verified release\" in the README." >> "$notes"
+          fi
+
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
 
       # The compose file is what tells a customer WHICH digests to run. Every image
       # is signed (build-and-push.yml), but without a signature over this file an
@@ -147,10 +171,17 @@ jobs:
       # Signing the files themselves closes that downgrade path; README's
       # "How to verify a release" documents the matching verify-blob command.
       - name: Sign release files (keyless)
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
-          for file in docker-compose.yaml .env.example; do
+          files=(docker-compose.yaml .env.example)
+          # Absent only for a tag cut before the bundle existed (see "Build release bundle").
+          if [ -f "release-archives/epicstaff-${TAG}.tar.gz" ]; then
+            files+=("epicstaff-${TAG}.tar.gz")
+          fi
+          for file in "${files[@]}"; do
             cosign sign-blob --yes \
               --bundle "release-archives/${file}.sigstore.json" \
               "release-archives/${file}"
@@ -164,13 +195,7 @@ jobs:
           # Appended, so notes written on the release by hand are kept. A second
           # run for the same tag appends it again.
           append_body: true
-          # The body starts with a rule so it never runs into the last paragraph of
-          # notes already on the release.
-          body: |
-
-            ---
-
-            **About the attached `docker-compose.yaml` and `.env.example`:** they are for verifying this release's image digests and signatures, not a standalone install. The compose file mounts configuration from the source tree next to it (`redis.conf`, the `nginx/` templates, start-up scripts and certificates, and more), and none of it is in the download. To run this release, clone the source at `${{ needs.resolve.outputs.tag }}` and use the compose file as an overlay, as described under "Running a verified release" in the README.
+          body_path: ${{ runner.temp }}/release-notes.md
           files: |
             release-archives/*
             release-archives/.env.example

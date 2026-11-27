@@ -57,10 +57,6 @@
         color: var(--color-text-primary);
         white-space: pre;
         pointer-events: none;
-
-        &:has(+ .execution-timeout__input:disabled) {
-            opacity: 0.6;
-        }
     }
 
     &__cell--untyped {
@@ -88,10 +84,6 @@
 
         &:focus {
             outline: none;
-        }
-
-        &:disabled {
-            cursor: not-allowed;
         }
     }
 
@@ -122,11 +114,11 @@
             background-color 0.2s ease,
             color 0.2s ease;
 
-        &:is(:hover, :focus-visible):not(:disabled, .execution-timeout__step--unavailable) {
+        &:is(:hover, :focus-visible):not(.execution-timeout__step--unavailable) {
             background-color: var(--color-secondary-btn-background-hover);
         }
 
-        &:active:not(:disabled, .execution-timeout__step--unavailable) {
+        &:active:not(.execution-timeout__step--unavailable) {
             background-color: var(--accent-color);
         }
 
@@ -135,8 +127,7 @@
             outline-offset: -2px;
         }
 
-        // Read-only disables the button natively; a limit only marks it, so it keeps the keyboard focus.
-        &:disabled,
+        // A limit only marks the button, not disables it, so it keeps the keyboard focus.
         &--unavailable {
             color: var(--color-text-disabled);
             cursor: not-allowed;
@@ -165,6 +156,12 @@
         color: var(--color-status-error);
     }
 
+    // Read-only: the value as text, like the other read-only fields of a form.
+    &__readonly-value {
+        color: var(--color-text-primary);
+        font-variant-numeric: tabular-nums;
+    }
+
     &__hint {
         margin: 4px 0 0;
         color: var(--color-text-secondary);
@@ -174,3 +171,5 @@
 // Version diff: the value of a changed field.
 // The control clips what sticks out, so the badge sits on the group around it (as wide as the control).
 @include diff-value-mark.marked('.execution-timeout__control', $badge-anchor: '.execution-timeout__group');
+// Read-only, the plain value gets the input-box look, as the other read-only fields do.
+@include diff-value-mark.marked('.execution-timeout__readonly-value', $draws-box: true, $display: block);

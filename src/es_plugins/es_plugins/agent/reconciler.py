@@ -32,7 +32,8 @@ reuses the runtime credentials the failed attempt fetched, for the same desired 
 for up to 5 minutes: each fetch mints new service-account keys, and an outage may last hours.
 
 A process stopped for good (stopped, failed, its placement gone, the agent stopping) loses its
-egress proxy password.
+egress proxy password. Every kill of the plugin's processes also ends the database sessions they
+leave behind (`PluginDatabaseSessions`), before the process is started again.
 
 While the desired placement has an `upgrade`, the controller follows its stage (see
 `es_plugins.agent.upgrade`): in `preparing` it keeps the running version as above and installs the
@@ -96,6 +97,7 @@ from es_plugins.database.connections import DatabaseProvisioningError, DatabaseU
 from es_plugins.database.drop_sequence import DatabaseDropper
 from es_plugins.database.migration_runner import Migration
 from es_plugins.database.placement_database import PlacementDatabase
+from es_plugins.database.plugin_sessions import PluginDatabaseSessions
 from es_plugins.database.provisioner import DatabaseProvisioner
 from es_plugins.database.restore_service import RestoreService
 from es_plugins.egress.policy_writer import EgressPolicyError, EgressPolicyWriter
@@ -156,6 +158,7 @@ class AgentServices:
     hook_caller: PluginHookCaller
     provisioner: DatabaseProvisioner
     dropper: DatabaseDropper
+    database_sessions: PluginDatabaseSessions
     egress: EgressPolicyWriter
     backup_store: BackupStore
     backups: BackupService
@@ -222,6 +225,7 @@ class PlacementController:
             services.health_checker,
             self._log_collector,
             self._process_changed,
+            on_killed=self._end_database_sessions,
         )
         self._hook_runner = HookRunner(
             placement, self.supervisor, services.django, services.hook_caller
@@ -431,6 +435,11 @@ class PlacementController:
         return fetched.credentials.database.app_password
 
     # The controller's own loop.
+
+    async def _end_database_sessions(self) -> None:
+        # The supervisor just killed the plugin's processes; their database sessions may run on.
+        if self._database is not None:
+            await self._services.database_sessions.end_after_kill(self._database)
 
     def _process_changed(self) -> None:
         self._services.on_change()

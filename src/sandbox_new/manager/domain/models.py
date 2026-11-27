@@ -13,8 +13,9 @@ from manager.domain.enums import JobStatus, VenvStatus, WheelStatus
 from manager.domain.types import LibraryString
 
 __all__ = [
-    "DEFAULT_VENV_NAME",
+    "DEFAULT_SYSTEM_KEY",
     "SOURCE_ARCHIVE_SUFFIXES",
+    "SYSTEM_VENV_LIBS",
     "WHEEL_SUFFIX",
     "CustomLibrary",
     "Job",
@@ -25,7 +26,6 @@ __all__ = [
     "Wheel",
 ]
 
-DEFAULT_VENV_NAME = "default"
 WHEEL_SUFFIX = ".whl"
 SOURCE_ARCHIVE_SUFFIXES = (".tar.gz", ".tgz", ".zip")
 DISTRIBUTION_NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
@@ -151,6 +151,58 @@ class Library(ValueObject):
         return Library(**{**self.model_dump(), "version": value, "specification": specification})
 
 
+# The venv code runs in when it names no venv: the shared fallback.
+DEFAULT_SYSTEM_KEY = "default"
+
+# The venvs the sandbox builds and owns itself, by the key producers send as
+# `system_venv`. Exact pins: a built-in node's code is written against these versions,
+# and nobody can change a system venv's libraries through the API.
+SYSTEM_VENV_LIBS: dict[str, list[Library]] = {
+    DEFAULT_SYSTEM_KEY: [],
+    "file_extractor": [
+        Library(name="pdfplumber", specification="==0.11.10"),
+        Library(name="python-docx", specification="==1.2.0"),
+    ],
+    "audio_transcription": [
+        Library(name="faster-whisper", specification="==1.2.1"),
+        Library(name="pydub", specification="==0.25.1"),
+        # faster-whisper up to 1.2.1 calls av.open(metadata_errors=...), a keyword
+        # PyAV 19 removed.
+        Library(name="av", specification="==18.1.1"),
+    ],
+    # Every library the built-in tools in shared/tools import: they all run here. A tool
+    # that needs a new library gets it added to this list.
+    "builtin_tools": [
+        Library(name="beautifulsoup4", specification="==4.15.0"),
+        Library(name="charset-normalizer", specification="==3.5.3"),
+        Library(name="couchbase", specification="==4.7.0"),
+        Library(name="httpx", specification="==0.28.1"),
+        Library(name="hyperbrowser", specification="==1.15.6"),
+        Library(name="jsonschema", specification="==4.26.0"),
+        Library(name="langchain", specification="==1.5.2"),
+        Library(name="langchain-community", specification="==0.4.2"),
+        Library(name="langchain-litellm", specification="==0.10.0"),
+        Library(name="litellm", specification="==1.100.5"),
+        Library(name="markdownify", specification="==1.2.4"),
+        Library(name="openai", specification="==2.54.0"),
+        Library(name="psycopg[binary]", specification="==3.3.4"),
+        Library(name="psycopg2-binary", specification="==2.9.13"),
+        Library(name="pydantic", specification="==2.13.4"),
+        Library(name="pymongo", specification="==4.20.1"),
+        Library(name="pymysql", specification="==1.2.4"),
+        # trafilatura imports urllib3's SOCKS support, which without PySocks warns on
+        # stderr, and the agent reads any stderr as a failed tool call.
+        Library(name="pysocks", specification="==1.7.1"),
+        Library(name="qdrant-client", specification="==1.20.0"),
+        Library(name="requests", specification="==2.34.2"),
+        Library(name="scrapfly-sdk", specification="==1.0.0"),
+        Library(name="sqlalchemy", specification="==2.1.8"),
+        Library(name="sqlparse", specification="==0.6.0"),
+        Library(name="trafilatura", specification="==2.4.0"),
+    ],
+}
+
+
 class Venv(Entity):
     id: int | None = Field(default=None, frozen=True)
     # At most the 255 characters of its column, so a longer name is refused as invalid
@@ -160,6 +212,13 @@ class Venv(Entity):
     hash: str | None = None
     status: VenvStatus = VenvStatus.DECLARED
     error: str | None = None
+    # Set on a venv the sandbox builds and owns itself, and None on one a client declared
+    # for its tools or nodes. Found by this key, never by name: a name is something any
+    # tenant can type.
+    system_key: str | None = Field(default=None, frozen=True)
+    # The namespace the venv's custom libraries are looked up in: the gateway passes an
+    # opaque value per tenant, the sandbox only compares it. None for a system venv.
+    scope: str | None = Field(default=None, min_length=1, max_length=255)
     # Assigned by the database, never by the domain: unset until the venv is stored.
     created_at: datetime | None = Field(default=None, frozen=True)
     updated_at: datetime | None = Field(default=None, frozen=True)
@@ -194,6 +253,9 @@ class Venv(Entity):
     def set_libs(self, value: list[Library], /):
         self.libs = value
         self.mark_as_declared()
+
+    def set_scope(self, value: str, /):
+        self.scope = value
 
     def apply_resolved_versions(self, versions: dict[str, str], /):
         """Record what the build installed, keyed by canonical name.
@@ -319,6 +381,8 @@ class CustomLibrary(Entity):
     # Deletion is a mark, not a statement: the artifacts in the object store outlive
     # the call, and a background task removes them and the row afterwards.
     is_deleted: bool = False
+    # The namespace the name is unique in, the same opaque value a venv carries.
+    scope: str | None = Field(default=None, min_length=1, max_length=255)
     # Assigned by the database, never by the domain: unset until the library is stored.
     created_at: datetime | None = Field(default=None, frozen=True)
     updated_at: datetime | None = Field(default=None, frozen=True)
@@ -339,6 +403,9 @@ class CustomLibrary(Entity):
         if self.name is not None:
             raise ValueError("This library already has a name.")
         self.name = value
+
+    def set_scope(self, value: str, /):
+        self.scope = value
 
     def mark_as_deleted(self):
         self.is_deleted = True

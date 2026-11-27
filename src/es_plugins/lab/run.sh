@@ -98,7 +98,11 @@ contains() { case "$1" in *"$2"*) return 0 ;; esac; return 1; }
 echo "# build, pack the probe plugins, start the node"
 compose build --quiet
 compose run --rm packer
-compose up -d control plugins_db es_plugins tools > /dev/null 2>&1
+if ! compose up -d control plugins_db es_plugins tools > "$work/up.log" 2>&1; then
+  fail "the lab's containers did not start"
+  cat "$work/up.log"
+  exit 1
+fi
 if wait_for 300 running 1 && wait_for 60 running 2; then
   pass "both probe plugins are installed from their packages and run healthy"
 else
@@ -431,7 +435,9 @@ b_pid=$(placement 2 .pid)
 call probe-a 20001 /api/fill "mb=100" > "$work/fill.json"
 if wait_for 90 field_is 1 .observed_state failed; then
   disk_error=$(placement 1 .last_error)
-  # The measurement may catch the write half done: any size past the cap.
+  # 100 MB in files of 10 MB, as no one file may grow past the cap. The measurement stops at the
+  # first file past the cap, so it reports some size above 64 MB, never the whole 100 MB.
+  over_the_disk_cap() { printf '%s' "$1" | grep -Eq '^uses [0-9]+ MB of disk, more than its limit of 64 MB$'; }
   check "probe-a, past its disk cap, is stopped and marked failed ($disk_error)" \
     contains "$disk_error" "MB of disk, more than its limit of 64 MB"
   check "no process of probe-a is left" test "$(placement 1 .pid)" = null
@@ -446,7 +452,7 @@ if wait_for 90 field_is 1 .observed_state failed; then
   change 1 '{"restart_generation": 2}'
   if wait_for 60 field_is 1 .applied_restart_generation 2 && wait_for 90 field_is 1 .observed_state failed; then
     check "restarted with its files still there, it is stopped again at the next measurement" \
-      test "$(placement 1 .last_error)" = "uses 100 MB of disk, more than its limit of 64 MB"
+      over_the_disk_cap "$(placement 1 .last_error)"
   else
     fail "probe-a after a restart over its disk cap: $(placement 1 '[.observed_state, .last_error] | tostring')"
   fi
@@ -454,7 +460,7 @@ else
   fail "the disk cap: $(placement 1 '[.observed_state, .restarts, .last_error] | tostring') $(cat "$work/fill.json")"
 fi
 
-echo "# kill by UID, runtime file rewrite, purge"
+echo "# kill by UID, runtime file rewrite"
 
 call probe-b 20002 /api/daemons "count=3" > "$work/daemons.json"
 daemons=$(jq -r '.started | join(" ")' "$work/daemons.json")
@@ -497,21 +503,7 @@ check "the launcher answers no peer but the agent, not even root ($refusal)" \
 check "the launcher logged the refused peer" sh -c "docker logs $node 2>&1 | grep -q 'Refused a launcher connection from UID 0'"
 
 change 2 '{"desired_state": "stopped"}'
-if wait_for 60 field_is 2 .observed_state stopped; then
-  # As the agent's UID and GID: the launcher's socket directory is root:10000, mode 0750.
-  docker exec --user 10000:10000 "$node" python -c "
-import asyncio
-from es_plugins.agent.launcher_client import LauncherClient
-async def purge():
-    client = LauncherClient(__import__('pathlib').Path('/run/es_launcher/launcher.sock'))
-    await client.connect()
-    await client.purge_data('probe-b', 20002)
-asyncio.run(purge())
-" > "$work/purge.out" 2>&1 || true
-  check "purging probe-b's data (as its UID, through the launcher) removes its HOME, keeps its code" \
-    sh -c "! docker exec $node test -e /var/lib/es_plugins/data/probe-b && docker exec $node test -d /var/lib/es_plugins/plugins/probe-b"
-  if [ -s "$work/purge.out" ]; then sed 's/^/    /' "$work/purge.out"; fi
-else
+if ! wait_for 60 field_is 2 .observed_state stopped; then
   fail "probe-b did not stop for desired_state stopped"
 fi
 

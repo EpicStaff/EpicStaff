@@ -368,6 +368,19 @@ describe('FlowGraphComponent', () => {
             expect(dialogOpen.mock.calls[0][1].data.authorship).toEqual(UNKNOWN_AUTHORSHIP);
         });
 
+        it('opens a linked node in the side panel without expanding it', () => {
+            const start = createStartNode();
+            const fixture = mount(false, { nodes: [start], connections: [] });
+            // The expanding entry point (used by "go to node" from restore warnings) must not run.
+            const openExpanded = vi.spyOn(fixture.componentInstance, 'openNodePanel');
+
+            fixture.componentRef.setInput('initialNodeId', start.id);
+            fixture.detectChanges();
+
+            expect(TestBed.inject(SidePanelService).selectedNodeId()).toBe(start.id);
+            expect(openExpanded).not.toHaveBeenCalled();
+        });
+
         it('does not replay an earlier full-save request when the canvas is re-created', () => {
             const emitSave = vi.spyOn(FlowGraphComponent.prototype, 'emitSave').mockImplementation(() => undefined);
 

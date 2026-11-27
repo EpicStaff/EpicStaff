@@ -63,7 +63,7 @@ services:
       PLUGINS_ENABLED: "true"
       # Without development mode: the development lab (../development) renders it on.
       PLUGINS_DEV_MODE: "false"
-      PLUGINS_BASE_DOMAIN: plugins.epicstaff.test
+      PLUGINS_HOST_TEMPLATE: "{id}.plugins.epicstaff.test"
       PLUGINS_MAX_PACKAGE_MB: "300"
       # Small, so the lab can send a body above it.
       PLUGINS_MAX_REQUEST_BODY_MB: "1"

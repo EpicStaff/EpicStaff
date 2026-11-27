@@ -38,4 +38,9 @@ the choice per browser. Reading the choice from <head> applies it before the fir
   })();
 </script>
 <link rel="stylesheet" href="{% static 'drf_spectacular/swagger_dark.css' %}">
+<link rel="stylesheet" href="{% static 'drf_spectacular/swagger_sidebar.css' %}">
 {% endblock head %}
+{% block body %}
+{{ block.super }}
+<script src="{% static 'drf_spectacular/swagger_sidebar.js' %}"></script>
+{% endblock body %}

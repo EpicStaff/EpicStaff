@@ -12,6 +12,7 @@ from rest_framework import status
 
 from tables.models import Graph, GraphStorageFile, GraphVersion, SourceCollection, StorageFile
 from src.shared.models import UserAction
+from tables.graph_versioning.services import GraphVersioningService
 from tables.services.storage_service import db_sync
 from tables.services.storage_service.db_sync import StorageFileSync
 from tables.services.storage_service.manager import StorageManager
@@ -119,6 +120,121 @@ def test_flow_version_of_another_orgs_flow_is_404_and_records_nothing(
     )
 
     assert not GraphVersion.objects.filter(graph=other_org_flow).exists()
+    assert sent_events == []
+
+
+def _saved_version(flow, name="Before refactor") -> GraphVersion:
+    return GraphVersioningService().save_version(graph=flow, name=name, description="")
+
+
+def _flow_parent(event) -> tuple:
+    return event.parent_type, event.parent_id, event.parent_name
+
+
+@pytest.mark.parametrize(
+    "body, expected",
+    [
+        ({"name": "After refactor"}, [("renamed", "After refactor", "Before refactor")]),
+        ({"description": "Tidied"}, [("updated", "Before refactor", None)]),
+        (
+            {"name": "After refactor", "description": "Tidied"},
+            [("renamed", "After refactor", "Before refactor"), ("updated", "After refactor", None)],
+        ),
+        ({"name": "Before refactor", "description": ""}, []),
+    ],
+    ids=["rename", "description", "rename-and-description", "unchanged"],
+)
+def test_flow_version_edit_records_a_rename_and_other_changes_apart(
+    body, expected, admin_client, flow, sent_events, django_capture_on_commit_callbacks
+):
+    version = _saved_version(flow)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = admin_client.patch(f"/api/graph-versions/{version.pk}/", body, format="json")
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert all(event.route is None for event in sent_events)
+    assert [
+        (event.action, event.target_name, event.previous_name) for event in sent_events
+    ] == expected
+    assert all(
+        (event.target_type, event.target_id) == ("flow version", str(version.pk))
+        and _flow_parent(event) == ("flow", str(flow.id), "Billing flow")
+        for event in sent_events
+    )
+
+
+def test_flow_version_restore_records_the_flow_updated(
+    admin_client, acme, flow, sent_events, django_capture_on_commit_callbacks
+):
+    version = _saved_version(flow)
+    flow.refresh_from_db()
+
+    _post(
+        admin_client,
+        reverse("graph-versions-restore", args=[version.pk]),
+        {"save_version": flow.save_version},
+        django_capture_on_commit_callbacks,
+    )
+
+    event = _only_event(sent_events)
+    assert _target(event) == ("updated", "flow", str(flow.id), "Billing flow")
+    assert event.org_id == acme.id
+
+
+def test_flow_version_restore_that_brings_back_an_older_name_records_the_rename_too(
+    admin_client, flow, sent_events, django_capture_on_commit_callbacks
+):
+    version = _saved_version(flow)
+    Graph.objects.filter(pk=flow.pk).update(name="Billing flow v2")
+    flow.refresh_from_db()
+
+    _post(
+        admin_client,
+        reverse("graph-versions-restore", args=[version.pk]),
+        {"save_version": flow.save_version},
+        django_capture_on_commit_callbacks,
+    )
+
+    assert all(event.route is None for event in sent_events)
+    assert [(*_target(event), event.previous_name) for event in sent_events] == [
+        ("renamed", "flow", str(flow.id), "Billing flow", "Billing flow v2"),
+        ("updated", "flow", str(flow.id), "Billing flow", None),
+    ]
+
+
+def test_flow_from_version_records_the_new_flow_created(
+    admin_client, acme, flow, sent_events, django_capture_on_commit_callbacks
+):
+    version = _saved_version(flow)
+
+    response = _post(
+        admin_client,
+        reverse("graph-versions-create-graph", args=[version.pk]),
+        {},
+        django_capture_on_commit_callbacks,
+        status.HTTP_201_CREATED,
+    )
+
+    new_flow = Graph.objects.get(pk=response.json()["graph_id"])
+    event = _only_event(sent_events)
+    assert _target(event) == ("created", "flow", str(new_flow.id), new_flow.name)
+    assert event.org_id == acme.id
+
+
+def test_flow_version_rename_in_another_org_is_404_and_records_nothing(
+    admin_client, beta, sent_events, django_capture_on_commit_callbacks
+):
+    version = _saved_version(Graph.objects.create(name="Beta flow", org=beta))
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = admin_client.patch(
+            f"/api/graph-versions/{version.pk}/", {"name": "Stolen"}, format="json"
+        )
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    version.refresh_from_db()
+    assert version.name == "Before refactor"
     assert sent_events == []
 
 

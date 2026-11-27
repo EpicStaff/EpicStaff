@@ -20,6 +20,7 @@ from django.conf.urls.static import static
 from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 from django.urls import include, path
 from tables.views.audit_token_views import AuditTokenView
+from tables.views.system_info_view import SystemInfoView
 from user_audit.views import ServiceUserActionView
 
 from .yasg import urlpatterns as doc_urls
@@ -27,12 +28,14 @@ from .yasg import urlpatterns as doc_urls
 urlpatterns = [
     path("", include("rbac.urls")),
     path("api/audit/token/", AuditTokenView.as_view(), name="audit_token"),
+    path("api/system-info/", SystemInfoView.as_view(), name="system_info"),
     path(
         "api/internal/user-actions/",
         ServiceUserActionView.as_view(),
         name="internal-user-actions",
     ),
     path("api/", include("tables.urls")),
+    path("api/ai-models/", include("ai_models.urls")),
     path("api/", include("agents.urls")),
     path("api/", include("proxies.urls")),
     path("ht/", include("health_check.urls")),

@@ -9,8 +9,9 @@ live path, which crew feeds as each node finishes.
 The live run is flow B (Start -> Knowledge -> Task with the agent -> End, no sandbox). The
 ticket is issued before the run starts and the stream is opened right after the run-session
 POST, but subscribing needs the session id the POST returns, so the run's earliest asserted
-event (the knowledge node's `finish`) can precede the subscription. That is a harness race
-and the only retried case ("too late", see `subscribed_too_late`): it is detected as soon
+event (the knowledge node's `finish`) can precede the subscription. The live runs therefore
+delay mock-llm's embeddings replies, which holds that `finish` back. Should the race still
+happen, it is a harness race and the only retried case ("too late", see `subscribed_too_late`): it is detected as soon
 as the boundary status arrives, and a fresh run and ticket are used, at most LIVE_ATTEMPTS
 times in all. Every other problem (an error status, missing live events, wrong order,
 timeouts) fails on the first attempt. Replay and ticket checks use an ended flow A run.
@@ -39,6 +40,7 @@ from helpers.flows import (
     start_session,
     wait_for_graph_end,
 )
+from helpers.mock_llm import MockLlmClient
 from helpers.payloads import agent_rag_flow_save_payload
 from helpers.polling import TERMINAL_SESSION_STATUSES, session_diagnostics
 from helpers.sse import (
@@ -55,6 +57,9 @@ logger = logging.getLogger("e2e.sse")
 FIRST_EVENT_LIMIT_SECONDS = 5
 # Fresh runs allowed when the subscription arrives after the knowledge node already finished.
 LIVE_ATTEMPTS = 3
+# Every mock embeddings reply waits this long during the live runs: without it the knowledge
+# node can finish within ~30 ms of the run-session POST, before the stream is subscribed.
+LIVE_EMBEDDINGS_DELAY_SECONDS = 2
 # Flow B has no sandbox step; the longest quiet stretch is one agent turn on the mock LLM.
 LIVE_READ_TIMEOUT_SECONDS = 60
 LIVE_DEADLINE_SECONDS = 120
@@ -100,19 +105,24 @@ def live_flow(
 
 
 @pytest.fixture(scope="module")
-def live_run(user_client: ApiClient, live_flow: CreatedFlow, timings: Timings) -> LiveRun:
+def live_run(
+    user_client: ApiClient, live_flow: CreatedFlow, mock_llm: MockLlmClient, timings: Timings
+) -> LiveRun:
     knowledge_name = runtime_name_of(live_flow, "knowledge_node_list")
-    for attempt in range(1, LIVE_ATTEMPTS + 1):
-        run = subscribe_to_a_fresh_run(user_client, live_flow, attempt, knowledge_name)
-        # Any other outcome, an `error` status included, fails the tests below instead.
-        if not subscribed_too_late(run.stream, knowledge_name):
-            break
-        logger.info(
-            "SSE attempt %s: subscribed too late to session %s (initial status %r)",
-            attempt,
-            run.session_id,
-            run.stream.initial_status,
-        )
+    # The knowledge node's query embedding is the run's first mock-llm call; slowing it keeps
+    # the knowledge `finish` behind the subscription.
+    with mock_llm.embeddings_delayed(LIVE_EMBEDDINGS_DELAY_SECONDS):
+        for attempt in range(1, LIVE_ATTEMPTS + 1):
+            run = subscribe_to_a_fresh_run(user_client, live_flow, attempt, knowledge_name)
+            # Any other outcome, an `error` status included, fails the tests below instead.
+            if not subscribed_too_late(run.stream, knowledge_name):
+                break
+            logger.info(
+                "SSE attempt %s: subscribed too late to session %s (initial status %r)",
+                attempt,
+                run.session_id,
+                run.stream.initial_status,
+            )
     timings.record("sse_live_attempts", run.attempts)
     if run.attempts > 1:
         warnings.warn(

@@ -4,6 +4,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from agents.models import AgentDefinition
+from ai_models.models import EmbeddingConfig, LLMConfig
 from django.db import connection, transaction
 from django.db.models import Count, Exists, OuterRef, Q, Subquery, Sum
 from django.utils import timezone
@@ -18,10 +19,8 @@ from tables.models import (
     DashboardReport,
     DashboardTriggerType,
     ElevenLabsRealtimeConfig,
-    EmbeddingConfig,
     GeminiRealtimeConfig,
     Graph,
-    LLMConfig,
     McpTool,
     OpenAIRealtimeConfig,
     PythonCodeTool,

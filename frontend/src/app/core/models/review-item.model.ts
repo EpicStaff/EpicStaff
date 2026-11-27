@@ -35,6 +35,12 @@ export interface ReviewPythonCode {
     global_kwargs: Record<string, unknown>;
 }
 
+/** A decision-table expression, manipulation or condition; it runs as Python in the sandbox. */
+export interface ReviewExpression {
+    label: string;
+    code: string;
+}
+
 export interface PythonCodeToolReviewItem {
     kind: 'python_code_tool';
     name: string;
@@ -60,6 +66,7 @@ export interface FlowNodeReviewItem {
     python_code?: ReviewPythonCode;
     pre_python_code?: ReviewPythonCode;
     post_python_code?: ReviewPythonCode;
+    expressions?: ReviewExpression[];
 }
 
 export type ReviewItem = PythonCodeToolReviewItem | McpToolReviewItem | FlowNodeReviewItem;

@@ -16,9 +16,7 @@ from tables.models.knowledge_models import (
     GraphRagDocument,
     GraphRagIndexConfig,
 )
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
-from tables.models.provider import Provider
-from tables.models.llm_models import LLMConfig, LLMModel
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.constants.knowledge_constants import (
     GRAPHRAG_DEFAULT_INPUT_FILE_TYPE,
@@ -108,7 +106,7 @@ def test_embedding_config(test_embedding_model, default_org):
         custom_name="Test Embedder Config Svc",
         defaults={
             "model": test_embedding_model,
-            "task_type": "retrieval_document",
+            "parameters": {"task_type": "retrieval_document"},
             "org": default_org,
         },
     )
@@ -138,7 +136,7 @@ def other_provider_embedding_config(other_provider_embedding_model, default_org)
         custom_name="Other Provider Embedder Config Svc",
         defaults={
             "model": other_provider_embedding_model,
-            "task_type": "retrieval_document",
+            "parameters": {"task_type": "retrieval_document"},
             "org": default_org,
         },
     )
@@ -152,7 +150,7 @@ def same_provider_embedding_config(test_embedding_model, default_org):
         custom_name="Same Provider Alt Embedder Config Svc",
         defaults={
             "model": test_embedding_model,
-            "task_type": "retrieval_query",
+            "parameters": {"task_type": "retrieval_query"},
             "org": default_org,
         },
     )
@@ -184,7 +182,7 @@ def llm_config(llm_model, default_org):
         custom_name="Test LLM Config Svc",
         defaults={
             "model": llm_model,
-            "temperature": 0.7,
+            "parameters": {"temperature": 0.7},
             "is_visible": True,
             "org": default_org,
         },

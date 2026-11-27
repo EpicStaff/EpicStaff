@@ -77,7 +77,7 @@ def plugins_enabled(settings):
     original = settings.PLUGINS_ENABLED
     settings.PLUGINS_ENABLED = True
     settings.FRONTEND_BASE_URL = "http://epicstaff.localhost"
-    settings.PLUGINS_BASE_DOMAIN = "plugins.epicstaff.localhost"
+    settings.PLUGINS_HOST_TEMPLATE = "{id}.plugins.epicstaff.localhost"
     reload_root_urlconf()
     yield
     settings.PLUGINS_ENABLED = original

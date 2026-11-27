@@ -25,111 +25,154 @@ Examples
 ''
 """
 
+import enum
 import json
+import re
+
+_MESSAGE_KEY = '"message"'
+_JSON_WHITESPACE = " \t\r\n"
+# The characters that interrupt a run of literal text inside a JSON string.
+_STRING_SPECIAL_CHARACTER = re.compile(r'["\\]')
+_SIMPLE_ESCAPES = {
+    '"': '"',
+    "\\": "\\",
+    "/": "/",
+    "n": "\n",
+    "r": "\r",
+    "t": "\t",
+    "b": "\b",
+    "f": "\f",
+}
+# A ``\uXXXX`` escape is six characters long.
+_UNICODE_ESCAPE_LENGTH = 6
+
+
+class _Phase(enum.Enum):
+    SEEKING_KEY = enum.auto()
+    SEEKING_COLON = enum.auto()
+    SEEKING_OPENING_QUOTE = enum.auto()
+    IN_STRING = enum.auto()
+    DONE = enum.auto()
+
+
+class MessageFieldStream:
+    """Decode the ``"message"`` string value of a JSON document fed in chunks.
+
+    Each ``feed`` call returns only the part of the value decoded from the new
+    chunk, so a whole document costs work proportional to its length.  Only the
+    unconsumed tail is kept between calls: up to ``len('"message"') - 1``
+    characters while the key may still be split across chunks, or an escape
+    sequence (a lone ``\\`` or a partial ``\\uXXXX``) cut by the end of a chunk.
+
+    The key is found by plain substring search: the risk of a false positive on
+    a value containing ``"message"`` is accepted in exchange for simplicity.
+    The LLM follows the schema; the key appears exactly once.  Only the first
+    occurrence is considered — when it is not followed by ``:`` and a string,
+    the stream yields nothing more.  Everything after the closing quote is
+    ignored.
+    """
+
+    def __init__(self) -> None:
+        self._phase = _Phase.SEEKING_KEY
+        self._pending = ""
+
+    def feed(self, chunk: str) -> str:
+        """Consume ``chunk`` and return the newly decoded part of the message value."""
+        if self._phase is _Phase.DONE:
+            return ""
+        text = self._pending + chunk
+        self._pending = ""
+        position = 0
+
+        if self._phase is _Phase.SEEKING_KEY:
+            key_position = text.find(_MESSAGE_KEY)
+            if key_position == -1:
+                # Keep a tail long enough to hold a key cut by the chunk boundary.
+                self._pending = text[-(len(_MESSAGE_KEY) - 1) :]
+                return ""
+            position = key_position + len(_MESSAGE_KEY)
+            self._phase = _Phase.SEEKING_COLON
+
+        if self._phase is _Phase.SEEKING_COLON:
+            position = self._skip_whitespace(text, position)
+            if position == len(text):
+                return ""
+            if text[position] != ":":
+                self._phase = _Phase.DONE
+                return ""
+            position += 1
+            self._phase = _Phase.SEEKING_OPENING_QUOTE
+
+        if self._phase is _Phase.SEEKING_OPENING_QUOTE:
+            position = self._skip_whitespace(text, position)
+            if position == len(text):
+                return ""
+            if text[position] != '"':
+                self._phase = _Phase.DONE
+                return ""
+            position += 1
+            self._phase = _Phase.IN_STRING
+
+        return self._decode_string(text, position)
+
+    @staticmethod
+    def _skip_whitespace(text: str, position: int) -> int:
+        while position < len(text) and text[position] in _JSON_WHITESPACE:
+            position += 1
+        return position
+
+    def _decode_string(self, text: str, position: int) -> str:
+        decoded: list[str] = []
+        while position < len(text):
+            match = _STRING_SPECIAL_CHARACTER.search(text, position)
+            if match is None:
+                decoded.append(text[position:])
+                break
+            special_position = match.start()
+            decoded.append(text[position:special_position])
+            if text[special_position] == '"':
+                self._phase = _Phase.DONE
+                break
+            position = self._decode_escape(text, special_position, decoded)
+            if position == -1:
+                # Incomplete escape at the end of the chunk: wait for the rest.
+                self._pending = text[special_position:]
+                break
+        return "".join(decoded)
+
+    @staticmethod
+    def _decode_escape(text: str, backslash_position: int, decoded: list[str]) -> int:
+        """Append the escape at ``backslash_position`` and return the position after it.
+
+        Returns ``-1`` when the escape is cut by the end of ``text``.
+        """
+        if backslash_position + 1 >= len(text):
+            return -1
+        escape = text[backslash_position + 1]
+        if escape != "u":
+            # An unknown escape is emitted literally.
+            decoded.append(_SIMPLE_ESCAPES.get(escape, escape))
+            return backslash_position + 2
+        escape_end = backslash_position + _UNICODE_ESCAPE_LENGTH
+        if escape_end > len(text):
+            return -1
+        hex_digits = text[backslash_position + 2 : escape_end]
+        try:
+            decoded.append(chr(int(hex_digits, 16)))
+        except ValueError:
+            # A malformed escape is emitted as-is.
+            decoded.append(f"\\u{hex_digits}")
+        return escape_end
 
 
 def extract_message_field(buffer: str) -> str:
-    """Extract the current value of the ``"message"`` key from a partial JSON string.
+    """Return the ``"message"`` value decoded so far from a partial JSON string.
 
-    Scans ``buffer`` for the literal ``"message"`` key, locates the colon and
-    opening quote, then accumulates characters of the string value — properly
-    handling JSON escape sequences (``\\"``/``\\\\``/``\\n``/``\\t``/``\\r``/
-    ``\\uXXXX``, etc.).
-
-    Stops at the unescaped closing ``"`` OR at end-of-buffer (whichever comes
-    first).  Returns whatever has been accumulated so far.
-
-    Returns ``""`` when:
-    - the buffer is empty,
-    - the ``"message"`` key is not yet present,
-    - the key is present but the colon or opening quote has not yet arrived.
+    Returns ``""`` when the key, its colon or its opening quote has not arrived
+    yet.  See ``MessageFieldStream`` for the parsing rules; use it instead when
+    the document arrives in chunks.
     """
-    # Locate the "message" key — must be preceded by { or , (possibly with
-    # whitespace), but a simple substring search is good enough: the risk of
-    # a false positive on a value containing '"message"' is accepted in exchange
-    # for simplicity.  The LLM follows the schema; the key appears exactly once.
-    key_token = '"message"'
-    key_pos = buffer.find(key_token)
-    if key_pos == -1:
-        return ""
-
-    pos = key_pos + len(key_token)
-
-    # Skip whitespace up to the colon.
-    while pos < len(buffer) and buffer[pos] in " \t\r\n":
-        pos += 1
-
-    if pos >= len(buffer) or buffer[pos] != ":":
-        return ""
-    pos += 1  # consume ':'
-
-    # Skip whitespace between colon and the opening quote.
-    while pos < len(buffer) and buffer[pos] in " \t\r\n":
-        pos += 1
-
-    if pos >= len(buffer) or buffer[pos] != '"':
-        return ""
-    pos += 1  # consume opening '"'
-
-    # Accumulate characters of the string value.
-    chars: list[str] = []
-    while pos < len(buffer):
-        ch = buffer[pos]
-        if ch == "\\":
-            # Escape sequence — need at least one more character.
-            if pos + 1 >= len(buffer):
-                # Incomplete escape at end of buffer — stop here; we'll get
-                # more tokens next time.
-                break
-            esc = buffer[pos + 1]
-            if esc == '"':
-                chars.append('"')
-                pos += 2
-            elif esc == "\\":
-                chars.append("\\")
-                pos += 2
-            elif esc == "n":
-                chars.append("\n")
-                pos += 2
-            elif esc == "r":
-                chars.append("\r")
-                pos += 2
-            elif esc == "t":
-                chars.append("\t")
-                pos += 2
-            elif esc == "b":
-                chars.append("\b")
-                pos += 2
-            elif esc == "f":
-                chars.append("\f")
-                pos += 2
-            elif esc == "/":
-                chars.append("/")
-                pos += 2
-            elif esc == "u":
-                # \uXXXX — need 4 hex digits after "u"
-                if pos + 5 >= len(buffer):
-                    # Incomplete unicode escape at end of buffer — stop.
-                    break
-                hex_str = buffer[pos + 2 : pos + 6]
-                try:
-                    chars.append(chr(int(hex_str, 16)))
-                except ValueError:
-                    # Malformed — emit as-is and advance past the sequence.
-                    chars.append(f"\\u{hex_str}")
-                pos += 6
-            else:
-                # Unknown escape — emit literally.
-                chars.append(esc)
-                pos += 2
-        elif ch == '"':
-            # Unescaped closing quote — string is complete.
-            break
-        else:
-            chars.append(ch)
-            pos += 1
-
-    return "".join(chars)
+    return MessageFieldStream().feed(buffer)
 
 
 def try_parse_full(buffer: str) -> dict | None:

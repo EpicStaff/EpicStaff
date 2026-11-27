@@ -44,21 +44,22 @@ WORKDIR /app/src/knowledge
 # image.
 RUN uv sync --frozen --no-install-project --all-groups --no-group dev
 
+# pyproject.toml selects one LanceDB build per platform: lancedb-compat on x86_64 (runs on
+# CPUs without AVX2), plain lancedb everywhere else. Assert that here, where a relock that
+# let the Haswell-only wheel back in fails with a readable message instead of with
+# "Illegal instruction" on a customer's host, and import it so the wheel loads on the
+# build machine at all.
+RUN /app/.venv/bin/python -c "import platform, sys; from importlib.metadata import distributions; installed = sorted(d.metadata['Name'] for d in distributions() if d.metadata['Name'].startswith('lancedb')); expected = ['lancedb-compat' if platform.machine() == 'x86_64' else 'lancedb']; installed == expected or sys.exit(f'LanceDB build mismatch: installed {installed}, expected {expected}'); import lancedb; print('LanceDB build:', installed[0], lancedb.__version__)"
+
 # Pre-cache every tokenizer the service resolves at runtime so no customer
 # deployment fetches one on first use (see docs/backend-runtime-fetch-audit.md):
-# - tiktoken encodings o200k_base (GraphRAG's ENCODING_MODEL default) and
-#   cl100k_base (litellm's default encoding), otherwise fetched from
-#   openaipublic.blob.core.windows.net.
-# - chonkie's default "gpt2" TokenChunker tokenizer, resolved through tokie.
-#   tokie ignores HF_HOME/HF_HUB_OFFLINE and caches under $HOME, which the
-#   runtime stage does not inherit, so the tokenizer is saved to a file that
-#   the chunker loads by path (KNOWLEDGE_TOKENIZER_PATH, set by compose).
+# - tiktoken encodings o200k_base (GraphRAG's ENCODING_MODEL default and the
+#   naive-RAG token chunker's encoding) and cl100k_base (litellm's default
+#   encoding), otherwise fetched from openaipublic.blob.core.windows.net.
 # Cache dirs must live under /app since nothing outside it is copied into the
 # runtime stage.
 ENV TIKTOKEN_CACHE_DIR=/app/.cache/tiktoken
-RUN mkdir -p /app/.cache/tokie \
- && /app/.venv/bin/python -c "import tiktoken; tiktoken.get_encoding('o200k_base'); tiktoken.get_encoding('cl100k_base')" \
- && /app/.venv/bin/python -c "from tokie import Tokenizer; Tokenizer.from_pretrained('openai-community/gpt2').save('/app/.cache/tokie/gpt2.tkz')"
+RUN /app/.venv/bin/python -c "import tiktoken; tiktoken.get_encoding('o200k_base'); tiktoken.get_encoding('cl100k_base')"
 
 # NLTK stopwords corpus for the HTML chunker's stopword_removal option, read
 # from NLTK_DATA at runtime (see html_chunker.py; nltk.download is never called
@@ -102,8 +103,7 @@ COPY --from=builder /app /app
 # CUSTOM_TIKTOKEN_CACHE_DIR stops litellm from redirecting TIKTOKEN_CACHE_DIR to
 # its own bundled copy at import time.
 # HF_HUB_OFFLINE=1 makes any huggingface_hub (Python) call fail loudly instead
-# of phoning home; it does not reach tokie, which is why the baked tokenizer
-# file above exists.
+# of phoning home.
 # NLTK_DATA points nltk.data.find at the stopwords corpus baked above.
 # LITELLM_LOCAL_MODEL_COST_MAP=True: litellm otherwise does a live GET to
 # raw.githubusercontent.com on every `import litellm` (confirmed by runtime

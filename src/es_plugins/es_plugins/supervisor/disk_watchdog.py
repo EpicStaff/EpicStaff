@@ -1,4 +1,4 @@
-"""The per-plugin disk cap and the node's floor, every 30 s.
+"""The per-plugin disk cap and the node's floor, every 30 s, and at once when the disk fills fast.
 
 Each running plugin's HOME (with its TMPDIR) is measured through the launcher (see
 `es_plugins.disk_usage` for what counts). Above `ES_PLUGINS_DISK_MB_PER_PLUGIN` or
@@ -20,9 +20,18 @@ plugin frees nothing, so another is stopped only while the free space keeps fall
 
 The measurements run one after the other; each costs at most about the caps it checks and
 ends after `MEASUREMENT_SECONDS`.
+
+Between two rounds the volume's free space is read every second (one `statvfs`). When it fell by
+`FAST_FALL_BYTES` or `FAST_FALL_FILES` since the last round began, or fell below the floor from
+above it, the next round runs at once instead of at the interval. One task runs the rounds, one
+after the other, so two never overlap. What is left is a window of that second plus a round's own
+time, in which a plugin writes as fast as the disk takes it; no file it writes grows past its
+cap (the launcher sets `RLIMIT_FSIZE` to it). Only a file system quota could bound the rest.
 """
 
 import asyncio
+import math
+import time
 from collections.abc import Callable, Iterable
 from typing import Protocol
 
@@ -32,10 +41,21 @@ from es_plugins.agent.launcher_client import LauncherClient, LauncherError
 from es_plugins.descriptors import read_pipe
 from es_plugins.disk_usage import DiskUsage
 from es_plugins.launcher.disk_measurement import MEASUREMENT_SECONDS
-from es_plugins.node_disk import FloorBreach, NodeDisk
+from es_plugins.node_disk import (
+    FLOOR_BYTES,
+    FLOOR_FILES,
+    FloorBreach,
+    FreeSpace,
+    NodeDisk,
+    floor_breach,
+)
 from es_plugins.supervisor.process_supervisor import ProcessSupervisor
 
 POLL_INTERVAL_SECONDS = 30.0
+FREE_SPACE_POLL_SECONDS = 1.0
+# Half the floor: a plugin filling the disk fast is measured before the floor's room is gone.
+FAST_FALL_BYTES = FLOOR_BYTES // 2
+FAST_FALL_FILES = FLOOR_FILES // 2
 # The helper's own alarm ends a measurement first; this only bounds waiting for its pipe.
 RESULT_TIMEOUT_SECONDS = MEASUREMENT_SECONDS + 10
 _MAX_RESULT_BYTES = 64 * 1024
@@ -68,6 +88,7 @@ class DiskWatchdog:
         max_megabytes: int,
         max_files: int,
         interval: float = POLL_INTERVAL_SECONDS,
+        free_space_poll_seconds: float = FREE_SPACE_POLL_SECONDS,
     ):
         self._launcher = launcher
         self._placements = placements
@@ -75,7 +96,9 @@ class DiskWatchdog:
         self._max_megabytes = max_megabytes
         self._max_files = max_files
         self._interval = interval
+        self._free_space_poll_seconds = free_space_poll_seconds
         self._last_floor_stop: FloorBreach | None = None
+        self._free_at_round: FreeSpace | None = None
         # Each running plugin's measurements in a row that brought no result.
         self._missed: dict[ProcessSupervisor, int] = {}
 
@@ -85,6 +108,7 @@ class DiskWatchdog:
         Returns:
             The supervisors failed by this check.
         """
+        self._free_at_round = self._node_disk.free()
         failed = []
         watched = [placement for placement in self._placements() if placement.supervisor.watching]
         running = {placement.supervisor for placement in watched}
@@ -118,16 +142,38 @@ class DiskWatchdog:
         return failed
 
     async def run(self) -> None:
+        last_round_ended: float | None = None
         while True:
-            await self.check_once()
-            await asyncio.sleep(self._interval)
+            if (
+                last_round_ended is None
+                or time.monotonic() - last_round_ended >= self._interval
+                or self._falling_fast()
+            ):
+                await self.check_once()
+                last_round_ended = time.monotonic()
+            await asyncio.sleep(self._free_space_poll_seconds)
+
+    def _falling_fast(self) -> bool:
+        """Whether the free space fell fast since the last round began, or through the floor."""
+        then = self._free_at_round
+        now = self._node_disk.free()
+        if then is None or now.bytes <= then.bytes - FAST_FALL_BYTES:
+            return True
+        if (
+            now.files is not None
+            and then.files is not None
+            and now.files <= then.files - FAST_FALL_FILES
+        ):
+            return True
+        return floor_breach(now) is not None and floor_breach(then) is None
 
     def _over_cap(self, usage: DiskUsage) -> str | None:
         if usage.problem is not None:
             return f"its disk use cannot be measured: {usage.problem}"
         if usage.bytes > self._max_megabytes * _MIB:
+            # Rounded up: a use just past the cap never reads as the cap itself.
             return (
-                f"uses {usage.bytes // _MIB} MB of disk, more than its limit of "
+                f"uses {math.ceil(usage.bytes / _MIB)} MB of disk, more than its limit of "
                 f"{self._max_megabytes} MB"
             )
         if usage.files > self._max_files:

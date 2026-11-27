@@ -4,9 +4,7 @@ import pytest
 
 from rbac.models import Organization
 from tables.exceptions import ConfigProviderMissingError
-from tables.models.embedding_models import EmbeddingConfig, EmbeddingModel
-from tables.models.llm_models import LLMConfig, LLMModel
-from tables.models.provider import Provider
+from ai_models.models import EmbeddingConfig, EmbeddingModel, LLMConfig, LLMModel, Provider
 from tables.services.converter_service import ConverterService
 
 

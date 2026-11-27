@@ -336,6 +336,83 @@ def test_role_create_update_and_delete_record_the_role_name(
     ]
 
 
+@pytest.mark.parametrize(
+    "change, expected",
+    [
+        ({"name": "Reviewer"}, [("renamed", "Reviewer", "Auditor")]),
+        ({"description": "Reads flows"}, [("updated", "Auditor", None)]),
+        (
+            {"permissions": [{"resource_type": "flows", "actions": ["read", "update"]}]},
+            [("updated", "Auditor", None)],
+        ),
+        (
+            {"name": "Reviewer", "permissions": []},
+            [("renamed", "Reviewer", "Auditor"), ("updated", "Reviewer", None)],
+        ),
+        (
+            {
+                "name": "Auditor",
+                "description": "Reads",
+                "permissions": [{"resource_type": "flows", "actions": ["read"]}],
+            },
+            [],
+        ),
+        (
+            {
+                "permissions": [
+                    {"resource_type": "flows", "actions": ["read"]},
+                    {"resource_type": "agents", "actions": []},
+                ]
+            },
+            [],
+        ),
+    ],
+    ids=[
+        "rename",
+        "description",
+        "permissions",
+        "rename-and-permissions",
+        "unchanged",
+        "unchanged-with-a-resource-granted-nothing",
+    ],
+)
+def test_role_update_records_a_rename_and_other_changes_apart(
+    change,
+    expected,
+    request_contexts,
+    client_as,
+    admin_acme,
+    acme,
+    sent_events,
+    django_capture_on_commit_callbacks,
+):
+    client = client_as(admin_acme)
+    created = client.post(
+        "/api/admin/roles/",
+        {
+            "org_id": acme.id,
+            "name": "Auditor",
+            "description": "Reads",
+            "permissions": [{"resource_type": "flows", "actions": ["read"]}],
+        },
+        format="json",
+    )
+    assert created.status_code == status.HTTP_201_CREATED, created.content
+    role_id = created.json()["id"]
+    sent_events.clear()
+
+    with django_capture_on_commit_callbacks(execute=True):
+        response = client.patch(f"/api/admin/roles/{role_id}/", change, format="json")
+
+    assert response.status_code == status.HTTP_200_OK, response.content
+    assert all(event.route is None for event in sent_events)
+    assert [
+        (event.action, event.target_name, event.previous_name) for event in sent_events
+    ] == expected
+    assert all(event.target_id == str(role_id) for event in sent_events)
+    assert request_contexts[-1].recorded is True
+
+
 def test_api_key_create_records_created_in_the_keys_org_only(
     admin_in_two_orgs, beta, sent_events, django_capture_on_commit_callbacks
 ):

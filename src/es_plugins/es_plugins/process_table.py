@@ -21,6 +21,7 @@ class ProcessEntry:
     """Anonymous and shared-memory resident pages, in KiB (see `_resident_kib`)."""
 
     zombie: bool
+    """Exited, with no thread of it still running."""
 
 
 class ProcessTable:
@@ -39,7 +40,11 @@ class ProcessTable:
         return entries
 
     def living_pids_of_uid(self, uid: int) -> list[int]:
-        """Pids of the UID's processes that have not exited (zombies are left out)."""
+        """Pids of the UID's processes that have not exited.
+
+        A zombie is left out, unless a thread of it still runs: after the main thread exits,
+        the whole process shows as a zombie while the other threads keep executing.
+        """
         return sorted(entry.pid for entry in self.read() if entry.uid == uid and not entry.zombie)
 
     def rss_kib_by_uid(self, uids: Iterable[int]) -> dict[int, int]:
@@ -55,24 +60,66 @@ class ProcessTable:
         return totals
 
     def _read_status(self, pid: int) -> ProcessEntry | None:
-        try:
-            with open(self._proc_root / str(pid) / "status", encoding="utf-8") as status_file:
-                text = status_file.read()
-        except (FileNotFoundError, ProcessLookupError):
+        text = _read_status_text(self._proc_root / str(pid) / "status")
+        if text is None:
             return None
-        fields = {}
-        for line in text.splitlines():
-            name, separator, value = line.partition(":")
-            if separator:
-                fields[name] = value.strip()
+        fields = _parse_fields(text)
         if "Uid" not in fields:
             return None
         return ProcessEntry(
             pid=pid,
             uid=int(fields["Uid"].split()[0]),
             rss_kib=_resident_kib(fields),
-            zombie=fields.get("State", "").startswith("Z"),
+            zombie=_is_zombie(fields) and not self._has_running_thread(pid),
         )
+
+    def _has_running_thread(self, pid: int) -> bool:
+        """Whether a thread of the process is not a zombie.
+
+        When the main thread exits while others keep running, `/proc/<pid>/status` shows
+        `Z` for the whole process, yet the thread group still executes.
+        """
+        task_root = self._proc_root / str(pid) / "task"
+        try:
+            thread_ids = os.listdir(task_root)
+        except OSError:
+            return False  # no task directory, or the process exited meanwhile
+        for thread_id in thread_ids:
+            text = _read_status_text(task_root / thread_id / "status")
+            if text is None:
+                continue  # the thread exited meanwhile
+            if not _is_zombie(_parse_fields(text)):
+                return True
+        return False
+
+
+def _parse_fields(text: str) -> dict[str, str]:
+    fields = {}
+    # Only "\n" separates the kernel's lines: `splitlines` would also split a process name
+    # at "\x1c" or "\x85", which the kernel leaves unescaped, and let it forge a field.
+    for line in text.split("\n"):
+        name, separator, value = line.partition(":")
+        if separator:
+            fields[name] = value.strip()
+    return fields
+
+
+def _is_zombie(fields: dict[str, str]) -> bool:
+    return fields.get("State", "").startswith("Z")
+
+
+def _read_status_text(path: Path) -> str | None:
+    """A status file's text, or None when the process is gone.
+
+    A process names itself (`prctl(PR_SET_NAME)`) with any bytes and the kernel prints them raw
+    on the `Name:` line, so the file is not always UTF-8. The fields read here are ASCII, so
+    undecodable bytes are replaced rather than hiding the process from the scan.
+    """
+    try:
+        with open(path, encoding="utf-8", errors="replace") as status_file:
+            return status_file.read()
+    except (FileNotFoundError, ProcessLookupError):
+        return None
 
 
 def _resident_kib(fields: dict[str, str]) -> int:

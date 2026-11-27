@@ -339,7 +339,7 @@ describe('PluginDevelopmentPanelComponent', () => {
         button('Download development runtime file')!.click();
         await settle();
         expect(storage.getDevelopment).toHaveBeenCalledTimes(2);
-        expect(portInput('backend_port').value).toBe('9001');
+        expect(portInput('backend_port').value).toBe('9 001');
 
         storage.clearDevelopment.mockReturnValueOnce(
             throwError(() => new HttpErrorResponse({ status: 502, statusText: 'Bad Gateway', error: '<html></html>' }))
@@ -348,7 +348,7 @@ describe('PluginDevelopmentPanelComponent', () => {
         await settle();
         expect(toast.error).toHaveBeenCalledWith("Couldn't stop development.");
         expect(storage.getDevelopment).toHaveBeenCalledTimes(3);
-        expect(portInput('backend_port').value).toBe('9001');
+        expect(portInput('backend_port').value).toBe('9 001');
         expect(button('Save')!.disabled).toBe(false);
 
         storage.getDevelopment.mockReturnValue(of(buildPluginDevelopment()));

@@ -18,7 +18,7 @@
                 } @else {
                     Selected Files:
                 }
-                <span class="count">{{ checkedDocIds().size }}</span>
+                <span class="count">{{ checkedSelectableCount() }}</span>
                 <span class="total"> / {{ selectableDocIds().length }}</span>
             </span>
         </div>
@@ -66,7 +66,7 @@
                                 *appHasPermission="[ResourceCode.KnowledgeSources, ActionCode.Update]"
                                 color="secondary"
                                 [ariaLabel]="'Select ' + item.file_name"
-                                [checked]="checkedDocIds().has(item.graph_rag_document_id)"
+                                [checked]="!item.disabled && checkedDocIds().has(item.graph_rag_document_id)"
                                 [disabled]="item.disabled"
                                 (changed)="toggleDoc.emit(item.graph_rag_document_id)"
                             />

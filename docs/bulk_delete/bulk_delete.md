@@ -300,7 +300,7 @@ a boolean. Standard DRF field validation errors.
 {
   "status_code": 403,
   "code": "permission_denied",
-  "message": "You do not have permission to bulk_delete llm_configs."
+  "message": "You do not have permission to delete llm_configs."
 }
 ```
 

@@ -11,6 +11,8 @@ __all__ = [
     "NotFoundError",
     "SandboxOverloadedError",
     "SecretNotDecryptableError",
+    "SystemVenvNotFoundError",
+    "SystemVenvProtectedError",
     "UVBuildError",
     "UVDependencyResolutionError",
     "UVPackageNotFoundError",
@@ -57,6 +59,12 @@ class VenvNotFoundError(NotFoundError):
     default_message: str = "Venv(id={venv_id}) not found."
 
 
+class SystemVenvNotFoundError(NotFoundError):
+    """The key names no venv the sandbox owns, or the sandbox has not declared it yet."""
+
+    default_message: str = "System venv '{system_key}' not found."
+
+
 class CustomLibraryNotFoundError(NotFoundError):
     default_message: str = "CustomLibrary(id={custom_library_id}) not found."
 
@@ -91,6 +99,14 @@ class WheelNotFoundError(NotFoundError):
 
 class CustomLibraryNameTakenError(ConflictError):
     default_message: str = "CustomLibrary(name='{name}') already exists."
+
+
+class SystemVenvProtectedError(ConflictError):
+    """A system venv is built by the sandbox itself and changed by no one."""
+
+    default_message: str = (
+        "Venv(id={venv_id}) is built by the sandbox itself and cannot be changed or removed."
+    )
 
 
 class WheelVersionTakenError(ConflictError):

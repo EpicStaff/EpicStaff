@@ -22,7 +22,7 @@
 #
 # Settings, from the environment:
 #   SMOKE_BASE_URL            EpicStaff's origin, as in DJANGO_FRONTEND_BASE_URL, e.g. http://epicstaff.localhost
-#   SMOKE_PLUGINS_BASE_DOMAIN PLUGINS_BASE_DOMAIN, e.g. plugins.epicstaff.localhost
+#   SMOKE_PLUGINS_HOST_TEMPLATE PLUGINS_HOST_TEMPLATE, e.g. {id}.plugins.epicstaff.localhost
 #   SMOKE_PLUGIN              a running plugin with a backend, a database and a declared public path,
 #                             granted to SMOKE_ORG_ID, e.g. weather
 #   SMOKE_ORG_ID              that organization's id
@@ -40,7 +40,7 @@
 # or key is printed or put on a command line: they go to curl in files.
 #
 # Usage:
-#   SMOKE_BASE_URL=http://epicstaff.localhost SMOKE_PLUGINS_BASE_DOMAIN=plugins.epicstaff.localhost \
+#   SMOKE_BASE_URL=http://epicstaff.localhost SMOKE_PLUGINS_HOST_TEMPLATE='{id}.plugins.epicstaff.localhost' \
 #   SMOKE_PLUGIN=weather SMOKE_ORG_ID=3 SMOKE_ORG_NAME=Acme \
 #   SMOKE_SUPERADMIN_EMAIL=root@example.com SMOKE_SUPERADMIN_PASSWORD=... \
 #   bash src/nginx/tests/purge_smoke.sh --yes
@@ -53,7 +53,7 @@ fi
 shift
 
 base_url=${SMOKE_BASE_URL:?set SMOKE_BASE_URL, e.g. http://epicstaff.localhost}
-base_domain=${SMOKE_PLUGINS_BASE_DOMAIN:?set SMOKE_PLUGINS_BASE_DOMAIN, e.g. plugins.epicstaff.localhost}
+host_template=${SMOKE_PLUGINS_HOST_TEMPLATE:?set SMOKE_PLUGINS_HOST_TEMPLATE, e.g. \{id\}.plugins.epicstaff.localhost}
 plugin=${SMOKE_PLUGIN:?set SMOKE_PLUGIN to a running plugin with a database, e.g. weather}
 org_id=${SMOKE_ORG_ID:?set SMOKE_ORG_ID}
 org_name=${SMOKE_ORG_NAME:?set SMOKE_ORG_NAME}
@@ -81,7 +81,7 @@ case "$base_url" in
     ;;
 esac
 base_url=${base_url%/}
-plugin_origin="${base_url%%://*}://$plugin.$base_domain"
+plugin_origin="${base_url%%://*}://${host_template/\{id\}/$plugin}"
 # The plugin's database and role names: its identifier with `-` turned into `_`.
 stem=${plugin//-/_}
 

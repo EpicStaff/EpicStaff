@@ -26,6 +26,7 @@ from tests.plugin_databases import (
     admin_password,
     catalog_snapshot,
     connect_as,
+    login_refusal,
     new_app_password,
 )
 
@@ -246,6 +247,59 @@ async def test_plugin_roles_reach_their_own_database_only(plugin_databases):
     cursor = await own.execute("SELECT current_setting('statement_timeout')")
     assert await cursor.fetchone() == ("10s",)
     await own.close()
+
+
+@pytest.mark.postgres
+async def test_another_plugin_cannot_log_in_while_a_new_database_waits_for_its_connect_grants(
+    plugin_databases, monkeypatch
+):
+    other, desired = plugin_databases(), plugin_databases()
+    other_password = new_app_password()
+    await provisioner().ensure("other", other, other_password, [])
+    refusals = []
+    real_grant_connect = provisioner_module.grant_connect
+
+    async def try_to_log_in_first(admin, target):
+        refusals.append(await login_refusal(other.app_role, other_password, target.database_name))
+        await real_grant_connect(admin, target)
+
+    monkeypatch.setattr(provisioner_module, "grant_connect", try_to_log_in_first)
+
+    await provisioner().ensure("weather", desired, new_app_password(), [])
+
+    assert len(refusals) == 1
+    assert f'database "{desired.database_name}" is not currently accepting connections' in refusals[0]
+    assert "permission denied for database" in await login_refusal(
+        other.app_role, other_password, desired.database_name
+    )
+
+
+@pytest.mark.postgres
+async def test_a_database_left_closed_by_an_interrupted_run_is_opened_to_its_own_roles_only(
+    plugin_databases, monkeypatch
+):
+    other, desired = plugin_databases(), plugin_databases()
+    other_password, password = new_app_password(), new_app_password()
+    await provisioner().ensure("other", other, other_password, [])
+
+    async def agent_dies(admin, target):
+        raise DatabaseProvisioningError("migration", "the agent died")
+
+    monkeypatch.setattr(provisioner_module, "grant_connect", agent_dies)
+    with pytest.raises(DatabaseProvisioningError):
+        await provisioner().ensure("weather", desired, password, [])
+    assert "is not currently accepting connections" in await login_refusal(
+        other.app_role, other_password, desired.database_name
+    )
+    monkeypatch.undo()
+
+    outcome = await provisioner().ensure("weather", desired, password, [])
+
+    assert not outcome.created
+    assert await login_refusal(desired.app_role, password, desired.database_name) is None
+    assert "permission denied for database" in await login_refusal(
+        other.app_role, other_password, desired.database_name
+    )
 
 
 @pytest.mark.postgres

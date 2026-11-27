@@ -13,8 +13,10 @@ import pytest
 from loguru import logger
 from psycopg import sql
 
+from es_plugins.database import backup_service as backup_service_module
+from es_plugins.database import provisioner as provisioner_module
 from es_plugins.database.backup_service import BackupError, BackupRequest
-from es_plugins.database.connections import DatabaseConnector, DatabaseUnreachableError
+from es_plugins.database.connections import DatabaseConnector, DatabaseProvisioningError, DatabaseUnreachableError
 from es_plugins.database.migration_runner import Migration
 from es_plugins.database.provisioner import DatabaseProvisioner
 from es_plugins.node_disk import FLOOR_BYTES
@@ -23,6 +25,7 @@ from tests.plugin_databases import (
     backup_password,
     backup_services,
     fetch_all,
+    login_refusal,
     new_app_password,
     owner_session,
     postgres_client_root,
@@ -171,6 +174,37 @@ async def test_a_database_the_owner_closed_to_backups_is_opened_again_first(plug
             admin, "SELECT datistemplate, datconnlimit FROM pg_database WHERE datname = %s", (desired.database_name,)
         ) == [(False, -1)]
     assert any(line.startswith("plugins.database.attributes_reset plugin=weather") for line in lines)
+
+
+async def test_a_database_left_closed_by_an_interrupted_provisioning_is_opened_to_its_own_roles_only(
+    plugin_databases, layout, client_root, monkeypatch
+):
+    other, desired = plugin_databases(), plugin_databases()
+    other_password = new_app_password()
+    await DatabaseProvisioner(DatabaseConnector(admin_password())).ensure("other", other, other_password, [])
+
+    async def node_lost_before_the_grants(admin, target):
+        raise DatabaseProvisioningError("sql", "the node stopped")
+
+    monkeypatch.setattr(provisioner_module, "grant_connect", node_lost_before_the_grants)
+    with pytest.raises(DatabaseProvisioningError):
+        await DatabaseProvisioner(DatabaseConnector(admin_password())).ensure("weather", desired, new_app_password(), [])
+    monkeypatch.undo()
+    refusals = []
+    real_reset = backup_service_module.reset_database_attributes
+
+    async def try_to_log_in_after_the_reset(admin, database_name, owner_role):
+        changed = await real_reset(admin, database_name, owner_role)
+        refusals.append(await login_refusal(other.app_role, other_password, database_name))
+        return changed
+
+    monkeypatch.setattr(backup_service_module, "reset_database_attributes", try_to_log_in_after_the_reset)
+    backups, _, _ = backup_services(layout, client_root)
+
+    await backups.backup(request(desired, reason="pre_restore", restore_id=3))
+
+    assert len(refusals) == 1 and refusals[0] is not None
+    assert "permission denied for database" in await login_refusal(other.app_role, other_password, desired.database_name)
 
 
 async def test_no_room_for_the_backup_refuses_it_before_dumping(plugin_databases, layout, client_root):

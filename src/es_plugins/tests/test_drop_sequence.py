@@ -6,7 +6,9 @@ import psycopg
 import pytest
 from psycopg import sql
 
-from es_plugins.database.connections import ADMIN_ROLE, DatabaseConnector
+from es_plugins.database import drop_sequence as drop_sequence_module
+from es_plugins.database import provisioner as provisioner_module
+from es_plugins.database.connections import ADMIN_ROLE, DatabaseConnector, DatabaseProvisioningError
 from es_plugins.database.drop_sequence import DatabaseDropError, DatabaseDropper, DroppedDatabase
 from es_plugins.database.installation_lookup import installation_marker
 from es_plugins.database.migration_runner import open_owner_login
@@ -17,6 +19,7 @@ from tests.plugin_databases import (
     catalog_snapshot,
     connect_as,
     fetch_all,
+    login_refusal,
     new_app_password,
 )
 
@@ -175,6 +178,36 @@ async def test_a_drop_that_stopped_after_the_database_finishes_with_the_roles(pl
     )
 
     assert await dropper().drop(desired) == DroppedDatabase(databases=0, roles=3)
+    assert await what_is_left(desired) == {"roles": [], "databases": []}
+
+
+async def test_a_database_left_closed_by_an_interrupted_provisioning_is_dropped_without_letting_another_plugin_in(
+    plugin_databases, monkeypatch
+):
+    other, desired = plugin_databases(), plugin_databases()
+    other_password = new_app_password()
+    await provision(other, other_password)
+
+    async def node_lost_before_the_grants(admin, target):
+        raise DatabaseProvisioningError("sql", "the node stopped")
+
+    monkeypatch.setattr(provisioner_module, "grant_connect", node_lost_before_the_grants)
+    with pytest.raises(DatabaseProvisioningError):
+        await provision(desired)
+    monkeypatch.undo()
+    # The window of the drop: from putting the database's attributes back until it is dropped.
+    refusals = []
+    real_reset = drop_sequence_module.reset_database_attributes
+
+    async def try_to_log_in_after_the_reset(admin, database_name, owner_role):
+        changed = await real_reset(admin, database_name, owner_role)
+        refusals.append(await login_refusal(other.app_role, other_password, database_name))
+        return changed
+
+    monkeypatch.setattr(drop_sequence_module, "reset_database_attributes", try_to_log_in_after_the_reset)
+
+    assert await dropper().drop(desired) == DroppedDatabase(databases=1, roles=3)
+    assert len(refusals) == 1 and refusals[0] is not None
     assert await what_is_left(desired) == {"roles": [], "databases": []}
 
 

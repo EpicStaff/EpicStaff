@@ -29,6 +29,7 @@ from rbac.governance.guards import UserManagementGuards
 from rbac.governance.role_assignment_checks import assert_role_assignment_allowed
 from rbac.models import ApiKey, Organization, OrganizationUser, Role
 from rbac.models.enums import Permission, ResourceType
+from rbac.signals import member_removed
 
 
 def _member_description(membership, user) -> TargetDescription:
@@ -259,6 +260,9 @@ class MembershipManagementService(CrossOrgResourceService):
         deleted_api_keys, _ = ApiKey.objects.filter(
             created_by_id=membership.user_id, org_id=membership.org_id
         ).delete()
+        member_removed.send(
+            sender=OrganizationUser, user_id=membership.user_id, org_id=membership.org_id
+        )
         logger.info(
             "MembershipManagementService.remove_member actor={a} membership={m} "
             "released_authorship={r} scrubbed_snapshots={v} deleted_api_keys={k}",

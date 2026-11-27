@@ -10,11 +10,16 @@ authors = [
 requires-python = "==3.12.10"
 dependencies = [
     "beautifulsoup4==4.15.0",
-    "chonkie==1.7.0",
     "foundation[cryptographer]",
     "graphrag==3.1.1",
+    # lancedb-compat is the official LanceDB build for x86_64 CPUs without AVX2 (Sandy/Ivy
+    # Bridge, Westmere, AMD Bulldozer family); the default lancedb wheel targets Haswell and
+    # dies with "Illegal instruction" at import there. Same `lancedb` namespace and API,
+    # runtime SIMD dispatch, Linux x86_64 wheel only. The override below removes plain
+    # lancedb from that platform so the two never share a venv.
+    "lancedb-compat==0.41.0 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
     "langchain-text-splitters==1.1.2",
-    "litellm==1.108.1",
+    "litellm==1.108.12",
     "litestar==2.24.0",
     "loguru==0.7.3",
     "miniopy-async>=1.23.5",
@@ -26,6 +31,7 @@ dependencies = [
     "pydantic==2.13.4",
     "python-docx==1.2.0",
     "sqlalchemy==2.0.51",
+    "tiktoken==0.13.0",
     "uvicorn==0.52.3",
 ]
 
@@ -113,7 +119,13 @@ transitive-pins = [
 package = false
 # graphrag 3.1.1 pins litellm==1.92.0 exactly; override it to the version every other service ships
 # until graphrag releases a compatible pin.
-override-dependencies = ["litellm==1.108.1"]
+override-dependencies = [
+    "litellm==1.108.12",
+    # graphrag-vectors pins lancedb~=0.34.0; lancedb-compat 0.41.0 is the first release whose
+    # import works (earlier ones look up the "lancedb" distribution metadata and fail), so
+    # every platform runs 0.41.0 and Linux x86_64 gets it from lancedb-compat (see dependencies).
+    "lancedb==0.41.0 ; sys_platform != 'linux' or platform_machine != 'x86_64'",
+]
 
 [tool.uv.sources]
 foundation = { path = "../foundation", editable = true }

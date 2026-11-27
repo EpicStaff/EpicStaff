@@ -22,15 +22,9 @@ export class SettingsPageComponent {
             isPermitted: () => this.permissionsService.can(ResourceCode.LlmConfigs, ActionCode.Create),
         },
         {
-            routerLink: 'default-llms',
-            icon: 'robot',
-            label: 'Default LLMs',
-            isPermitted: () => this.permissionsService.can(ResourceCode.LlmConfigs, ActionCode.Read),
-        },
-        {
-            routerLink: 'llm-library',
+            routerLink: 'ai-models',
             icon: 'book',
-            label: 'LLM Library',
+            label: 'AI Models',
             isPermitted: () => this.permissionsService.can(ResourceCode.LlmConfigs, ActionCode.Read),
         },
         {

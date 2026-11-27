@@ -10,6 +10,7 @@ import json
 import socket
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from unittest.mock import ANY
 
 import httpx
 import litellm
@@ -17,8 +18,8 @@ import pytest
 import yaml
 from django.conf import settings as django_settings
 
-from tables.utils import litellm_model_info
-from tables.utils.litellm_model_info import (
+from ai_models.utils import litellm_model_info
+from ai_models.utils.litellm_model_info import (
     FALLBACK_CONTEXT_WINDOW,
     refresh_litellm_model_cost,
     resolve_context_window,
@@ -144,9 +145,32 @@ def test_enabled_schedules_the_daily_refresh_an_hour_after_start(
     )
 
 
-def test_enabled_merges_the_snapshot_on_disk(settings, stale_snapshot, scheduler, no_network):
+def test_enabled_merges_only_the_prices_of_known_models(
+    settings, snapshot_path, scheduler, no_network
+):
     settings.LITELLM_MODEL_COST_REFRESH_ENABLED = True
+    known = litellm.model_cost["gpt-4o"]
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                SNAPSHOT_ONLY_MODEL: {
+                    "litellm_provider": "openai",
+                    "mode": "chat",
+                    "max_input_tokens": SNAPSHOT_CONTEXT_WINDOW,
+                },
+                "gpt-4o": {
+                    **known,
+                    "input_cost_per_token": 0.25,
+                    "max_input_tokens": SNAPSHOT_CONTEXT_WINDOW,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
 
     start_litellm_refresh_if_owner()
 
-    assert resolve_context_window(SNAPSHOT_ONLY_MODEL) == (SNAPSHOT_CONTEXT_WINDOW, None, True)
+    assert litellm.model_cost["gpt-4o"]["input_cost_per_token"] == 0.25
+    assert litellm.model_cost["gpt-4o"]["max_input_tokens"] == known["max_input_tokens"]
+    assert SNAPSHOT_ONLY_MODEL not in litellm.model_cost
+    assert resolve_context_window(SNAPSHOT_ONLY_MODEL) == (FALLBACK_CONTEXT_WINDOW, ANY, False)

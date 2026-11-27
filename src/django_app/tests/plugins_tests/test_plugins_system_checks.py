@@ -1,10 +1,12 @@
-"""Start-up checks plugins.E001-E013 and W001, which run only while the plugin platform is on."""
+"""Start-up checks plugins.E001-E014 and W001, which run only while the plugin platform is on."""
 
 import pytest
 from django.core.management import call_command
 from django.core.management.base import SystemCheckError
 from epicstaff_plugin.signing import generate_secret_key
 from plugins.checks import check_plugin_platform_settings
+
+from tests.plugins_tests.host_template_cases import ACCEPTED, REFUSED
 
 KEY = generate_secret_key().public_key.to_text()
 OTHER_KEY = generate_secret_key().public_key.to_text()
@@ -23,7 +25,7 @@ def valid_platform(settings):
     """A correct local development setup: every check is quiet."""
     settings.PLUGINS_ENABLED = True
     settings.REFRESH_COOKIE_SECURE = False
-    settings.PLUGINS_BASE_DOMAIN = "plugins.epicstaff.localhost"
+    settings.PLUGINS_HOST_TEMPLATE = "{id}.plugins.epicstaff.localhost"
     settings.FRONTEND_BASE_URL = "http://epicstaff.localhost"
     settings.PLUGINS_TRUSTED_SIGNING_KEYS = []
     settings.CORS_ALLOWED_ORIGINS = []
@@ -44,9 +46,13 @@ def test_a_valid_local_development_setup_passes(valid_platform):
     assert _ids() == []
 
 
-def test_a_valid_https_setup_passes(valid_platform):
+@pytest.mark.parametrize(
+    "template",
+    ["{id}.plugins.example.com", "{id}-app.example.com", "app-{id}.example.com", "{id}.example.org.example.com"],
+)
+def test_a_valid_https_setup_passes(valid_platform, template):
     valid_platform.REFRESH_COOKIE_SECURE = True
-    valid_platform.PLUGINS_BASE_DOMAIN = "plugins.example.com"
+    valid_platform.PLUGINS_HOST_TEMPLATE = template
     valid_platform.FRONTEND_BASE_URL = "https://epicstaff.example.com:8443"
     valid_platform.PLUGINS_TRUSTED_SIGNING_KEYS = [f"release:{KEY}", f"backup:{OTHER_KEY}"]
 
@@ -55,7 +61,7 @@ def test_a_valid_https_setup_passes(valid_platform):
 
 def test_nothing_is_checked_while_the_platform_is_off(valid_platform):
     valid_platform.PLUGINS_ENABLED = False
-    valid_platform.PLUGINS_BASE_DOMAIN = "plugins.invalid"
+    valid_platform.PLUGINS_HOST_TEMPLATE = "{id}.plugins.invalid"
     valid_platform.FRONTEND_BASE_URL = "not a url"
     valid_platform.PLUGINS_TRUSTED_SIGNING_KEYS = ["broken"]
     valid_platform.PLUGINS_GRACE_PERIOD_DAYS = "abc"
@@ -64,30 +70,68 @@ def test_nothing_is_checked_while_the_platform_is_off(valid_platform):
 
 
 def test_e001_plain_http_outside_localhost(valid_platform):
-    valid_platform.PLUGINS_BASE_DOMAIN = "plugins.example.com"
+    valid_platform.PLUGINS_HOST_TEMPLATE = "{id}.plugins.example.com"
     valid_platform.FRONTEND_BASE_URL = "https://epicstaff.example.com"
 
     assert _ids() == ["plugins.E001"]
 
 
+def test_e001_leaves_an_invalid_template_to_e002(valid_platform):
+    valid_platform.PLUGINS_HOST_TEMPLATE = "plugins.example.com"
+    valid_platform.FRONTEND_BASE_URL = "https://epicstaff.example.com"
+
+    assert _ids() == ["plugins.E002"]
+
+
 def test_e001_is_quiet_with_a_secure_cookie(valid_platform):
     valid_platform.REFRESH_COOKIE_SECURE = True
-    valid_platform.PLUGINS_BASE_DOMAIN = "plugins.example.com"
+    valid_platform.PLUGINS_HOST_TEMPLATE = "{id}.plugins.example.com"
     valid_platform.FRONTEND_BASE_URL = "https://epicstaff.example.com"
 
     assert _ids() == []
 
 
+# The words of plugins.E002's message for each rule the shared cases name.
+E002_PROBLEMS = {
+    "placement": "{id} exactly once, in its first label",
+    "parent": "two or more labels",
+    "affix": "neither start nor end with a hyphen",
+    "label-length": "longer than 63 characters",
+    "host-length": "longer than 253 characters",
+    "reserved": "reserves for xn-- names",
+    "placeholder": "is still a placeholder",
+}
+
+
 @pytest.mark.parametrize(
-    "domain",
-    ["plugins.invalid", "Plugins.Example.com", "plugins_example.com", "localhost", "-plugins.example.com", "plugins..example.com", None],
+    ("template", "rule"),
+    [
+        *REFUSED,
+        (None, "placement"),
+        ("{ID}.example.com", "placement"),
+        ("{id}.Plugins.Example.com", "parent"),
+        ("{id}.example.com.", "parent"),
+        ("App-{id}.example.com", "affix"),
+    ],
 )
-def test_e002_a_base_domain_that_is_not_a_lower_case_dns_name_or_a_placeholder(valid_platform, domain):
+def test_e002_a_template_that_is_not_valid_or_a_placeholder(valid_platform, template, rule):
     valid_platform.REFRESH_COOKIE_SECURE = True
     valid_platform.FRONTEND_BASE_URL = "https://epicstaff.example.com"
-    valid_platform.PLUGINS_BASE_DOMAIN = domain
+    valid_platform.PLUGINS_HOST_TEMPLATE = template
 
-    assert _ids() == ["plugins.E002"]
+    messages = _messages()
+
+    assert list(messages) == ["plugins.E002"]
+    assert E002_PROBLEMS[rule] in messages["plugins.E002"]
+
+
+@pytest.mark.parametrize("template", ACCEPTED)
+def test_e002_accepts_the_shared_valid_templates(valid_platform, template):
+    valid_platform.REFRESH_COOKIE_SECURE = True
+    valid_platform.FRONTEND_BASE_URL = "https://epicstaff.example.com"
+    valid_platform.PLUGINS_HOST_TEMPLATE = template
+
+    assert _ids() == []
 
 
 @pytest.mark.parametrize(
@@ -141,7 +185,7 @@ def test_e004_malformed_or_repeated_trusted_keys(valid_platform, entries):
 @pytest.mark.parametrize("url", ["HTTPS://EpicStaff.Example.com:8443/", "https://epicstaff-1.example.com"])
 def test_e003_accepts_any_case_a_port_and_a_trailing_slash(valid_platform, url):
     valid_platform.REFRESH_COOKIE_SECURE = True
-    valid_platform.PLUGINS_BASE_DOMAIN = "plugins.example.com"
+    valid_platform.PLUGINS_HOST_TEMPLATE = "{id}.plugins.example.com"
     valid_platform.FRONTEND_BASE_URL = url
 
     assert _ids() == []
@@ -154,12 +198,30 @@ def test_e003_accepts_any_case_a_port_and_a_trailing_slash(valid_platform, url):
         ["https://plugins.epicstaff.localhost"],
         ["http://localhost:4200", "https://A.Plugins.Epicstaff.Localhost:8443"],
     ],
-    ids=["a plugin host", "the base domain itself", "among others, any case"],
+    ids=["a plugin host", "the parent itself", "among others, any case"],
 )
-def test_e005_a_cors_origin_under_the_plugin_base_domain(valid_platform, origins):
+def test_e005_a_cors_origin_in_the_plugin_zone(valid_platform, origins):
     valid_platform.CORS_ALLOWED_ORIGINS = origins
 
     assert _ids() == ["plugins.E005"]
+
+
+@pytest.mark.parametrize(
+    ("origins", "errors"),
+    [
+        (["https://weather-app.example.com"], ["plugins.E005"]),
+        (["https://a.weather-app.example.com", "https://x-app.example.com"], ["plugins.E005", "plugins.E005"]),
+        (["https://epicstaff.example.com", "https://example.com", "https://app.example.com"], []),
+    ],
+    ids=["a plugin host", "nested and unknown plugin-shaped hosts", "the zone's other hosts"],
+)
+def test_e005_with_a_flat_template_judges_only_hosts_of_the_plugin_shape(valid_platform, origins, errors):
+    valid_platform.REFRESH_COOKIE_SECURE = True
+    valid_platform.FRONTEND_BASE_URL = "https://epicstaff.example.com"
+    valid_platform.PLUGINS_HOST_TEMPLATE = "{id}-app.example.com"
+    valid_platform.CORS_ALLOWED_ORIGINS = origins
+
+    assert _ids() == errors
 
 
 @pytest.mark.parametrize(
@@ -167,14 +229,14 @@ def test_e005_a_cors_origin_under_the_plugin_base_domain(valid_platform, origins
     [None, [], ["http://localhost:4200", "https://epicstaff.localhost", "https://xplugins.epicstaff.localhost"]],
     ids=["none", "empty", "other hosts"],
 )
-def test_e005_is_quiet_for_origins_outside_the_plugin_base_domain(valid_platform, origins):
+def test_e005_is_quiet_for_origins_outside_the_plugin_zone(valid_platform, origins):
     valid_platform.CORS_ALLOWED_ORIGINS = origins
 
     assert _ids() == []
 
 
 def test_the_checks_stop_management_commands(valid_platform):
-    valid_platform.PLUGINS_BASE_DOMAIN = "plugins.example.com"
+    valid_platform.PLUGINS_HOST_TEMPLATE = "{id}.plugins.example.com"
 
     with pytest.raises(SystemCheckError, match="plugins.E001"):
         call_command("check")
@@ -220,36 +282,101 @@ def test_e009_a_platform_maximum_that_is_not_a_positive_integer(valid_platform, 
 
 
 @pytest.mark.parametrize(
-    ("frontend_url", "base_domain"),
+    ("frontend_url", "template"),
     [
-        ("https://plugins.example.com", "plugins.example.com"),
-        ("https://epicstaff.plugins.example.com", "plugins.example.com"),
-        ("https://EpicStaff.Plugins.Example.com:8443", "plugins.example.com"),
-        ("https://example.com", "example.com"),
+        ("https://plugins.example.com", "{id}.plugins.example.com"),
+        ("https://epicstaff.plugins.example.com", "{id}.plugins.example.com"),
+        ("https://EpicStaff.Plugins.Example.com:8443", "{id}.plugins.example.com"),
+        ("https://example.com", "{id}.example.com"),
+        ("https://staff.example.com", "{id}.example.com"),
+        ("https://staff-app.example.com", "{id}-app.example.com"),
+        ("https://es.staff-app.example.com", "{id}-app.example.com"),
+        ("https://app-staff.example.com", "app-{id}.example.com"),
     ],
-    ids=["the-base-domain-itself", "a-host-under-it", "any-case-and-a-port", "a-parent-domain-as-base"],
+    ids=[
+        "the-parent-itself",
+        "a-host-under-it",
+        "any-case-and-a-port",
+        "a-parent-without-an-affix",
+        "a-sibling-without-an-affix",
+        "a-host-of-the-suffix-shape",
+        "a-host-under-one",
+        "a-host-of-the-prefix-shape",
+    ],
 )
-def test_e010_epicstaff_s_host_inside_the_plugin_base_domain(valid_platform, frontend_url, base_domain):
+def test_e010_epicstaff_s_host_inside_the_plugin_zone(valid_platform, frontend_url, template):
     valid_platform.REFRESH_COOKIE_SECURE = True
     valid_platform.FRONTEND_BASE_URL = frontend_url
-    valid_platform.PLUGINS_BASE_DOMAIN = base_domain
+    valid_platform.PLUGINS_HOST_TEMPLATE = template
 
     assert _ids() == ["plugins.E010"]
 
 
 @pytest.mark.parametrize(
-    ("frontend_url", "base_domain"),
+    ("frontend_url", "template"),
     [
-        ("https://epicstaff.example.com", "plugins.example.com"),
-        ("https://xplugins.example.com", "plugins.example.com"),
-        ("https://example.com", "plugins.example.com"),
+        ("https://epicstaff.example.com", "{id}.plugins.example.com"),
+        ("https://xplugins.example.com", "{id}.plugins.example.com"),
+        ("https://example.com", "{id}.plugins.example.com"),
+        ("https://epicstaff.example.com", "{id}-app.example.com"),
+        ("https://example.com", "{id}-app.example.com"),
+        ("https://app.example.com", "{id}-app.example.com"),
+        ("https://staff.example.com", "app-{id}.example.com"),
     ],
-    ids=["a-sibling", "a-look-alike-suffix", "the-parent"],
+    ids=[
+        "a-sibling",
+        "a-look-alike-suffix",
+        "the-parent",
+        "a-sibling-in-a-flat-zone",
+        "the-parent-of-a-flat-zone",
+        "the-bare-suffix",
+        "a-sibling-of-a-prefixed-zone",
+    ],
 )
-def test_e010_is_quiet_for_a_host_outside_the_plugin_base_domain(valid_platform, frontend_url, base_domain):
+def test_e010_is_quiet_for_a_host_outside_the_plugin_zone(valid_platform, frontend_url, template):
     valid_platform.REFRESH_COOKIE_SECURE = True
     valid_platform.FRONTEND_BASE_URL = frontend_url
-    valid_platform.PLUGINS_BASE_DOMAIN = base_domain
+    valid_platform.PLUGINS_HOST_TEMPLATE = template
+
+    assert _ids() == []
+
+
+@pytest.mark.parametrize(
+    ("frontend_url", "template"),
+    [
+        ("https://staff.acme.io", "{id}-app.acme.com"),
+        ("https://acme.com", "{id}.plugins.acme.org"),
+        ("http://epicstaff.localhost", "{id}.plugins.localhost"),
+        ("https://localhost:4200", "{id}-app.plugins.localhost"),
+    ],
+    ids=["moved-to-another-domain", "another-top-level-domain", "two-localhost-sites", "bare-localhost"],
+)
+def test_e014_epicstaff_and_the_plugin_hosts_on_different_sites(valid_platform, frontend_url, template):
+    valid_platform.FRONTEND_BASE_URL = frontend_url
+    valid_platform.PLUGINS_HOST_TEMPLATE = template
+    valid_platform.REFRESH_COOKIE_SECURE = True
+
+    messages = _messages()
+
+    assert list(messages) == ["plugins.E014"]
+    assert "are not the same site" in messages["plugins.E014"]
+
+
+@pytest.mark.parametrize(
+    ("frontend_url", "template"),
+    [
+        ("https://epicstaff.example.com", "{id}-app.example.com"),
+        ("https://example.com", "{id}-app.example.com"),
+        ("https://a.b.example.com", "{id}.plugins.example.com"),
+        ("https://EpicStaff.Example.com", "{id}-app.example.com"),
+        ("http://epicstaff.localhost", "{id}-app.epicstaff.localhost"),
+    ],
+    ids=["a-sibling", "the-parent", "deeper-than-the-parent", "any-case", "a-localhost-site"],
+)
+def test_e014_is_quiet_for_hosts_of_one_site(valid_platform, frontend_url, template):
+    valid_platform.FRONTEND_BASE_URL = frontend_url
+    valid_platform.PLUGINS_HOST_TEMPLATE = template
+    valid_platform.REFRESH_COOKIE_SECURE = True
 
     assert _ids() == []
 
@@ -316,21 +443,25 @@ def test_e012_development_mode_without_debug(development_platform):
     assert "DJANGO_DEBUG is not true" in messages["plugins.E012"]
 
 
-@pytest.mark.parametrize("base_domain", ["plugins.example.com", "plugins.epicstaff.test", "plugins.localhost.example.com"])
-def test_e012_a_plugin_base_domain_outside_localhost(development_platform, base_domain):
-    # A secure cookie, so the plain-http check (E001) stays quiet and only this one speaks.
+@pytest.mark.parametrize(
+    "template", ["{id}.plugins.example.com", "{id}.plugins.epicstaff.test", "{id}-app.localhost.example.com"]
+)
+def test_e012_plugin_hosts_outside_localhost(development_platform, template):
+    # A secure cookie, so the plain-http check (E001) stays quiet. EpicStaff stays on
+    # epicstaff.localhost, so the plugin hosts are another site as well (E014).
     development_platform.REFRESH_COOKIE_SECURE = True
-    development_platform.PLUGINS_BASE_DOMAIN = base_domain
+    development_platform.PLUGINS_HOST_TEMPLATE = template
 
     messages = _messages()
 
-    assert list(messages) == ["plugins.E012"]
-    assert f"PLUGINS_BASE_DOMAIN ({base_domain!r}) does not end in .localhost" in messages["plugins.E012"]
+    assert list(messages) == ["plugins.E014", "plugins.E012"]
+    assert f"PLUGINS_HOST_TEMPLATE ({template!r}) does not end in .localhost" in messages["plugins.E012"]
 
 
 def test_e012_an_epicstaff_host_outside_localhost(development_platform):
     development_platform.REFRESH_COOKIE_SECURE = True
     development_platform.FRONTEND_BASE_URL = "https://epicstaff.example.com"
+    development_platform.PLUGINS_HOST_TEMPLATE = "{id}.plugins.example.com"
 
     messages = _messages()
 
@@ -388,16 +519,22 @@ def test_the_loopback_marker_alone_neither_turns_development_mode_on_nor_is_chec
     assert _ids() == []
 
 
+def test_e012_leaves_an_invalid_template_to_e002(development_platform):
+    development_platform.PLUGINS_HOST_TEMPLATE = "plugins.epicstaff.localhost"
+
+    assert _ids() == ["plugins.E002", "plugins.W001"]
+
+
 def test_e012_names_every_failing_condition(development_platform):
     development_platform.DEBUG = False
     development_platform.REFRESH_COOKIE_SECURE = True
-    development_platform.PLUGINS_BASE_DOMAIN = "plugins.example.com"
+    development_platform.PLUGINS_HOST_TEMPLATE = "{id}.plugins.example.com"
     development_platform.FRONTEND_BASE_URL = "https://epicstaff.example.com"
     development_platform.PLUGINS_DEV_LOOPBACK_ONLY = False
 
     message = _messages()["plugins.E012"]
 
-    assert "DJANGO_DEBUG" in message and "PLUGINS_BASE_DOMAIN" in message
+    assert "DJANGO_DEBUG" in message and "PLUGINS_HOST_TEMPLATE" in message
     assert "DJANGO_FRONTEND_BASE_URL" in message and "PLUGINS_DEV_LOOPBACK_ONLY" in message
 
 
@@ -412,7 +549,8 @@ def test_localhost_itself_is_a_local_development_host(development_platform):
     development_platform.REFRESH_COOKIE_SECURE = True
     development_platform.FRONTEND_BASE_URL = "https://localhost:4200"
 
-    assert _ids() == ["plugins.W001"]
+    # Development mode allows it (no E012); no plugin host is ever on bare localhost's site.
+    assert _ids() == ["plugins.E014", "plugins.W001"]
 
 
 @pytest.mark.parametrize("value", ["0", "80", "1023", "65536", "abc", "", "8082.0", "-8082"])
@@ -440,7 +578,7 @@ def test_with_development_mode_off_neither_debug_nor_the_api_port_is_checked(dev
 def test_development_mode_is_not_checked_while_the_platform_is_off(development_platform):
     development_platform.PLUGINS_ENABLED = False
     development_platform.DEBUG = False
-    development_platform.PLUGINS_BASE_DOMAIN = "plugins.example.com"
+    development_platform.PLUGINS_HOST_TEMPLATE = "{id}.plugins.example.com"
     development_platform.PLUGINS_DEV_API_PORT = "abc"
 
     assert _ids() == []

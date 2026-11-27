@@ -57,6 +57,9 @@ cd "$COMPOSE_DIR"
 if [ "$regenerate_env" = true ]; then
   echo ">> regenerate .env from env.yaml"
   python3 "$APP_DIR/scripts/envtool.py" --dev
+  # --dev sizes DJANGO_MEMORY / CHAT_MEMORY for one worker; deploy.env may raise the worker
+  # counts without raising the limits, which would get the workers killed.
+  python3 "$APP_DIR/scripts/envtool.py" --size-worker-memory-from deploy.env
 else
   echo ">> Skipping .env regeneration."
 fi

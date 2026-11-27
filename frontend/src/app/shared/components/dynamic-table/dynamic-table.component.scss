@@ -216,6 +216,10 @@
         padding: 0;
         vertical-align: middle;
 
+        &:not(.dt__td--invalid):has(.selector__btn--open, .selector__btn:focus-visible) {
+            box-shadow: inset 0 0 0 1px var(--accent-color);
+        }
+
         &--invalid {
             box-shadow: inset 0 0 0 1px var(--color-ks-status-failed, #dc2626);
         }
@@ -248,7 +252,7 @@
         padding: 0 8px;
 
         // A single-action cell: the button inside takes the whole cell as its hover and click area.
-        &:has(> .dt__navigate-cell) {
+        &:has(> .dt__navigate-cell, > .dt__cell-select) {
             padding: 0;
         }
     }
@@ -295,13 +299,12 @@
         display: block;
         width: 100%;
 
-        ::ng-deep .selector__btn {
+        ::ng-deep .selector .selector__btn {
             background: transparent;
             color: var(--fog-alpha-80);
-
-            &:not(.selector__btn--open, :focus-visible) {
-                border-color: transparent;
-            }
+            font-size: var(--text-body-small-size);
+            border-color: transparent;
+            outline: none;
         }
     }
 

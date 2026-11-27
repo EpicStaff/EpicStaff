@@ -8,7 +8,8 @@ import pytest
 
 from manager.application.orchestrators import VenvCRUDOrchestrator
 from manager.domain.enums import VenvStatus
-from manager.domain.errors import VenvNotFoundError
+from manager.domain.errors import SystemVenvProtectedError, VenvNotFoundError
+from manager.domain.models import SYSTEM_VENV_LIBS
 from tests.builders import make_library, make_venv
 
 
@@ -127,13 +128,132 @@ async def test_list_count_is_the_total_before_paging(uow):
     assert total == 3
 
 
-async def test_retrieve_default_returns_none_when_there_is_no_default(uow):
-    uow.venv_repo.seed(make_venv(name="data"))
+async def test_declare_system_creates_the_default_venv_without_libraries(uow):
+    venv = await VenvCRUDOrchestrator(uow).declare_system("default")
 
-    assert await VenvCRUDOrchestrator(uow).retrieve_default() is None
+    stored = uow.venv_repo.rows[venv.id]
+    assert (stored.name, stored.system_key, stored.libs) == ("default", "default", [])
+    assert uow.commits == 1
 
 
-async def test_retrieve_default_finds_the_venv_named_default(uow):
-    uow.venv_repo.seed(make_venv(name="default"))
+async def test_create_never_stores_a_system_venv(uow):
+    venv = await VenvCRUDOrchestrator(uow).create("default", [])
 
-    assert (await VenvCRUDOrchestrator(uow).retrieve_default()).name == "default"
+    assert uow.venv_repo.rows[venv.id].system_key is None
+
+
+async def test_create_stores_the_scope(uow):
+    venv = await VenvCRUDOrchestrator(uow).create("data", [], scope="org-1")
+
+    assert uow.venv_repo.rows[venv.id].scope == "org-1"
+
+
+async def test_update_of_the_scope_alone_does_not_rebuild(uow):
+    """The scope says where custom libraries are looked up, not what was built."""
+    stored = uow.venv_repo.seed(make_venv(status=VenvStatus.COMPLETED, hash="1abc"))[0]
+
+    venv = await VenvCRUDOrchestrator(uow).update(stored.id, name=None, libs=None, scope="org-1")
+
+    assert venv.scope == "org-1"
+    assert venv.status is VenvStatus.COMPLETED
+
+
+async def test_declare_system_stores_the_pinned_libraries_under_its_key(uow):
+    venv = await VenvCRUDOrchestrator(uow).declare_system("file_extractor")
+
+    stored = uow.venv_repo.rows[venv.id]
+    assert stored.system_key == "file_extractor"
+    assert stored.libs == SYSTEM_VENV_LIBS["file_extractor"]
+    assert stored.status is VenvStatus.DECLARED
+    assert uow.commits == 1
+
+
+async def test_declare_system_leaves_a_built_venv_with_the_same_pins_alone(uow):
+    """A restart must not rebuild a working venv."""
+    built_libs = [
+        library.with_resolved_version(library.specification.removeprefix("=="))
+        for library in SYSTEM_VENV_LIBS["file_extractor"]
+    ]
+    stored = uow.venv_repo.seed(
+        make_venv(
+            name="file_extractor",
+            libs=built_libs,
+            status=VenvStatus.COMPLETED,
+            hash="1abc",
+            system_key="file_extractor",
+        )
+    )[0]
+
+    venv = await VenvCRUDOrchestrator(uow).declare_system("file_extractor")
+
+    assert venv.id == stored.id
+    assert uow.venv_repo.rows[stored.id].status is VenvStatus.COMPLETED
+    assert uow.commits == 0
+
+
+async def test_declare_system_redeclares_a_venv_whose_pins_changed(uow):
+    stored = uow.venv_repo.seed(
+        make_venv(
+            name="file_extractor",
+            libs=[make_library(name="pdfplumber", specification="==0.11.0")],
+            status=VenvStatus.COMPLETED,
+            hash="1abc",
+            system_key="file_extractor",
+        )
+    )[0]
+
+    await VenvCRUDOrchestrator(uow).declare_system("file_extractor")
+
+    row = uow.venv_repo.rows[stored.id]
+    assert row.libs == SYSTEM_VENV_LIBS["file_extractor"]
+    assert row.status is VenvStatus.DECLARED
+    assert uow.commits == 1
+
+
+async def test_declare_system_redeclares_a_venv_that_failed_to_build(uow):
+    stored = uow.venv_repo.seed(
+        make_venv(
+            name="file_extractor",
+            libs=SYSTEM_VENV_LIBS["file_extractor"],
+            status=VenvStatus.FAILED,
+            error="index unreachable",
+            system_key="file_extractor",
+        )
+    )[0]
+
+    await VenvCRUDOrchestrator(uow).declare_system("file_extractor")
+
+    assert uow.venv_repo.rows[stored.id].status is VenvStatus.DECLARED
+    assert uow.commits == 1
+
+
+async def test_declare_system_ignores_a_tenant_venv_of_that_name(uow):
+    tenant = uow.venv_repo.seed(make_venv(name="file_extractor"))[0]
+
+    venv = await VenvCRUDOrchestrator(uow).declare_system("file_extractor")
+
+    assert venv.id != tenant.id
+    assert uow.venv_repo.rows[tenant.id].system_key is None
+
+
+@pytest.mark.parametrize("system_key", list(SYSTEM_VENV_LIBS))
+async def test_update_of_a_system_venv_is_refused_and_not_committed(uow, system_key):
+    stored = uow.venv_repo.seed(make_venv(name=system_key, system_key=system_key))[0]
+
+    with pytest.raises(SystemVenvProtectedError):
+        await VenvCRUDOrchestrator(uow).update(
+            stored.id, name="renamed", libs=[make_library(name="numpy")]
+        )
+    assert uow.venv_repo.rows[stored.id].name == system_key
+    assert uow.venv_repo.rows[stored.id].libs == []
+    assert uow.commits == 0
+
+
+@pytest.mark.parametrize("system_key", list(SYSTEM_VENV_LIBS))
+async def test_remove_of_a_system_venv_is_refused_and_not_committed(uow, system_key):
+    stored = uow.venv_repo.seed(make_venv(name=system_key, system_key=system_key))[0]
+
+    with pytest.raises(SystemVenvProtectedError):
+        await VenvCRUDOrchestrator(uow).remove(stored.id)
+    assert stored.id in uow.venv_repo.rows
+    assert uow.commits == 0

@@ -1,23 +1,21 @@
 from unittest.mock import patch
 
 from bootstrap import lifespans
-from infrastructure.naive.chunkers.strategies.token_chunker import load_gpt2_tokenizer
 from infrastructure.naive.chunkers.strategies import token_chunker
+from infrastructure.naive.chunkers.strategies.token_chunker import load_token_encoding
 from infrastructure.token_estimation import _WARM_UP_MODELS, warm_up_token_counter
+from loguru import logger
 
 
-def test_gpt2_tokenizer_is_loaded_once_and_reused():
-    load_gpt2_tokenizer.cache_clear()
+def test_token_encoding_is_loaded_once_and_reused():
+    load_token_encoding.cache_clear()
     try:
-        with (
-            patch.object(token_chunker.settings, "TOKENIZER_PATH", "/tokenizers/gpt2.tkz"),
-            patch.object(token_chunker.Tokenizer, "from_file") as from_file,
-        ):
-            first = load_gpt2_tokenizer()
-            second = load_gpt2_tokenizer()
+        with patch.object(token_chunker.tiktoken, "get_encoding") as get_encoding:
+            first = load_token_encoding()
+            second = load_token_encoding()
     finally:
-        load_gpt2_tokenizer.cache_clear()
-    from_file.assert_called_once_with("/tokenizers/gpt2.tkz")
+        load_token_encoding.cache_clear()
+    get_encoding.assert_called_once_with("o200k_base")
     assert first is second
 
 
@@ -32,7 +30,7 @@ def test_warm_up_token_counter_counts_each_warm_up_model():
 
 
 def test_failing_tokenizer_preload_does_not_abort_startup():
-    with patch.object(lifespans, "load_gpt2_tokenizer", side_effect=OSError("offline")):
+    with patch.object(lifespans, "load_token_encoding", side_effect=OSError("offline")):
         lifespans.preload_token_chunker_tokenizer()
 
 
@@ -42,28 +40,28 @@ def test_failing_token_counter_warm_up_does_not_abort_startup():
 
 
 def test_failing_graphrag_preload_does_not_abort_startup():
-    with (
-        patch.object(lifespans, "is_graphrag_available", return_value=True),
-        patch.object(lifespans, "import_module", side_effect=ImportError("boom")),
-    ):
+    with patch.object(lifespans, "import_module", side_effect=ImportError("boom")):
         lifespans.preload_graphrag_modules()
 
 
-def test_graphrag_modules_are_not_imported_without_avx2():
-    with (
-        patch.object(lifespans, "is_graphrag_available", return_value=False),
-        patch.object(lifespans, "import_module") as import_module,
-    ):
-        lifespans.preload_graphrag_modules()
-    import_module.assert_not_called()
-
-
-def test_every_graphrag_module_is_imported_when_available():
-    with (
-        patch.object(lifespans, "is_graphrag_available", return_value=True),
-        patch.object(lifespans, "import_module") as import_module,
-    ):
+def test_every_graphrag_module_is_imported():
+    with patch.object(lifespans, "import_module") as import_module:
         lifespans.preload_graphrag_modules()
     assert [call.args[0] for call in import_module.call_args_list] == list(
         lifespans._GRAPHRAG_MODULES
     )
+
+
+def test_startup_logs_the_lancedb_build():
+    messages = []
+    handler_id = logger.add(messages.append, level="INFO", format="{message}")
+    try:
+        lifespans.log_lancedb_build()
+    finally:
+        logger.remove(handler_id)
+    assert any(message.startswith("LanceDB build: lancedb") for message in messages)
+
+
+def test_failing_lancedb_build_lookup_does_not_abort_startup():
+    with patch.object(lifespans, "distributions", side_effect=RuntimeError("boom")):
+        lifespans.log_lancedb_build()

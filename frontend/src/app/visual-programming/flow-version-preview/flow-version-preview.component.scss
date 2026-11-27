@@ -53,8 +53,17 @@ app-flow-graph {
 
     &__tabs {
         width: 200px;
-        border-radius: 8px;
+        border-radius: 4px;
         background: var(--color-background-body);
+
+        ::ng-deep .radio.small {
+            border-radius: 4px;
+
+            .item[type='button'] {
+                height: 36px;
+                font-size: var(--text-body-small-size);
+            }
+        }
     }
 
     &__warnings {

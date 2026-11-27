@@ -2,18 +2,6 @@
     width: 100%;
 }
 
-/* Chrome, Edge, Safari */
-input[type='number']::-webkit-inner-spin-button,
-input[type='number']::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-
-/* Firefox */
-input[type='number'] {
-    -moz-appearance: textfield;
-}
-
 .input {
     &__wrapper {
         position: relative;
@@ -46,14 +34,16 @@ input[type='number'] {
     &__step {
         position: absolute;
         top: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         height: 100%;
         aspect-ratio: 1;
+        padding: 0;
         border: none;
         background: var(--color-ks-line);
         color: var(--color-ks-text);
         cursor: pointer;
-        font-size: 1.75rem;
-        line-height: 100%;
 
         // At the bound the button stays focusable (aria-disabled), so stepping up to the max keeps the focus.
         &:disabled,
@@ -108,29 +98,6 @@ input[type='number'] {
     &--mod-small {
         height: 26px;
         padding: 0.25rem 0.5rem;
-        font-size: 12px;
-    }
-
-    &--grouped:not(:focus) {
-        color: transparent;
-    }
-
-    &:focus ~ .input__grouped {
-        display: none;
-    }
-}
-
-.input__grouped {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-text-primary);
-    font-size: 0.875rem;
-    pointer-events: none;
-
-    &--mod-small {
         font-size: 12px;
     }
 }

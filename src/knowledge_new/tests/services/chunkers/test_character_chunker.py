@@ -1,6 +1,7 @@
 
 import pytest
 from domain.enums import ChunkStrategyEnum
+from domain.errors import UnsupportedError
 from domain.models import PreviewChunk
 from infrastructure.naive.chunkers.strategies.character_chunker import CharacterChunker
 from tests.services.chunkers.conftest import make_config
@@ -133,3 +134,15 @@ async def test_short_part_not_lost_among_normal_parts():
     chunker = build_chunker(chunk_size=4, chunk_overlap=3, extra={"character": {"regex": ","}})
     chunks = await chunker.chunk("ab,cdefgh")
     assert chunks == [PreviewChunk(text=t) for t in ["ab", "cdef", "defg", "efgh"]]
+
+
+@pytest.mark.parametrize("character_params", [None, 5, ["-"], "x"])
+def test_non_object_character_params_are_rejected(character_params):
+    with pytest.raises(UnsupportedError, match="character params"):
+        build_chunker(chunk_size=4, extra={"character": character_params})
+
+
+@pytest.mark.parametrize("regex", [5, ["-"], {"a": 1}, True])
+def test_non_string_regex_is_rejected(regex):
+    with pytest.raises(UnsupportedError, match="regex"):
+        build_chunker(chunk_size=4, extra={"character": {"regex": regex}})

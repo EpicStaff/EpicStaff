@@ -14,8 +14,10 @@ from src.shared.models.system_one import SystemOneConfigData
 
 __all__ = ["SecretDecryptionError", "decrypt_llm_data", "decrypt_system_one_config"]
 
-# Byte-identical to the producer's, in django_app tables/services/secrets/secret_resolver.py.
-_SECRET_MARKER_RE = re.compile(r"epicstaff_secret\(\s*([^)]+?)\s*\)")
+# Byte-identical to the producer's, in django_app utils/secret_marker.py.
+_SECRET_MARKER_RE = re.compile(
+    r"epicstaff_secret\(\s*((?!epicstaff_secret\()[^)\s](?:(?:(?!epicstaff_secret\()[^)])*[^)\s])?)\s*\)"
+)
 
 
 class SecretDecryptionError(Exception):
@@ -30,7 +32,7 @@ class SecretDecryptionError(Exception):
 
 
 def decrypt_llm_data(llm: LLMData, cryptographer: AbstractCryptographer) -> LLMData:
-    """Return a copy of `llm` with its `api_key` and `extra_headers` markers decrypted.
+    """Return a copy of `llm` with its `api_key` and its `extra_headers` and `connection` markers decrypted.
 
     Raises:
         SecretDecryptionError: A sealed value does not open with `cryptographer`.
@@ -42,6 +44,7 @@ def decrypt_llm_data(llm: LLMData, cryptographer: AbstractCryptographer) -> LLMD
             "extra_headers": _decrypt_header_markers(
                 config.extra_headers, "extra_headers", cryptographer
             ),
+            "connection": _decrypt_header_markers(config.connection, "connection", cryptographer),
         }
     )
     return llm.model_copy(update={"config": decrypted_config})

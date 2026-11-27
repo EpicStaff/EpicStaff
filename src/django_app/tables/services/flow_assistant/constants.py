@@ -27,3 +27,9 @@ _REASONING_EMPTY_HINT = (
     "internal reasoning. Try increasing `max_tokens` on this LLM config, "
     "or switch to a non-reasoning model._"
 )
+
+# Tools whose output is static text shipped with the product (the skills/ folder), not
+# data a user, a run or an external system can write. Their results reach the model
+# without the untrusted-data envelope: a loaded skill is guidance the assistant is told
+# to apply, and the envelope tells the model never to follow what it carries.
+_FIRST_PARTY_OUTPUT_TOOLS = frozenset({"list_skills", "load_skill"})

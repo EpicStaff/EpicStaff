@@ -128,6 +128,12 @@ CREDENTIALS = StorageCredentials(access_key="test-access", secret_key="test-secr
             {"global_kwargs": {"session_id": 42, "org_id": 77}},
             id="session-id-and-org-id-both-injected",
         ),
+        # A built-in tool runs in the sandbox's own venv, named instead of a venv id.
+        pytest.param(
+            {"venv_id": None, "system_venv": "builtin_tools"}, None,
+            {"venv_id": None, "system_venv": "builtin_tools"},
+            id="system-venv",
+        ),
         # The sandbox enforces the tool's own timeout instead of its default.
         pytest.param({"execution_timeout": 42}, None, {"execution_timeout": 42}, id="execution-timeout"),
     ],

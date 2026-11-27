@@ -1,0 +1,20 @@
+<!--
+    Announced: an image named by its section, the holder in its tooltip's description, and focusable only when it has
+    the tooltip, as the thread header's wait chip. Otherwise hidden from assistive technology: what holds it says it.
+-->
+<span
+    class="conversation-section-badge"
+    matTooltipPosition="above"
+    [attr.role]="isAnnounced() ? 'img' : null"
+    [attr.aria-label]="isAnnounced() ? sectionLabel() : null"
+    [attr.aria-hidden]="isAnnounced() ? null : 'true'"
+    [attr.tabindex]="isAnnounced() && takenByNote() ? 0 : null"
+    [matTooltip]="takenByNote()"
+    [matTooltipDisabled]="!takenByNote()"
+    [style.--section-badge-color]="icon().color"
+>
+    <app-svg-icon
+        [icon]="icon().icon"
+        [size]="iconSize"
+    />
+</span>

@@ -22,17 +22,19 @@ OWNED_RESOURCE_LABELS = {
     "tables.StorageFile": "Files",
     "tables.WebhookTrigger": "Webhook triggers",
     "tables.RealtimeChannel": "Voice channels",
-    "tables.LLMConfig": "LLM configs",
-    "tables.EmbeddingConfig": "Embedding configs",
+    "ai_models.LLMConfig": "LLM configs",
+    "ai_models.EmbeddingConfig": "Embedding configs",
     "tables.RealtimeConfig": "Voice model configs",
     "tables.RealtimeTranscriptionConfig": "Transcription configs",
     "tables.OpenAIRealtimeConfig": "OpenAI voice configs",
     "tables.ElevenLabsRealtimeConfig": "ElevenLabs voice configs",
     "tables.GeminiRealtimeConfig": "Gemini voice configs",
-    "tables.LLMModel": "LLM models",
-    "tables.EmbeddingModel": "Embedding models",
+    "ai_models.LLMModel": "LLM models",
+    "ai_models.EmbeddingModel": "Embedding models",
     "tables.RealtimeModel": "Voice models",
     "tables.RealtimeTranscriptionModel": "Transcription models",
+    "proxies.SandboxVenvBinding": "Venvs",
+    "proxies.SandboxCustomLibraryBinding": "Custom libraries",
 }
 
 

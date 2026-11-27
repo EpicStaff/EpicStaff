@@ -159,14 +159,6 @@ class MeasureDisk(_Message):
     max_files: Annotated[int, Field(ge=1)]
 
 
-class PurgeData(_Message):
-    """Kill the UID's processes and delete the plugin's HOME, as that UID."""
-
-    operation: Literal["purge_data"] = "purge_data"
-    plugin: PluginIdentifier
-    uid: Uid
-
-
 class RemovePlugin(_Message):
     """Kill the UID's processes, then delete everything the node keeps for the plugin.
 
@@ -191,7 +183,6 @@ LauncherRequest = Annotated[
     | KillUid
     | ExitStatus
     | MeasureDisk
-    | PurgeData
     | RemovePlugin,
     Field(discriminator="operation"),
 ]

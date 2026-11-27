@@ -1,5 +1,6 @@
 """The seccomp filter plugin processes run under: no System V IPC object, io_uring, namespace, kernel
-keyring, BPF, perf event or userfaultfd; `clone3` answers ENOSYS, and Python still works."""
+keyring, BPF, perf event or userfaultfd; `clone3`, `memfd_create` and `memfd_secret` answer ENOSYS,
+and Python still works."""
 
 import errno
 import json
@@ -35,19 +36,20 @@ KERNEL_NUMBERS = {
         "shmget": 29, "semget": 64, "msgget": 68, "io_uring_setup": 425, "io_uring_enter": 426,
         "io_uring_register": 427, "unshare": 272, "setns": 308, "add_key": 248, "request_key": 249,
         "keyctl": 250, "bpf": 321, "perf_event_open": 298, "userfaultfd": 323, "clone": 56, "clone3": 435,
-        "read": 0, "write": 1, "vfork": 58, "exit_group": 231,
+        "memfd_create": 319, "memfd_secret": 447, "read": 0, "write": 1, "vfork": 58, "exit_group": 231,
     },
     "aarch64": {
         "msgget": 186, "semget": 190, "shmget": 194, "io_uring_setup": 425, "io_uring_enter": 426,
         "io_uring_register": 427, "unshare": 97, "setns": 268, "add_key": 217, "request_key": 218,
         "keyctl": 219, "bpf": 280, "perf_event_open": 241, "userfaultfd": 282, "clone": 220, "clone3": 435,
-        "read": 63, "write": 64, "exit_group": 94,
+        "memfd_create": 279, "memfd_secret": 447, "read": 63, "write": 64, "exit_group": 94,
     },
 }
 REFUSED_CALLS = (
     "shmget", "semget", "msgget", "io_uring_setup", "io_uring_enter", "io_uring_register", "unshare",
     "setns", "add_key", "request_key", "keyctl", "bpf", "perf_event_open", "userfaultfd",
 )
+NOT_IMPLEMENTED_CALLS = ("clone3", "memfd_create", "memfd_secret")
 CLONE_NEWNS, CLONE_NEWCGROUP, CLONE_NEWUTS, CLONE_NEWIPC = 0x00020000, 0x02000000, 0x04000000, 0x08000000
 CLONE_NEWUSER, CLONE_NEWPID, CLONE_NEWNET = 0x10000000, 0x20000000, 0x40000000
 NAMESPACE_FLAGS = (CLONE_NEWNS, CLONE_NEWCGROUP, CLONE_NEWUTS, CLONE_NEWIPC, CLONE_NEWUSER, CLONE_NEWPID, CLONE_NEWNET)
@@ -84,7 +86,8 @@ def test_the_filter_names_the_kernels_numbers(machine):
 
     assert set(calls.refused) == set(REFUSED_CALLS)
     assert {name: number for name, number in calls.refused.items()} == {name: expected[name] for name in REFUSED_CALLS}
-    assert (calls.clone, calls.clone3) == (expected["clone"], expected["clone3"])
+    assert calls.clone == expected["clone"]
+    assert calls.not_implemented == {name: expected[name] for name in NOT_IMPLEMENTED_CALLS}
     assert CLONE_NAMESPACE_FLAGS == sum(NAMESPACE_FLAGS)
 
 
@@ -96,7 +99,8 @@ def test_the_filter_refuses_its_calls_and_namespaced_clones_and_allows_the_rest(
 
     for name in REFUSED_CALLS:
         assert run_filter(program, arch, numbers[name]) == REFUSED, name
-    assert run_filter(program, arch, numbers["clone3"]) == NOT_IMPLEMENTED
+    for name in NOT_IMPLEMENTED_CALLS:
+        assert run_filter(program, arch, numbers[name]) == NOT_IMPLEMENTED, name
     for flag in NAMESPACE_FLAGS:
         assert run_filter(program, arch, numbers["clone"], THREAD_FLAGS | flag) == REFUSED, hex(flag)
     # The high half of clone's flags is not read by the kernel, so it does not matter here either.
@@ -157,6 +161,8 @@ results = {
     "request_key": raw("request_key", 0, 0, 0, 0),
     "perf_event_open": raw("perf_event_open", 0, 0, -1, -1, 0),
     "clone3": raw("clone3", 0, 0),
+    "memfd_create": wrapped(os.memfd_create, "probe"),
+    "memfd_secret": raw("memfd_secret", 0),
     "bpf": raw("bpf", 9999, 0, 0),
     "userfaultfd": raw("userfaultfd", 1 | 4),
     "io_uring_setup": raw("io_uring_setup", 1, 0),
@@ -196,6 +202,7 @@ UNFILTERED = {
     "add_key": -errno.EFAULT,
     "request_key": -errno.EFAULT,
     "clone3": -errno.EINVAL,
+    "memfd_create": 0,
     **{f"clone({name})": -errno.EINVAL for name in NAMED_FLAGS},
 }
 # Without the filter, these answer an error that depends on the host, but never EPERM: a kernel
@@ -228,10 +235,10 @@ def already_filtered() -> bool:
 
 
 @pytest.mark.linux
-def test_under_the_filter_each_call_is_refused_and_clone3_is_not_implemented():
+def test_under_the_filter_each_call_is_refused_and_clone3_and_memfds_are_not_implemented():
     results = probe("filtered")["results"]
 
-    assert results.pop("clone3") == -errno.ENOSYS
+    assert {name: results.pop(name) for name in NOT_IMPLEMENTED_CALLS} == dict.fromkeys(NOT_IMPLEMENTED_CALLS, -errno.ENOSYS)
     assert results == dict.fromkeys(results, -errno.EPERM)
     assert len(results) == 10 + len(NAMED_FLAGS)
 

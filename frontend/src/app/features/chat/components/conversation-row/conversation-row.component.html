@@ -12,34 +12,16 @@
     (click)="selectRequested.emit()"
     (keydown)="onKeydown($event)"
 >
-    <!-- The visitor, with whoever holds the conversation on the avatar's corner. -->
+    <!-- The visitor, with the icon of the row's section on the avatar's corner: the one its header has. -->
     <span class="conversation-row__picture">
         <app-conversation-avatar
             class="conversation-row__avatar"
             [conversation]="conversation()"
         />
-        @if (holder(); as taker) {
-            <span
-                class="conversation-row__holder"
-                matTooltipPosition="above"
-                [class.conversation-row__holder--image]="holderImageUrl()"
-                [matTooltip]="'Taken by ' + taker.label"
-            >
-                @if (holderImageUrl(); as imageUrl) {
-                    <img
-                        class="conversation-row__holder-image"
-                        alt=""
-                        [src]="imageUrl"
-                        (error)="holderImageFailed.set(true)"
-                    />
-                } @else {
-                    <app-svg-icon
-                        icon="user"
-                        size="6px"
-                    />
-                }
-            </span>
-        }
+        <app-conversation-section-badge
+            [section]="section()"
+            [holder]="holder()"
+        />
     </span>
     <span class="conversation-row__body">
         <span class="conversation-row__line">

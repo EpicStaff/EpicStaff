@@ -1,167 +1,9 @@
-from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from rbac.models.last_edit import LastEditTrackedModel
 from rbac.models.org_scoped import OrgScopedModel
-from src.shared.models.ai_providers import REASONING_EFFORT_VALUES
 from src.shared.system_one.constants import LLM_PROVIDER, OPENAI_PROVIDER, TYPESAFE_PROVIDER
 
-from tables.models.base_models import AbstractDefaultFillableModel, DefaultBaseModel
-from tables.models.provider import Provider
-from tables.models.tag_models import (
-    LLMConfigTag,
-    LLMModelTag,
-    RealtimeConfigTag,
-    RealtimeTranscriptionConfigTag,
-)
-from tables.validators.finite_number_validator import validate_finite_number
-
-
-class LLMModel(OrgScopedModel, models.Model):
-    name = models.TextField()
-    predefined = models.BooleanField(default=False)
-    description = models.TextField(null=True, blank=True)
-    llm_provider = models.ForeignKey(Provider, on_delete=models.SET_NULL, null=True)
-    deployment_id = models.TextField(
-        null=True, blank=True, help_text="Azure Deployment Name or Watsonx ID"
-    )
-    api_version = models.TextField(null=True, blank=True)
-    base_url = models.TextField(null=True, blank=True)
-    is_visible = models.BooleanField(default=True)
-    is_custom = models.BooleanField(default=False)
-    tags = models.ManyToManyField(LLMModelTag, blank=True, related_name="llm_models")
-
-    class Meta(OrgScopedModel.Meta):
-        constraints = [
-            models.UniqueConstraint(
-                fields=["org", "name", "llm_provider"],
-                name="unique_llmmodel_name_provider_per_org",
-            ),
-            models.UniqueConstraint(
-                fields=["name", "llm_provider"],
-                condition=models.Q(org__isnull=True),
-                name="unique_llmmodel_name_provider_builtin",
-            ),
-        ]
-
-    def __str__(self):
-        return self.name
-
-
-class DefaultLLMConfig(DefaultBaseModel):
-    model = models.ForeignKey(LLMModel, on_delete=models.SET_NULL, null=True)
-    temperature = models.FloatField(default=0.7, null=True, blank=True)
-    top_p = models.FloatField(null=True, blank=True)
-    stop = models.JSONField(null=True, blank=True)
-    max_tokens = models.IntegerField(
-        default=4096,
-        null=True,
-        blank=True,
-        validators=[MinValueValidator(500)],
-    )
-    presence_penalty = models.FloatField(null=True, blank=True)
-    frequency_penalty = models.FloatField(null=True, blank=True)
-    logit_bias = models.JSONField(null=True, blank=True)
-    seed = models.IntegerField(null=True, blank=True)
-    logprobs = models.BooleanField(null=True, blank=True)
-    top_logprobs = models.IntegerField(null=True, blank=True)
-    # Mirrors LLMConfig.reasoning_effort for parity; nothing reads it yet (LLMConfig
-    # never calls fill_with_defaults), so a future reader must re-validate it against the model.
-    reasoning_effort = models.CharField(
-        max_length=16,
-        choices=[(value, value) for value in REASONING_EFFORT_VALUES],
-        null=True,
-        blank=True,
-    )
-    base_url = models.TextField(null=True, blank=True)
-    api_version = models.TextField(null=True, blank=True)
-    extra_headers = models.JSONField(default=dict, blank=True)
-    timeout = models.FloatField(null=True, blank=True)
-    is_visible = models.BooleanField(default=True)
-
-
-class LLMConfig(OrgScopedModel, LastEditTrackedModel, AbstractDefaultFillableModel):
-    custom_name = models.TextField()
-    model = models.ForeignKey(LLMModel, on_delete=models.CASCADE, null=True)
-    temperature = models.FloatField(
-        default=0.5,
-        null=True,
-        blank=True,
-        validators=[
-            MinValueValidator(0.0),
-            MaxValueValidator(2.0),
-        ],
-    )
-    top_p = models.FloatField(default=1.0, null=True, blank=True)
-    stop = models.JSONField(null=True, blank=True)
-    max_tokens = models.IntegerField(
-        default=4096, null=True, blank=True, validators=[MinValueValidator(500)]
-    )
-    context_window = models.IntegerField(
-        default=16000,
-        validators=[MinValueValidator(1000)],
-    )
-    presence_penalty = models.FloatField(default=0.0, null=True, blank=True)
-    frequency_penalty = models.FloatField(default=0.0, null=True, blank=True)
-    logit_bias = models.JSONField(null=True, blank=True)
-    seed = models.IntegerField(null=True, blank=True)
-    logprobs = models.BooleanField(null=True, blank=True)
-    top_logprobs = models.IntegerField(null=True, blank=True)
-    reasoning_effort = models.CharField(
-        max_length=16,
-        choices=[(value, value) for value in REASONING_EFFORT_VALUES],
-        null=True,
-        blank=True,
-    )
-    base_url = models.TextField(null=True, blank=True)
-    api_version = models.TextField(null=True, blank=True)
-    api_key_secret = models.ForeignKey(
-        "Secret",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="llm_configs",
-    )
-    extra_headers = models.JSONField(default=dict, blank=True)
-    timeout = models.FloatField(default=120.0, null=True, blank=True)
-    # Not on DefaultLLMConfig on purpose: fill_with_defaults only copies the default
-    # model's fields, so a price is never inherited from the platform defaults.
-    input_cost_per_token = models.FloatField(
-        null=True,
-        blank=True,
-        validators=[validate_finite_number, MinValueValidator(0.0)],
-        help_text="USD per prompt token. Null uses litellm's price map. Set together with output_cost_per_token.",
-    )
-    output_cost_per_token = models.FloatField(
-        null=True,
-        blank=True,
-        validators=[validate_finite_number, MinValueValidator(0.0)],
-        help_text="USD per completion token. Null uses litellm's price map. Set together with input_cost_per_token.",
-    )
-    is_visible = models.BooleanField(default=True)
-    tags = models.ManyToManyField(LLMConfigTag, blank=True, related_name="llm_configs")
-    # Nullable because configs created before this column existed have no known
-    # creation time; they stay NULL rather than getting a guessed one.
-    created_at = models.DateTimeField(auto_now_add=True, null=True)
-
-    class Meta(OrgScopedModel.Meta):
-        constraints = [
-            models.UniqueConstraint(
-                fields=["org", "custom_name"],
-                name="unique_llmconfig_name_per_org",
-            ),
-            models.CheckConstraint(
-                condition=(
-                    models.Q(input_cost_per_token__isnull=True, output_cost_per_token__isnull=True)
-                    | models.Q(
-                        input_cost_per_token__isnull=False, output_cost_per_token__isnull=False
-                    )
-                ),
-                name="llmconfig_token_prices_set_together",
-            ),
-        ]
-
-    def get_default_model(self):
-        return DefaultLLMConfig.load()
+from tables.models.tag_models import RealtimeConfigTag, RealtimeTranscriptionConfigTag
 
 
 class SystemOneConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
@@ -188,7 +30,7 @@ class SystemOneConfig(OrgScopedModel, LastEditTrackedModel, models.Model):
         related_name="system_one_configs",
     )
     llm_config = models.ForeignKey(
-        "LLMConfig",
+        "ai_models.LLMConfig",
         null=True,
         blank=True,
         on_delete=models.SET_NULL,
@@ -235,7 +77,9 @@ class RealtimeModel(OrgScopedModel, models.Model):
     """DEPRECATED: use provider-specific config models in realtime_models.py."""
 
     name = models.CharField(max_length=250, default="gpt-4o-mini-realtime-preview-2024-12-17")
-    provider = models.ForeignKey("Provider", on_delete=models.CASCADE, null=True, default=None)
+    provider = models.ForeignKey(
+        "ai_models.Provider", on_delete=models.CASCADE, null=True, default=None
+    )
     is_custom = models.BooleanField(default=False)
 
     class Meta(OrgScopedModel.Meta):
@@ -271,7 +115,9 @@ class RealtimeTranscriptionModel(OrgScopedModel, models.Model):
     """DEPRECATED: transcription model is now a field inside OpenAIRealtimeConfig."""
 
     name = models.CharField(max_length=250, default="whisper-1")
-    provider = models.ForeignKey("Provider", on_delete=models.CASCADE, null=True, default=None)
+    provider = models.ForeignKey(
+        "ai_models.Provider", on_delete=models.CASCADE, null=True, default=None
+    )
     is_custom = models.BooleanField(default=False)
 
     class Meta(OrgScopedModel.Meta):

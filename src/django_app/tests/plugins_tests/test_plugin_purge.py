@@ -1,9 +1,14 @@
 """Deleting a plugin for good: every organization's data, the node's removal, then its rows."""
 
+import re
 import time
 from unittest import mock
 
 import pytest
+from django.contrib.contenttypes.models import ContentType
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from foundation.transport.http.errors import ClientConnectionError
 from plugins.lifecycle import plugin_purge_service
 from rest_framework.test import APIClient
 from plugins.lifecycle.grant_service import PluginGrantService
@@ -25,6 +30,10 @@ from plugins.models import (
     PluginPlacement,
     PluginState,
 )
+from plugins.packages.spa_publisher import SpaPublisher
+from proxies.sandbox.models import SandboxVenvBinding
+from tables.models import PythonCode, PythonCodeTool
+from tables.services.session_manager_service import SessionManagerService
 
 from tests.plugins_tests.conftest import mark_running, upload_file
 from tests.plugins_tests.package_builder import backend_manifest, build_package
@@ -96,8 +105,6 @@ def _report_removal(node_client, placement, state, generation=None, last_error=N
 def test_deleting_a_running_or_uninstalled_plugin_purges_every_grant(
     grants, superadmin_client, uninstalled_first, log_messages, django_capture_on_commit_callbacks, monkeypatch
 ):
-    from tables.services.session_manager_service import SessionManagerService
-
     monkeypatch.setattr(SessionManagerService().redis_service, "publish_stop_session", lambda session_id: 1)
     if uninstalled_first:
         superadmin_client.post("/api/admin/plugins/weather/uninstall/")
@@ -123,6 +130,19 @@ def test_deleting_a_running_or_uninstalled_plugin_purges_every_grant(
     plugin = Plugin.objects.get(identifier="weather")
     assert plugin.purge_started_at is not None and plugin.uninstall_requested_at is not None
     assert any(message.startswith("plugins.plugin.purge_started") for message in log_messages)
+
+
+def test_a_running_plugin_s_page_is_no_longer_served_once_its_deletion_commits(
+    grants, superadmin_client, weather, spa_root, django_capture_on_commit_callbacks, monkeypatch
+):
+    monkeypatch.setattr(SessionManagerService().redis_service, "publish_stop_session", lambda session_id: 1)
+    publisher = SpaPublisher(spa_root)
+    assert publisher.current_version("weather") == weather.current_package.version
+
+    with django_capture_on_commit_callbacks(execute=True):
+        assert _delete(superadmin_client).status_code == 202
+
+    assert publisher.current_version("weather") is None
 
 
 @pytest.mark.parametrize("phrase", ["purge-Weather", "purge-weather ", "", None])
@@ -241,6 +261,173 @@ def test_removal_is_requested_only_when_no_grant_open_job_or_owned_row_is_left(
     placement.refresh_from_db()
     assert placement.removal_requested_at is not None
     assert any(message.startswith("plugins.plugin.removal_requested") for message in log_messages)
+
+
+class _SandboxVenvs:
+    """The sandbox's venvs as the purge reads them: each named after its id, none with
+    custom libraries.
+
+    Records how deep in transactions each list call was made, refuses to list a venv whose
+    sandbox id is in `unreachable`, and runs `after_list` once a list is answered.
+    """
+
+    def __init__(self):
+        self.list_depths: list[int] = []
+        self.unreachable: set[str] = set()
+        self.after_list = lambda: None
+
+    def __call__(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        return False
+
+    def list(self, *, ids, **kwargs):
+        self.list_depths.append(len(connection.atomic_blocks))
+        if self.unreachable & {str(id_) for id_ in ids}:
+            raise ClientConnectionError("sandbox down")
+        self.after_list()
+        return {"count": len(ids), "result": [{"id": int(id_), "name": f"venv-{id_}", "libs": []} for id_ in ids]}
+
+
+@pytest.fixture
+def sandbox_venvs(monkeypatch):
+    venvs = _SandboxVenvs()
+    monkeypatch.setattr("proxies.sandbox.services.VenvService.client_class", venvs)
+    return venvs
+
+
+def _organization_s_venv(organization, resource_id):
+    """A venv of the plugin whose grant is gone, the organization's own tool running in it."""
+    venv = SandboxVenvBinding.objects.create(org=organization, resource_id=resource_id)
+    orphan(venv, organization)
+    tool_code = PythonCode.objects.create(code="def main():\n    return 1\n", venv=venv)
+    PythonCodeTool.objects.create(
+        org=organization, name=f"Team forecast {resource_id}", description="d", python_code=tool_code
+    )
+    return venv
+
+
+def _owned(venv) -> bool:
+    return PluginOwnedResource.objects.filter(
+        content_type=ContentType.objects.get_for_model(SandboxVenvBinding), object_id=venv.pk
+    ).exists()
+
+
+def _plugin_locks(queries) -> list[str]:
+    return [
+        query["sql"]
+        for query in queries
+        if re.search(r"FOR (NO KEY )?UPDATE", query["sql"]) and 'FROM "plugins_plugin"' in query["sql"]
+    ]
+
+
+def test_a_venv_whose_grant_is_gone_and_the_organization_s_code_runs_in_is_handed_over(
+    grants, superadmin_client, weather, acme, sandbox_venvs, log_messages, django_capture_on_commit_callbacks
+):
+    _delete(superadmin_client)
+    _settle_grants()
+    venv = _organization_s_venv(acme, "41")
+    outside = len(connection.atomic_blocks)
+
+    with django_capture_on_commit_callbacks(execute=True):
+        assert _advance()
+
+    assert sandbox_venvs.list_depths == [outside]
+    assert SandboxVenvBinding.objects.filter(pk=venv.pk).exists()
+    assert not PluginOwnedResource.objects.exists()
+    assert PluginPlacement.objects.get(plugin=weather).removal_requested_at is not None
+    assert any(
+        message.startswith("plugins.purge.handed_over") and f"pk={venv.pk}" in message for message in log_messages
+    )
+
+
+def test_with_a_grant_left_advancing_neither_asks_the_sandbox_nor_locks_the_plugin(
+    grants, superadmin_client, acme, sandbox_venvs
+):
+    _delete(superadmin_client)
+    # The organization removed jobs are done, so only the grants still stop the purge.
+    PluginHookJob.objects.filter(kind=HookJobKind.ORG_REMOVED).update(state=HookJobState.SUCCEEDED)
+    venv = _organization_s_venv(acme, "41")
+
+    with CaptureQueriesContext(connection) as queries:
+        assert not _advance()
+
+    assert sandbox_venvs.list_depths == []
+    assert _plugin_locks(queries) == []
+    assert _owned(venv)
+
+
+def test_with_an_organization_removed_job_open_advancing_asks_the_sandbox_nothing(
+    grants, superadmin_client, weather, acme, sandbox_venvs
+):
+    _delete(superadmin_client)
+    _settle_grants()
+    venv = _organization_s_venv(acme, "41")
+    PluginHookJob.objects.create(
+        plugin=weather, organization_id=acme.pk, kind=HookJobKind.ORG_REMOVED, timeout_seconds=60, state=HookJobState.RUNNING
+    )
+
+    assert not _advance()
+
+    assert sandbox_venvs.list_depths == []
+    assert _owned(venv)
+
+
+class _Clock:
+    """`time.monotonic()` as the purge service reads it, moved on by hand."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+
+def test_once_the_deadline_passes_no_further_organization_is_planned(
+    grants, superadmin_client, acme, beta, sandbox_venvs, monkeypatch
+):
+    _delete(superadmin_client)
+    _settle_grants()
+    venvs = {organization.pk: _organization_s_venv(organization, str(41 + index)) for index, organization in enumerate((acme, beta))}
+    first, second = sorted(venvs)
+    clock = _Clock()
+    monkeypatch.setattr(plugin_purge_service, "time", clock)
+
+    def pass_the_deadline():
+        clock.now = 60.0
+
+    sandbox_venvs.after_list = pass_the_deadline
+
+    assert not PluginPurgeService().advance(Plugin.objects.get(identifier="weather"), until=30.0)
+
+    assert len(sandbox_venvs.list_depths) == 1
+    assert not _owned(venvs[first])
+    assert _owned(venvs[second])
+
+
+def test_an_organization_the_sandbox_cannot_be_asked_about_waits_and_the_others_are_handed_over(
+    grants, superadmin_client, acme, beta, sandbox_venvs, log_messages
+):
+    _delete(superadmin_client)
+    _settle_grants()
+    unreachable = _organization_s_venv(acme, "41")
+    reachable = _organization_s_venv(beta, "42")
+    sandbox_venvs.unreachable = {unreachable.resource_id}
+
+    assert not _advance()
+
+    assert _owned(unreachable)
+    assert not _owned(reachable)
+    assert SandboxVenvBinding.objects.filter(pk__in=[unreachable.pk, reachable.pk]).count() == 2
+    assert any(
+        message.startswith("plugins.purge.hand_over_unplanned") and f"org={acme.pk}" in message
+        and "error=ClientConnectionError" in message
+        for message in log_messages
+    )
 
 
 def test_the_node_is_asked_to_remove_the_plugin_with_its_database(grants, superadmin_client, weather, node_client):

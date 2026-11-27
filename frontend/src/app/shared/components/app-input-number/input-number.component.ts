@@ -6,22 +6,24 @@ import {
     ElementRef,
     forwardRef,
     input,
+    linkedSignal,
     model,
     output,
     signal,
     viewChild,
 } from '@angular/core';
-import {
-    ControlValueAccessor,
-    FormsModule,
-    NG_VALIDATORS,
-    NG_VALUE_ACCESSOR,
-    ValidationErrors,
-    Validator,
-} from '@angular/forms';
+import { ControlValueAccessor, NG_VALIDATORS, NG_VALUE_ACCESSOR, ValidationErrors, Validator } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
-import { generateUuid, groupThousands } from '@shared/utils';
+import {
+    formatGroupedNumber,
+    formatGroupedValue,
+    generateUuid,
+    parseGroupedNumber,
+    setGroupedInputText,
+    skipGroupSeparator,
+} from '@shared/utils';
 
+import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
 
 @Component({
@@ -29,7 +31,7 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
     templateUrl: './input-number.component.html',
     styleUrls: ['./input-number.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [FormsModule, NgClass, TooltipComponent, MatTooltip],
+    imports: [AppSvgIconComponent, NgClass, TooltipComponent, MatTooltip],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -66,6 +68,11 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     stepSize = input<number>(1);
     /** Lets the user type a decimal point; by default only whole numbers can be typed. */
     allowDecimal = input<boolean>(false);
+    /**
+     * Deferred-commit mode: keystrokes don't emit `changed`; the value is parsed, clamped to [min, max]
+     * (empty/invalid → min) and committed only on blur or Enter. Lets the user freely clear and retype.
+     */
+    commitOnBlur = input<boolean>(false);
     value = model<number | null>(null);
     changed = output<number | null>();
 
@@ -74,6 +81,8 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     hovered = signal<boolean>(false);
     // Keyboard focus anywhere in the field (input or a step button) shows the steps, so Tab can reach them.
     protected readonly focusWithin = signal(false);
+    /** Drawn icons, not text glyphs: a glyph sits on the font's baseline, off the middle of its square. */
+    protected readonly stepIconSize = computed(() => (this.mod() === 'small' ? '10px' : '12px'));
     protected readonly stepsShown = computed(() => this.hovered() || this.focusWithin() || !!this.alwaysShowSteps());
     // The browser holds text it cannot parse as a number (e.g. "1.2.3" or a pasted "1,5") and reports it as empty.
     private readonly hasBadInput = signal(false);
@@ -94,7 +103,11 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
         return this.invalid() || this.isOutOfRange() || this.hasBadInput();
     });
 
-    protected readonly groups = computed(() => (this.hasBadInput() ? null : groupThousands(this.value())));
+    protected readonly text = linkedSignal<number | null, string>({
+        source: this.value,
+        computation: (value, previous) =>
+            previous && parseGroupedNumber(previous.value) === value ? previous.value : formatGroupedValue(value),
+    });
 
     isAboveWarning = computed(() => {
         const value = this.value();
@@ -126,25 +139,64 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     private controlDisabled = signal(false);
     isDisabled = computed(() => this.disabled() || this.controlDisabled());
 
-    onInputChange(value: number) {
+    protected onInput(event: Event): void {
+        const input = event.target as HTMLInputElement;
+
         // Only decimal fields accept typed separators, so only they can end up with malformed text.
         // Report it as an error instead of passing the empty value on, which would silently clear the field.
-        if (this.allowDecimal() && this.nativeInput()?.nativeElement.validity.badInput) {
+        if (this.allowDecimal() && !/^-?\d*(\.\d*)?$/.test(input.value.replace(/\s/g, ''))) {
+            this.text.set(input.value);
+            if (this.commitOnBlur()) return;
             this.hasBadInput.set(true);
             this.onValidatorChange();
             return;
         }
-        this.hasBadInput.set(false);
 
-        if (value === null || value === undefined) {
-            this.updateValue(null);
-            return;
+        const notNumberChars = this.allowDecimal() ? /[^\d.-]/g : /[^\d-]/g;
+        const text = formatGroupedNumber(input.value.replace(notNumberChars, '').replace(/(?!^)-/g, ''));
+        setGroupedInputText(input, text);
+        this.text.set(text);
+
+        // Deferred-commit mode only reads and clamps the typed text on blur/Enter.
+        if (this.commitOnBlur()) return;
+
+        this.hasBadInput.set(false);
+        this.updateValue(parseGroupedNumber(text));
+    }
+
+    protected onInputBlur(): void {
+        this.onTouched();
+        if (this.commitOnBlur()) this.commitTypedValue();
+    }
+
+    protected onInputEnter(event: Event): void {
+        if (!this.commitOnBlur()) return;
+        event.preventDefault();
+        this.commitTypedValue();
+    }
+
+    /** Reads the native input, parses, clamps to [min, max] (empty/invalid → min), and emits via `updateValue`. */
+    private commitTypedValue(): void {
+        const el = this.nativeInput()?.nativeElement;
+        if (!el) return;
+        const min = this.min();
+        const max = this.max();
+        const floor = min ?? 0;
+
+        let next: number;
+        const parsed = parseGroupedNumber(el.value);
+        if (parsed === null) {
+            next = floor;
+        } else {
+            next = parsed;
+            if (min !== null && next < min) next = min;
+            if (max !== null && next > max) next = max;
         }
 
-        let num = Number(value);
-        if (Number.isNaN(num)) return;
-
-        this.updateValue(num);
+        if (next !== this.value()) {
+            this.updateValue(next);
+        }
+        this.text.set(formatGroupedValue(next));
     }
 
     onStep(direction: 1 | -1 = 1) {
@@ -185,6 +237,14 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     }
 
     onKeyDown(event: KeyboardEvent) {
+        if (event.key === 'Enter') {
+            this.onInputEnter(event);
+            return;
+        }
+        if (event.key === 'Backspace' || event.key === 'Delete') {
+            skipGroupSeparator(event);
+            return;
+        }
         const allowedKeys = ['Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End'];
         if (allowedKeys.includes(event.key)) return;
         // Steps from the input itself, as a native number field does.
@@ -214,6 +274,7 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     writeValue(value: number | null): void {
         this.hasBadInput.set(false);
         this.value.set(value);
+        this.text.set(formatGroupedValue(value));
     }
 
     validate(): ValidationErrors | null {

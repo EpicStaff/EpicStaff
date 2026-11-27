@@ -377,19 +377,10 @@ export const routes: Routes = [
                                 data: { permission: [ResourceCode.LlmConfigs, ActionCode.Create] },
                             },
                             {
-                                path: 'default-llms',
+                                path: 'ai-models',
                                 loadComponent: () =>
-                                    import('./features/configure-models/components/default-llms-section/default-llms-section.component').then(
-                                        (m) => m.DefaultLlmsSectionComponent
-                                    ),
-                                canActivate: [permissionGuard],
-                                data: { permission: [ResourceCode.LlmConfigs, ActionCode.Read] },
-                            },
-                            {
-                                path: 'llm-library',
-                                loadComponent: () =>
-                                    import('./features/configure-models/components/llm-library-section/llm-library-section.component').then(
-                                        (m) => m.LlmLibrarySectionComponent
+                                    import('./features/configure-models/pages/ai-models-page/ai-models-page.component').then(
+                                        (m) => m.AiModelsPageComponent
                                     ),
                                 canActivate: [permissionGuard],
                                 data: { permission: [ResourceCode.LlmConfigs, ActionCode.Read] },

@@ -16,6 +16,7 @@ from http import HTTPStatus
 import pydantic
 from litestar import Request, Response, status_codes
 from litestar.exceptions import HTTPException, ValidationException
+from loguru import logger
 
 from foundation.schemas import ErrorDetailSchema, ErrorResponseSchema
 
@@ -29,6 +30,8 @@ __all__ = [
     "registry",
 ]
 
+
+_UNEXPECTED_ERROR_DETAIL = "An unexpected error occurred."
 
 _handlers: dict[type[Exception], Callable[[Request, Exception], Response]] = {}
 
@@ -126,8 +129,19 @@ def foundation_handle_http_exception(request: Request, error: HTTPException) -> 
 
 @registry(Exception)
 def foundation_handle_server_error(request: Request, error: Exception) -> Response:
-    """Anything no other handler claimed. Registered last so it stays the fallback."""
+    """Anything no other handler claimed. Registered last so it stays the fallback.
+
+    The caller gets a fixed message: the exception text describes this service's
+    internals (a driver error, a file path), not the caller's request. The exception
+    goes to the server log with its traceback instead.
+    """
+    logger.opt(exception=error).error(
+        "Unhandled {error_type} on {method} {path}",
+        error_type=type(error).__name__,
+        method=request.method,
+        path=request.url.path,
+    )
     return create_response(
         status_code=status_codes.HTTP_500_INTERNAL_SERVER_ERROR,
-        errors=[ErrorDetailSchema(code="unknown", detail=str(error))],
+        errors=[ErrorDetailSchema(code="unknown", detail=_UNEXPECTED_ERROR_DETAIL)],
     )

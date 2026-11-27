@@ -15,7 +15,8 @@ from tables.import_export.services.partial_export_service import (
 from tables.import_export.strategies.nodes.classification_decision_table_node import (
     ClassificationDecisionTableNodeStrategy,
 )
-from tables.models import Graph, LLMConfig, SystemOneConfig
+from tables.models import Graph, SystemOneConfig
+from ai_models.models import LLMConfig
 from tables.models.graph_models import (
     ClassificationDecisionTableNode,
     ClassificationDecisionTablePrompt,

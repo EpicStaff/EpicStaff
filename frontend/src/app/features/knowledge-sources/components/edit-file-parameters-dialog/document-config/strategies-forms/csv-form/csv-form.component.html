@@ -21,9 +21,13 @@
                 <app-input-number
                     ariaLabel="Rows In Chunk"
                     formControlName="rows_in_chunk"
+                    [min]="ROWS_IN_CHUNK_MIN"
+                    [max]="ROWS_IN_CHUNK_MAX"
+                    [invalid]="!!getAdditionalParamControl('rows_in_chunk')?.invalid"
                 />
+                <app-validation-errors [control]="getAdditionalParamControl('rows_in_chunk')!" />
             } @else {
-                <span>{{ params().rows_in_chunk || 0 }}</span>
+                <span>{{ rowsInChunk() }}</span>
             }
         </div>
 
@@ -40,9 +44,13 @@
                 <app-input-number
                     ariaLabel="Headers level"
                     formControlName="headers_level"
+                    [min]="HEADERS_LEVEL_MIN"
+                    [max]="HEADERS_LEVEL_MAX"
+                    [invalid]="!!getAdditionalParamControl('headers_level')?.invalid"
                 />
+                <app-validation-errors [control]="getAdditionalParamControl('headers_level')!" />
             } @else {
-                <span>{{ params().headers_level || 0 }}</span>
+                <span>{{ headersLevel() }}</span>
             }
         </div>
     </div>

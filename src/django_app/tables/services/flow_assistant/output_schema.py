@@ -172,7 +172,7 @@ def uses_anthropic_structured_output(llm_config) -> bool:
         return False
     provider = model.llm_provider
     model_string = litellm_call_model(
-        provider.name if provider else None, model.name, model.deployment_id
+        provider.name if provider else None, model.name, llm_config.connection.get("deployment_id")
     )
     return litellm_routed_provider(model_string) == "anthropic"
 

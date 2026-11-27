@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpContext } from '@angular/common/http';
 import { inject, Injectable, signal } from '@angular/core';
 import {
     ActionCode,
@@ -173,23 +173,35 @@ export class PermissionsService implements StorageService {
     /** Fetches the current user's permissions for the active org.
      *  Requires X-Organization-Id header (attached automatically by the interceptor). */
     loadActivePermissions(): Observable<ActivePermissions> {
-        return this.http.get<ActivePermissions>(`${this.baseUrl}me/`).pipe(
-            tap((permissions) => {
-                this.setActivePermissions(permissions);
-                this.setSuperadmin(permissions.is_superadmin);
-            })
+        return this.fetchActivePermissions(new HttpContext()).pipe(
+            tap((permissions) => this.applyActivePermissions(permissions))
         );
     }
 
     /** Fetches the current user's cross-org capabilities.
      *  Does NOT use the X-Organization-Id header (excluded in the interceptor). */
     loadOrgPermissions(): Observable<MyOrgPermissionsResponse> {
-        return this.http.get<MyOrgPermissionsResponse>(`${this.baseUrl}me/orgs/`).pipe(
-            tap((res) => {
-                this._orgCaps.set(res);
-                this.setSuperadmin(res.is_superadmin);
-            })
-        );
+        return this.fetchOrgPermissions(new HttpContext()).pipe(tap((res) => this.applyOrgPermissions(res)));
+    }
+
+    /** `GET /me/` without keeping the result: for a caller that applies it only once everything it needs arrived. */
+    fetchActivePermissions(context: HttpContext): Observable<ActivePermissions> {
+        return this.http.get<ActivePermissions>(`${this.baseUrl}me/`, { context });
+    }
+
+    /** `GET /me/orgs/` without keeping the result: for a caller that applies it only once everything it needs arrived. */
+    fetchOrgPermissions(context: HttpContext): Observable<MyOrgPermissionsResponse> {
+        return this.http.get<MyOrgPermissionsResponse>(`${this.baseUrl}me/orgs/`, { context });
+    }
+
+    applyActivePermissions(permissions: ActivePermissions): void {
+        this.setActivePermissions(permissions);
+        this.setSuperadmin(permissions.is_superadmin);
+    }
+
+    applyOrgPermissions(orgPermissions: MyOrgPermissionsResponse): void {
+        this._orgCaps.set(orgPermissions);
+        this.setSuperadmin(orgPermissions.is_superadmin);
     }
 
     /** Whether the caller can access the workspace admin panel at all.

@@ -1,5 +1,5 @@
 from collections.abc import Iterator, Mapping
-from typing import BinaryIO, Literal, Self
+from typing import Any, BinaryIO, Literal, Self
 from urllib.parse import quote
 
 import httpx
@@ -55,6 +55,10 @@ class KnowledgeClient:
         llm_api_key: str | None = None,
         embedding_extra_headers: dict[str, str] | None = None,
         llm_extra_headers: dict[str, str] | None = None,
+        embedding_connection: dict[str, str] | None = None,
+        embedding_parameters: dict[str, Any] | None = None,
+        llm_connection: dict[str, str] | None = None,
+        llm_parameters: dict[str, Any] | None = None,
     ) -> None:
         self._request(
             method="post",
@@ -65,6 +69,10 @@ class KnowledgeClient:
                 "llm_api_key": llm_api_key,
                 "embedding_extra_headers": embedding_extra_headers or {},
                 "llm_extra_headers": llm_extra_headers or {},
+                "embedding_connection": embedding_connection or {},
+                "embedding_parameters": embedding_parameters or {},
+                "llm_connection": llm_connection or {},
+                "llm_parameters": llm_parameters or {},
             },
         )
 
@@ -127,6 +135,8 @@ class KnowledgeClient:
         rag_id: int,
         max_entities: int | None = None,
         search: str | None = None,
+        page: int | None = None,
+        page_count: int | None = None,
     ) -> dict:
         """Fetch graph visualization data for a graph RAG."""
         url = f"rags/graph/{rag_id}/visualization/"
@@ -135,6 +145,10 @@ class KnowledgeClient:
             params["max_entities"] = max_entities
         if search:
             params["search"] = search
+        if page is not None:
+            params["page"] = page
+        if page_count is not None:
+            params["page_count"] = page_count
         response = self._request(method="get", url=url, params=params)
         return response.json()
 
@@ -161,24 +175,42 @@ class KnowledgeClient:
         page: int,
         page_size: int,
         search: str | None = None,
+        search_scope: str = "all",
         filter_column: str | None = None,
         filter_value: str | None = None,
+        linked_to_type: str | None = None,
+        linked_to_id: str | None = None,
     ) -> dict:
         """Fetch paginated parquet table data for a graph RAG."""
         url = f"rags/graph/{rag_id}/tables/{_path_segment(table_name)}/"
         params: dict[str, str | int] = {"page": page, "page_size": page_size}
         if search:
             params["search"] = search
+        # Omit `search_scope` when unset or on the default so the query string stays clean.
+        if search_scope and search_scope != "all":
+            params["search_scope"] = search_scope
         # knowledge_new rejects a half-set pair; the Django serializer has already enforced that.
         if filter_column is not None and filter_value is not None:
             params["filter_column"] = filter_column
             params["filter_value"] = filter_value
+        if linked_to_type is not None and linked_to_id is not None:
+            params["linked_to_type"] = linked_to_type
+            params["linked_to_id"] = linked_to_id
         response = self._request(method="get", url=url, params=params)
         return response.json()
 
     def get_table_summary(self, rag_id: int) -> list[dict]:
         """Fetch the list of available tables with their row counts."""
         response = self._request(method="get", url=f"rags/graph/{rag_id}/table-summary/")
+        return response.json()
+
+    def get_table_link_pairs(self) -> dict[str, list[str]]:
+        """Fetch the allowed (subject, target) pairs for the linked_to table filter.
+
+        The upstream body is a static per-service matrix with no per-rag variance,
+        so the URL has no rag id.
+        """
+        response = self._request(method="get", url="rags/graph/table-link-pairs/")
         return response.json()
 
     def _request(

@@ -3,7 +3,9 @@
 Only acts when the job sets ``use_storage``. The credentials are issued upstream
 and travel on the job; this step neither mints nor revokes them. It points the
 mutations file into the exec dir (which activates the wrapper's mutation tail) and
-adds the ``STORAGE_*`` variables the in-sandbox storage library reads. A job that
+adds the ``STORAGE_*`` variables the in-sandbox storage library reads. The access
+and secret key are registered for masking as they are handed over, so they are
+scrubbed from the run's output even when user-secret masking is off. A job that
 asks for storage without an org prefix or without credentials is failed rather than
 launched with broken or unscoped access.
 """
@@ -40,6 +42,8 @@ class ConfigureStorageStep:
         context.env["STORAGE_BUCKET_NAME"] = self._storage_bucket
         context.env["STORAGE_ACCESS_KEY"] = credentials.access_key
         context.env["STORAGE_SECRET_KEY"] = credentials.secret_key
+        context.mask_always(credentials.access_key)
+        context.mask_always(credentials.secret_key)
         context.env["STORAGE_ALLOWED_PATHS"] = json.dumps(job.storage_allowed_paths)
         context.env["STORAGE_ORG_PREFIX"] = job.storage_org_prefix
         context.env["STORAGE_OWN_PATHS"] = json.dumps(credentials.own_paths)

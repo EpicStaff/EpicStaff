@@ -21,6 +21,7 @@ from tests.custom_role_fixtures import *  # noqa: F401,F403
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 CLIENT_PATH = "proxies.sandbox.services.VenvService.client_class"
+OWNED_CUSTOM_LIBRARY_NAMES_PATH = "proxies.sandbox.services.VenvService._owned_custom_library_names"
 WRITE = Permission.CREATE | Permission.READ | Permission.UPDATE | Permission.DELETE
 DENIED = '"Use" permission on Secrets'
 CODE = 'def main(**kwargs):\n    return get_secret("INPUT_KEY")\n'
@@ -145,6 +146,24 @@ class TestVenvLibraries:
         )
 
         assert response.status_code == status.HTTP_200_OK, response.content
+
+    @pytest.mark.parametrize("stored_is_custom", [True, False])
+    def test_flipping_where_a_library_comes_from_is_a_change(
+        self, stored_is_custom, no_use_client, use_client, binding, secret, sandbox_client
+    ):
+        """The same name and version is the org's own upload or the public index's package."""
+        _code(secret, venv=binding)
+        sandbox_client.retrieve.return_value["libs"] = [{**STORED_LIBS[0], "is_custom": stored_is_custom}]
+        flipped = [{**STORED_LIBS[0], "is_custom": not stored_is_custom}]
+
+        # The org stores a library of that name, so naming it as the org's own is valid.
+        with patch(OWNED_CUSTOM_LIBRARY_NAMES_PATH, return_value={"requests"}):
+            refused = _patch_venv(no_use_client, binding, {"libs": flipped})
+            allowed = _patch_venv(use_client, binding, {"libs": flipped})
+
+        _assert_denied(refused, "libs")
+        assert allowed.status_code == status.HTTP_200_OK, allowed.content
+        sandbox_client.update.assert_called_once_with("4711", {"libs": flipped})
 
     def test_renaming_alone_is_free(self, no_use_client, binding, secret, sandbox_client):
         _code(secret, venv=binding)

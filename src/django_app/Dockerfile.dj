@@ -61,7 +61,7 @@ COPY --from=builder /app /app
 # raw.githubusercontent.com on every `import litellm` (confirmed by runtime
 # trace, see the litellm finding in docs/backend-runtime-fetch-audit.md) — django_app imports
 # it via tables/services/llm_clients/litellm_client.py. The daily model-map
-# refresh in tables/utils/litellm_model_info.py is a separate fetch, off unless
+# refresh in ai_models/utils/litellm_model_info.py is a separate fetch, off unless
 # LITELLM_MODEL_COST_REFRESH_ENABLED is true.
 ENV PATH="/app/src/.venv/bin:$PATH" \
     PYTHONPATH=/app \
@@ -82,3 +82,8 @@ RUN groupadd --system --gid 1000 app \
  && chown app:app /app/src/django_app/media /srv/plugin-spa
 
 USER app
+
+# Build identity for the About dialog. Last on purpose: a per-commit value here rebuilds only this layer.
+ARG EPICSTAFF_VERSION="" EPICSTAFF_GIT_REF="" EPICSTAFF_GIT_SHA="" EPICSTAFF_COMMIT_DATE=""
+ENV EPICSTAFF_VERSION=$EPICSTAFF_VERSION EPICSTAFF_GIT_REF=$EPICSTAFF_GIT_REF \
+    EPICSTAFF_GIT_SHA=$EPICSTAFF_GIT_SHA EPICSTAFF_COMMIT_DATE=$EPICSTAFF_COMMIT_DATE

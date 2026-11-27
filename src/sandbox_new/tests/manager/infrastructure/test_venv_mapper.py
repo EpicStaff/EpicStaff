@@ -26,6 +26,7 @@ def make_row(**overrides):
         "hash": "1abc",
         "status": "completed",
         "error": None,
+        "system_key": None,
         "created_at": datetime(2026, 10, 14, 11, 17, 37, tzinfo=UTC),
         "updated_at": datetime(2026, 10, 14, 12, 0, 0, tzinfo=UTC),
     }
@@ -84,3 +85,18 @@ def test_to_domain_refuses_a_library_the_rules_refuse():
         VenvMapper.to_domain(
             make_row(libs=[{"name": "numpy>=1", "specification": "", "version": None}])
         )
+
+
+def test_to_domain_reads_the_system_key():
+    venv = VenvMapper.to_domain(make_row(system_key="file_extractor"))
+
+    assert venv.system_key == "file_extractor"
+
+
+def test_to_domain_keeps_a_system_key_the_sandbox_no_longer_pins():
+    """A key dropped from the pins must not break reading the row."""
+    assert VenvMapper.to_domain(make_row(system_key="retired")).system_key == "retired"
+
+
+def test_to_domain_reads_no_system_key_as_none():
+    assert VenvMapper.to_domain(make_row()).system_key is None

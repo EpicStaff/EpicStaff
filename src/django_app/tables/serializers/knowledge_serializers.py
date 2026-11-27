@@ -390,11 +390,7 @@ class SourceCollectionDetailSerializer(LastEditFieldsSerializerMixin, serializer
             naive_rags = (
                 NaiveRag.objects.filter(base_rag_type__source_collection=obj)
                 .select_related("embedder")
-                .annotate(
-                    document_configs_count=Count("naive_rag_configs", distinct=True),
-                    chunks_count=Count("naive_rag_configs__chunks", distinct=True),
-                    embeddings_count=Count("naive_rag_configs__embeddings", distinct=True),
-                )
+                .annotate(**CollectionManagementService.naive_rag_count_annotations())
             )
             graph_rags = (
                 GraphRag.objects.filter(base_rag_type__source_collection=obj)

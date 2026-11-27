@@ -16,7 +16,7 @@ from rbac.authorship.last_edit import OMIT_AUTHORSHIP_CONTEXT_KEY
 from rbac.authorship.serializer_mixins import LastEditFieldsSerializerMixin
 from rbac.authorship.user_summary import UserSummarySerializer
 
-SCANNED_APPS = ("tables", "agents", "rbac")
+SCANNED_APPS = ("tables", "ai_models", "agents", "rbac")
 # Import/export serializers write ids on purpose; the rest never render API responses.
 SKIPPED_PACKAGES = frozenset({"tests", "migrations", "management", "import_export", "admin"})
 
