@@ -103,12 +103,59 @@ FIRST_PARTY_AUTHOR_DOMAINS: tuple[str, ...] = ("hys-enterprise.com",)
 # what that service's Dockerfile actually ships.
 DEV_GROUP_NAMES: frozenset[str] = frozenset({"dev", "test", "tests", "lint", "typing", "docs"})
 
-# C6 — SPDX overrides for packages whose PyPI metadata declares the wrong license.
-# Each entry confirmed by reading the actual shipped LICENSE body text from the wheel.
+# C6 — SPDX overrides for packages whose PyPI metadata declares the wrong license,
+# or only a vague classifier ("BSD License") that scripts/check-licenses.mjs cannot
+# evaluate. Each entry confirmed by reading the actual shipped LICENSE body text from
+# the wheel. Keyed by normalized name, or "name@version" when only that version's
+# metadata is wrong.
 SPDX_OVERRIDES: dict[str, str] = {
     "pywin32": "LGPL-2.1",  # metadata says PSF; wheel ships GNU LGPL v2.1 text
     "chroma-hnswlib": "Apache-2.0",  # metadata UNKNOWN; wheel ships Apache-2.0 text
     "embedchain": "Apache-2.0",  # metadata Other/Proprietary; wheel ships Apache-2.0 text
+    # Metadata "BSD License" / "BSD"; wheel ships 3-clause text (no-endorsement clause).
+    "asgiref": "BSD-3-Clause",
+    "authlib": "BSD-3-Clause",
+    "blis": "BSD-3-Clause",
+    "channels": "BSD-3-Clause",
+    "channels-redis": "BSD-3-Clause",
+    "colorama": "BSD-3-Clause",
+    "django-filter": "BSD-3-Clause",
+    "django-redis": "BSD-3-Clause",
+    "django-storages": "BSD-3-Clause",
+    "events": "BSD-3-Clause",
+    "fastuuid": "BSD-3-Clause",
+    "httpx": "BSD-3-Clause",
+    "isodate": "BSD-3-Clause",
+    "jinja2": "BSD-3-Clause",
+    "joserfc": "BSD-3-Clause",
+    "jsonpatch": "BSD-3-Clause",
+    "jsonpointer": "BSD-3-Clause",
+    "mpmath": "BSD-3-Clause",
+    "pandas": "BSD-3-Clause",  # bundled third-party code under LICENSES/ is MIT/Apache/public domain
+    "pyperclip": "BSD-3-Clause",
+    "sqlparse": "BSD-3-Clause",
+    "sympy": "BSD-3-Clause",
+    "websockets": "BSD-3-Clause",  # 13.x says "BSD License"; 16.x already declares BSD-3-Clause
+    # Metadata "BSD License"; wheel ships 2-clause text.
+    "nest-asyncio2": "BSD-2-Clause",
+    "pyasn1-modules": "BSD-2-Clause",
+    "pycryptodome": "BSD-2-Clause",  # the rest of its code is public domain (no conditions)
+    # Several classifiers; the shipped text says which combination applies.
+    "packaging": "Apache-2.0 OR BSD-2-Clause",  # "either of the licenses in LICENSE.APACHE or LICENSE.BSD"
+    "python-dateutil": "Apache-2.0 AND BSD-3-Clause",  # older code BSD-3, newer contributions Apache-2.0
+    "pebble": "LGPL-3.0-only",  # metadata "GNU Library or Lesser General Public License (LGPL)"; wheel ships LGPL v3
+    # Metadata "BSD-3-Clause, Apache-2.0, dependency licenses". Its own code is either licence;
+    # the bundled PDFium binary is BSD-3-Clause AND Apache-2.0 plus the libraries whose texts the
+    # wheel ships under dist-info/licenses/BUILD_LICENSES: abseil (Apache-2.0), llvm-libc
+    # (Apache-2.0 WITH LLVM-exception), fast_float/lcms/simdutf (MIT), libopenjpeg (BSD-2-Clause),
+    # zlib, libpng, libtiff, FreeType (FTL), libjpeg-turbo (IJG AND BSD-3-Clause AND Zlib), ICU
+    # (Unicode-3.0) and AGG 2.3 (a notice-only permissive licence with no SPDX id).
+    "pypdfium2": (
+        "(Apache-2.0 OR BSD-3-Clause) AND BSD-3-Clause AND Apache-2.0 AND MIT AND BSD-2-Clause"
+        " AND Zlib AND libpng-2.0 AND libtiff AND FTL AND IJG AND Unicode-3.0"
+    ),
+    # Metadata "BSD License"; numpy 2.x already declares a full SPDX expression, so only this version.
+    "numpy@1.26.4": "BSD-3-Clause",
 }
 
 VENDORED = [
@@ -369,12 +416,13 @@ def declared_license_texts(venv_dir: Path) -> dict[tuple[str, str], str]:
     return texts
 
 
-def scan_service_venv(svc_dir: Path) -> list[dict]:
+def scan_service_venv(svc_dir: Path) -> list[dict] | None:
     """Ensure venv exists, install pip-licenses, scan, uninstall.
-    Returns raw pip-licenses JSON entries."""
+    Returns raw pip-licenses JSON entries -- empty for a service that ships no
+    third-party packages -- or None when the service could not be scanned."""
     venv_dir = bootstrap_venv(svc_dir)
     if venv_dir is None:
-        return []
+        return None
 
     py = venv_python(venv_dir)
 
@@ -386,7 +434,7 @@ def scan_service_venv(svc_dir: Path) -> list[dict]:
         run(["uv", "pip", "install", "--python", str(py), "pip-licenses"], check=True)
     except subprocess.CalledProcessError as exc:
         log(f"  pip-licenses install failed for {svc_dir.name}: {exc.stderr.strip()[:300]}")
-        return []
+        return None
 
     try:
         entries = run_pip_licenses(py)
@@ -401,7 +449,7 @@ def scan_service_venv(svc_dir: Path) -> list[dict]:
         return entries
     except subprocess.CalledProcessError as exc:
         log(f"  pip-licenses failed for {svc_dir.name}: {exc.stderr.strip()[:300]}")
-        return []
+        return None
     finally:
         # Best-effort cleanup: it must never mask the scan's own result or error.
         with contextlib.suppress(Exception):
@@ -435,9 +483,10 @@ def is_internal_placeholder_package(version: str, entry: dict) -> bool:
     return spdx.upper() == "UNKNOWN" and license_text.upper() == "UNKNOWN"
 
 
-def collect_packages() -> dict[tuple[str, str], dict]:
+def collect_packages() -> tuple[dict[tuple[str, str], dict], list[str]]:
     """Scan each service's .venv with pip-licenses and return a deduplicated
-    dict keyed by (normalized_name, version)."""
+    dict keyed by (normalized_name, version), plus the services that could
+    not be scanned."""
     packages: dict[tuple[str, str], dict] = {}
     skipped: list[str] = []
 
@@ -455,7 +504,7 @@ def collect_packages() -> dict[tuple[str, str], dict]:
         svc = REPO_ROOT / svc_rel
         log(f"scanning {svc_rel}")
         entries = scan_service_venv(svc)
-        if not entries:
+        if entries is None:
             skipped.append(svc_rel)
             continue
         for entry in entries:
@@ -489,7 +538,9 @@ def collect_packages() -> dict[tuple[str, str], dict]:
             if len(spdx) > 120:
                 spdx = spdx[:117] + "..."
             # C6 — apply known SPDX overrides
-            spdx = SPDX_OVERRIDES.get(normalize_name(name), spdx)
+            spdx = SPDX_OVERRIDES.get(
+                f"{normalize_name(name)}@{version}", SPDX_OVERRIDES.get(normalize_name(name), spdx)
+            )
             packages[key] = {
                 "name": name,
                 "version": version,
@@ -502,10 +553,7 @@ def collect_packages() -> dict[tuple[str, str], dict]:
                 "url": (entry.get("URL") or "").strip(),
             }
 
-    if skipped:
-        log(f"services skipped (bootstrap failed or no pyproject.toml): {', '.join(skipped)}")
-
-    return packages
+    return packages, skipped
 
 
 def derive_copyright(pkg: dict) -> str:
@@ -740,7 +788,12 @@ def main() -> int:
     provenance = {"sha": sha, "date": date, "lock_hashes": lock_hashes_str}
     log(f"provenance: commit={sha[:12]}, date={date}")
 
-    packages = collect_packages()
+    packages, skipped = collect_packages()
+    # Every entry in SERVICES has a pyproject.toml, so a skipped service failed
+    # to sync or scan: notices without its packages would under-report what ships.
+    if skipped:
+        log(f"error: could not scan {', '.join(skipped)} -- THIRD-PARTY-NOTICES.md was not changed")
+        return 1
     body = build_markdown(packages, provenance)
 
     try:

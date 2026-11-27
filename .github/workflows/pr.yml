@@ -24,6 +24,7 @@ jobs:
       fe: ${{ steps.filter.outputs.fe }}
       fe_deps: ${{ steps.filter.outputs.fe_deps }}
       be_deps: ${{ steps.filter.outputs.be_deps }}
+      licenses: ${{ steps.filter.outputs.licenses }}
       code: ${{ steps.filter.outputs.code }}
       cla: ${{ steps.filter.outputs.cla }}
       sandbox: ${{ steps.filter.outputs.be_sandbox }}
@@ -71,6 +72,10 @@ jobs:
 
           # pyproject.toml too: adding or removing one adds or removes a service.
           filter be_deps '^(src/[^/]+/uv\.lock$|src/[^/]+/pyproject\.toml$|scripts/generate-python-notices\.py$)'
+
+          # A dependency change always rewrites the notices (the two jobs above
+          # fail when it does not), so the notices file stands in for every lockfile.
+          filter licenses '^(THIRD-PARTY-NOTICES\.md$|scripts/license-policy\.(json|mjs)$|scripts/check-licenses(\.test)?\.mjs$|\.github/workflows/pr\.yml$)'
 
           # Wider than src/ and frontend/ on purpose: the compose matrix generator
           # in compose-build.yml also runs scripts/envtool.py and
@@ -418,6 +423,24 @@ jobs:
 
       - name: Check backend third-party notices are in sync
         run: python3 scripts/generate-python-notices.py --check
+
+  # Blocks a pull request that ships a package under a licence outside
+  # scripts/license-policy.json. Reads the committed notices, which the notices
+  # jobs keep in step with the lockfiles, so it needs no install. The daily
+  # license-scan.yml regenerates them from scratch on main.
+  check-licenses:
+    needs: changes
+    if: needs.changes.outputs.licenses == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Test the licence checker
+        run: node --test scripts/check-licenses.test.mjs
+
+      - name: Check shipped dependency licences
+        run: node scripts/check-licenses.mjs
 
   # The rbac app was extracted out of tables specifically to stop
   # rbac reaching back into tables. Two imports are structural and stay
@@ -1179,6 +1202,7 @@ jobs:
       - secret-scan
       - check-env-conventions
       - check-backend-notices
+      - check-licenses
       - check-rbac-boundary
       - frontend-checks
       - backend-tests
