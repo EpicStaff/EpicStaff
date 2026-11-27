@@ -71,7 +71,7 @@
                 <app-files-list
                     [(documents)]="documents"
                     (filesUploaded)="onFilesUpload($event)"
-                    (documentSelected)="selectedDocument.set($event)"
+                    (documentSelected)="selectDocument($event)"
                     class="dialog__files-list"
                 />
                 <app-document-content-editor

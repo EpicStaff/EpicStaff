@@ -118,6 +118,14 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
             if (doc) this.selectedDocument.set(doc);
         });
 
+        // A deleted document leaves the preview and the editor, so nothing is saved to it.
+        effect(() => {
+            const selectedId = this.selectedDocument()?.document_id;
+            if (selectedId && !this.documents().some((document) => document.document_id === selectedId)) {
+                this.selectedDocument.set(null);
+            }
+        });
+
         effect(() => {
             const collectionId = this.collection().collection_id;
             const realDocs = this.documentsStorageService
@@ -239,6 +247,14 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
     /** Resolves true when the step may be left: no unsaved edit, or the user agreed to drop it. */
     confirmLeave(): Observable<boolean> {
         return this.contentEditor()?.confirmDiscard() ?? of(true);
+    }
+
+    /** Shows another document, once an unsaved edit of the current one is dropped or there is none. */
+    selectDocument(document: DisplayedListDocument): void {
+        if (document === this.selectedDocument()) return;
+        this.confirmLeave()
+            .pipe(filter(Boolean), takeUntilDestroyed(this.destroyRef))
+            .subscribe(() => this.selectedDocument.set(document));
     }
 
     /** Fetches the selected document's preview and the collection's file sizes again, after its content changed. */
