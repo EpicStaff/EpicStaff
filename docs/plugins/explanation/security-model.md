@@ -26,7 +26,7 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
 - **More access takes another approval.** A new version that declares more access, a new outbound host or a wider
   public path cannot be installed until a SuperAdmin approves that new access
   ([Compatibility and versioning](../reference/compatibility-and-versioning.md#what-needs-the-superadmins-approval)).
-  Approving the outbound hosts does not limit what code run through flows or tools can reach.
+  Approving the outbound hosts does not limit what code run through flows, tools, venvs or custom libraries can reach.
 - **Installing a plugin means trusting its code**, whichever label it has
   ([Accepted risks](accepted-risks.md#installing-a-plugin-means-trusting-its-code)).
 
@@ -42,8 +42,8 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
   ([Runtime](../reference/runtime.md#other-plugins-on-the-same-node),
   [Gateway context](../reference/gateway-context.md#verification)).
 - **Shared ports, watched.** The plugins share the node's ports. A plugin cannot bind one, its connections are capped,
-  and the node stops a plugin that has a TCP socket listening on any port or holds more than 1,280 network sockets, within a
-  second, until a SuperAdmin restarts it ([Runtime](../reference/runtime.md#how-the-backend-is-started),
+  and the node stops a plugin that has a TCP socket listening on any port, holds a TCP connection on another plugin's
+  port, or holds more than 1,280 network sockets, within a second, until a SuperAdmin restarts it ([Runtime](../reference/runtime.md#how-the-backend-is-started),
   [Accepted risks](accepted-risks.md#what-co-located-plugins-can-see-of-each-other)).
 - **The separation is the operating system's.** Every backend of a node runs in one container, separated by process
   and user permissions only: a plugin that gets past its own user's permissions reaches the others on that node
@@ -107,9 +107,12 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
   ([Serve public paths](../how-to/public-paths.md)).
 - **Outbound, only to declared hosts**, over HTTPS on port 443, through the egress proxy, and a change to the list
   applies within about 30 seconds ([Call the internet from your backend](../how-to/outbound-hosts.md)). The backend's
-  own process has no other route out. Code that a plugin gets run through flows or tools is the exception: see the next item.
-- **Flows and tools run code.** A plugin whose access includes `create`, `update` or `use` on flows, or `create` or
-  `update` on tools, can have code of its choosing run in EpicStaff's sandbox. The sandbox has its own network access,
+  own process has no other route out. Code that a plugin gets run through flows, tools, venvs or custom libraries is the
+  exception: see the next item.
+- **Flows, tools, venvs and custom libraries run code.** A plugin whose access includes `create`, `update` or `use` on
+  flows, or `create` or `update` on tools, venvs or custom libraries, can have code of its choosing run in EpicStaff's
+  sandbox: a venv's libraries, and a custom library's uploaded package, run with all code that runs in a venv using
+  them, the organization's own included. The sandbox has its own network access,
   and the plugin's outbound hosts do not apply to that code. Tools `create` or `update` also lets it point an agent at
   an MCP server outside its outbound hosts ([Accepted risks](accepted-risks.md#code-runs-in-the-sandbox-outside-the-outbound-hosts)).
 - **A declared host can carry more than its name.** A host on a shared content delivery network, or a `*.` wildcard,

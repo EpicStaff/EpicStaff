@@ -5,6 +5,9 @@ import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ORG_ID_OVERRIDE } from './org-id-override.context';
 
+/** The request header naming the organization a request acts in. */
+export const ORGANIZATION_HEADER = 'X-Organization-Id';
+
 export const activeOrgInterceptor: HttpInterceptorFn = (req, next) => {
     const activeOrg = inject(ActiveOrgService);
     const permissions = inject(PermissionsService);
@@ -16,7 +19,7 @@ export const activeOrgInterceptor: HttpInterceptorFn = (req, next) => {
     if (typeof override === 'number' || (override === null && permissions.isSuperadmin)) {
         if (override !== null) {
             req = req.clone({
-                setHeaders: { 'X-Organization-Id': String(override) },
+                setHeaders: { [ORGANIZATION_HEADER]: String(override) },
             });
         }
         // override === null → omit the header so the backend returns all-org data.
@@ -27,7 +30,7 @@ export const activeOrgInterceptor: HttpInterceptorFn = (req, next) => {
     const orgId = activeOrg.activeOrgId();
     if (orgId && !shouldSkip(req.url)) {
         req = req.clone({
-            setHeaders: { 'X-Organization-Id': String(orgId) },
+            setHeaders: { [ORGANIZATION_HEADER]: String(orgId) },
         });
     }
 

@@ -104,7 +104,8 @@ class World:
         )
 
     def python_code(self):
-        code = self.make("tables.PythonCode", code="def main(): return 1", entrypoint="main")
+        venv = self.make("proxies.SandboxVenvBinding", org=self.org, resource_id=self.name("venv"))
+        code = self.make("tables.PythonCode", code="def main(): return 1", entrypoint="main", venv=venv)
         code.secrets.set([self.secret()])
         return code
 
@@ -622,12 +623,14 @@ def test_a_code_start_walks_the_code_and_adds_what_holds_it_without_walking_it(w
     assert node_run.refs == {
         ref(node_code),
         *(ref(secret) for secret in node_code.secrets.all()),
+        ref(node_code.venv),
         ref(flow),
     }
     assert ref(other_agent) not in node_run.refs
     assert tool_run.refs == {
         ref(tool.python_code),
         *(ref(secret) for secret in tool.python_code.secrets.all()),
+        ref(tool.python_code.venv),
         ref(tool),
     }
 

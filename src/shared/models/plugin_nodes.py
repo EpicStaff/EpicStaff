@@ -37,6 +37,7 @@ from epicstaff_plugin.package_layout import MAX_MIGRATION_NAME_LENGTH, MIGRATION
 from pydantic import (
     AwareDatetime,
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     StringConstraints,
@@ -132,7 +133,27 @@ NonNegativeInt = Annotated[int, Field(ge=0)]
 PositiveInt = Annotated[int, Field(gt=0)]
 NetworkPort = Annotated[int, Field(ge=1, le=65535)]
 UnixUid = Annotated[int, Field(ge=1, le=2**31 - 1)]
-LogLine = Annotated[str, StringConstraints(max_length=MAX_LOG_LINE_LENGTH)]
+
+_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
+def _storable_text(value: object) -> object:
+    if isinstance(value, str):
+        return _SURROGATE.sub("\ufffd", value.replace("\x00", ""))
+    return value
+
+
+PluginText = Annotated[str, BeforeValidator(_storable_text)]
+"""Text a plugin can put in a document: its log lines and the errors its code or files cause.
+
+NUL is dropped and every surrogate becomes U+FFFD before any length rule applies. Postgres
+refuses NUL in `text` and `jsonb`, and a surrogate (a file name that is not UTF-8, decoded by
+Python) has no UTF-8 form, so the node could not send the report. Either would lose the report
+of every placement on the node, since django_app stores them in one transaction."""
+
+LogLine = Annotated[PluginText, StringConstraints(max_length=MAX_LOG_LINE_LENGTH)]
+ErrorText = Annotated[PluginText, StringConstraints(max_length=MAX_LAST_ERROR_LENGTH)]
+HookErrorText = Annotated[PluginText, StringConstraints(max_length=MAX_HOOK_ERROR_MESSAGE_LENGTH)]
 # At most 63 characters, Postgres's identifier length, so no name is ever truncated.
 DatabaseObjectName = Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_]{0,62}$")]
 InstallationId = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$")]
@@ -617,7 +638,7 @@ class DatabaseReport(_NodeContractModel):
     """The migration ledger, in the order the migrations were applied."""
 
     size_bytes: NonNegativeInt | None = None
-    last_error: Annotated[str, StringConstraints(max_length=MAX_LAST_ERROR_LENGTH)] | None = None
+    last_error: ErrorText | None = None
     limits_restored_at: AwareDatetime | None = None
     """When the node last restored the app role's settings, in this agent's life."""
 
@@ -674,7 +695,7 @@ class UpgradeReport(_NodeContractModel):
     state: Literal["working", "failed"]
     """`failed` on an error the node does not retry by itself, until `generation` changes."""
 
-    last_error: Annotated[str, StringConstraints(max_length=MAX_LAST_ERROR_LENGTH)] | None = None
+    last_error: ErrorText | None = None
     """Why the step failed, or the error a retried step last hit."""
 
 
@@ -687,7 +708,7 @@ class RestoreReport(_NodeContractModel):
     pre_restore_backup: BackupFileName | None = None
     """The backup of the database taken before it was replaced, once there is one."""
 
-    last_error: Annotated[str, StringConstraints(max_length=MAX_LAST_ERROR_LENGTH)] | None = None
+    last_error: ErrorText | None = None
 
 
 class PlacementReport(_NodeContractModel):
@@ -704,7 +725,7 @@ class PlacementReport(_NodeContractModel):
     rss_mb: Annotated[float, Field(ge=0)] | None = None
     """Resident memory of every process of the plugin's UID, in MiB."""
 
-    last_error: Annotated[str, StringConstraints(max_length=MAX_LAST_ERROR_LENGTH)] | None = None
+    last_error: ErrorText | None = None
     log_tail: Annotated[list[LogLine], Field(max_length=MAX_LOG_TAIL_LINES)] = Field(
         default_factory=list
     )
@@ -742,7 +763,7 @@ class RemovalReport(_NodeContractModel):
     placement_id: PositiveInt
     generation: NonNegativeInt
     state: Literal["removing", "removed", "failed"]
-    last_error: Annotated[str, StringConstraints(max_length=MAX_LAST_ERROR_LENGTH)] | None = None
+    last_error: ErrorText | None = None
     """Why the removal failed, or the error a retried step last hit."""
 
 
@@ -785,7 +806,7 @@ class HookResult(_NodeContractModel):
 
     attempt: PositiveInt
     outcome: Literal["succeeded", "failed"]
-    error: Annotated[str, StringConstraints(max_length=MAX_HOOK_ERROR_MESSAGE_LENGTH)] | None = None
+    error: HookErrorText | None = None
     """Why the call failed, for the SuperAdmin; null when it succeeded."""
 
     http_status: Annotated[int, Field(ge=100, le=599)] | None = None

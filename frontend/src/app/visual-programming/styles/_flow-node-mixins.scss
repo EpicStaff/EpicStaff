@@ -301,13 +301,20 @@ $node-title-lift: calc((#{$node-number-gap} + var(--text-body-small-size) * var(
         content: none;
     }
 
+    // Only pointing at (or tabbing to) an enabled button accents its frame, not selecting the
+    // node; a disabled one, such as Unpack on a subflow that cannot be unpacked, keeps it plain.
+    &:has(.action-button:not(.disabled):is(:hover, :focus-visible)) {
+        border-color: var(--vp-selected-node-border-color);
+    }
+
     .action-button {
         width: 100%;
         height: 100%;
         background-color: transparent;
         border-radius: 4px;
 
-        &:hover {
+        // Keyboard focus looks like hover, as on the other action buttons.
+        &:not(.disabled):is(:hover, :focus-visible) {
             background-color: var(--graphite-600);
         }
 

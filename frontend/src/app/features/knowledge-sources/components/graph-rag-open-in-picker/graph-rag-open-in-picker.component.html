@@ -1,0 +1,63 @@
+<button
+    type="button"
+    class="open-in-trigger"
+    cdkOverlayOrigin
+    #originOverlay="cdkOverlayOrigin"
+    [class.open-in-trigger--open]="isOpen()"
+    aria-label="Open in table"
+    aria-haspopup="dialog"
+    [attr.aria-expanded]="isOpen()"
+    (click)="toggle()"
+>
+    <app-svg-icon
+        icon="chain-link"
+        size="0.75rem"
+    />
+    <span class="open-in-trigger__label">Open in</span>
+    <app-svg-icon
+        class="chevron"
+        icon="chevron-down"
+        size="0.875rem"
+    />
+</button>
+
+<ng-template
+    cdkConnectedOverlay
+    [cdkConnectedOverlayOrigin]="originOverlay"
+    [cdkConnectedOverlayOpen]="isOpen()"
+    [cdkConnectedOverlayPositions]="overlayPositions"
+    [cdkConnectedOverlayScrollStrategy]="scrollStrategy"
+    [cdkConnectedOverlayHasBackdrop]="true"
+    cdkConnectedOverlayBackdropClass="transparent-backdrop"
+    (backdropClick)="close()"
+    (detach)="close()"
+    (overlayKeydown)="$event.key === 'Escape' && close()"
+>
+    <div
+        class="open-in-popover"
+        cdkTrapFocus
+        [cdkTrapFocusAutoCapture]="true"
+    >
+        @if (rows().length === 0) {
+            <div class="open-in-popover__state">No options</div>
+        } @else {
+            <ul
+                class="open-in-popover__list"
+                role="listbox"
+            >
+                @for (row of rows(); track row.type) {
+                    <li class="open-in-popover__item">
+                        <button
+                            type="button"
+                            class="open-in-popover__row"
+                            role="option"
+                            (click)="pick(row.type)"
+                        >
+                            {{ row.label }}
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+    </div>
+</ng-template>

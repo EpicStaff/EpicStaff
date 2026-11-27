@@ -28,7 +28,7 @@ shared_suites := tools models audit dotdict epicstaff_storage communication
 shared_test_targets := $(addprefix shared-tests-,$(shared_suites))
 
 .PHONY: help \
-        uv-lock uv-lock-predefined \
+        uv-lock uv-lock-predefined uv-lock-system-venvs \
         uv-sync \
         django-makemigrations django-migrate django-manage django-tests \
         django-model-catalog django-model-catalog-check \
@@ -74,7 +74,7 @@ endif
 # rule below from ever matching it -- every uv-lock-<service> silently turns
 # into a no-op ("Nothing to be done"). None of these names correspond to real
 # files on disk, so they always rebuild anyway without needing .PHONY.
-uv-lock: $(uv_lock_targets) uv-lock-predefined
+uv-lock: $(uv_lock_targets) uv-lock-predefined uv-lock-system-venvs
 
 uv-lock-%:
 	@echo "--- Locking src/$* ---"
@@ -86,6 +86,14 @@ uv-lock-%:
 uv-lock-predefined:
 	@echo "--- Locking src/sandbox_new/predefined-requirements.txt ---"
 	@cd src && uv pip compile --quiet --no-config --universal --python-version 3.12 --generate-hashes shared/dotdict/pyproject.toml shared/epicstaff_secrets/pyproject.toml shared/epicstaff_common/pyproject.toml shared/epicstaff_storage/pyproject.toml -o sandbox_new/predefined-requirements.txt
+
+# Pins, with hashes, every dependency of the system venvs' libraries (SYSTEM_VENV_LIBS in
+# src/sandbox_new/manager/domain/models.py), one file per venv in
+# src/sandbox_new/system-venv-requirements/; Dockerfile.manager downloads exactly these
+# into the image, so the manager builds those venvs at startup without the internet.
+uv-lock-system-venvs:
+	@echo "--- Locking src/sandbox_new/system-venv-requirements/ ---"
+	@cd src/sandbox_new && $(VENV_PY) system_venv_wheelhouse.py lock
 
 # --no-install-project keeps this target in lockstep with the Docker builders.
 # The svc guard is a make function (not shell `test`) so it also works under

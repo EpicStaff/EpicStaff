@@ -760,18 +760,37 @@ describe('ExecutionTimeoutFieldComponent', () => {
         expect(input().value).toBe('01:01:01');
     });
 
-    it('disables the input and both buttons while read-only, and follows it', () => {
+    it.each([
+        [90, '00:01:30'],
+        [100 * 3600, '100:00:00'],
+    ])(
+        'shows %i seconds as plain text %s with its label while read-only, without the input or buttons',
+        (seconds, shown) => {
+            render(new ExecutionTimeoutFormField(seconds, NO_MAXIMUM), { readonly: true });
+            const host = fixture.nativeElement as HTMLElement;
+
+            expect(host.querySelector('.execution-timeout__readonly-value')?.textContent?.trim()).toBe(shown);
+            expect(visibleLabel()).toBe('Execution timeout');
+            expect(host.querySelector('input')).toBeNull();
+            expect(host.querySelector('.execution-timeout__step')).toBeNull();
+        }
+    );
+
+    it('swaps the input for the plain value and back as read-only is turned on and off', () => {
         render(new ExecutionTimeoutFormField(90, TEST_EXECUTION_TIMEOUT_LIMITS));
-        expect(input().disabled).toBe(false);
-        expect(button('Decrease').disabled).toBe(false);
-        expect(button('Increase').disabled).toBe(false);
+        const host = fixture.nativeElement as HTMLElement;
+        expect(input().value).toBe('00:01:30');
+        expect(host.querySelector('.execution-timeout__readonly-value')).toBeNull();
 
         fixture.componentRef.setInput('readonly', true);
         fixture.detectChanges();
+        expect(host.querySelector('input')).toBeNull();
+        expect(host.querySelector('.execution-timeout__readonly-value')?.textContent?.trim()).toBe('00:01:30');
 
-        expect(input().disabled).toBe(true);
-        expect(button('Decrease').disabled).toBe(true);
-        expect(button('Increase').disabled).toBe(true);
+        fixture.componentRef.setInput('readonly', false);
+        fixture.detectChanges();
+        expect(input().value).toBe('00:01:30');
+        expect(button('Increase').disabled).toBe(false);
     });
 
     it('steps the timeout by 30 seconds with its buttons, editing the control', () => {

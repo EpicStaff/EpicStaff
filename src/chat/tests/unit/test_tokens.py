@@ -1,3 +1,6 @@
+import base64
+import hashlib
+import hmac
 import time
 
 import jwt
@@ -33,11 +36,26 @@ def test_identity_subject_accepts_valid_token():
         ({"exp": int(time.time()) + 60}, SECRET),                        # no subject
         ({"sub": "u", "exp": int(time.time()) + 60}, "other-secret"),   # wrong key
         ({"sub": "x" * 256, "exp": int(time.time()) + 60}, SECRET),     # wider than the subject column
+        ({"sub": "user\x00-9", "exp": int(time.time()) + 60}, SECRET),  # NUL: the subject column cannot hold it
+        ({"sub": "user\ud800-9", "exp": int(time.time()) + 60}, SECRET),  # lone surrogate: not encodable as UTF-8
     ],
 )
 def test_identity_subject_rejects(claims, secret):
     token = jwt.encode(claims, secret, algorithm="HS256")
     with pytest.raises(InvalidIdentityError):
+        identity_subject(token, SECRET, now=int(time.time()), max_lifetime_seconds=3600)
+
+
+def test_identity_subject_rejects_a_pair_sent_as_raw_cesu8_bytes():
+    # PyJWT hands the payload's bytes to json.loads, which keeps raw surrogate bytes ("surrogatepass").
+    def segment(raw: bytes) -> bytes:
+        return base64.urlsafe_b64encode(raw).rstrip(b"=")
+
+    payload = b'{"sub": "user\xed\xa0\xbd\xed\xb8\x80", "exp": %d}' % (int(time.time()) + 60)
+    signing_input = segment(b'{"alg": "HS256", "typ": "JWT"}') + b"." + segment(payload)
+    signature = hmac.new(SECRET.encode(), signing_input, hashlib.sha256).digest()
+    token = (signing_input + b"." + segment(signature)).decode()
+    with pytest.raises(InvalidIdentityError, match="surrogate"):
         identity_subject(token, SECRET, now=int(time.time()), max_lifetime_seconds=3600)
 
 

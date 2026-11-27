@@ -25,6 +25,9 @@ export const ENTITY_ICONS: Record<string, string> = {
     EmbeddingModel: 'ui/database',
     EmbeddingModelTag: 'ui/tags-filled',
 
+    // Knowledge entities - file paths
+    SourceCollection: 'ui/knowledge',
+
     // Realtime entities - microphone is inline SVG
     RealtimeConfig: 'ui/settings-filled',
 

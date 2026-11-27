@@ -27,7 +27,6 @@ def test_openai_provider_is_listed(user_client: ApiClient, openai_provider_id: i
 def test_custom_model_points_at_mock_llm(mock_llm_model: dict, openai_provider_id: int) -> None:
     assert mock_llm_model["name"].startswith("mock-gpt-")
     assert mock_llm_model["llm_provider"] == openai_provider_id
-    assert mock_llm_model["base_url"] == MOCK_LLM_BASE_URL_IN_STACK
 
 
 def test_llm_config_binds_the_quickstart_secret(
@@ -36,5 +35,5 @@ def test_llm_config_binds_the_quickstart_secret(
     assert e2e_llm_config["custom_name"].startswith("e2e-llm-")
     assert e2e_llm_config["model"] == mock_llm_model["id"]
     assert e2e_llm_config["api_key_secret_id"] == quickstart.secret_id
-    assert e2e_llm_config["temperature"] == 0
-    assert e2e_llm_config["max_tokens"] == 1000
+    assert e2e_llm_config["parameters"] == {"temperature": 0, "max_tokens": 1000}
+    assert e2e_llm_config["connection"] == {"base_url": MOCK_LLM_BASE_URL_IN_STACK}

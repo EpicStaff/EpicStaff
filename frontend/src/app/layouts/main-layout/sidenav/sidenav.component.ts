@@ -32,6 +32,8 @@ import { filter, map } from 'rxjs/operators';
 import { GuidedTourService } from '../../../core/guided-tour';
 import { AppNavigationDrawerService } from '../../../core/services/app-navigation-drawer.service';
 import { TransferJobsStoreService } from '../../../core/services/transfer-jobs-store.service';
+import { VersionLabelComponent } from '../../../features/about/components/version-label/version-label.component';
+import { SystemInfoService } from '../../../features/about/services/system-info.service';
 import { auditTabsFor } from '../../../features/audit/guards/audit-domain-enabled.guard';
 import { ChatInboxStreamService } from '../../../features/chat/services/chat-inbox-stream.service';
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../features/create-agent-tour/create-agent-tour-anchors';
@@ -127,6 +129,7 @@ function isEditableTarget(element: Element): boolean {
         PluginMenuIconComponent,
         AppsListComponent,
         HelpMenuComponent,
+        VersionLabelComponent,
         TransferJobsPanelComponent,
         CdkTrapFocus,
         CdkScrollable,
@@ -195,6 +198,11 @@ export class LeftSidebarComponent {
         const count = this.unfinishedJobsCount();
         return count > 0 ? `${JOBS_LABEL}, ${count} in progress` : JOBS_LABEL;
     });
+    /**
+     * The running build; the version row is shown only once it is known, so a request in flight or failed leaves no
+     * empty list item (with its negative margins) under the account row.
+     */
+    protected readonly systemInfo = inject(SystemInfoService).systemInfo;
     /** The apps that were new when the open list opened: they keep their tag while it stays open. */
     protected readonly newAppTags = signal<ReadonlySet<string>>(new Set());
 
@@ -289,6 +297,7 @@ export class LeftSidebarComponent {
     };
 
     constructor() {
+        inject(SystemInfoService).load();
         this.destroyRef.onDestroy(() => this.chatInboxStream.stop());
         this.topNavItems = [
             {

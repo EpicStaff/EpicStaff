@@ -26,12 +26,11 @@ def get_streamable_conversation(
         FlowAssistantConversation.objects.select_related(
             "flow_assistant__graph",
             "flow_assistant__llm_config__model__llm_provider",
-            "organization_user__user",
         )
         .filter(
             pk=conversation_id,
             flow_assistant__graph_id=graph_id,
-            organization_user__user_id=user.pk,
+            user_id=user.pk,
             deleted_at__isnull=True,
         )
         .first()

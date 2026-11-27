@@ -382,13 +382,10 @@
             @include mixins.node-actions-shown;
         }
 
+        // Selecting the node does not accent the delete chip; hovering the chip does (see the mixin).
         .interactive-node-body .node-action-bar,
         .node-action-bar--table {
             @include mixins.node-actions-shown;
-
-            .actions {
-                border: 2px solid var(--vp-selected-node-border-color);
-            }
         }
 
         .interactive-node-body .node-action-bar .key-value-summary-tab {

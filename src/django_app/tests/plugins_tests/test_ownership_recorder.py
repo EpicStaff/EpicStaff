@@ -2,11 +2,13 @@
 
 import ast
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from django.apps import apps
 from django.contrib.contenttypes.models import ContentType
 from django.db import connection, models, transaction
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models.signals import post_delete, pre_delete
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -14,6 +16,7 @@ from plugins.identity.service_account_authentication import PluginServiceAccount
 from plugins.models import PluginGrant, PluginOwnedResource
 from plugins.ownership import request_scope
 from plugins.ownership.ownership_recorder import EXTRA_OWNABLE_MODELS, ownable_models
+from proxies.sandbox.models import SandboxCustomLibraryBinding, SandboxVenvBinding
 from rbac.models import Organization
 from rbac.models.org_scoped import OrgScopedModel
 from rest_framework.request import Request
@@ -27,6 +30,7 @@ from tables.models.graph_models import StartNode
 from tables.services.storage_service.db_sync import StorageFileSync
 
 from tests.helpers import UNRESTRICTED_EXPORT_POLICY, data_to_json_file
+from tests.import_export_tests.venv_fakes import FakeSandbox
 from tests.plugins_tests.conftest import GATEWAY_SECRET, service_account_client
 
 pytestmark = [pytest.mark.django_db]
@@ -38,6 +42,8 @@ OWNER_ACCESS = [
     {"resource_type": "llm_configs", "actions": ["read", "create"], "reason": "Configs."},
     {"resource_type": "key_value_tables", "actions": ["read", "create"], "reason": "Tables."},
     {"resource_type": "files", "actions": ["read", "create"], "reason": "Files."},
+    {"resource_type": "venvs", "actions": ["read", "create"], "reason": "Venvs."},
+    {"resource_type": "custom_libraries", "actions": ["read", "create"], "reason": "Libraries."},
 ]
 
 # Every concrete organization-owned model that is not an ownable root, and why.
@@ -85,7 +91,7 @@ def _owned(model, pk):
     ("url", "body", "model"),
     [
         ("/api/graphs/", {"name": "Weather forecast"}, Graph),
-        ("/api/secrets/", {"name": "Weather · LLM key", "value": "sk-1"}, Secret),
+        ("/api/secrets/", {"name": "Weather - LLM key", "value": "sk-1"}, Secret),
         ("/api/llm-configs/", {"custom_name": "Weather summaries"}, LLMConfig),
         ("/api/key-value-tables/", {"name": "weather_cache"}, KeyValueTable),
     ],
@@ -99,6 +105,28 @@ def test_a_root_the_service_account_creates_is_owned(owner, acme, url, body, mod
     assert owned is not None
     assert (owned.org_id, owned.plugin_identifier, owned.on_behalf_of_id) == (acme.pk, "weather", None)
     assert owned.grant == PluginGrant.objects.get(org=acme)
+
+
+def test_a_venv_the_service_account_creates_is_owned(owner, acme):
+    with mock.patch("proxies.sandbox.services.VenvService.client_class", FakeSandbox()):
+        response = owner.post("/api/venvs/", {"name": "weather-venv", "libs": []}, format="json")
+
+    assert response.status_code == 201, response.content
+    owned = _owned(SandboxVenvBinding, response.json()["id"])
+    assert owned is not None
+    assert (owned.org_id, owned.plugin_identifier) == (acme.pk, "weather")
+
+
+def test_a_custom_library_the_service_account_uploads_is_owned(owner, acme):
+    wheel = SimpleUploadedFile("weatherlib-1.0-py3-none-any.whl", b"wheel", content_type="application/zip")
+    with mock.patch("proxies.sandbox.services.CustomLibraryService.client_class") as client_class:
+        client_class.return_value.__enter__.return_value.create.return_value = {"id": 41, "name": "weatherlib"}
+        response = owner.post("/api/custom-libraries/", {"file": wheel}, format="multipart")
+
+    assert response.status_code == 201, response.content
+    owned = _owned(SandboxCustomLibraryBinding, response.json()["id"])
+    assert owned is not None
+    assert (owned.org_id, owned.plugin_identifier) == (acme.pk, "weather")
 
 
 def test_a_root_created_on_behalf_of_a_person_records_the_person(owner_for_member, member_only):
@@ -365,7 +393,7 @@ class _BulkCreateFinder(ast.NodeVisitor):
 def _bulk_create_sites_of_ownable_roots() -> set[str]:
     model_names = {model.__name__ for model in ownable_models()}
     sites = set()
-    for app in ("tables", "ai_models", "agents"):
+    for app in ("tables", "ai_models", "agents", "proxies"):
         for path in sorted((DJANGO_APP / app).rglob("*.py")):
             relative = path.relative_to(DJANGO_APP).as_posix()
             if "/migrations/" in relative or "/tests/" in relative:

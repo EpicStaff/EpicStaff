@@ -28,15 +28,22 @@ Two things they still share:
 
 - **UNIX sockets in the abstract namespace.** These have no file, so file permissions do not
   apply: a socket one plugin opens there can be reached by every other plugin on the node. Use a
-  socket in your own directory instead, or none.
+  socket in your own directory instead, or none. Two plugins can also pass descriptors to each
+  other this way, a plugin's own listening socket included. The node never hands a socket that
+  served one plugin to the next plugin given its port, and stops a plugin that holds a TCP
+  connection on a port of the node's range other than its own, within a second. Until then such
+  a plugin can answer requests meant for the plugin whose socket it was given. A copy made to
+  listen again after its plugin left the node, before the next plugin given that port starts,
+  keeps that plugin from starting until the copy is closed.
 - **The node's ephemeral ports.** Every plugin on the node shares its ephemeral ports, 21000 to
   65535, about 44,500 of them. A plugin cannot `bind()` a socket, TCP or UDP, and its new TCP
   connections are capped and rate-limited. The node stops a plugin, and keeps it stopped until a
   SuperAdmin restarts it, when the plugin's user has a TCP socket listening on any port (a
-  `listen()` without `bind()`) or holds more than 1,280 network sockets in all, UDP sockets that
-  are connected and never send included. TCP connections it accepted on its own port do not
-  count. The node checks once a second, so a plugin can press on the ports for up to a second
-  before it is stopped ([Runtime](../reference/runtime.md#how-the-backend-is-started)).
+  `listen()` without `bind()`), holds a TCP connection on another plugin's port, or holds more
+  than 1,280 network sockets in all, UDP sockets that are connected and never send included. TCP
+  connections it accepted on its own port do not count. The node checks once a second, so a
+  plugin can press on the ports for up to a second before it is stopped
+  ([Runtime](../reference/runtime.md#how-the-backend-is-started)).
 
 ## A plugin chooses what EpicStaff's own sidebar shows
 
@@ -104,15 +111,17 @@ name lets the plugin reach all of them.
 ## Code runs in the sandbox outside the outbound hosts
 
 A plugin whose access includes `create`, `update` or `use` on flows, or `create` or `update` on
-tools, can have code of its choosing run in EpicStaff's sandbox: by writing a flow or a tool that
-holds code, or by running a flow. The sandbox has its own network access, and the plugin's
+tools, venvs or custom libraries, can have code of its choosing run in EpicStaff's sandbox: by
+writing a flow or a tool that holds code, by running a flow, or by choosing the libraries a venv
+installs or uploading a custom library package, which then run with all code in a venv that uses
+them, the organization's own included. The sandbox has its own network access, and the plugin's
 outbound hosts do not apply to that code. So the list a SuperAdmin approves bounds the plugin's
 backend, not what its flows and tools can reach. A flow a plugin writes also runs, with its code,
 whenever someone in the organization runs it, even when the plugin may not run flows itself. A
 tool's code runs whenever an agent calls the tool. The review warns about this
 ([review warnings](../reference/manifest.md#review-warnings)). Grant `flows` `create`, `update`
-or `use`, or `tools` `create` or `update`, only to a plugin you would trust with that network
-access.
+or `use`, or `create` or `update` on `tools`, `venvs` or `custom_libraries`, only to a plugin you
+would trust with that network access.
 
 Tools `create` or `update` has a second effect: the plugin can point an agent at an MCP server
 that is not one of its outbound hosts. The agent, not the plugin's backend, connects to it, so
@@ -135,11 +144,47 @@ Some limits are enforced after the fact. A process may briefly use more memory t
 before it is stopped, and the database statement timeout is a setting of the plugin's role that
 the node puts back when it was changed, rather than a hard limit.
 
+The disk cap is measured too, not enforced by the file system. The node measures every 30
+seconds, and at once when its free space falls fast, so a plugin can write past its cap by a few
+hundred MiB, or for up to 30 seconds while other plugins free space, before it is stopped. No one
+file grows past the cap. On a default install the plugin node's volume shares the host's file
+system with the database and the rest of EpicStaff, so a plugin that writes at the disk's full
+speed when the disk is nearly full can take the free space they need too.
+
+A plugin can also hide what it uses from the measurement. A deleted file whose descriptor the
+plugin sent over a UNIX socket and never received belongs to no process, so the node cannot see
+it, yet its space stays taken. Each plugin can keep up to 256 such files, each up to its cap: about
+512 GiB at the default cap, more than most disks. The node then measures that plugin as almost
+empty, and when the free space falls below the floor it stops the other plugins first. Only file
+system quotas would close this. So give the node a file system of its own
+([Enable plugins](../operator/enable-plugins.md#disk)) wherever its plugins are not all trusted:
+a full plugin volume then stops plugins, never the database or the rest of EpicStaff.
+
+## One plugin can restart the shared database server
+
+Every plugin's database lives on one Postgres server, `plugins_db`, whose container has a memory
+limit, `PLUGINS_DB_MEMORY`. A plugin can write a query that alone needs more than that limit, for
+example by raising its own `work_mem` and sorting or aggregating a large set. The kernel then
+kills that query's server process, and Postgres resets to recover from it: every plugin's open
+connections drop and its queries in flight fail, in every organization, for the seconds the
+recovery takes. Committed data is not lost. A plugin can do this again after every recovery.
+
+What bounds it: the memory limit itself, which keeps the rest of the host safe; the plugin role's
+`statement_timeout`, which ends a long query, though a plugin can change it for its own session
+(see [Soft limits](#soft-limits)); and the SuperAdmin's review, since the plugin's code issues
+the query. The setup wizard (`python scripts/envtool.py --setup`, "Tune performance and limits")
+fits `PLUGINS_DB_MEMORY` to the host, 2 GiB by default. An operator who sees `plugins_db`
+recovering, with "terminated by signal 9" in its logs, raises `PLUGINS_DB_MEMORY` in `src/.env`
+(for example to `4g`), recreates the container with
+`docker compose --profile plugins up -d plugins_db`, and finds and removes the plugin that issues
+the query.
+
 ## What a suspension does not stop
 
-A suspension stops runs, keys and people's access at once, but not everything: AI features
-outside runs, resources a running step reaches by name, voice conversations already open, and
-the plugin's own database and outbound access, which belong to the plugin, not to one
+A suspension stops runs, keys and people's access at once, but not everything: the "test"
+actions of models and tools, resources a running step reaches by name, the plugin's custom
+libraries that the organization's venvs install, voice conversations already open, and the
+plugin's own database and outbound access, which belong to the plugin, not to one
 organization. A run that starts in the moment a suspension is being saved may keep running for
 up to about a minute before it is stopped. The full list is in
 [the plugin lifecycle](lifecycle.md#what-a-suspension-does-not-stop).
@@ -157,6 +202,40 @@ What a plugin created stays the plugin's, even after people in the organization 
 a file a person overwrote under the plugin's name stays the plugin's file. Deleting the plugin's
 data in the organization deletes them all, people's edits included: EpicStaff does not hand a
 resource over to the organization when someone changes it. Copy what should outlive the plugin.
+
+## Custom library versions and links a plugin does not own
+
+A version of a custom library has no owner of its own: it belongs to whoever owns the library.
+A plugin with `custom_libraries` `update` can upload a new version to one of the organization's
+own libraries. That version is not the plugin's: deleting the plugin's data does not delete it,
+and the organization's venvs that install the library keep installing it. After deleting a
+plugin's data, check the versions of the organization's custom libraries it could update, and
+remove the ones it uploaded.
+
+A venv names the custom libraries it installs by name, inside the sandbox, not by a link
+EpicStaff can follow. So when one of the organization's venvs installs a library the plugin
+created, a run of code in that venv is not seen to use the plugin's library: a suspension does
+not refuse it.
+
+Deleting the plugin's data does not delete a venv the plugin created that the organization's
+code runs in, nor a custom library it created that one of the organization's venvs names: it
+hands them over to the organization, and the grant's `grant_purged` activity event lists them
+([lifecycle](lifecycle.md#when-the-grace-period-ends)). The plugin chose what such a venv
+installs, and the organization keeps running its code with exactly those libraries, the plugin's
+own custom library among them. Check what was handed over: the libraries of each venv, and the
+versions of each library. What is handed over while the plugin itself is deleted, from an
+organization whose grant was already gone, has no event: only the `plugins.purge.handed_over`
+line in Django's log names it ([deleting a plugin](lifecycle.md#deleting-a-plugin)).
+
+## A hanging sandbox holds up an organization's storage writes during a purge
+
+Deleting a plugin's data deletes each venv and custom library it owns in the sandbox and its
+record in EpicStaff in one transaction, which holds the organization's lock, so a failure
+between the two is put right by a later pass. While the sandbox hangs, that transaction waits
+for the sandbox client's timeout (`SANDBOX_CLIENT_TIMEOUT`, 30 seconds by default) on each call,
+up to two calls per venv or library. Until it gives up, file uploads, restores and other storage
+writes in that organization wait too. A pass checks its deadline before each row, so it runs
+at most one venv or library past it; each hourly pass does the same while the sandbox hangs.
 
 ## Backups hold every organization's data
 

@@ -206,6 +206,9 @@ RUN_REFERENCES: tuple[FollowField | FollowChildren, ...] = (
     # Tools and code.
     FollowField("tables.PythonCodeTool", "python_code"),
     FollowField("tables.PythonCode", "secrets"),
+    # The venv the code runs in. Its custom libraries are not reached: a venv names them
+    # inside the sandbox, by name, with no link in this database for the walk to follow.
+    FollowField("tables.PythonCode", "venv"),
     FollowField("tables.McpTool", "auth_secret"),
     # Knowledge: every RAG of a collection, not only the one a node picks.
     FollowChildren("tables.BaseRagType", "source_collection"),
@@ -302,6 +305,8 @@ RUN_START_MODELS: Mapping[RunKind, str] = MappingProxyType(
         RunKind.REALTIME: "agents.AgentDefinition",
         RunKind.VOICE_CHANNEL: "tables.RealtimeChannel",
         RunKind.CODE: "tables.PythonCode",
+        RunKind.LLM_CONFIG: "ai_models.LLMConfig",
+        RunKind.EMBEDDING_CONFIG: "ai_models.EmbeddingConfig",
     }
 )
 

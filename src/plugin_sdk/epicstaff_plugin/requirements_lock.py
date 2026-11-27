@@ -1,9 +1,14 @@
 """`backend/requirements.lock`: the hash-pinned list of everything a plugin's backend installs.
 
 The node builds the backend's virtual environment offline with
-`pip install --no-index --require-hashes --only-binary=:all: -r backend/requirements.lock`,
-from the wheels in `backend/wheels/`. So the lock may hold nothing but exact pins with
-SHA-256 hashes: no index or link options, no URLs, no editable or nested requirement files.
+`pip install --no-index --require-hashes --only-binary=:all: -r <lock>`, from the wheels in
+`backend/wheels/`. pip only ever reads the canonical copy of the lock
+(`RequirementsLock.canonical_text`), never the file as shipped, because pip reads a file
+differently from this parser in a few ways. The parser refuses a byte order mark, a coding
+declaration in a comment on the first two lines, `${` outside a comment (pip expands it) and a
+comment on a line pip would join to the next one. So the lock may
+hold nothing but exact pins with SHA-256 hashes: no index or link options, no URLs, no editable
+or nested requirement files.
 pip resolves every wheel's requirements too, and fails on one the lock does not pin, so the
 lock must pin them all (`pack` checks it). `uv pip compile requirements.in --universal
 --generate-hashes` writes such a file.
@@ -39,6 +44,9 @@ INSTALLER_DISTRIBUTION = canonicalize_name("pip")
 _HASH_OPTION = re.compile(r"^--hash=sha256:([0-9a-f]{64})$")
 # pip's rule: a '#' at the start of a line or after whitespace starts a comment.
 _COMMENT = re.compile(r"(^|\s+)#.*$")
+# pip's rule for a PEP 263 declaration: a first or second line that starts with '#'.
+_CODING_DECLARATION = re.compile(r"coding[:=]\s*([-\w.]+)")
+_UTF8_BOM = "\ufeff"
 _LOCK_LOC = archive_file_loc(REQUIREMENTS_LOCK_PATH)
 
 
@@ -58,6 +66,16 @@ class LockedRequirement:
         """Whether pip installs this pin on a machine described by `environment` (PEP 508 names)."""
         return self.marker is None or self.marker.evaluate(dict(environment))
 
+    def line(self) -> str:
+        """The canonical lock line.
+
+        Form: `<name>[<extras>]==<version> ; <marker> --hash=sha256:<hex> ...`.
+        """
+        extras = f"[{','.join(sorted(self.extras))}]" if self.extras else ""
+        marker = f" ; {self.marker}" if self.marker is not None else ""
+        hashes = "".join(f" --hash=sha256:{digest}" for digest in self.sha256)
+        return f"{self.name}{extras}=={self.version}{marker}{hashes}"
+
 
 @dataclass(frozen=True)
 class RequirementsLock:
@@ -71,6 +89,14 @@ class RequirementsLock:
         return tuple(
             requirement for requirement in self.requirements if requirement.name == normalized
         )
+
+    def canonical_text(self) -> str:
+        """The lock as one plain line per pin: no comments, no continuations.
+
+        What the node gives pip instead of the shipped file, so pip reads exactly what was
+        validated.
+        """
+        return "".join(f"{requirement.line()}\n" for requirement in self.requirements)
 
 
 def parse_requirements_lock(raw: bytes) -> RequirementsLock:
@@ -87,8 +113,10 @@ def parse_requirements_lock(raw: bytes) -> RequirementsLock:
         text = raw.decode("utf-8")
     except UnicodeDecodeError:
         raise PackageProblemsError([Problem(_LOCK_LOC, "is not UTF-8")]) from None
+    problems = _pip_reads_differently_problems(text)
+    if problems:
+        raise PackageProblemsError(problems)
     requirements = []
-    problems = []
     for line_number, line in _logical_lines(text):
         try:
             requirements.append(_parse_line(line, line_number))
@@ -135,6 +163,40 @@ def backend_lock_problems(
                 Problem(
                     archive_file_loc(path),
                     f"is {name} {version}, which {REQUIREMENTS_LOCK_PATH} does not pin",
+                )
+            )
+    return problems
+
+
+def _pip_reads_differently_problems(text: str) -> list[Problem]:
+    """What would make pip read the file as something other than what this parser read."""
+    if text.startswith(_UTF8_BOM):
+        return [Problem(_LOCK_LOC, "starts with a byte order mark; remove it")]
+    problems = []
+    lines = text.splitlines()
+    # pip looks for the declaration in the first two lines split at "\n" alone, as splitlines
+    # would also split at characters such as "\x1c" and push pip's second line further down.
+    for line_number, line in enumerate(text.split("\n")[:2], start=1):
+        if line.startswith("#") and _CODING_DECLARATION.search(line):
+            problems.append(
+                Problem(
+                    _LOCK_LOC,
+                    f"line {line_number}: a coding declaration is not allowed; the lock is UTF-8",
+                )
+            )
+    for line_number, line in enumerate(lines, start=1):
+        if "${" in _COMMENT.sub("", line):
+            problems.append(
+                Problem(_LOCK_LOC, f"line {line_number}: '${{' is not allowed; pip would expand it")
+            )
+        # pip joins a line ending in a backslash before it strips comments, unless the whole
+        # line is a comment.
+        if line.endswith("\\") and _COMMENT.search(line) and not _COMMENT.match(line):
+            problems.append(
+                Problem(
+                    _LOCK_LOC,
+                    f"line {line_number}: a comment may not end with a backslash; "
+                    "pip would join the next line to it",
                 )
             )
     return problems

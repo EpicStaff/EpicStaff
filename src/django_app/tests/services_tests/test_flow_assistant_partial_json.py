@@ -1,11 +1,11 @@
-"""Unit tests for partial_json.try_parse_full.
+"""Unit tests for partial_json: try_parse_full and MessageFieldStream.
 
 Pure string parsing — the tests themselves touch no tables.
 """
 
 import pytest
 
-from tables.services.flow_assistant.partial_json import try_parse_full
+from tables.services.flow_assistant.partial_json import MessageFieldStream, try_parse_full
 
 
 @pytest.mark.parametrize(
@@ -102,3 +102,71 @@ def test_non_dict_json_returns_none(buffer):
 @pytest.mark.parametrize("buffer", ["", "   ", "plain prose with no json at all"])
 def test_empty_or_non_json_buffer_returns_none(buffer):
     assert try_parse_full(buffer) is None
+
+
+# ── MessageFieldStream: the message value decoded from a document fed in chunks ──
+
+_STREAMED_DOCUMENTS = [
+    pytest.param('{"message": "hello", "ef_tables": []}', "hello", id="plain"),
+    pytest.param('{ "message" :\n\t"spaced" }', "spaced", id="whitespace-around-colon"),
+    pytest.param(r'{"message": "say \"hi\""}', 'say "hi"', id="escaped-quote"),
+    pytest.param(r'{"message": "back\\slash"}', r"back\slash", id="escaped-backslash"),
+    pytest.param(r'{"message": "a\nb\tc\rd\/e\bf\fg"}', "a\nb\tc\rd/e\bf\fg", id="simple-escapes"),
+    pytest.param(r'{"message": "caf\u00e9 \u20ac"}', "caf\u00e9 \u20ac", id="unicode-escape"),
+    pytest.param(r'{"message": "bad \uZZZZ end"}', r"bad \uZZZZ end", id="malformed-unicode-escape"),
+    pytest.param(r'{"message": "odd \q"}', "odd q", id="unknown-escape"),
+    pytest.param('{"message": "end"} "message": "again"', "end", id="text-after-closing-quote"),
+    pytest.param('{"message": ""}', "", id="empty-value"),
+    pytest.param('{"ef_tables": [], "action_message": []}', "", id="missing-key"),
+    pytest.param('{"message": null}', "", id="non-string-value"),
+    pytest.param('{"message" "no colon"}', "", id="missing-colon"),
+    pytest.param('{"message": "unterminated \\', "unterminated ", id="dangling-backslash"),
+    pytest.param(r'{"message": "unterminated \u00', "unterminated ", id="dangling-unicode-escape"),
+]
+
+
+@pytest.mark.parametrize("document, expected_message", _STREAMED_DOCUMENTS)
+def test_whole_document_fed_at_once_decodes_the_message(document, expected_message):
+    assert MessageFieldStream().feed(document) == expected_message
+
+
+@pytest.mark.parametrize("document, expected_message", _STREAMED_DOCUMENTS)
+def test_document_split_at_any_position_decodes_the_same_message(document, expected_message):
+    for split_position in range(len(document) + 1):
+        message_stream = MessageFieldStream()
+        decoded = message_stream.feed(document[:split_position]) + message_stream.feed(
+            document[split_position:]
+        )
+        assert decoded == expected_message, f"split at {split_position}"
+
+
+@pytest.mark.parametrize("chunk_length", [1, 3, 7])
+@pytest.mark.parametrize("document, expected_message", _STREAMED_DOCUMENTS)
+def test_document_fed_in_fixed_chunks_decodes_the_same_message(
+    document, expected_message, chunk_length
+):
+    message_stream = MessageFieldStream()
+    decoded = "".join(
+        message_stream.feed(document[index : index + chunk_length])
+        for index in range(0, len(document), chunk_length)
+    )
+    assert decoded == expected_message
+
+
+def test_each_chunk_returns_only_its_own_part_of_the_message():
+    message_stream = MessageFieldStream()
+
+    deltas = [
+        message_stream.feed(chunk)
+        for chunk in ['{"mess', 'age": "he', "llo \\", 'u00e9!', '"}', ', "x": "y"}']
+    ]
+
+    assert deltas == ["", "he", "llo ", "é!", "", ""]
+
+
+def test_empty_chunk_returns_nothing():
+    message_stream = MessageFieldStream()
+    message_stream.feed('{"message": "ab')
+
+    assert message_stream.feed("") == ""
+    assert message_stream.feed('c"}') == "c"

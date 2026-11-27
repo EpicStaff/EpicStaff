@@ -85,7 +85,8 @@ class ToolRegistryBuilder:
     Tool names are sanitized to the LLM-valid pattern ``^[A-Za-z0-9_-]{1,64}$``
     before being registered or exposed to the model.  Names must be unique across
     system and user tools; duplicates (including two names that collide after
-    sanitisation) raise ``DuplicateToolNameError``.
+    sanitisation) raise ``DuplicateToolNameError`` — except for MCP tools, which
+    fall back to another free name (see ``add_mcp_tool``).
 
     Method signatures
     -----------------
@@ -93,9 +94,10 @@ class ToolRegistryBuilder:
         Name, description, and args_schema are taken from ``data`` directly.
 
     ``add_mcp_tool(data: McpToolData, *, name: str, description: str, args_schema: dict)``
-        ``McpToolData`` carries only transport/auth config; name, description,
+        ``McpToolData`` carries transport/auth config; name, description,
         and args_schema must be supplied by the caller (``AgentResolver``
-        derives them from the tool pool entry metadata).
+        derives them from the tool pool entry metadata). A taken name falls
+        back to the tool's EpicStaff name, then to a numbered one.
 
     ``add_knowledge_tools(collection: CollectionSpec)``
         Registers one naive tool per naive entry (suffix ``_naive``) and one
@@ -173,11 +175,16 @@ class ToolRegistryBuilder:
     ) -> Self:
         """Register an MCP tool.
 
-        ``McpToolData`` carries transport/auth config only; ``name``,
-        ``description``, and ``args_schema`` must be supplied by the caller.
+        ``McpToolData`` carries transport/auth config; ``name``, ``description``,
+        and ``args_schema`` must be supplied by the caller.
+
+        Two MCP servers may expose a tool under the same name. The model sees
+        ``name`` while it is free, else the tool's EpicStaff name (``data.name``),
+        else that name numbered until free. The server is always called with
+        ``data.tool_name``, so the call is unaffected.
         """
         self._check_built()
-        clean_name = sanitize_tool_name(name)
+        clean_name = self._free_mcp_tool_name(name, data.name)
         self._add_name(clean_name)
         spec = ToolSpec(
             name=clean_name,
@@ -190,6 +197,21 @@ class ToolRegistryBuilder:
         executor = McpToolExecutor(self._mcp_gateway, data, name)
         self._registry.register(spec, executor)
         return self
+
+    def _free_mcp_tool_name(self, server_name: str, epicstaff_name: str | None) -> str:
+        candidates = [sanitize_tool_name(server_name)]
+        if epicstaff_name:
+            candidates.append(sanitize_tool_name(epicstaff_name))
+        for candidate in candidates:
+            if candidate not in self._names:
+                return candidate
+        base, number = candidates[-1], 2
+        while True:
+            suffix = f"_{number}"
+            candidate = base[: 64 - len(suffix)].rstrip("_") + suffix
+            if candidate not in self._names:
+                return candidate
+            number += 1
 
     def add_knowledge_tools(self, collection: CollectionSpec) -> Self:
         """Register knowledge tools for ``collection``.

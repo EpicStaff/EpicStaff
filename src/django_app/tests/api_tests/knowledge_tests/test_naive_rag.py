@@ -281,3 +281,73 @@ def test_bulk_delete_without_ids_is_400(auth_client, naive_rag):
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+INVALID_CHUNKER_PARAMS = [
+    {"csv": {"rows_in_chunk": 0}},
+    {"csv": {"rows_in_chunk": -5}},
+    {"character": {"regex": 5}},
+    {"csv": None},
+]
+VALID_CHUNKER_PARAMS = {"csv": {"rows_in_chunk": 50, "headers_level": 2}, "character": {"regex": r"\n\n"}}
+
+
+@pytest.mark.parametrize("additional_params", INVALID_CHUNKER_PARAMS)
+def test_updating_a_config_with_invalid_chunker_params_is_400_and_stores_nothing(
+    auth_client, naive_rag, naive_rag_document_config, additional_params
+):
+    response = auth_client.put(
+        _config_url(naive_rag, naive_rag_document_config.pk), {"additional_params": additional_params}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["errors"][0]["field"].startswith("additional_params.")
+    naive_rag_document_config.refresh_from_db()
+    assert naive_rag_document_config.additional_params == {}
+
+
+def test_updating_a_config_with_valid_chunker_params_stores_them(auth_client, naive_rag, naive_rag_document_config):
+    response = auth_client.put(
+        _config_url(naive_rag, naive_rag_document_config.pk), {"additional_params": VALID_CHUNKER_PARAMS}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    naive_rag_document_config.refresh_from_db()
+    assert naive_rag_document_config.additional_params == VALID_CHUNKER_PARAMS
+
+
+def test_bulk_update_reports_a_config_with_invalid_chunker_params_and_applies_the_rest(
+    auth_client, naive_rag, initialized_configs
+):
+    valid, invalid = initialized_configs[:2]
+
+    response = _bulk_update(
+        auth_client,
+        naive_rag,
+        [
+            {"id": valid.pk, "additional_params": VALID_CHUNKER_PARAMS},
+            {"id": invalid.pk, "additional_params": {"csv": {"rows_in_chunk": 0}}},
+        ],
+    )
+
+    assert response.status_code == status.HTTP_207_MULTI_STATUS
+    assert (response.json()["updated_count"], response.json()["failed_count"]) == (1, 1)
+    valid.refresh_from_db()
+    invalid.refresh_from_db()
+    assert (valid.additional_params, invalid.additional_params) == (VALID_CHUNKER_PARAMS, {})
+
+
+@pytest.mark.parametrize("additional_params", INVALID_CHUNKER_PARAMS)
+def test_chunk_preview_with_invalid_chunker_params_is_400_before_knowledge_is_called(
+    auth_client, naive_rag_document_config, additional_params, mocker
+):
+    knowledge_client = mocker.patch("tables.views.knowledge_views.naive_rag_views.KnowledgeClient")
+    response = auth_client.post(
+        reverse("process-document-chunking", args=[naive_rag_document_config.naive_rag_id, naive_rag_document_config.pk]),
+        {"chunk_strategy": "csv", "chunk_size": 1000, "chunk_overlap": 150, "additional_params": additional_params},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["errors"][0]["field"].startswith("additional_params.")
+    knowledge_client.assert_not_called()

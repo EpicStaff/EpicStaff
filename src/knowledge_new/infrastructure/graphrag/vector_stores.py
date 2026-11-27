@@ -64,13 +64,15 @@ class S3LanceDBVectorStore(LanceDBVectorStore):
 
     def connect(self) -> None:
         self.db_connection = lancedb.connect(self.db_uri, storage_options=self._storage_options)
-        if self.index_name and self.index_name in self.db_connection.table_names():
+        if self.index_name and self.index_name in self.db_connection.list_tables().tables:
             self.document_collection = self.db_connection.open_table(self.index_name)
 
     def create_index(self) -> None:
-        # graphrag's version builds an IVF_FLAT index on a one-row placeholder and then deletes
-        # the row, which drops the index again. The build only leaves lance's shuffle files
-        # behind in TMPDIR, never removed, so the empty table is created from its schema alone.
+        # graphrag's version builds an IVF_FLAT index on a one-row zero-vector placeholder and
+        # then deletes the row: an index with one meaningless centroid that every real row is
+        # added outside of (before lancedb 0.41 the delete dropped it again and the build only
+        # left lance's shuffle files behind in TMPDIR). The empty table is created from its
+        # schema alone instead, and search stays an exact scan.
         schema = pa.schema(
             [
                 pa.field(self.id_field, pa.string()),

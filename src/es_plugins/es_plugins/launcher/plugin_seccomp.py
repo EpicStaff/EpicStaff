@@ -14,6 +14,11 @@
   they reach. `clone3` answers ENOSYS, as in Docker's default profile: its flags are behind a
   pointer, which a filter cannot read, and glibc falls back to `clone` on ENOSYS, so threads
   and child processes still work.
+- **No memory-only files.** `memfd_create` and `memfd_secret` answer ENOSYS, as on a kernel
+  without them, so a caller falls back to a file. A memfd no process maps counts in no process's
+  memory, so the node's memory cap would never see it, and the container's OOM killer would pick
+  another plugin; a file in the plugin's HOME or TMPDIR counts against its disk cap instead.
+  (The agent passes runtime files to the launcher in a memfd; it does not run under this filter.)
 - **No kernel keyring, BPF, perf events or userfaultfd.** `keyctl`, `add_key`, `request_key`,
   `bpf`, `perf_event_open` and `userfaultfd` answer EPERM: kernel interfaces a web backend does
   not use, with a long history of privilege escalations.
@@ -63,8 +68,8 @@ class SystemCalls(NamedTuple):
     clone: int
     """Refused with a namespace flag in its first argument, allowed otherwise."""
 
-    clone3: int
-    """Answered ENOSYS."""
+    not_implemented: dict[str, int]
+    """Answered ENOSYS, whatever their arguments."""
 
 
 class _Architecture(NamedTuple):
@@ -73,7 +78,7 @@ class _Architecture(NamedTuple):
     has_x32: bool
 
 
-# The same numbers on both architectures: io_uring (425-427) and clone3 (435).
+# The same numbers on both architectures: io_uring (425-427), clone3 (435), memfd_secret (447).
 _IO_URING = {"io_uring_setup": 425, "io_uring_enter": 426, "io_uring_register": 427}
 ARCHITECTURES = {
     "x86_64": _Architecture(
@@ -94,7 +99,7 @@ ARCHITECTURES = {
                 "userfaultfd": 323,
             },
             clone=56,
-            clone3=435,
+            not_implemented={"clone3": 435, "memfd_create": 319, "memfd_secret": 447},
         ),
         has_x32=True,
     ),
@@ -116,7 +121,7 @@ ARCHITECTURES = {
                 "userfaultfd": 282,
             },
             clone=220,
-            clone3=435,
+            not_implemented={"clone3": 435, "memfd_create": 279, "memfd_secret": 447},
         ),
         has_x32=False,
     ),
@@ -161,7 +166,9 @@ def plugin_filter(machine: str | None = None) -> bytes:
         checks.append(_Jump(JUMP_IF_AT_LEAST, _X32_SYSCALL_BIT, "refuse"))
     checks += [_Jump(JUMP_IF_EQUAL, number, "refuse") for number in calls.refused.values()]
     checks += [
-        _Jump(JUMP_IF_EQUAL, calls.clone3, "not implemented"),
+        _Jump(JUMP_IF_EQUAL, number, "not implemented") for number in calls.not_implemented.values()
+    ]
+    checks += [
         _Jump(JUMP_IF_EQUAL, calls.clone, "clone"),
         (RETURN, SECCOMP_RET_ALLOW),
         _Label("clone"),

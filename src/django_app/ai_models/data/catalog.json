@@ -71703,7 +71703,7 @@
       "value_type": "integer"
     },
     "stop": {
-      "control": "chips",
+      "control": "list",
       "default": null,
       "draft": false,
       "group": "output",

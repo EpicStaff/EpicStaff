@@ -82,12 +82,16 @@ class NodeDisk:
             )
 
     def below_floor(self) -> FloorBreach | None:
-        free = self.free()
-        if free.bytes < FLOOR_BYTES:
-            return FloorBreach(False, f"only {_megabytes(free.bytes)} MB free", free.bytes)
-        if free.files is not None and free.files < FLOOR_FILES:
-            return FloorBreach(True, f"only {free.files} free inodes", free.files)
-        return None
+        return floor_breach(self.free())
+
+
+def floor_breach(free: FreeSpace) -> FloorBreach | None:
+    """How `free` is below the floor, or None when it is not."""
+    if free.bytes < FLOOR_BYTES:
+        return FloorBreach(False, f"only {_megabytes(free.bytes)} MB free", free.bytes)
+    if free.files is not None and free.files < FLOOR_FILES:
+        return FloorBreach(True, f"only {free.files} free inodes", free.files)
+    return None
 
 
 def _megabytes(byte_count: int) -> int:

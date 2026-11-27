@@ -11,13 +11,17 @@ interpreter never runs as the agent:
 2. That same interpreter, isolated, runs the pip wheel its own standard library ships for
    `ensurepip` (`ensurepip/_bundled/pip-*.whl`, fixed by the image's digest): `pip install
    --prefix <venv> --ignore-installed --no-index --find-links <wheels> --require-hashes
-   --only-binary=:all: -r requirements.lock`. Nothing is fetched, nothing is built from source,
-   every wheel must match its pinned hash, and the lock's markers and the wheels' tags are those
-   of the interpreter the plugin runs on. pip also resolves each wheel's requirements, from the
-   wheels' metadata alone, and hash-checking mode fails the install on one the lock does not pin,
-   naming it: a lock that misses a dependency fails the build rather than every start. The
-   wheels pip installs land in the venv, never where pip itself is read from, and the venv is not
-   on that interpreter's path.
+   --only-binary=:all: -r <canonical lock>`. pip only ever reads the canonical copy of the lock,
+   never the file as shipped: pip reads a file differently from the SDK's parser (a coding
+   declaration, a byte order mark, `${` expansion, a comment on a line it joins to the next), so
+   the node parses the lock with that parser, refusing those, and writes the canonical text of
+   what was parsed to the build's temporary directory (removed after the install). Nothing is
+   fetched, nothing is built from source, every wheel must match its pinned hash, and the lock's
+   markers and the wheels' tags are those of the interpreter the plugin runs on. pip also
+   resolves each wheel's requirements, from the wheels' metadata alone, and hash-checking mode
+   fails the install on one the lock does not pin, naming it: a lock that misses a dependency
+   fails the build rather than every start. The wheels pip installs land in the venv, never where
+   pip itself is read from, and the venv is not on that interpreter's path.
 3. `venv/bin/python*` must still be the symlinks to the plugin's interpreter, and the scripts pip
    wrote get the venv's `bin/python` in their first line instead of the interpreter pip ran on.
    A `.pth` file then puts the plugin's own code (`plugins/<id>/<version>/backend/src`) on the
@@ -37,8 +41,12 @@ import json
 import os
 import shutil
 import stat
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+
+from epicstaff_plugin.problems import PackageProblemsError
+from epicstaff_plugin.requirements_lock import parse_requirements_lock
 
 from es_plugins.packages.wheel_tag_check import check_wheel_tags
 
@@ -98,14 +106,23 @@ async def build_venv(request: VenvRequest) -> Path:
 
     Raises:
         IncompatibleWheelError: A wheel does not fit the interpreter (checked before pip).
-        VenvBuildError: The interpreter ships no pip wheel, `venv` or pip failed, or a wheel
-            replaced the venv's interpreter.
+        VenvBuildError: The lock is not one the SDK accepts, the interpreter ships no pip
+            wheel, `venv` or pip failed, or a wheel replaced the venv's interpreter.
     """
-    lock = request.backend / "requirements.lock"
     marker = _marker_for(request)
     python = request.venv / "bin" / "python"
     if venv_is_current(request):
         return python
+    canonical_lock = _write_canonical_lock(request)
+    try:
+        return await _build(request, canonical_lock, marker)
+    finally:
+        with contextlib.suppress(FileNotFoundError):
+            canonical_lock.unlink()
+
+
+async def _build(request: VenvRequest, canonical_lock: Path, marker: dict) -> Path:
+    python = request.venv / "bin" / "python"
     await check_wheel_tags(request.interpreter, request.backend / "wheels")
     interpreter = await _describe_interpreter(request.interpreter)
     environment = {
@@ -147,7 +164,7 @@ async def build_venv(request: VenvRequest) -> Path:
                 "--require-hashes",
                 "--only-binary=:all:",
                 "-r",
-                str(lock),
+                str(canonical_lock),
             ],
             environment,
             PIP_TIMEOUT_SECONDS,
@@ -180,6 +197,30 @@ def script_first_line(python: bytes) -> bytes:
     if b" " not in python and len(python) + 3 <= _MAX_SHEBANG_BYTES:
         return b"#!" + python + b"\n"
     return b"#!/bin/sh\n'''exec' " + python + b' "$0" "$@"\n' + b"' '''\n"
+
+
+def _write_canonical_lock(request: VenvRequest) -> Path:
+    """Parse the shipped lock and write its canonical text into the temporary directory."""
+    try:
+        lock = parse_requirements_lock((request.backend / "requirements.lock").read_bytes())
+    except PackageProblemsError as error:
+        raise VenvBuildError(f"requirements.lock is not acceptable: {error}") from None
+    descriptor, name = tempfile.mkstemp(
+        prefix="requirements-", suffix=".lock", dir=request.temporary_directory
+    )
+    path = Path(name)
+    try:
+        # UTF-8, as pip decodes a file without a coding declaration; a marker literal may be
+        # non-ASCII.
+        with os.fdopen(descriptor, "w", encoding="utf-8") as canonical:
+            canonical.write(lock.canonical_text())
+    except OSError as error:
+        path.unlink(missing_ok=True)
+        raise VenvBuildError(f"the canonical lock could not be written: {error}") from None
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    return path
 
 
 def _marker_for(request: VenvRequest) -> dict:

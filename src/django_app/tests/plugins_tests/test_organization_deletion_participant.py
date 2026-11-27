@@ -64,7 +64,7 @@ def cobalt_grant(weather, superadmin, cobalt, service_account_key, make_custom_r
     service_account_key(weather, cobalt)
     PluginRolePermission.objects.create(grant=grant, role=make_custom_role(cobalt, "Forecasters"), permissions=1)
     own(flow(cobalt, "Weather forecast"), grant)
-    own(secret_row(cobalt, "Weather · LLM key"), grant)
+    own(secret_row(cobalt, "Weather - LLM key"), grant)
     return grant
 
 

@@ -3,7 +3,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 
 from tables.import_export.constants import VENV_NAME_MAX_LENGTH, VENV_NAME_REFUSED_CHARACTERS
 from tables.import_export.enums import EntityType, NodeType
-from tables.import_export.utils import ensure_unique_slug
+from tables.import_export.utils import ensure_unique_slug, exported_nodes
 from tables.import_export.version_conversions.base import VersionConverter
 
 _NAME_SUFFIX = "-venv"
@@ -22,15 +22,13 @@ def v4_to_v5(data: dict) -> dict:
     for entry in data.get(EntityType.PYTHON_CODE_TOOL, []):
         environments.assign(entry.get("python_code"), owner=entry.get("name"))
 
-    for graph in data.get(EntityType.GRAPH, []):
-        for node in graph.get("nodes", []):
-            owner = node.get("node_name")
-            node_type = node.get("node_type")
-            if node_type in (NodeType.PYTHON_NODE, NodeType.WEBHOOK_TRIGGER_NODE):
-                environments.assign(node.get("python_code"), owner=owner)
-            elif node_type == NodeType.CLASSIFICATION_DECISION_TABLE_NODE:
-                environments.assign(node.get("pre_python_code"), owner=owner)
-                environments.assign(node.get("post_python_code"), owner=owner)
+    for node_type, node in exported_nodes(data):
+        owner = node.get("node_name")
+        if node_type in (NodeType.PYTHON_NODE, NodeType.WEBHOOK_TRIGGER_NODE):
+            environments.assign(node.get("python_code"), owner=owner)
+        elif node_type == NodeType.CLASSIFICATION_DECISION_TABLE_NODE:
+            environments.assign(node.get("pre_python_code"), owner=owner)
+            environments.assign(node.get("post_python_code"), owner=owner)
 
     if environments.entries:
         data[EntityType.VENV] = environments.entries
@@ -50,7 +48,7 @@ class _Environments:
         self._ids_by_libraries: dict[frozenset, int] = {}
         self._used_names: set[str] = set()
 
-    def assign(self, python_code: dict | None, *, owner: str | None) -> None:
+    def assign(self, python_code: dict | None, *, owner: object) -> None:
         if python_code is None:
             return
 
@@ -67,14 +65,17 @@ class _Environments:
             self.entries.append({"id": venv_id, "name": self._name_for(owner), "libs": libraries})
         python_code["venv"] = venv_id
 
-    def _name_for(self, owner: str | None) -> str:
+    def _name_for(self, owner: object) -> str:
         """Name the environment after what first asked for it, so the list stays readable.
 
         Tool and node names may hold any character but a venv name may not (v1.3 even
         names copies `Tool #2`), so the rest is dropped; an owner with nothing left
-        falls back to a numbered name.
+        falls back to a numbered name. A tool name is not checked to be text before
+        this runs, and the tool serializer accepts a number there, so it is read as
+        text.
         """
-        readable = " ".join(VENV_NAME_REFUSED_CHARACTERS.sub(" ", owner or "").split())
+        owner_text = "" if owner is None else str(owner)
+        readable = " ".join(VENV_NAME_REFUSED_CHARACTERS.sub(" ", owner_text).split())
         readable = readable[: VENV_NAME_MAX_LENGTH - len(_NAME_SUFFIX)].rstrip()
         base = f"{readable}{_NAME_SUFFIX}" if readable else f"imported-venv-{len(self.entries) + 1}"
         name = ensure_unique_slug(base, list(self._used_names), max_length=VENV_NAME_MAX_LENGTH)
@@ -82,7 +83,7 @@ class _Environments:
         return name
 
 
-def _parse_libraries(value: str, *, owner: str | None) -> list[dict]:
+def _parse_libraries(value: str, *, owner: object) -> list[dict]:
     """Split a v4 library string into the name and specifier pairs v5 carries.
 
     Anything pip itself would not read is dropped with a warning rather than

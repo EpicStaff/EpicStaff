@@ -50,6 +50,20 @@ async def test_neither_command_mentions_a_wheelhouse_when_there_is_none(commands
 
     assert commands
     assert all("--find-links" not in command for command in commands)
+    assert all("--offline" not in command and "--no-index" not in command for command in commands)
+
+
+async def test_an_offline_build_keeps_both_commands_off_the_index(commands, venv_path, tmp_path):
+    """A system venv is built at startup with no internet: the resolve and the install
+    both read the image's wheelhouse alone."""
+    wheelhouse = tmp_path / "system_wheelhouse"
+
+    await UVProvider.apply(venv_path, "pdfplumber==0.11.10", wheelhouse=wheelhouse, offline=True)
+
+    assert [command[:2] for command in commands] == [("pip", "compile"), ("pip", "sync")]
+    for command in commands:
+        assert {"--offline", "--no-index"} <= set(command)
+        assert command[command.index("--find-links") + 1] == str(wheelhouse)
 
 
 async def test_the_requirements_still_reach_the_resolver_unchanged(monkeypatch, venv_path, tmp_path):

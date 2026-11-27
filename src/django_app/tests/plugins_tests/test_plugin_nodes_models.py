@@ -17,6 +17,7 @@ from src.shared.models.plugin_nodes import (
     DesiredPlacement,
     DesiredRemoval,
     DesiredState,
+    HookResult,
     MigrationName,
     NodeReport,
     RuntimeCredentials,
@@ -614,3 +615,82 @@ def test_a_report_from_an_older_node_has_no_removals():
 def test_a_report_refuses_an_invalid_removal(removal):
     with pytest.raises(ValidationError):
         NodeReport.model_validate(_node_report(removals=[removal]))
+
+
+# ---- text a plugin writes ----
+
+# A NUL, which Postgres refuses in text and jsonb, and a surrogate: what Python makes of a file
+# name that is not UTF-8, which has no UTF-8 form.
+PLUGIN_WRITTEN = "data/\udcff\x00name"
+STORED = "data/\ufffdname"
+
+PLUGIN_TEXT_PLACES = {
+    "placement last_error": (
+        lambda text: _node_report(_placement_report(last_error=text)),
+        lambda report: report.placements[0].last_error,
+    ),
+    "log line": (
+        lambda text: _node_report(_placement_report(log_tail=["before", text])),
+        lambda report: report.placements[0].log_tail[1],
+    ),
+    "database last_error": (
+        lambda text: _node_report(_placement_report(database=_database_report(state="failed", last_error=text))),
+        lambda report: report.placements[0].database.last_error,
+    ),
+    "upgrade last_error": (
+        lambda text: _node_report(
+            _placement_report(
+                upgrade={
+                    "upgrade_id": 4,
+                    "generation": 0,
+                    "stage": "migrating",
+                    "step": "migrate",
+                    "state": "failed",
+                    "last_error": text,
+                }
+            )
+        ),
+        lambda report: report.placements[0].upgrade.last_error,
+    ),
+    "restore last_error": (
+        lambda text: _node_report(
+            _placement_report(restore={"restore_id": 5, "state": "failed", "step": "restore", "last_error": text})
+        ),
+        lambda report: report.placements[0].restore.last_error,
+    ),
+    "removal last_error": (
+        lambda text: _node_report(removals=[{"placement_id": 2, "generation": 0, "state": "failed", "last_error": text}]),
+        lambda report: report.removals[0].last_error,
+    ),
+}
+
+
+@pytest.mark.parametrize(("build", "read"), PLUGIN_TEXT_PLACES.values(), ids=PLUGIN_TEXT_PLACES.keys())
+def test_text_a_plugin_wrote_reaches_the_report_without_nul_or_surrogates(build, read):
+    report = NodeReport.model_validate(build(PLUGIN_WRITTEN))
+
+    assert read(report) == STORED
+    assert read(NodeReport.model_validate_json(report.model_dump_json())) == STORED
+
+
+@pytest.mark.parametrize(("build", "read"), PLUGIN_TEXT_PLACES.values(), ids=PLUGIN_TEXT_PLACES.keys())
+def test_text_read_from_a_node_drops_nul_too(build, read):
+    report = NodeReport.model_validate_json(json.dumps(build("a\x00b")), extra="ignore")
+
+    assert read(report) == "ab"
+
+
+def test_the_length_rule_applies_to_the_cleaned_text():
+    error = "x" * MAX_LAST_ERROR_LENGTH
+
+    report = NodeReport.model_validate(_node_report(_placement_report(last_error=error + "\x00")))
+
+    assert report.placements[0].last_error == error
+    with pytest.raises(ValidationError):
+        NodeReport.model_validate(_node_report(_placement_report(last_error=error + "\udcff")))
+
+
+def test_a_hook_error_a_plugin_wrote_is_sent_without_nul_or_surrogates():
+    result = HookResult(attempt=1, outcome="failed", error=PLUGIN_WRITTEN, duration_ms=5)
+
+    assert HookResult.model_validate_json(result.model_dump_json()).error == STORED

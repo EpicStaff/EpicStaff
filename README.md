@@ -119,6 +119,9 @@ keeps the existing credentials, because the databases were created with them.
 
 Once running, open http://localhost to start building.
 
+### Resource limits
+Every container has a memory limit and a process limit. Services that grow with load, such as `django_app`, `crew` and `agent`, have `<SERVICE>_MEMORY` and `<SERVICE>_CPUS` variables (for example `CREW_MEMORY`, `DJANGO_MEMORY`; `0` in `<SERVICE>_CPUS` means no CPU cap), and `src/env.yaml` lists them. The setup wizard fits the `<SERVICE>_MEMORY` limits to the machine's memory and keeps a reserve for the system; it never changes the fixed limits of other services or any CPU value. Those other services have fixed limits in `src/docker-compose.yaml`. To change the variables on an existing install, run `python scripts/envtool.py --setup` from the `EpicStaff` folder and choose **Tune performance and limits**; do not run the plain `python scripts/envtool.py`, which rewrites `.env` and its credentials. Apply a change with `docker compose up -d` from `src/`, because a plain `restart` keeps the old limits. A host-wide cap for the whole stack is a server setup task, not part of EpicStaff.
+
 <details>
 <summary>Alternative Setup Options</summary>
 
@@ -167,8 +170,10 @@ recreates the services from them; `django_app` applies database migrations as it
 - **Back up your volumes first.** Migrations change the database on start, and there is no
   downgrade path.
 
-If you run a [verified release](#running-a-verified-release), update by repeating those steps
-with the new release's tag and files.
+If you installed from a [release bundle](#running-a-verified-release), follow "Upgrading to a
+newer release" in its `INSTALL.md` instead: copy `src/.env` and `src/nginx/certs/` into the new
+release's folder before running the setup tool, or it generates new credentials the existing
+databases reject.
 
 ---
 
@@ -196,7 +201,7 @@ cosign verify-attestation \
   | jq -r '.payload | @base64d | fromjson | .predicate' > django_app.spdx.json
 ```
 
-The release's `docker-compose.yaml` and `.env.example` are signed as well, because the compose file is what decides *which* digests you run: an altered copy could point at an older, genuinely signed EpicStaff image and every per-image check above would still pass. Each file ships with a Sigstore bundle (`<file>.sigstore.json`) produced by `cosign sign-blob` in `publish_release.yml`, so the certificate identity names that workflow rather than `build-and-push.yml`. Verify the files before using them:
+The release's bundle (`epicstaff-vX.Y.Z.tar.gz`), `docker-compose.yaml` and `.env.example` are signed as well, because the compose file is what decides *which* digests you run: an altered copy could point at an older, genuinely signed EpicStaff image and every per-image check above would still pass. Each file ships with a Sigstore bundle (`<file>.sigstore.json`) produced by `cosign sign-blob` in `publish_release.yml`, so the certificate identity names that workflow rather than `build-and-push.yml`. Verify the files before using them:
 
 ```bash
 cosign verify-blob \
@@ -208,18 +213,30 @@ cosign verify-blob \
 
 Repeat with `.env.example` and `.env.example.sigstore.json`. A modified file, including one whose digests were swapped for another release's, fails this check.
 
-### Running a verified release
-
-The two files attached to a release, `docker-compose.yaml` and `.env.example`, are for verifying its digests and signatures only. They are not a standalone install: the compose file mounts configuration from the source tree next to it (`redis.conf`, the `nginx/` templates, start-up scripts and certificates, and more for the optional profiles), none of it is in the download, and unpacked into an empty folder the stack does not start. Running a release requires the source at that tag. Use the compose file as an overlay on a clone of the same tag, so `docker compose up` pulls the digest-pinned images you just verified instead of building from source:
+The bundle carries code you run on the host (`scripts/envtool.py`) and start-up scripts that run as root inside the containers, so its check accepts only a signature from a release tag, or from a manual run on a `release/vX.Y.Z` or `release/vX.Y.x` branch, never from any other branch:
 
 ```bash
-git clone -b vX.Y.Z https://github.com/EpicStaff/EpicStaff.git && cd EpicStaff
-# Download docker-compose.yaml and docker-compose.yaml.sigstore.json from the
-# vX.Y.Z release page into a separate folder, verify them as shown above, then:
-cp /path/to/downloaded/docker-compose.yaml src/docker-compose.yaml
+cosign verify-blob \
+  --bundle epicstaff-vX.Y.Z.tar.gz.sigstore.json \
+  --certificate-identity-regexp "^https://github.com/EpicStaff/EpicStaff/\.github/workflows/publish_release\.yml@refs/(tags/v[0-9]+\.[0-9]+\.[0-9]+|heads/release/v[0-9]+\.[0-9]+\.([0-9]+|x))$" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  epicstaff-vX.Y.Z.tar.gz
 ```
 
-Prepare a production `src/.env` with `envtool.py --setup` as described under the Quick Setup, create the volumes and network as in the Quick Setup block for your OS, and finish with `docker compose up` instead of `docker compose up --build`. Nothing is built: each `ghcr.io/epicstaff/*` service is pulled by the digest pinned in the file, and the image checks above apply to exactly what runs.
+### Running a verified release
+
+Each release from the one that introduced it onward carries a bundle, `epicstaff-vX.Y.Z.tar.gz`: the digest-pinned compose file, every configuration file it mounts, the setup tool that writes `src/.env`, and an `INSTALL.md`. It is a complete install; no clone is needed.
+
+```bash
+# Download epicstaff-vX.Y.Z.tar.gz and epicstaff-vX.Y.Z.tar.gz.sigstore.json from the
+# vX.Y.Z release page, verify them as shown above, then:
+tar -xzf epicstaff-vX.Y.Z.tar.gz
+cd epicstaff-vX.Y.Z
+```
+
+Follow `INSTALL.md` from there: write `src/.env` with the setup tool, add certificates if nginx serves HTTPS, create the external volumes and network, and `docker compose up -d` in `src/`. Nothing is built: each `ghcr.io/epicstaff/*` service is pulled by the digest pinned in the compose file, and the image checks above apply to exactly what runs. The separate `docker-compose.yaml` and `.env.example` on the release page are the same files as in the bundle, for checking image digests without downloading it.
+
+Releases published before the bundle have only those two files. To run one of them, use the compose file as an overlay on a clone of the same tag: `git clone -b vX.Y.Z https://github.com/EpicStaff/EpicStaff.git`, copy the verified `docker-compose.yaml` over `src/docker-compose.yaml`, prepare `src/.env` with `envtool.py --setup` as under the Quick Setup, create the volumes and network as in the Quick Setup block for your OS, and run `docker compose up` without `--build`.
 
 Each container keeps at most 50 MB of logs (five rotated 10 MB files, set by `x-bounded-logs` in `src/docker-compose.yaml`); older lines are dropped. To keep a longer history, raise `max-size` / `max-file` there or ship the logs to your own collector.
 

@@ -3,8 +3,15 @@ SPECTACULAR_SETTINGS = {
     "VERSION": "v1",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
+    # Pinned: tables/static/drf_spectacular/swagger_sidebar.js calls Swagger UI internals,
+    # so check the sidebar before bumping this version.
+    "SWAGGER_UI_DIST": "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.36.0",
+    "SWAGGER_UI_FAVICON_HREF": "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.36.0/favicon-32x32.png",
     "SWAGGER_UI_SETTINGS": {
         "persistAuthorization": True,
+        "deepLinking": True,
+        "displayRequestDuration": True,
+        "tryItOutEnabled": True,
     },
     "POSTPROCESSING_HOOKS": [
         "drf_spectacular.hooks.postprocess_schema_enums",

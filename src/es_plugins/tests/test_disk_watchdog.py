@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import os
 from types import SimpleNamespace
 
@@ -14,6 +16,8 @@ from es_plugins.node_disk import (
     NodeDiskFullError,
 )
 from es_plugins.supervisor.disk_watchdog import (
+    FAST_FALL_BYTES,
+    FAST_FALL_FILES,
     FURTHER_FALL_BYTES,
     MISSED_MEASUREMENTS_BEFORE_FAILING,
     DiskWatchdog,
@@ -105,6 +109,18 @@ async def test_a_plugin_over_its_disk_cap_is_failed_and_the_others_are_left_alon
     assert weather.failed_for == ["uses 70 MB of disk, more than its limit of 64 MB"]
     assert notes.failed_for == []
     assert launcher.requests[0] == ("weather", 20001, 64 * MIB, 1000)
+
+
+@pytest.mark.parametrize(("used", "reported"), [(64 * MIB + 4096, 65), (65 * MIB, 65), (65 * MIB + 1, 66)])
+async def test_the_use_over_the_cap_is_reported_rounded_up_so_it_never_reads_as_the_cap(used, reported):
+    # A file stopped at the cap by RLIMIT_FSIZE, plus its HOME's own blocks, is just past it.
+    weather = RecordingSupervisor("weather", 20001)
+    launcher = MeasuringLauncher()
+    launcher.usage = {20001: DiskUsage(bytes=used, files=3)}
+
+    await watchdog_for([weather], launcher).check_once()
+
+    assert weather.failed_for == [f"uses {reported} MB of disk, more than its limit of 64 MB"]
 
 
 async def test_a_plugin_over_its_file_cap_is_failed():
@@ -254,6 +270,79 @@ async def test_below_the_inode_floor_the_plugin_with_the_most_files_is_stopped()
         "uses the most of it (900 files)"
     ]
     assert large.failed_for == []
+
+
+@contextlib.asynccontextmanager
+async def running(watchdog):
+    task = asyncio.create_task(watchdog.run())
+    try:
+        yield
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+async def wait_until(condition, seconds=5.0):
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + seconds
+    while not condition():
+        assert loop.time() < deadline, "it never happened"
+        await asyncio.sleep(0.01)
+
+
+def watchdog_looking_often(supervisors, launcher, volume, interval=30.0):
+    """A watchdog as `run` drives it on a node, but looking at the free space every 10 ms."""
+    placements = [RecordingPlacement(supervisor) for supervisor in supervisors]
+    return DiskWatchdog(
+        launcher,
+        lambda: placements,
+        NodeDisk("/var/lib/es_plugins", statvfs=volume),
+        max_megabytes=64,
+        max_files=1000,
+        interval=interval,
+        free_space_poll_seconds=0.01,
+    )
+
+
+@pytest.mark.parametrize(("field", "fast_fall", "step"), [("free_bytes", FAST_FALL_BYTES, MIB), ("free_files", FAST_FALL_FILES, 1)])
+async def test_free_space_falling_fast_starts_a_measurement_at_once_rather_than_at_the_interval(field, fast_fall, step):
+    weather = RecordingSupervisor("weather", 20001)
+    launcher = MeasuringLauncher()
+    launcher.usage = {20001: DiskUsage(MIB, 3)}
+    volume = Volume()
+
+    async with running(watchdog_looking_often([weather], launcher, volume)):
+        await wait_until(lambda: len(launcher.requests) == 1)
+        setattr(volume, field, getattr(volume, field) - (fast_fall - step))
+        await asyncio.sleep(0.2)
+        assert len(launcher.requests) == 1
+
+        setattr(volume, field, getattr(volume, field) - step)
+        await wait_until(lambda: len(launcher.requests) == 2)
+
+
+async def test_free_space_falling_below_the_floor_stops_the_largest_plugin_at_once():
+    small, large = RecordingSupervisor("small", 20001), RecordingSupervisor("large", 20002)
+    launcher = MeasuringLauncher()
+    launcher.usage = {20001: DiskUsage(5 * MIB, 900), 20002: DiskUsage(50 * MIB, 10)}
+    volume = Volume(free_bytes=FLOOR_BYTES + MIB)
+
+    async with running(watchdog_looking_often([small, large], launcher, volume)):
+        await wait_until(lambda: len(launcher.requests) == 2)
+        volume.free_bytes = FLOOR_BYTES - MIB
+        await wait_until(lambda: large.failed_for)
+
+    assert small.failed_for == []
+
+
+async def test_without_a_fall_the_plugins_are_still_measured_every_interval():
+    weather = RecordingSupervisor("weather", 20001)
+    launcher = MeasuringLauncher()
+    launcher.usage = {20001: DiskUsage(MIB, 3)}
+
+    async with running(watchdog_looking_often([weather], launcher, Volume(), interval=0.05)):
+        await wait_until(lambda: len(launcher.requests) >= 3)
 
 
 def test_installing_needs_the_reserve_free():

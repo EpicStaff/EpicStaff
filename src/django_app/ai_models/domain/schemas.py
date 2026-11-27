@@ -7,6 +7,8 @@ the same ones, so the two cannot disagree.
 import functools
 from typing import Protocol
 
+from utils.secret_marker import SECRET_MARKER_PATTERN
+
 from ai_models.domain.specs import (
     ConnectionFieldSpec,
     ModelKind,
@@ -17,7 +19,8 @@ from ai_models.domain.specs import (
 from ai_models.domain.value_types import ValueTypeRegistry
 
 _DRAFT_2020_12 = "https://json-schema.org/draft/2020-12/schema"
-_SECRET_MARKER_PATTERN = r"^epicstaff_secret\(\s*[^)]+?\s*\)$"
+# The whole value is exactly one marker, in the syntax the secret resolver substitutes.
+_SECRET_MARKER_PATTERN = f"^{SECRET_MARKER_PATTERN}$"
 # Model names come from request query strings, so the memo must not grow without bound.
 _MEMO_SIZE = 1024
 

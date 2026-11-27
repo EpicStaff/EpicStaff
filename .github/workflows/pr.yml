@@ -24,6 +24,7 @@ jobs:
       fe: ${{ steps.filter.outputs.fe }}
       fe_deps: ${{ steps.filter.outputs.fe_deps }}
       be_deps: ${{ steps.filter.outputs.be_deps }}
+      licenses: ${{ steps.filter.outputs.licenses }}
       code: ${{ steps.filter.outputs.code }}
       cla: ${{ steps.filter.outputs.cla }}
       sandbox: ${{ steps.filter.outputs.be_sandbox }}
@@ -72,6 +73,10 @@ jobs:
           # pyproject.toml too: adding or removing one adds or removes a service.
           filter be_deps '^(src/[^/]+/uv\.lock$|src/[^/]+/pyproject\.toml$|scripts/generate-python-notices\.py$)'
 
+          # A dependency change always rewrites the notices (the two jobs above
+          # fail when it does not), so the notices file stands in for every lockfile.
+          filter licenses '^(THIRD-PARTY-NOTICES\.md$|scripts/license-policy\.(json|mjs)$|scripts/check-licenses(\.test)?\.mjs$|\.github/workflows/pr\.yml$)'
+
           # Wider than src/ and frontend/ on purpose: the compose matrix generator
           # in compose-build.yml also runs scripts/envtool.py and
           # .github/scripts/compose_matrix.py, so a change to either of those
@@ -117,9 +122,8 @@ jobs:
 
           # crew, agent, plugin_sdk, es_plugins, plugins_egress, realtime,
           # webhook, knowledge_new and shared need no database and nothing from
-          # the filesystem beyond an interpreter (knowledge_new also bakes a
-          # tokenizer file, see its step in backend-tests), so
-          # one matrix job covers them all and this picks its legs. A new
+          # the filesystem beyond an interpreter, so one matrix job covers them
+          # all and this picks its legs. A new
           # service of that kind is not picked up by itself: add it to this
           # list. `filter` leaves $result set, so the array is built from the
           # same regex that writes each output rather than from a second copy
@@ -372,7 +376,8 @@ jobs:
   # on a failure are in the docstring of check_env_conventions.py. Also runs the
   # envtool tests: SchemaCoverageTest fails when a variable without a prod
   # default is one the setup wizard does not fill. Needs only PyYAML, so no venv;
-  # runs on every PR because it is cheap.
+  # runs on every PR because it is cheap. Also checks that every file the compose file
+  # bind-mounts ships in the release bundle (test_build_release_bundle.py).
   check-env-conventions:
     runs-on: ubuntu-24.04
     steps:
@@ -395,6 +400,11 @@ jobs:
           python -m pip install --quiet --require-hashes -r .github/requirements/requests.txt
           python3 .github/scripts/test_ghcr_cleanup.py
 
+      - name: Test the release bundle builder
+        run: |
+          python -m pip install --quiet --require-hashes -r .github/requirements/ruamel-yaml.txt -r .github/requirements/pyyaml.txt
+          python3 .github/scripts/test_build_release_bundle.py
+
       - name: Environment variable conventions
         run: python3 .github/scripts/check_env_conventions.py
 
@@ -402,6 +412,9 @@ jobs:
         run: |
           python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
           python -m unittest scripts/test_envtool.py
+
+      - name: Test the Python notices generator
+        run: python -m unittest scripts/test_generate_python_notices.py
 
   # Backend half of the licence attribution guard: compares the uv.lock hashes
   # stamped in the notices header, so it needs neither venvs nor network.
@@ -415,6 +428,24 @@ jobs:
 
       - name: Check backend third-party notices are in sync
         run: python3 scripts/generate-python-notices.py --check
+
+  # Blocks a pull request that ships a package under a licence outside
+  # scripts/license-policy.json. Reads the committed notices, which the notices
+  # jobs keep in step with the lockfiles, so it needs no install. The daily
+  # license-scan.yml regenerates them from scratch on main.
+  check-licenses:
+    needs: changes
+    if: needs.changes.outputs.licenses == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Test the licence checker
+        run: node --test scripts/check-licenses.test.mjs
+
+      - name: Check shipped dependency licences
+        run: node scripts/check-licenses.mjs
 
   # The rbac app was extracted out of tables specifically to stop
   # rbac reaching back into tables. Two imports are structural and stay
@@ -578,31 +609,6 @@ jobs:
       # rather than silently resolving to something the Docker build never saw.
       - name: Install ${{ matrix.service }} dependencies
         run: make uv-sync svc=${{ matrix.service }}
-
-      # knowledge_new's token chunker loads the gpt2 tokenizer from the file that
-      # its Dockerfile bakes into the image (KNOWLEDGE_TOKENIZER_PATH); the runner
-      # has no image, so bake the same file here. Cached on the lockfile, which
-      # pins the tokie version that writes it, so huggingface.co is reached only
-      # when that changes. The process environment wins over src/.env.
-      - name: Cache knowledge_new tokenizer
-        if: matrix.service == 'knowledge_new'
-        id: tokenizer-cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: ${{ runner.temp }}/tokenizer
-          key: tokenizer-gpt2-${{ runner.os }}-${{ hashFiles('src/knowledge_new/uv.lock') }}
-
-      - name: Bake knowledge_new tokenizer
-        if: matrix.service == 'knowledge_new' && steps.tokenizer-cache.outputs.cache-hit != 'true'
-        run: >-
-          mkdir -p "$RUNNER_TEMP/tokenizer" &&
-          src/knowledge_new/.venv/bin/python -c
-          "import sys; from tokie import Tokenizer; Tokenizer.from_pretrained('openai-community/gpt2').save(sys.argv[1])"
-          "$RUNNER_TEMP/tokenizer/gpt2.tkz"
-
-      - name: Point knowledge_new at the tokenizer
-        if: matrix.service == 'knowledge_new'
-        run: echo "KNOWLEDGE_TOKENIZER_PATH=$RUNNER_TEMP/tokenizer/gpt2.tkz" >> "$GITHUB_ENV"
 
       - name: Unit tests
         run: make ${{ matrix.service }}-tests
@@ -1176,6 +1182,7 @@ jobs:
       - secret-scan
       - check-env-conventions
       - check-backend-notices
+      - check-licenses
       - check-rbac-boundary
       - frontend-checks
       - backend-tests

@@ -8,6 +8,8 @@ clearing it would shift every other test's marker.
 """
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 
 import httpx
 
@@ -35,3 +37,18 @@ class MockLlmClient:
 
     def calls_since(self, marker: int, path: str | None = None) -> list[dict]:
         return [call for call in self.calls()[marker:] if path is None or call["path"] == path]
+
+    @contextmanager
+    def embeddings_delayed(self, seconds: float) -> Iterator[None]:
+        """Every embeddings reply waits `seconds` inside the block; back to 0 after it."""
+        self._set_embeddings_delay(seconds)
+        try:
+            yield
+        finally:
+            self._set_embeddings_delay(0)
+
+    def _set_embeddings_delay(self, seconds: float) -> None:
+        response = self._http.put("/__embeddings_delay", params={"seconds": seconds})
+        assert response.status_code == 200, (
+            f"mock-llm /__embeddings_delay -> {response.status_code}: {scrub(response.text)[:500]}"
+        )

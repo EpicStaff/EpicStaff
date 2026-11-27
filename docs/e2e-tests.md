@@ -88,7 +88,7 @@ $DC down -v --remove-orphans           # fresh database for the next run
 | File | Covers |
 |---|---|
 | `test_auth_rbac.py` | Each bootstrap step (status codes and response shape), first-setup closed afterwards (`409 setup_already_completed`), superadmin login. |
-| `test_llm_config.py` | Quickstart with the API key, a custom model pointing at mock-llm, an LLM config bound to the quickstart secret. |
+| `test_llm_config.py` | Quickstart with the API key, a custom model, an LLM config on it whose `connection` points at mock-llm, bound to the quickstart secret. |
 | `test_storage.py` | Streamed raw-body upload through nginx, list, info, byte-exact download. |
 | `test_rag.py` | Collection, document upload, naive RAG with the character chunker, indexing via mock embeddings, chunks contain the run's token. |
 | `test_agent.py` | Knowledge surface, agent definition on the mock LLM, the legacy `instructions` field is refused. |
@@ -176,7 +176,10 @@ Each pytest invocation runs the bootstrap again, so reset the stack between invo
   `Creating virtual environment at <same path>` lines within a second.
 - **The live SSE check may start up to three runs.** Subscribing needs the session id that
   the run-session POST returns, so the run's earliest asserted event (the knowledge node's
-  `finish`) can precede the subscription. That is a harness race and the only retried case:
+  `finish`) can precede the subscription: with the mock LLM the knowledge node can finish
+  within ~30 ms. The live runs therefore make mock-llm hold every embeddings reply for 2 s
+  (`PUT /__embeddings_delay`, reset to 0 afterwards), which keeps that `finish` behind the
+  subscription. Should it still happen, it is a harness race and the only retried case:
   the replay's status is already `end`, or the run is still going but that `finish` was
   already replayed. `test_sse.py` detects it as soon as the status event arrives, then
   starts a fresh run with a fresh ticket (at most three attempts, counted in

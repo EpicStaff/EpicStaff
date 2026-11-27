@@ -65,7 +65,23 @@ def target_from_url(
     value = id_from_url(match)
     if value is None:
         return None
-    return str(value), _label_of_row(view_class, value, org_id, label_fields)
+    return _canonical_id(view_class, value), _label_of_row(view_class, value, org_id, label_fields)
+
+
+def _canonical_id(view_class, value) -> str:
+    """The primary key `value` names, written the one way its model writes it.
+
+    A URL can spell one row many ways (`0001` and `1` for an integer key, a UUID in upper
+    case or without hyphens); the row the view wrote is the same, so its id must be too. A
+    value the model cannot hold, and one of a view without a model, stay as the URL spells it.
+    """
+    model = model_of(view_class)
+    if model is None:
+        return str(value)
+    try:
+        return str(model._meta.pk.to_python(value))
+    except ValidationError:
+        return str(value)
 
 
 def id_from_url(match):

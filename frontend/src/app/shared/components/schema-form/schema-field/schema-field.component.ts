@@ -12,6 +12,7 @@ import { JsonEditorFormFieldComponent } from '../../json-editor/json-editor-form
 import { NumberStepperComponent } from '../../number-stepper/number-stepper.component';
 import { SelectComponent, SelectItem } from '../../select/select.component';
 import { SliderWithStepperComponent } from '../../slider-with-stepper/slider-with-stepper.component';
+import { StringListComponent } from '../../string-list/string-list.component';
 import { TextareaComponent } from '../../textarea/textarea.component';
 
 /** What a secret field stores: a reference to an organization secret by name, never its value. */
@@ -42,6 +43,7 @@ function hasType(property: JsonSchemaProperty, type: JsonSchemaType): boolean {
         ReactiveFormsModule,
         SelectComponent,
         SliderWithStepperComponent,
+        StringListComponent,
         TextareaComponent,
         ToggleSwitchComponent,
     ],

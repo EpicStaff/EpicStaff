@@ -6,6 +6,7 @@ export type SchemaWidget =
     | 'toggle'
     | 'select'
     | 'chips'
+    | 'list'
     | 'json'
     | 'text'
     | 'textarea'

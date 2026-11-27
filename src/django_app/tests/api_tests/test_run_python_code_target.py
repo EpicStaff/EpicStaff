@@ -266,6 +266,47 @@ class TestSandboxRefusesTheSubmission:
         assert len(sandbox_intake.bodies) == 1
 
 
+    @pytest.mark.parametrize(
+        ("error_body", "expected_stderr"),
+        [
+            (
+                {
+                    "type": "client_error",
+                    "errors": [
+                        {
+                            "code": "validation_error",
+                            "detail": "Value error, use_storage requires storage_org_prefix",
+                            "attr": None,
+                        },
+                        {
+                            "code": "validation_error",
+                            "detail": "Value error, entrypoint must be a Python function name",
+                            "attr": "entrypoint",
+                        },
+                    ],
+                },
+                "Value error, use_storage requires storage_org_prefix\n"
+                "Value error, entrypoint must be a Python function name",
+            ),
+            ({"detail": "rejected"}, "Invalid code execution request."),
+        ],
+        ids=["sandbox-reasons", "no-reasons"],
+    )
+    def test_a_refused_request_shows_the_sandboxs_reasons_not_an_outage(
+        self, acme_client, acme_graph, sandbox_intake, minted_credentials, error_body, expected_stderr
+    ):
+        sandbox_intake.status_code = 400
+        sandbox_intake.error_body = error_body
+        node = _python_node(acme_graph)
+
+        response = _run_target(acme_client, "python_node", node.id)
+
+        assert response.status_code == 200, response.data
+        result = PythonCodeResult.objects.get(execution_id=response.data["execution_id"])
+        assert result.status == PythonCodeResult.Status.ERROR
+        assert result.stderr == expected_stderr
+
+
 @pytest.mark.django_db
 class TestTargetLookupIsOrgScoped:
     def test_node_of_another_org_is_not_found(self, acme_client, beta_graph, sandbox_intake):

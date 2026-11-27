@@ -192,7 +192,7 @@ access each declared; a SuperAdmin sees every organization's on the plugin's **A
 
 | Action | Recorded when | Actor | Organization |
 |---|---|---|---|
-| `api_request` | A service account's call that changed something; with its method, path (never the query string), route, status, the resource it created or named, and `created_count`; `development: true` when it was made with a [development key](#development-keys) | The plugin, and the person it acted for | The service account's |
+| `api_request` | A service account's call that changed something; with its method, path (never the query string; cut at 2048 characters), route, status, the resource it created or named (by the row's id, however the URL spells it: `/api/graphs/007/` names `7`), and `created_count`; `development: true` when it was made with a [development key](#development-keys) | The plugin, and the person it acted for | The service account's |
 | `package_approved` | A SuperAdmin approved a package (`version`, `trust`) | SuperAdmin | none |
 | `grant_created` | A SuperAdmin granted the plugin to an organization | SuperAdmin | the grant's |
 | `install_hook_succeeded`, `install_hook_failed` | The install hook reported (`job_id`, `attempt`, and `error` when it failed) | Platform | the grant's |
@@ -200,7 +200,7 @@ access each declared; a SuperAdmin sees every organization's on the plugin's **A
 | `grant_suspended` | A SuperAdmin suspended the plugin in the organization, or uninstalled it (`previous_state`, `purge_after`, `cause`: `grant` or `uninstall`) | SuperAdmin | the grant's |
 | `grant_resumed` | A SuperAdmin resumed it, or reinstalled the plugin (`state`: `active`; `install_failed` when its install hook never succeeded; `upgrading` when the plugin's version changed meanwhile; `cause`: the suspension's) | SuperAdmin | the grant's |
 | `grant_purge_started` | Deleting the plugin's data in the organization began (`reason`: `requested`, `grace_period_over` or `plugin_deleted`; `previous_state`; `owned_resources`, how many resources it owned) | SuperAdmin or Platform | the grant's |
-| `grant_purged` | The plugin's data in the organization is deleted, and the grant with it | Platform | the grant's |
+| `grant_purged` | The plugin's data in the organization is deleted, and the grant with it (`handed_over_venvs`, `handed_over_custom_libraries`: what the organization still used and now owns, each `<name> (id <n>)`) | Platform | the grant's |
 | `org_removed_hook_succeeded`, `org_removed_hook_failed` | The organization removed hook reported success, or failed for good after its retries (`job_id`, `attempt`, and `error` when it failed); a failed attempt that is retried records nothing | Platform | the job's |
 | `org_removed_hook_retried` | A SuperAdmin retried a data removal (`job_id`) | SuperAdmin | the job's |
 | `org_removed_hook_skipped` | A SuperAdmin skipped a data removal, or the platform did while deleting the plugin (`job_id`, `state_before`) | SuperAdmin or Platform | the job's |

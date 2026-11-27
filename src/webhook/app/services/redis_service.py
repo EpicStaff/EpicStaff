@@ -2,13 +2,19 @@ from typing import Any
 
 import redis.asyncio as aioredis
 from loguru import logger
-from redis.client import PubSub
+from redis.exceptions import RedisError
 from src.shared.models import WebhookEventData
 
 from app.core.settings import settings
 
+REDIS_SOCKET_TIMEOUT_SECONDS = 10.0
 
-class NoWebhookSubscriberError(Exception):
+
+class WebhookDeliveryUnavailableError(Exception):
+    """Raised when a webhook event could not be handed over to Django's listener."""
+
+
+class NoWebhookSubscriberError(WebhookDeliveryUnavailableError):
     """Raised when a webhook event was published but no listener received it."""
 
     def __init__(self, channel: str):
@@ -23,7 +29,18 @@ class RedisService:
 
     def __init__(self, host: str, port: int, webhook_channel: str, password: str):
         self.redis_url = f"redis://{host}:{port}"
-        self.client = aioredis.from_url(self.redis_url, password=password, decode_responses=True)
+        self.client = aioredis.from_url(
+            self.redis_url,
+            password=password,
+            decode_responses=True,
+            # Without these a command on a dead connection, or a connect to an unreachable
+            # host, waits for the kernel to give up (minutes; about 15 for a command on
+            # Linux), and the tunnel config listener hangs that long in its sync request
+            # instead of resubscribing. A read given its own timeout, as the listener's
+            # polls are, uses that one instead of socket_timeout.
+            socket_timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
+            socket_connect_timeout=REDIS_SOCKET_TIMEOUT_SECONDS,
+        )
         self.webhook_channel = webhook_channel
         logger.info(f"RedisService initialized for {self.redis_url}")
 
@@ -41,6 +58,7 @@ class RedisService:
 
         Raises:
             NoWebhookSubscriberError: The publish reached no subscriber.
+            WebhookDeliveryUnavailableError: Redis failed or timed out on the publish.
         """
         message_data = WebhookEventData(
             path=path,
@@ -49,9 +67,15 @@ class RedisService:
         )
 
         logger.debug(f"Publishing to Redis channel '{self.webhook_channel}'")
-        receiver_count = await self.client.publish(
-            self.webhook_channel, message_data.model_dump_json()
-        )
+        try:
+            receiver_count = await self.client.publish(
+                self.webhook_channel, message_data.model_dump_json()
+            )
+        except RedisError as e:
+            raise WebhookDeliveryUnavailableError(
+                f"Publishing to Redis channel '{self.webhook_channel}' failed: "
+                f"{type(e).__name__}: {e}"
+            ) from e
         if receiver_count == 0:
             raise NoWebhookSubscriberError(self.webhook_channel)
 
@@ -67,11 +91,6 @@ class RedisService:
         """Closes the Redis connection."""
         logger.info("Closing Redis connection...")
         await self.client.close()
-
-    async def async_subscribe(self, channel: str) -> PubSub:
-        pubsub = self.client.pubsub()
-        await pubsub.subscribe(channel)
-        return pubsub
 
 
 _redis_service: RedisService | None = None

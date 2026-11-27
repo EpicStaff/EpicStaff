@@ -1,4 +1,5 @@
-"""Behavior of the heartbeat loop: it keeps beating and reports what the worker holds."""
+"""Behavior of the heartbeat loop: it beats at once, keeps beating, and reports what the
+worker holds and its guaranteed slots."""
 
 import asyncio
 import json
@@ -46,7 +47,7 @@ async def beat_until(heartbeat: Heartbeat, handler: CountingHandler, count: int)
 async def test_the_heartbeat_reports_the_held_executions_every_interval():
     handler = CountingHandler()
     heartbeat = Heartbeat(
-        client_for(handler), lambda: {"exec-2", "exec-1"}, interval=0.01
+        client_for(handler), lambda: {"exec-2", "exec-1"}, guaranteed_slots=16, interval=0.01
     )
 
     await beat_until(heartbeat, handler, count=2)
@@ -54,12 +55,25 @@ async def test_the_heartbeat_reports_the_held_executions_every_interval():
     request = handler.requests[0]
     assert request.url.path == "/worker/heartbeat"
     assert request.headers["X-Worker-Boot-Id"] == "boot-1"
-    assert json.loads(request.content) == {"execution_ids": ["exec-1", "exec-2"]}
+    assert json.loads(request.content) == {
+        "execution_ids": ["exec-1", "exec-2"],
+        "guaranteed_slots": 16,
+    }
+
+
+async def test_the_first_beat_goes_out_at_once():
+    """The manager needs the guaranteed slots before the first burst, not an interval later."""
+    handler = CountingHandler()
+    heartbeat = Heartbeat(client_for(handler), lambda: set(), guaranteed_slots=16, interval=60)
+
+    await beat_until(heartbeat, handler, count=1)
+
+    assert len(handler.requests) == 1
 
 
 async def test_a_failed_beat_does_not_stop_the_loop():
     handler = CountingHandler(httpx.ConnectError("refused"))
-    heartbeat = Heartbeat(client_for(handler), lambda: set(), interval=0.01)
+    heartbeat = Heartbeat(client_for(handler), lambda: set(), guaranteed_slots=16, interval=0.01)
 
     await beat_until(heartbeat, handler, count=3)
 

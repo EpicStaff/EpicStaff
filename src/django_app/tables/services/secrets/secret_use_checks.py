@@ -338,8 +338,8 @@ def check_venv_write(
     A library runs inside the code's process, which holds its secrets, so installing one
     is gated like changing the code (reported under `libs`). Binned code counts. The
     current libraries live in the sandbox, so `read_current_libs` is called only for a
-    venv such code runs in. Libraries are compared by name, specification and version,
-    not by description or order.
+    venv such code runs in. Libraries are compared by name, specification, version and
+    source (`is_custom`), not by description or order.
     """
     if "libs" not in data:
         return
@@ -771,7 +771,12 @@ def _installed(libs):
         # A fresh object equals nothing, so an unreadable value always counts as a change.
         return object()
     return sorted(
-        (str(lib.get("name")), lib.get("specification") or "", lib.get("version") or "")
+        (
+            str(lib.get("name")),
+            lib.get("specification") or "",
+            lib.get("version") or "",
+            bool(lib.get("is_custom")),
+        )
         for lib in libs
     )
 
