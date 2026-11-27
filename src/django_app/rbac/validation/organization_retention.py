@@ -1,3 +1,5 @@
+import re
+from datetime import time
 from typing import Any
 
 from django.conf import settings
@@ -16,6 +18,9 @@ REQUEST_FIELD_BY_DATA_TYPE: dict[DataType, str] = {
     DataType.AUDIT: "audit_days",
 }
 
+DASHBOARD_SCHEDULE_FIELDS = ("dashboard_refresh_minutes", "dashboard_refresh_daily_at")
+DAILY_AT_PATTERN = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
+
 
 class OrganizationRetentionValidationService(BaseRBACValidator):
     """Validates the organization retention PATCH body against the instance policy.
@@ -24,22 +29,26 @@ class OrganizationRetentionValidationService(BaseRBACValidator):
     names the rejected fields as well.
     """
 
-    def validate_update(self, data: Any, current: OrganizationConfig) -> dict[DataType, int | None]:
-        """Return the sent values keyed by data type.
+    def validate_update(
+        self, data: Any, current: OrganizationConfig
+    ) -> tuple[dict[DataType, int | None], dict[str, int | time | None]]:
+        """Return the sent retention values keyed by data type, and the sent dashboard
+        schedule keyed by OrganizationConfig field.
 
         A value is accepted when it is null (the instance default), one of the values the
         policy allows, or the value the organization already stores. The last case keeps a
         form re-savable after an operator lowers a cap or raises a floor past an earlier
-        choice; the cap and floor still apply through `effective_retention_days`.
+        choice; the cap and floor still apply through `effective_retention_days`. The
+        dashboard interval follows the same rule against the DASHBOARD_REFRESH_MINUTES_*
+        bounds.
 
         Args:
             current: The organization's stored config, locked by the caller.
         """
         fields = REQUEST_FIELD_BY_DATA_TYPE
-        if not isinstance(data, dict) or not any(name in data for name in fields.values()):
-            self._raise(
-                [FieldError("body", None, f"Send at least one of: {', '.join(fields.values())}.")]
-            )
+        accepted = [*fields.values(), *DASHBOARD_SCHEDULE_FIELDS]
+        if not isinstance(data, dict) or not any(name in data for name in accepted):
+            self._raise([FieldError("body", None, f"Send at least one of: {', '.join(accepted)}.")])
 
         errors: list[FieldError] = []
         values: dict[DataType, int | None] = {}
@@ -51,8 +60,65 @@ class OrganizationRetentionValidationService(BaseRBACValidator):
             if error is not None:
                 errors.append(error)
             values[data_type] = value
+        schedule = self._dashboard_schedule(data, current, errors)
         self._raise(errors)
-        return values
+        return values, schedule
+
+    def _dashboard_schedule(
+        self, data: dict, current: OrganizationConfig, errors: list[FieldError]
+    ) -> dict[str, int | time | None]:
+        schedule: dict[str, int | time | None] = {}
+        if "dashboard_refresh_minutes" in data:
+            minutes = data["dashboard_refresh_minutes"]
+            error = self._refresh_minutes_error(minutes, current)
+            if error is not None:
+                errors.append(error)
+            schedule["dashboard_refresh_minutes"] = minutes
+        if "dashboard_refresh_daily_at" in data:
+            value = data["dashboard_refresh_daily_at"]
+            daily_at = self._daily_at(value)
+            if value is not None and daily_at is None:
+                errors.append(
+                    FieldError(
+                        "dashboard_refresh_daily_at",
+                        value,
+                        "Must be a UTC time as HH:MM, or null.",
+                    )
+                )
+            schedule["dashboard_refresh_daily_at"] = daily_at
+        minutes = schedule.get("dashboard_refresh_minutes", current.dashboard_refresh_minutes)
+        daily_at = schedule.get("dashboard_refresh_daily_at", current.dashboard_refresh_daily_at)
+        if minutes is not None and daily_at is not None:
+            errors.append(
+                FieldError(
+                    "body",
+                    None,
+                    "Choose either dashboard_refresh_minutes or dashboard_refresh_daily_at, not both.",
+                )
+            )
+        return schedule
+
+    @staticmethod
+    def _refresh_minutes_error(value: Any, current: OrganizationConfig) -> FieldError | None:
+        if value is None:
+            return None
+        low, high = settings.DASHBOARD_REFRESH_MINUTES_MIN, settings.DASHBOARD_REFRESH_MINUTES_MAX
+        error = FieldError(
+            "dashboard_refresh_minutes",
+            value,
+            f"Must be a whole number from {low} to {high}, or null for the default.",
+        )
+        if not isinstance(value, int) or isinstance(value, bool):
+            return error
+        if value == current.dashboard_refresh_minutes or low <= value <= high:
+            return None
+        return error
+
+    @staticmethod
+    def _daily_at(value: Any) -> time | None:
+        if not isinstance(value, str) or not DAILY_AT_PATTERN.fullmatch(value):
+            return None
+        return time.fromisoformat(value)
 
     @staticmethod
     def _retention_days_error(
