@@ -1,8 +1,10 @@
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { NodeType } from '@shared/models';
 
+import { ProfileService } from '../../../services/auth/profile.service';
+import { memberOf, ORGANIZATION_A } from '../../../services/auth/testing/current-user-fixtures';
 import { FlowModel } from '../../core/models/flow.model';
-import { FlowSettingsService } from '../../services/flow-settings.service';
 import { NodeFactoryService } from '../../services/node-factory.service';
 import { buildUuidToBackendIdMap, getConnectionDiff, getNodeDiff } from './diff';
 import { buildBulkSavePayload } from './payload';
@@ -13,7 +15,14 @@ describe('saving a schedule trigger node just dropped on the canvas', () => {
     it('sends an inactive one-time schedule starting at its proposed time', () => {
         vi.useFakeTimers();
         vi.setSystemTime(new Date(2026, 9, 23, 12, 41, 7));
-        TestBed.inject(FlowSettingsService).timezone.set('Europe/Kyiv');
+        const user = memberOf(ORGANIZATION_A);
+        const preferences = {
+            ...user.preferences,
+            general: { display_timezone: null, default_timezone: 'Europe/Kyiv' },
+        };
+        TestBed.configureTestingModule({
+            providers: [{ provide: ProfileService, useValue: { currentUserSignal: signal({ ...user, preferences }) } }],
+        });
         const node = TestBed.inject(NodeFactoryService).createNode(NodeType.SCHEDULE_TRIGGER);
         const previous: FlowModel = { nodes: [], connections: [] };
         const current: FlowModel = { nodes: [node], connections: [] };

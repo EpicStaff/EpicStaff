@@ -778,6 +778,8 @@ describe('FlowGraphComponent', () => {
                     beforeCreate: () =>
                         TestBed.overrideProvider(ProfileService, {
                             useValue: {
+                                // Read for the flow settings: nobody signed in, so the defaults apply.
+                                currentUserSignal: signal(null),
                                 shortcutSettings: signal(SAVED_SHORTCUTS),
                                 updateShortcutSettings: () => EMPTY,
                             },
@@ -1265,6 +1267,22 @@ describe('FlowGraphComponent', () => {
             expect(canvas.fitToScreen).not.toHaveBeenCalled();
             expect(canvas.redraw).toHaveBeenCalled();
             expect(component.captureViewport()).toEqual({ position: { x: -120, y: 40 }, scale: 0.6 });
+        });
+
+        it('shows the viewport it is given for the next flow on the canvas', () => {
+            const fixture = mount(false, { nodes: [createStartNode(), noteNode()], connections: [] });
+            const component = fixture.componentInstance;
+            const canvas = fakeCanvas();
+            component['fCanvasComponent'] = canvas as unknown as FlowGraphComponent['fCanvasComponent'];
+
+            vi.useFakeTimers();
+            component.restoreAfterNextFlowChange({ position: { x: -300, y: 80 }, scale: 0.4 });
+            fixture.componentRef.setInput('flowState', { nodes: [createStartNode()], connections: [] });
+            fixture.detectChanges();
+            vi.runAllTimers();
+
+            expect(canvas.fitToScreen).not.toHaveBeenCalled();
+            expect(component.captureViewport()).toEqual({ position: { x: -300, y: 80 }, scale: 0.4 });
         });
 
         it('fits to screen when no initialViewport is given', () => {

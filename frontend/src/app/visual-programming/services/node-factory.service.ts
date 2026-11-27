@@ -25,9 +25,6 @@ export class NodeFactoryService {
         const id = generateUuid();
         const nodeData = overrides?.data ?? this.createDefaultData(type);
 
-        if (type === NodeType.SCHEDULE_TRIGGER && nodeData) {
-            (nodeData as ScheduleTriggerNodeData).timezone = this.flowSettings.timezone();
-        }
         const size = getDefaultNodeSize(type, nodeData);
         const ports: ViewPort[] = type === NodeType.NOTE ? [] : generatePortsForNode(id, type, nodeData);
         const nodeNumber = isNumberedNodeType(type) ? this.flowService.getNextNodeNumber() : undefined;
@@ -62,12 +59,17 @@ export class NodeFactoryService {
 
     /**
      * A new schedule already proposes its first run, the one its panel would offer, so the canvas shows
-     * the schedule's name ("Once on … at …") before the panel is ever opened. It stays inactive.
+     * the schedule's name ("Once on … at …") before the panel is ever opened. It stays inactive, and runs in the
+     * user's zone for new schedules in this flow: the flow's own, else the account's default, else the browser's.
      */
     private createDefaultData(type: NodeType): NodeModel['data'] {
         const data = DEFAULT_NODE_DATA[type]?.() ?? {};
         if (type === NodeType.SCHEDULE_TRIGGER) {
-            return { ...(data as ScheduleTriggerNodeData), startDateTime: defaultScheduleStartDateTime() };
+            return {
+                ...(data as ScheduleTriggerNodeData),
+                startDateTime: defaultScheduleStartDateTime(),
+                timezone: this.flowSettings.newScheduleZone(),
+            };
         }
         return data as NodeModel['data'];
     }

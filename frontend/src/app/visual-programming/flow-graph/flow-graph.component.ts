@@ -436,8 +436,8 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
     private readonly permissions = inject(PermissionsService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly ngZone = inject(NgZone);
-    /** Set by `fitAfterNextFlowChange`, used up when the next `flowState` is applied. */
-    private fitOnNextFlowChange = false;
+    /** Set by `fitAfterNextFlowChange` or `restoreAfterNextFlowChange`, used up when the next `flowState` is applied. */
+    private viewportOnNextFlowChange: FlowViewport | 'fit' | null = null;
 
     // Start from the current count so a canvas re-created after an earlier save request
     // (e.g. when leaving version preview) does not replay it. untracked: this initialiser runs
@@ -803,10 +803,15 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
         }
         if (changes['flowState'] && !changes['flowState'].firstChange) {
             this.applyIncomingFlowState(this.flowState);
-            if (this.fitOnNextFlowChange) {
-                this.fitOnNextFlowChange = false;
+            const viewport = this.viewportOnNextFlowChange;
+            if (viewport !== null) {
+                this.viewportOnNextFlowChange = null;
                 setTimeout(() => {
-                    this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, false);
+                    if (viewport === 'fit') {
+                        this.fCanvasComponent.fitToScreen({ x: 200, y: 100 }, false);
+                    } else {
+                        this.applyViewport(viewport);
+                    }
                 }, 0);
             }
         }
@@ -850,7 +855,12 @@ export class FlowGraphComponent implements OnInit, OnChanges, OnDestroy {
 
     /** Fits the flow to the screen once the next `flowState` is applied, e.g. when the host binds another canvas. */
     public fitAfterNextFlowChange(): void {
-        this.fitOnNextFlowChange = true;
+        this.viewportOnNextFlowChange = 'fit';
+    }
+
+    /** Shows `viewport` once the next `flowState` is applied, e.g. when the host opens another flow on this canvas. */
+    public restoreAfterNextFlowChange(viewport: FlowViewport): void {
+        this.viewportOnNextFlowChange = viewport;
     }
 
     /** The current pan and zoom, or null before the canvas exists. */

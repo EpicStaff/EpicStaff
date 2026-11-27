@@ -1,7 +1,7 @@
-import { getDebugNode, signal } from '@angular/core';
+import { computed, getDebugNode, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
-import { NODE_COLORS, NODE_ICONS, NodeType } from '@shared/models';
+import { DEFAULT_USER_PREFERENCES, NODE_COLORS, NODE_ICONS, NodeType, UserPreferences } from '@shared/models';
 import { LlmConfigStorageService, SystemOneConfigStorageService } from '@shared/services';
 import { of } from 'rxjs';
 
@@ -9,12 +9,12 @@ import { AgentDefinitionsApiService } from '../../../features/agent-definitions/
 import { GraphDto } from '../../../features/flows/models/graph.model';
 import { GraphVersionSnapshot } from '../../../features/flows/models/graph-version-preview.model';
 import { KeyValueTablesStorageService } from '../../../features/key-value-tables/services/key-value-tables-storage.service';
+import { UserPreferencesService } from '../../../services/auth/user-preferences.service';
 import { KeyValueMode } from '../../core/models/key-value-node.model';
 import { NodeModel, SubGraphNodeModel } from '../../core/models/node.model';
 import { FlowService } from '../../services/flow.service';
 import { FlowDiffStateService } from '../../services/flow-diff-state.service';
 import { FlowReadOnlyService } from '../../services/flow-readonly.service';
-import { FlowSettingsService } from '../../services/flow-settings.service';
 import { NodeDiffStatus } from '../../utils/diff';
 import { mapGraphDtoToFlowModel } from '../../utils/load/map-graph-dto-to-flow-model';
 import { mapDecisionTableNodeToModel } from '../../utils/load/nodes/decision-table-node.mapper';
@@ -219,7 +219,15 @@ describe('FlowBaseNodeComponent key-value summary', () => {
 
 describe('FlowBaseNodeComponent node number', () => {
     let fixture: ComponentFixture<FlowBaseNodeComponent>;
-    let settings: FlowSettingsService;
+    /** The account's preferences, as the profile would hold them. */
+    const preferences = signal<UserPreferences>(DEFAULT_USER_PREFERENCES);
+
+    function setAlwaysShowNodeNumbers(alwaysShow: boolean): void {
+        preferences.update((current) => ({
+            ...current,
+            flow_editor: { ...current.flow_editor, always_show_node_numbers: alwaysShow },
+        }));
+    }
 
     const element = (selector: string): HTMLElement | null => fixture.nativeElement.querySelector(selector);
     const text = (selector: string): string | undefined => element(selector)?.textContent?.trim();
@@ -243,10 +251,13 @@ describe('FlowBaseNodeComponent node number', () => {
                     provide: KeyValueTablesStorageService,
                     useValue: { tables: signal([]), loadTables: () => of([]) },
                 },
+                {
+                    provide: UserPreferencesService,
+                    useValue: { section: (name: keyof UserPreferences) => computed(() => preferences()[name]) },
+                },
             ],
         });
-        settings = TestBed.inject(FlowSettingsService);
-        settings.alwaysShowNodeNumbers.set(alwaysShow);
+        setAlwaysShowNodeNumbers(alwaysShow);
         TestBed.inject(FlowService).setFlow({ nodes: [node, ...otherNodes], connections: [] });
         fixture = TestBed.createComponent(FlowBaseNodeComponent);
         fixture.componentRef.setInput('node', node);
@@ -312,11 +323,11 @@ describe('FlowBaseNodeComponent node number', () => {
             expect(titleColumnClasses()).toContain('has-node-number');
             expect(titleColumnClasses()).not.toContain('is-number-pinned');
 
-            settings.alwaysShowNodeNumbers.set(true);
+            setAlwaysShowNodeNumbers(true);
             fixture.detectChanges();
             expect(titleColumnClasses()).toContain('is-number-pinned');
 
-            settings.alwaysShowNodeNumbers.set(false);
+            setAlwaysShowNodeNumbers(false);
             fixture.detectChanges();
             expect(titleColumnClasses()).not.toContain('is-number-pinned');
         });
