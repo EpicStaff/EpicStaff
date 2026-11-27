@@ -126,7 +126,7 @@ function pickOption(
 function clearSelection(fixture: ComponentFixture<AgentDetailComponent>, overlay: HTMLElement, index: number): void {
     selectorTrigger(fixture, index).click();
     fixture.detectChanges();
-    overlay.querySelector<HTMLElement>('.deselect-option')!.click();
+    overlay.querySelector<HTMLElement>('.dropdown-footer button')!.click();
     fixture.detectChanges();
 }
 
