@@ -39,19 +39,15 @@ describe('InputNumberComponent', () => {
         return event;
     }
 
-    /** Types text the browser cannot parse: a number input then reports an empty value and `validity.badInput`. */
     function typeMalformedNumber(): void {
-        const input = nativeInput();
-        Object.defineProperty(input, 'validity', { value: { badInput: true }, configurable: true });
-        input.value = '';
-        input.dispatchEvent(new Event('input'));
-        fixture.detectChanges();
+        typeNumber('1.2.3');
     }
 
-    function typeNumber(text: string): void {
+    function typeNumber(text: string, caret?: number): void {
         const input = nativeInput();
-        Object.defineProperty(input, 'validity', { value: { badInput: false }, configurable: true });
+        input.focus();
         input.value = text;
+        if (caret !== undefined) input.setSelectionRange(caret, caret);
         input.dispatchEvent(new Event('input'));
         fixture.detectChanges();
     }
@@ -98,10 +94,82 @@ describe('InputNumberComponent', () => {
         it('does not report a validation error for an empty value', () => {
             const host = createHost(false);
 
-            typeMalformedNumber();
+            typeNumber('');
 
             expect(host.control.errors).toBeNull();
             expect(host.control.value).toBeNull();
+        });
+    });
+
+    describe('thousands grouping', () => {
+        it('groups a value set by the form', () => {
+            const host = createHost(false);
+
+            host.control.setValue(4096);
+            fixture.detectChanges();
+
+            expect(nativeInput().value).toBe('4 096');
+        });
+
+        it('groups the digits while they are typed and passes the number on', () => {
+            const host = createHost(false);
+
+            typeNumber('4096');
+
+            expect(nativeInput().value).toBe('4 096');
+            expect(host.control.value).toBe(4096);
+        });
+
+        it('keeps the caret after the same digits when a separator is added', () => {
+            createHost(false);
+
+            typeNumber('40961', 2);
+
+            expect(nativeInput().value).toBe('40 961');
+            expect(nativeInput().selectionStart).toBe(2);
+        });
+
+        it('moves the caret over a separator on Backspace, so a digit is deleted', () => {
+            const host = createHost(false);
+            host.control.setValue(4096);
+            fixture.detectChanges();
+            nativeInput().focus();
+            nativeInput().setSelectionRange(2, 2);
+
+            pressKey('Backspace');
+
+            expect(nativeInput().selectionStart).toBe(1);
+        });
+
+        it('keeps a trailing decimal point while it is typed', () => {
+            const host = createHost(true);
+
+            typeNumber('1234.');
+
+            expect(nativeInput().value).toBe('1 234.');
+            expect(host.control.value).toBe(1234);
+        });
+
+        it('drops pasted thousands commas from a whole number', () => {
+            const host = createHost(false);
+
+            typeNumber('1,500');
+
+            expect(host.control.value).toBe(1500);
+        });
+
+        it('leaves numbers under a thousand ungrouped', () => {
+            createHost(false);
+
+            typeNumber('512');
+
+            expect(nativeInput().value).toBe('512');
+        });
+
+        it('opens the numeric keyboard on touch devices', () => {
+            createHost(false);
+
+            expect(nativeInput().getAttribute('inputmode')).toBe('numeric');
         });
     });
 

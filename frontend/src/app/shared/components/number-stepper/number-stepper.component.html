@@ -39,30 +39,21 @@
         }
 
         <input
-            [type]="integer() ? 'text' : 'number'"
-            [attr.inputmode]="integer() ? 'numeric' : null"
+            type="text"
+            autocomplete="off"
+            [attr.inputmode]="integer() ? 'numeric' : 'decimal'"
             [attr.aria-label]="ariaLabel()"
             [matTooltip]="fieldName()"
             class="number-stepper__input"
             [class]="'number-stepper__input--' + size()"
-            [class.number-stepper__input--grouped]="groups()"
             [placeholder]="placeholder()"
-            [value]="displayValue()"
+            [value]="text()"
             (input)="onInputChange($event)"
             (keydown)="onKeyDown($event)"
             (blur)="onBlur()"
             [disabled]="isDisabled()"
             [readonly]="readonly()"
         />
-
-        @if (groups(); as grouped) {
-            <span
-                class="number-stepper__grouped"
-                [class]="'number-stepper__grouped--' + size()"
-                aria-hidden="true"
-                >{{ grouped }}</span
-            >
-        }
 
         @if (showButtons()) {
             <button

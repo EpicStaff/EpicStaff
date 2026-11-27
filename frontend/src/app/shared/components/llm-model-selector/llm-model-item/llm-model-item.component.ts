@@ -1,14 +1,12 @@
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { FullLLMConfig, FullRealtimeConfig } from '@shared/services';
-import { getProviderIconPath } from '@shared/utils';
 
 import { TooltipOnOverflowDirective } from '../../../directives/tooltip-on-overflow.directive';
-import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
 
 @Component({
     selector: 'app-llm-model-item',
-    imports: [AppSvgIconComponent, MatTooltip, TooltipOnOverflowDirective],
+    imports: [MatTooltip, TooltipOnOverflowDirective],
     template: `
         <button
             type="button"
@@ -19,18 +17,12 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
             [matTooltip]="config.modelDetails?.name || 'Unknown Model'"
             (click)="onSelect()"
         >
-            <app-svg-icon
-                [icon]="getProviderIcon()"
-                size="20px"
-                [ariaLabel]="config.providerDetails?.name || ''"
-                class="provider-icon"
-            />
             <span class="model-text">
                 <span class="model-name">{{ config.modelDetails?.name || 'Unknown Model' }}</span>
-                @if (config.custom_name) {
-                    <span class="custom-name"> ({{ config.custom_name }}) </span>
-                }
             </span>
+            @if (config.custom_name) {
+                <span class="custom-name">({{ config.custom_name }})</span>
+            }
         </button>
     `,
     styles: [
@@ -45,23 +37,24 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
                 text-align: left;
                 align-items: center;
                 gap: 10px;
-                padding: 8px 12px;
-                margin-bottom: 4px;
+                height: 40px;
+                flex-shrink: 0;
+                padding: 0.25rem 1rem;
                 cursor: pointer;
-                transition: background-color 0.2s ease;
+                border: 1px solid var(--color-divider-subtle);
                 border-radius: 4px;
+                background-color: var(--color-ks-line);
+                transition:
+                    border-color 0.15s ease,
+                    background-color 0.15s ease;
             }
 
             .model-item:is(:hover, :focus-visible) {
-                background-color: rgba(104, 95, 255, 0.08);
+                background-color: var(--color-ks-hover-row);
             }
 
             .model-item.selected {
-                background-color: rgba(104, 95, 255, 0.12);
-            }
-
-            .provider-icon {
-                flex-shrink: 0;
+                border-color: var(--accent-color);
             }
 
             .model-text {
@@ -80,6 +73,11 @@ import { AppSvgIconComponent } from '../../app-svg-icon/app-svg-icon.component';
             }
 
             .custom-name {
+                margin-left: auto;
+                min-width: 0;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
                 font-size: 0.75rem;
                 color: var(--color-text-secondary);
                 opacity: 0.8;
@@ -96,12 +94,5 @@ export class LlmModelItemComponent {
 
     onSelect(): void {
         this.selected.emit(this.config);
-    }
-
-    getProviderIcon(): string {
-        if (!this.config || !this.config.providerDetails?.name) {
-            return 'llm-providers-logos/default';
-        }
-        return getProviderIconPath(this.config.providerDetails.name);
     }
 }
