@@ -79,9 +79,72 @@ async def _json_rows(export, events, **body) -> list[dict]:
     return json.loads(await export(events, **body))
 
 
-async def _csv_rows(export, events) -> list[dict]:
-    text = await export(events, export_format="csv")
+async def _csv_rows(export, events, **body) -> list[dict]:
+    text = await export(events, export_format="csv", **body)
     return list(csv.DictReader(io.StringIO(text, newline="")))
+
+
+async def _rows(export, export_format, events, **body) -> list[dict]:
+    if export_format == "csv":
+        return await _csv_rows(export, events, **body)
+    return await _json_rows(export, events, **body)
+
+
+async def test_json_export_uses_time_zone(export):
+    [row] = await _json_rows(
+        export,
+        [
+            _event(
+                event_time=datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc),
+                record_time=datetime(2026, 7, 1, 12, 0, 5, 250000, tzinfo=timezone.utc),
+                details={"sent_at": "2026-07-01T12:00:00Z"},
+            )
+        ],
+        time_zone="Asia/Tokyo",
+    )
+
+    assert row["event_time"] == "2026-07-01T21:00:00+09:00"
+    assert row["record_time"] == "2026-07-01T21:00:05.250000+09:00"
+    # Only typed datetime fields move; text inside free-form payloads is the user's own.
+    assert row["details"] == {"sent_at": "2026-07-01T12:00:00Z"}
+
+
+@pytest.mark.parametrize("export_format", ["json", "csv"])
+async def test_export_across_a_dst_switch_gives_each_row_its_own_offset(export, export_format):
+    # Kyiv moves from +02:00 to +03:00 at 2026-03-29 01:00 UTC.
+    rows = await _rows(
+        export,
+        export_format,
+        [
+            _event("before", event_time=datetime(2026, 3, 29, 0, 30, tzinfo=timezone.utc)),
+            _event("after", event_time=datetime(2026, 3, 29, 2, 30, tzinfo=timezone.utc)),
+        ],
+        time_zone="Europe/Kyiv",
+    )
+
+    assert {row["id"]: row["event_time"] for row in rows} == {
+        "before": "2026-03-29T02:30:00+02:00",
+        "after": "2026-03-29T05:30:00+03:00",
+    }
+
+
+async def test_export_reads_a_naive_time_as_utc(export):
+    [row] = await _json_rows(
+        export,
+        [_event(event_time=datetime(2026, 3, 29, 0, 30))],
+        time_zone="Europe/Kyiv",
+    )
+
+    assert row["event_time"] == "2026-03-29T02:30:00+02:00"
+
+
+async def test_export_without_time_zone_is_unchanged(export):
+    [row] = await _json_rows(
+        export, [_event(event_time=datetime(2026, 3, 29, 0, 30, 0, 125000, tzinfo=timezone.utc))]
+    )
+
+    # The stored value exactly as pydantic writes it, the format before time zones existed.
+    assert row["event_time"] == "2026-03-29T00:30:00.125000Z"
 
 
 async def test_only_the_callers_org_is_exported(export):

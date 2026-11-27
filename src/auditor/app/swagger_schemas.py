@@ -101,6 +101,12 @@ see the per-op pairs in this request's own `openapi_examples`):
 
 CURSOR_FIELD_DESCRIPTION = "Opaque pagination cursor from a previous response's `next_cursor`."
 SIZE_FIELD_DESCRIPTION = "Max rows per page (1-1000)."
+TIME_ZONE_FIELD_DESCRIPTION = (
+    "IANA time zone name (e.g. `Europe/Kyiv`) the file's dates are written in, as "
+    "ISO 8601 with that zone's offset (`2026-03-29T05:30:00+03:00`). `Europe/Kiev` is "
+    "accepted as `Europe/Kyiv`; an unknown name answers `422`. Omitted or `null` writes "
+    "dates as they are stored."
+)
 
 VALUES_DESCRIPTION = """
 Distinct values of `{{field}}` recorded for the token's `org_id` within its

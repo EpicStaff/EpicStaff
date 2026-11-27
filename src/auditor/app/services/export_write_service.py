@@ -3,7 +3,10 @@ import csv
 import json
 import os
 import textwrap
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
+from zoneinfo import ZoneInfo
 
 from app.core import settings
 from app.repositories.base import AuditRepository
@@ -31,19 +34,41 @@ class ExportWriteService:
             return f"'{value}"
         return value
 
+    @staticmethod
+    def _public_row(event: BaseAuditEvent, zone: ZoneInfo | None) -> dict[str, Any]:
+        """Return the event's public fields, with every datetime field written in
+        `zone` as ISO 8601 with that zone's offset. Without a zone the row is the
+        event's own `public_dump()`, unchanged."""
+        row = event.public_dump()
+        if zone is None:
+            return row
+        for name in row:
+            value = getattr(event, name)
+            if isinstance(value, datetime):
+                # A naive time is UTC: producers record UTC, and astimezone() would
+                # otherwise read it in the auditor host's own zone.
+                if value.tzinfo is None:
+                    value = value.replace(tzinfo=UTC)
+                row[name] = value.astimezone(zone).isoformat()
+        return row
+
     @classmethod
-    def _write_csv_page(cls, writer: csv.DictWriter, page: list[BaseAuditEvent]) -> None:
+    def _write_csv_page(
+        cls, writer: csv.DictWriter, page: list[BaseAuditEvent], zone: ZoneInfo | None
+    ) -> None:
         for event in page:
-            row = event.public_dump()
+            row = cls._public_row(event, zone)
             writer.writerow({key: cls._to_csv_cell(value) for key, value in row.items()})
 
     @classmethod
-    def _write_json_page(cls, f, page: list[BaseAuditEvent], *, is_first_page: bool) -> bool:
+    def _write_json_page(
+        cls, f, page: list[BaseAuditEvent], zone: ZoneInfo | None, *, is_first_page: bool
+    ) -> bool:
         """Pretty-prints each event (2-space indent, one level inside the
         array) and keeps non-ASCII text readable instead of \\u-escaped."""
         for i, event in enumerate(page):
             f.write("\n" if is_first_page and i == 0 else ",\n")
-            event_json = json.dumps(event.public_dump(), indent=2, ensure_ascii=False)
+            event_json = json.dumps(cls._public_row(event, zone), indent=2, ensure_ascii=False)
             f.write(textwrap.indent(event_json, "  "))
         return bool(page)
 
@@ -62,6 +87,7 @@ class ExportWriteService:
             retention_days = claims["retention_days"]
 
             filter_node = body.resolve_filter_node()
+            zone = ZoneInfo(body.time_zone) if body.time_zone else None
 
             os.makedirs(settings.AUDITOR_EXPORT_DATA_DIR, exist_ok=True)
             file_path = os.path.join(settings.AUDITOR_EXPORT_DATA_DIR, f"{job_id}.{body.format}")
@@ -101,13 +127,14 @@ class ExportWriteService:
 
                     if body.format == "csv":
                         await asyncio.to_thread(
-                            ExportWriteService._write_csv_page, csv_writer, new_rows
+                            ExportWriteService._write_csv_page, csv_writer, new_rows, zone
                         )
                     else:
                         wrote_any_json_row = await asyncio.to_thread(
                             ExportWriteService._write_json_page,
                             f,
                             new_rows,
+                            zone,
                             is_first_page=not wrote_any_json_row,
                         )
 
