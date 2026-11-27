@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime
+import email.parser
 import hashlib
 import json
 import os
@@ -312,6 +313,62 @@ def normalize_name(name: str) -> str:
     return name.strip().lower().replace("_", "-")
 
 
+def declared_license_texts(venv_dir: Path) -> dict[tuple[str, str], str]:
+    """Read every `License-File:` a package's METADATA declares, keyed by (normalized_name, version).
+
+    pip-licenses only matches LICENSE*/COPYING* basenames and stops at the first match, so it
+    misses e.g. the FreeType and libjpeg texts pypdfium2 ships and all but one of numpy's files.
+    NOTICE files are left out: they still reach the NOTICE section through pip-licenses.
+    """
+    texts: dict[tuple[str, str], str] = {}
+    site_packages_dirs = [
+        *venv_dir.glob("lib/python*/site-packages"),
+        venv_dir / "Lib" / "site-packages",
+    ]
+    for site_packages in site_packages_dirs:
+        for metadata_path in sorted(site_packages.glob("*.dist-info/METADATA")):
+            dist_info = metadata_path.parent
+            metadata = email.parser.Parser().parsestr(
+                metadata_path.read_text(encoding="utf-8", errors="backslashreplace"),
+                headersonly=True,
+            )
+            dist_info_root = dist_info.resolve()
+            sections = []
+            complete = True
+            for license_path in metadata.get_all("License-File") or []:
+                # Case-sensitive on purpose: mirrors pip-licenses' own "NOTICE.*" match.
+                if Path(license_path).name.startswith("NOTICE"):
+                    continue
+                # PEP 639 puts declared files under licenses/; older wheels put them at the root.
+                candidates = [dist_info / "licenses" / license_path, dist_info / license_path]
+                # Metadata is untrusted: never read outside the dist-info (../ or absolute paths).
+                found = next(
+                    (
+                        candidate
+                        for candidate in candidates
+                        if candidate.resolve().is_relative_to(dist_info_root) and candidate.is_file()
+                    ),
+                    None,
+                )
+                if found is None:
+                    log(f"  {dist_info.name}: declared License-File {license_path} not readable")
+                    complete = False
+                    break
+                text = found.read_text(encoding="utf-8", errors="backslashreplace").strip()
+                sections.append((license_path, text))
+            # Partial set: keep pip-licenses' text rather than risk dropping the file it found.
+            if not complete or not sections:
+                continue
+            if len(sections) == 1:
+                joined = sections[0][1]
+            else:
+                joined = "\n\n".join(
+                    f"── {license_path} ──\n\n{text}" for license_path, text in sections
+                )
+            texts[(normalize_name(metadata["Name"] or ""), metadata["Version"] or "")] = joined
+    return texts
+
+
 def scan_service_venv(svc_dir: Path) -> list[dict]:
     """Ensure venv exists, install pip-licenses, scan, uninstall.
     Returns raw pip-licenses JSON entries."""
@@ -334,6 +391,13 @@ def scan_service_venv(svc_dir: Path) -> list[dict]:
     try:
         entries = run_pip_licenses(py)
         log(f"  {svc_dir.name}: found {len(entries)} packages")
+        declared_texts = declared_license_texts(venv_dir)
+        for entry in entries:
+            declared_text = declared_texts.get(
+                (normalize_name(entry.get("Name") or ""), entry.get("Version") or "")
+            )
+            if declared_text:
+                entry["LicenseText"] = declared_text
         return entries
     except subprocess.CalledProcessError as exc:
         log(f"  pip-licenses failed for {svc_dir.name}: {exc.stderr.strip()[:300]}")
