@@ -408,6 +408,9 @@ jobs:
           python -m pip install --quiet --require-hashes -r .github/requirements/pyyaml.txt
           python -m unittest scripts/test_envtool.py
 
+      - name: Test the Python notices generator
+        run: python -m unittest scripts/test_generate_python_notices.py
+
   # Backend half of the licence attribution guard: compares the uv.lock hashes
   # stamped in the notices header, so it needs neither venvs nor network.
   check-backend-notices:
