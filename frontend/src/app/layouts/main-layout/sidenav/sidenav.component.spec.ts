@@ -135,6 +135,7 @@ describe('LeftSidebarComponent', () => {
                         resolveStorageTab: () => 'files',
                         canOpenConfigureModelsDialog: () => true,
                         canAccessWorkspace: () => true,
+                        canOpenDashboard: () => false,
                         resolveDefaultRoute: () => '/agents',
                         get isSuperadmin(): boolean {
                             return isSuperadmin;
@@ -1305,6 +1306,7 @@ describe('LeftSidebarComponent page shortcuts', () => {
                         resolveStorageTab: () => 'files',
                         canOpenConfigureModelsDialog: () => settingsAllowed,
                         canAccessWorkspace: () => workspaceAllowed,
+                        canOpenDashboard: () => false,
                         resolveDefaultRoute: () => '/agents',
                         isSuperadmin: false,
                     },

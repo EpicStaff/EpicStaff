@@ -53,9 +53,18 @@ class OrganizationConfig(models.Model):
         blank=True,
         related_name="+",
     )
+    dashboard_refresh_minutes = models.PositiveIntegerField(null=True, blank=True)
+    dashboard_refresh_daily_at = models.TimeField(null=True, blank=True)
 
     class Meta:
         db_table = "rbac_organization_config"
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(dashboard_refresh_minutes__isnull=True)
+                | models.Q(dashboard_refresh_daily_at__isnull=True),
+                name="org_config_one_dashboard_schedule",
+            ),
+        ]
 
     def __str__(self) -> str:
         return f"{self.org_id}:config"

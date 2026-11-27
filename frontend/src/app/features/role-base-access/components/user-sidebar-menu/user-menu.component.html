@@ -50,6 +50,28 @@
                 />
             </button>
         }
+        @if (canVisitDashboard()) {
+            <button
+                type="button"
+                class="nav-item"
+                [class.active]="isDashboardRoute()"
+                appTooltipOnOverflow=".nav-label"
+                matTooltip="Dashboard"
+                (click)="onDashboardClick()"
+            >
+                <app-svg-icon
+                    size="16px"
+                    icon="dashboard"
+                    class="nav-icon"
+                />
+                <span class="nav-label text-body-small-large">Dashboard</span>
+                <app-svg-icon
+                    size="16px"
+                    icon="chevron-right"
+                    class="nav-chevron"
+                />
+            </button>
+        }
     </section>
 
     <section class="menu-section">

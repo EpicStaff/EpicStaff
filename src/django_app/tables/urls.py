@@ -9,6 +9,7 @@ from ai_models.views.model_view_sets import (
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from tables.views.dashboard_views import DashboardReportView, DashboardStatsView
 from tables.views.execution_timeout_limits_views import ExecutionTimeoutLimitsAPIView
 from tables.views.flow_assistant_views import (
     FlowAssistantAuditView,
@@ -240,6 +241,16 @@ urlpatterns = [
         )
         for operation in ("read", "write", "delete")
     ],
+    path(
+        "dashboard/report/",
+        DashboardReportView.as_view({"get": "list"}),
+        name="dashboard-report",
+    ),
+    path(
+        "dashboard/stats/",
+        DashboardStatsView.as_view({"get": "list"}),
+        name="dashboard-stats",
+    ),
     path("default-models/", DefaultModelsAPIView.as_view(), name="default_models"),
     path(
         "execution-timeout-limits/",

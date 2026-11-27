@@ -252,7 +252,7 @@ export class LeftSidebarComponent {
 
     /** Workspace and My Profile are reached from the account menu, so their pages highlight its row. */
     protected readonly isAccountRoute = computed(() =>
-        ['/workspace', '/profile'].some(
+        ['/workspace', '/dashboard', '/profile'].some(
             (prefix) => this.currentPath() === prefix || this.currentPath().startsWith(`${prefix}/`)
         )
     );
@@ -288,6 +288,12 @@ export class LeftSidebarComponent {
         routeLink: 'workspace',
         label: 'Workspace',
         isPermitted: () => this.activeMembership() !== null && this.permissionService.canAccessWorkspace(),
+    };
+    private readonly dashboardNavItem: NavItem = {
+        id: 'dashboard',
+        routeLink: 'dashboard',
+        label: 'Dashboard',
+        isPermitted: () => this.permissionService.canOpenDashboard(),
     };
     private readonly profileNavItem: NavItem = {
         id: 'profile',
@@ -521,6 +527,7 @@ export class LeftSidebarComponent {
     private findSteppedItem(step: number): NavItem | null {
         const visibleItems = [
             this.workspaceNavItem,
+            this.dashboardNavItem,
             ...this.topNavItems,
             this.recycleBinNavItem,
             ...this.bottomNavItems,

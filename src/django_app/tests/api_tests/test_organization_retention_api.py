@@ -1,3 +1,5 @@
+from datetime import time
+
 import pytest
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -539,3 +541,189 @@ def test_user_api_key_cannot_patch(issue_api_key, admin_acme, acme):
     assert response.status_code == status.HTTP_403_FORBIDDEN
     assert response.json()["message"] == RestrictApiKeyToUserKeyReads.write_message
     assert_retention_never_changed(acme)
+
+
+# ---- dashboard schedule ----
+
+
+@pytest.fixture
+def dashboard_bounds(settings):
+    settings.DASHBOARD_REFRESH_MINUTES = 60
+    settings.DASHBOARD_REFRESH_MINUTES_MIN = 15
+    settings.DASHBOARD_REFRESH_MINUTES_MAX = 1440
+
+
+def store_schedule(org, minutes=None, daily_at=None):
+    OrganizationConfig.objects.filter(org=org).update(
+        dashboard_refresh_minutes=minutes, dashboard_refresh_daily_at=daily_at
+    )
+
+
+def stored_schedule(org):
+    config = OrganizationConfig.objects.get(org=org)
+    return config.dashboard_refresh_minutes, config.dashboard_refresh_daily_at
+
+
+@pytest.mark.django_db
+def test_get_exposes_dashboard_schedule_and_policy(client_as, admin_acme, acme, dashboard_bounds):
+    response = client_as(admin_acme).get(retention_url(acme.id))
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["dashboard_refresh_minutes"] is None
+    assert body["dashboard_refresh_daily_at"] is None
+    assert body["dashboard_refresh_policy"] == {
+        "default_minutes": 60,
+        "min_minutes": 15,
+        "max_minutes": 1440,
+    }
+
+
+@pytest.mark.django_db
+def test_sets_dashboard_interval_without_stamping_retention(
+    client_as, admin_acme, acme, dashboard_bounds
+):
+    response = client_as(admin_acme).patch(
+        retention_url(acme.id),
+        {"dashboard_refresh_minutes": 30, "dashboard_refresh_daily_at": None},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["dashboard_refresh_minutes"] == 30
+    assert response.json()["dashboard_refresh_daily_at"] is None
+    assert stored_schedule(acme) == (30, None)
+    assert_retention_never_changed(acme)
+
+
+@pytest.mark.django_db
+def test_switches_from_interval_to_daily_time(client_as, admin_acme, acme, dashboard_bounds):
+    store_schedule(acme, minutes=30)
+
+    response = client_as(admin_acme).patch(
+        retention_url(acme.id),
+        {"dashboard_refresh_minutes": None, "dashboard_refresh_daily_at": "06:00"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["dashboard_refresh_daily_at"] == "06:00"
+    assert stored_schedule(acme) == (None, time(6, 0))
+
+
+@pytest.mark.django_db
+def test_both_null_resets_dashboard_schedule(client_as, admin_acme, acme, dashboard_bounds):
+    store_schedule(acme, daily_at=time(6, 0))
+
+    response = client_as(admin_acme).patch(
+        retention_url(acme.id),
+        {"dashboard_refresh_minutes": None, "dashboard_refresh_daily_at": None},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert stored_schedule(acme) == (None, None)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", [15, 1440])
+def test_accepts_dashboard_interval_at_the_bounds(
+    client_as, admin_acme, acme, dashboard_bounds, value
+):
+    response = client_as(admin_acme).patch(
+        retention_url(acme.id), {"dashboard_refresh_minutes": value}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert stored_schedule(acme) == (value, None)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", [14, 1441, 0, -30, True, 30.0, "30"])
+def test_rejects_dashboard_interval_outside_the_bounds_or_not_an_integer(
+    client_as, admin_acme, acme, dashboard_bounds, value
+):
+    response = client_as(admin_acme).patch(
+        retention_url(acme.id), {"dashboard_refresh_minutes": value}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    error = response.json()["errors"][0]
+    assert error["field"] == "dashboard_refresh_minutes"
+    assert "from 15 to 1440" in error["reason"]
+    assert stored_schedule(acme) == (None, None)
+
+
+@pytest.mark.django_db
+def test_stored_interval_below_a_raised_minimum_can_be_saved_unchanged(
+    client_as, admin_acme, acme, dashboard_bounds
+):
+    store_schedule(acme, minutes=10)
+    client = client_as(admin_acme)
+
+    resaved = client.patch(
+        retention_url(acme.id), {"dashboard_refresh_minutes": 10}, format="json"
+    )
+    other = client.patch(retention_url(acme.id), {"dashboard_refresh_minutes": 12}, format="json")
+
+    assert resaved.status_code == status.HTTP_200_OK
+    assert other.status_code == status.HTTP_400_BAD_REQUEST
+    assert stored_schedule(acme) == (10, None)
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", ["6:00", "24:00", "06:60", "06:00:00", "", 600])
+def test_rejects_daily_time_not_in_hh_mm(client_as, admin_acme, acme, dashboard_bounds, value):
+    response = client_as(admin_acme).patch(
+        retention_url(acme.id), {"dashboard_refresh_daily_at": value}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.json()["errors"][0]["field"] == "dashboard_refresh_daily_at"
+    assert stored_schedule(acme) == (None, None)
+
+
+@pytest.mark.django_db
+def test_rejects_interval_and_daily_time_together(client_as, admin_acme, acme, dashboard_bounds):
+    response = client_as(admin_acme).patch(
+        retention_url(acme.id),
+        {"dashboard_refresh_minutes": 30, "dashboard_refresh_daily_at": "06:00"},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert [error["field"] for error in response.json()["errors"]] == ["body"]
+    assert stored_schedule(acme) == (None, None)
+
+
+@pytest.mark.django_db
+def test_rejects_interval_alone_while_a_daily_time_is_stored(
+    client_as, admin_acme, acme, dashboard_bounds
+):
+    store_schedule(acme, daily_at=time(6, 0))
+
+    response = client_as(admin_acme).patch(
+        retention_url(acme.id), {"dashboard_refresh_minutes": 30}, format="json"
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert stored_schedule(acme) == (None, time(6, 0))
+
+
+@pytest.mark.django_db
+def test_retention_and_schedule_errors_come_back_together(
+    client_as, admin_acme, acme, dashboard_bounds
+):
+    response = client_as(admin_acme).patch(
+        retention_url(acme.id),
+        {"audit_days": 45, "dashboard_refresh_minutes": 5},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert [error["field"] for error in response.json()["errors"]] == [
+        "audit_days",
+        "dashboard_refresh_minutes",
+    ]
+    assert_retention_never_changed(acme)
+    assert stored_schedule(acme) == (None, None)

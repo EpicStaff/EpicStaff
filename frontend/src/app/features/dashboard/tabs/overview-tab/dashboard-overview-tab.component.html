@@ -1,0 +1,94 @@
+@if (resource.error()) {
+    <app-fetch-error-state
+        title="Could not load the dashboard"
+        (retry)="resource.reload()"
+    />
+} @else if (!resource.hasValue()) {
+    <app-loading-spinner />
+} @else if (report(); as report) {
+    @let kpis = this.kpis();
+    <div class="overview__kpis">
+        <app-kpi-card
+            icon="ti-activity"
+            label="Sessions"
+            [value]="kpis?.sessions ?? '—'"
+        >
+            @if (kpis) {
+                <app-kpi-delta
+                    [current]="kpis.current.sessions"
+                    [previous]="kpis.previous.sessions"
+                />
+                {{ previousLabel() }}
+            }
+        </app-kpi-card>
+        <app-kpi-card
+            icon="ti-alert-circle"
+            label="Error rate"
+            [value]="kpis?.errorRate ?? '—'"
+            [unit]="kpis ? '%' : ''"
+        >
+            @if (kpis) {
+                {{ kpis.current.errors }} failed {{ kpis.current.errors === 1 ? 'session' : 'sessions' }}
+            }
+        </app-kpi-card>
+        <app-kpi-card
+            icon="ti-bolt"
+            label="Active triggers"
+            [value]="report.active_triggers.length"
+        >
+            {{ waitingSessions().length }} {{ waitingSessions().length === 1 ? 'session' : 'sessions' }} waiting for
+            user
+        </app-kpi-card>
+        <app-kpi-card
+            icon="ti-coins"
+            label="Tokens"
+            [value]="kpis?.tokens ?? '—'"
+        >
+            @if (kpis) {
+                <app-kpi-delta
+                    [current]="kpis.current.tokens"
+                    [previous]="kpis.previous.tokens"
+                    [goodWhenUp]="false"
+                />
+                {{ previousLabel() }}
+            }
+        </app-kpi-card>
+    </div>
+
+    <div class="overview__row">
+        @if (stats.hasValue()) {
+            <app-sessions-by-status-card
+                [stats]="stats.value().current"
+                [unit]="filters().unit"
+                [liveNow]="liveNow()"
+            />
+        }
+        <app-active-triggers-card
+            [triggers]="report.active_triggers"
+            [waitingSessions]="waitingSessions()"
+        />
+    </div>
+    <section>
+        <div class="overview__section-head">
+            <h2 class="overview__section-title">Resources</h2>
+            <span class="overview__section-desc">Totals in this organization.</span>
+        </div>
+        <div class="overview__resources">
+            @for (card of resourceCards(); track card.label) {
+                <a
+                    class="overview__resource-link"
+                    [routerLink]="card.link"
+                >
+                    <app-resource-card
+                        [icon]="card.icon"
+                        [label]="card.label"
+                        [value]="card.value"
+                        [details]="card.details"
+                    />
+                </a>
+            }
+        </div>
+    </section>
+} @else {
+    <app-first-report-state />
+}

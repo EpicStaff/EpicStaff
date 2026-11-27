@@ -14,6 +14,16 @@ class OrganizationRetentionUpdateRequestSerializer(serializers.Serializer):
     sessions_days = serializers.IntegerField(required=False, allow_null=True)
     conversations_days = serializers.IntegerField(required=False, allow_null=True)
     audit_days = serializers.IntegerField(required=False, allow_null=True)
+    dashboard_refresh_minutes = serializers.IntegerField(required=False, allow_null=True)
+    dashboard_refresh_daily_at = serializers.TimeField(
+        required=False, allow_null=True, format="%H:%M", help_text="UTC time as HH:MM."
+    )
+
+
+class DashboardRefreshPolicySerializer(serializers.Serializer):
+    default_minutes = serializers.IntegerField(read_only=True)
+    min_minutes = serializers.IntegerField(read_only=True)
+    max_minutes = serializers.IntegerField(read_only=True)
 
 
 class RetentionRuleSerializer(serializers.Serializer):
@@ -57,6 +67,19 @@ class OrganizationRetentionResponseSerializer(serializers.Serializer):
         source="retention_updated_by", read_only=True, allow_null=True
     )
     retention_policy = serializers.SerializerMethodField()
+    dashboard_refresh_minutes = serializers.IntegerField(read_only=True, allow_null=True)
+    dashboard_refresh_daily_at = serializers.TimeField(
+        read_only=True, allow_null=True, format="%H:%M"
+    )
+    dashboard_refresh_policy = serializers.SerializerMethodField()
+
+    @extend_schema_field(DashboardRefreshPolicySerializer)
+    def get_dashboard_refresh_policy(self, config: OrganizationConfig) -> dict:
+        return {
+            "default_minutes": settings.DASHBOARD_REFRESH_MINUTES,
+            "min_minutes": settings.DASHBOARD_REFRESH_MINUTES_MIN,
+            "max_minutes": settings.DASHBOARD_REFRESH_MINUTES_MAX,
+        }
 
     @extend_schema_field(OpenApiTypes.INT)
     def get_sessions_effective_days(self, config: OrganizationConfig) -> int:

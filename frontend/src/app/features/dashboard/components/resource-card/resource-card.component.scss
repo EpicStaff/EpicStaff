@@ -1,0 +1,26 @@
+@use '../../styles/dashboard-card';
+
+:host {
+    @include dashboard-card.card;
+}
+
+.resource-card__name {
+    @include dashboard-card.card-label;
+}
+
+.resource-card__value {
+    @include dashboard-card.card-value;
+}
+
+.resource-card__details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+
+    b {
+        font-weight: 500;
+        color: var(--color-text-primary);
+    }
+}

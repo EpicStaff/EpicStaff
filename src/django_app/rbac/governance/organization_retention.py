@@ -61,7 +61,8 @@ class OrganizationRetentionService(CrossOrgResourceService):
 
     @transaction.atomic
     def update_retention(self, actor, org_id: int, data: Any) -> OrganizationConfig:
-        """Validate the sent retention choices, store them and stamp `actor` as the last editor.
+        """Validate the sent retention choices and dashboard schedule and store them. Only a
+        retention change stamps `actor` as the last retention editor.
 
         Validation runs here, under the row lock, because a value equal to the stored one
         is accepted even outside a changed cap or floor, and that comparison needs the
@@ -81,17 +82,21 @@ class OrganizationRetentionService(CrossOrgResourceService):
         config = OrganizationConfig.objects.select_for_update().filter(org_id=org_id).first()
         if config is None:
             raise OrganizationNotFoundError()
-        values = self._validator.validate_update(data, config)
-        fields = {
+        values, schedule = self._validator.validate_update(data, config)
+        retention_fields = {
             OrganizationConfig.RETENTION_FIELD_BY_DATA_TYPE[data_type]: days
             for data_type, days in values.items()
         }
-        changed = any(getattr(config, field_name) != days for field_name, days in fields.items())
-        for field_name, days in fields.items():
-            setattr(config, field_name, days)
-        config.retention_updated_at = timezone.now()
-        config.retention_updated_by = actor
-        config.save(update_fields=[*fields, "retention_updated_at", "retention_updated_by"])
+        fields = {**retention_fields, **schedule}
+        changed = any(getattr(config, field_name) != value for field_name, value in fields.items())
+        for field_name, value in fields.items():
+            setattr(config, field_name, value)
+        update_fields = list(fields)
+        if retention_fields:
+            config.retention_updated_at = timezone.now()
+            config.retention_updated_by = actor
+            update_fields += ["retention_updated_at", "retention_updated_by"]
+        config.save(update_fields=update_fields)
         logger.info(
             "Organization retention updated org_id={} actor_id={} values={}",
             org_id,

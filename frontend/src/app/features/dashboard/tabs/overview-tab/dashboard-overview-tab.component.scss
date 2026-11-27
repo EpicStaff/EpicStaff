@@ -1,0 +1,57 @@
+@use '../../../../../styles/header-layout' as header;
+
+:host {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+    padding: 1.5rem header.$page-inset-left;
+}
+
+.overview__kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.overview__section-head {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 16px;
+}
+
+.overview__section-title {
+    margin: 0;
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
+    line-height: var(--text-h4-line-height);
+    color: var(--color-text-primary);
+}
+
+.overview__section-desc {
+    font-size: var(--text-body-small-size);
+    color: var(--color-text-secondary);
+}
+
+.overview__resources {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.overview__row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.overview__resource-link {
+    display: grid;
+    border-radius: 10px;
+    color: inherit;
+    text-decoration: none;
+
+    &:hover app-resource-card {
+        border-color: var(--accent-color);
+    }
+}

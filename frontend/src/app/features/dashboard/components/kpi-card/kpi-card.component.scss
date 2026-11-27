@@ -1,0 +1,31 @@
+@use '../../styles/dashboard-card';
+
+:host {
+    @include dashboard-card.card;
+}
+
+.kpi-card__label {
+    @include dashboard-card.card-label;
+}
+
+.kpi-card__value {
+    @include dashboard-card.card-value;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.kpi-card__unit {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+}
+
+.kpi-card__footer {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 16px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}

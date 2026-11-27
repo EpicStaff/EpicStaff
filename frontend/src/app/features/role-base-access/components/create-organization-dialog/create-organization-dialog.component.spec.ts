@@ -66,6 +66,9 @@ const RETENTION: OrganizationRetention = {
         conversations: { default_days: 90, max_days: null, min_days: null, allowed: [30, 90, 365] },
         audit: { default_days: 90, max_days: null, min_days: null, allowed: [30, 90, 365] },
     },
+    dashboard_refresh_minutes: null,
+    dashboard_refresh_daily_at: null,
+    dashboard_refresh_policy: { default_minutes: 60, min_minutes: 15, max_minutes: 1440 },
 };
 
 const MEMBER: AdminCreateUserResponse = {
@@ -277,5 +280,52 @@ describe('CreateOrganizationDialogComponent saving an organization', () => {
         http.verify();
         expect(dialogRef.close).toHaveBeenCalledWith(true);
         expect(toast.success).toHaveBeenCalledWith('Organization updated successfully.');
+    });
+
+    function chooseScheduleMode(optionName: string): void {
+        element.querySelector<HTMLButtonElement>('.dashboard-schedule__mode .selector__btn')!.click();
+        settle();
+        const option = Array.from(document.querySelectorAll<HTMLElement>('.selector__option')).find(
+            (candidate) => candidate.querySelector('.selector__text')?.textContent?.trim() === optionName
+        )!;
+        option.click();
+        settle();
+    }
+
+    it('sends the dashboard schedule in the retention request', () => {
+        chooseScheduleMode('Every day at');
+
+        clickSave();
+        flushOrganizationUpdate();
+        const request = http.expectOne({ method: 'PATCH', url: RETENTION_URL });
+        expect(request.request.body).toEqual({ dashboard_refresh_minutes: null, dashboard_refresh_daily_at: '06:00' });
+        request.flush({ ...RETENTION, dashboard_refresh_daily_at: '06:00' });
+        settle();
+
+        expect(dialogRef.close).toHaveBeenCalledWith(true);
+    });
+
+    it('shows a dashboard schedule error inline, without a toast', () => {
+        chooseScheduleMode('Every N minutes');
+
+        clickSave();
+        flushOrganizationUpdate();
+        http.expectOne({ method: 'PATCH', url: RETENTION_URL }).flush(
+            {
+                errors: [
+                    {
+                        field: 'dashboard_refresh_minutes',
+                        value: 60,
+                        reason: 'Must be a whole number from 15 to 1440, or null for the default.',
+                    },
+                ],
+            },
+            { status: 400, statusText: 'Bad Request' }
+        );
+        settle();
+
+        expect(element.textContent).toContain('Must be a whole number from 15 to 1440');
+        expect(toast.error).not.toHaveBeenCalled();
+        expect(dialogRef.close).not.toHaveBeenCalled();
     });
 });

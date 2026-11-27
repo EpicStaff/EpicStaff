@@ -1,0 +1,91 @@
+<div class="active-triggers-card__head">
+    <span class="active-triggers-card__title">
+        <i
+            class="ti ti-bolt"
+            aria-hidden="true"
+        ></i>
+        Active triggers
+        <span class="active-triggers-card__count">{{ triggers().length }}</span>
+    </span>
+    <div class="active-triggers-card__head-right">
+        <span class="active-triggers-card__summary">{{ summary() }}</span>
+        @if (total() > previewRows) {
+            <button
+                type="button"
+                class="active-triggers-card__view-all"
+                (click)="openAll()"
+            >
+                View all {{ total() }}
+            </button>
+        }
+    </div>
+</div>
+
+@if (triggers().length || waitingSessions().length) {
+    <div class="active-triggers-card__table-wrap">
+        <table class="active-triggers-card__table">
+            <thead>
+                <tr>
+                    <th>Trigger</th>
+                    <th>Flow</th>
+                    <th>Next run / last event</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @for (session of previewWaitingSessions(); track session.session_id) {
+                    <tr>
+                        <td>
+                            <span class="active-triggers-card__trigger active-triggers-card__trigger--waiting">
+                                <i
+                                    class="ti ti-hourglass"
+                                    aria-hidden="true"
+                                ></i>
+                                Session #{{ session.session_id }}
+                            </span>
+                        </td>
+                        <td>{{ session.graph_name }}</td>
+                        <td class="active-triggers-card__muted">Started {{ getRelativeTime(session.created_at) }}</td>
+                        <td>
+                            <span class="active-triggers-card__status active-triggers-card__status--waiting">
+                                Waiting for user
+                            </span>
+                        </td>
+                    </tr>
+                }
+                @for (trigger of previewTriggers(); track trigger.trigger_type + trigger.node_id) {
+                    @let type = triggerTypes[trigger.trigger_type];
+                    <tr>
+                        <td>
+                            <span
+                                [class]="
+                                    'active-triggers-card__trigger active-triggers-card__trigger--' +
+                                    trigger.trigger_type
+                                "
+                            >
+                                <i
+                                    [class]="'ti ' + type.icon"
+                                    aria-hidden="true"
+                                ></i>
+                                {{ type.label }}
+                            </span>
+                        </td>
+                        <td>{{ trigger.graph_name }}</td>
+                        <td class="active-triggers-card__muted">
+                            @if (trigger.next_run_at) {
+                                {{ trigger.next_run_at | date: 'MMM d, HH:mm' }}
+                            } @else {
+                                {{ getRelativeTime(trigger.last_event_at) }}
+                            }
+                        </td>
+                        <td>
+                            <span class="active-triggers-card__status">{{ type.status }}</span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+} @else {
+    <p class="active-triggers-card__empty">No active triggers and no sessions waiting for user.</p>
+}

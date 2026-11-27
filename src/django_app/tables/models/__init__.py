@@ -35,6 +35,17 @@ from .crew_models import (
     TaskPythonCodeTools,
     TemplateAgent,
 )
+from .dashboard_models import (
+    DURATION_BUCKET_COUNT,
+    DURATION_BUCKET_UPPER_SECONDS,
+    DashboardActiveTrigger,
+    DashboardKnowledgeUsage,
+    DashboardLiveSession,
+    DashboardRagType,
+    DashboardReport,
+    DashboardSessionDailyStat,
+    DashboardTriggerType,
+)
 from .favorite_models import (
     McpToolFavorite,
     PythonCodeToolFavorite,
@@ -151,6 +162,8 @@ from .webhook_models import (
 )
 
 __all__ = [
+    "DURATION_BUCKET_COUNT",
+    "DURATION_BUCKET_UPPER_SECONDS",
     "LOCAL_ONLY_PROVIDERS",
     "AbstractDefaultFillableModel",
     "ActiveManager",
@@ -182,6 +195,13 @@ __all__ = [
     "CrewNode",
     "CrewSessionMessage",
     "CrewTag",
+    "DashboardActiveTrigger",
+    "DashboardKnowledgeUsage",
+    "DashboardLiveSession",
+    "DashboardRagType",
+    "DashboardReport",
+    "DashboardSessionDailyStat",
+    "DashboardTriggerType",
     "DecisionTableNode",
     "DefaultAgentConfig",
     "DefaultBaseModel",

@@ -123,5 +123,14 @@
             flex: 0 0 160px;
             min-width: 0;
         }
+
+        .retention__unit {
+            flex-basis: 240px;
+        }
+
+        .dashboard-schedule__unit {
+            align-self: center;
+            color: var(--color-ks-transparent-text-60);
+        }
     }
 }

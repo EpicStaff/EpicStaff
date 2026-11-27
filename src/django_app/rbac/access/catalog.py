@@ -207,6 +207,14 @@ RESOURCE_TYPE_METADATA = [
         "applicable_actions": ["create", "read", "update", "delete", "use"],
         "platform_actions": [],
     },
+    {
+        "code": ResourceType.DASHBOARD.value,
+        "label": "Dashboard",
+        "group": "admin",
+        "description": "Organization statistics: sessions, token usage and resource totals",
+        "applicable_actions": ["read"],
+        "platform_actions": [],
+    },
 ]
 
 

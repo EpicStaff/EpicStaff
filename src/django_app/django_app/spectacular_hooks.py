@@ -92,7 +92,10 @@ TAG_MAP = [
     ("api/storage", "Storage"),
     ("api/recycle-bin", "Recycle Bin"),
     ("api/audit", "Audit"),
+    # Dashboard
+    ("api/dashboard", "Dashboard"),
     ("api/quickstart", "Quickstart"),
+    # Key Value Tables
     ("api/key-value-tables", "Key Value Tables"),
     ("api/key-value-table-entries", "Key Value Tables"),
     # Internal session endpoints, whose key is `sessions`
@@ -126,6 +129,7 @@ TAGS_ORDER = [
     "Storage",
     "Recycle Bin",
     "Audit",
+    "Dashboard",
     "Quickstart",
     "Key Value Tables",
     "Plugins",

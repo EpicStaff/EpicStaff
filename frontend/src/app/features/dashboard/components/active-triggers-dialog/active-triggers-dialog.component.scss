@@ -1,0 +1,82 @@
+@use '../../styles/dashboard-card';
+
+:host {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.triggers-dialog {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    border: 1px solid var(--color-divider-subtle);
+    border-radius: 12px;
+    background: var(--color-background-body);
+}
+
+.triggers-dialog__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-shrink: 0;
+    padding: 1.25rem 40px;
+    border-bottom: 1px solid var(--color-divider-subtle);
+}
+
+.triggers-dialog__title {
+    margin: 0;
+    font-size: var(--text-h4-size);
+    font-weight: var(--text-h4-weight);
+    color: var(--color-text-primary);
+}
+
+.triggers-dialog__count {
+    color: var(--accent-color);
+}
+
+.triggers-dialog__desc {
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+}
+
+.triggers-dialog__close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid var(--accent-color);
+    border-radius: 50%;
+    background: transparent;
+    color: var(--accent-color);
+    cursor: pointer;
+
+    &:is(:hover, :focus-visible) {
+        background-color: var(--color-ghost-btn-hover);
+    }
+}
+
+.triggers-dialog__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+    padding: 1.5rem 40px;
+}
+
+.triggers-dialog__trigger {
+    @include dashboard-card.trigger-label;
+}
+
+.triggers-dialog__status {
+    @include dashboard-card.status-dot;
+}
+
+.triggers-dialog__muted {
+    color: var(--color-text-secondary);
+}
