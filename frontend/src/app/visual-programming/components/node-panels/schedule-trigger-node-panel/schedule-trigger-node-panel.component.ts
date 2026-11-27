@@ -23,6 +23,7 @@ import {
     TimezoneSelectorComponent,
     ToggleSwitchComponent,
     ValidationErrorsComponent,
+    WarningNoteComponent,
 } from '@shared/components';
 import { NodeType } from '@shared/models';
 import { Subject, timer } from 'rxjs';
@@ -68,6 +69,7 @@ const MIN_INTERVAL_SECONDS = 60;
         TimezoneSelectorComponent,
         ToggleSwitchComponent,
         ValidationErrorsComponent,
+        WarningNoteComponent,
         DiffFieldMarkComponent,
     ],
     templateUrl: 'schedule-trigger-node-panel.component.html',
@@ -82,6 +84,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     private readonly refreshedNextRun = signal<string | null | undefined>(undefined);
     private readonly refreshedIsActive = signal<boolean | undefined>(undefined);
     private readonly refreshedCurrentRuns = signal<number | undefined>(undefined);
+    private readonly refreshedMissedRunAt = signal<string | null | undefined>(undefined);
     private readonly stopPolling$ = new Subject<void>();
 
     private readonly cdr = inject(ChangeDetectorRef);
@@ -113,6 +116,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
                         this.refreshedNextRun.set(dto.schedule?.next_run_date_time ?? null);
                         this.refreshedIsActive.set(dto.is_active);
                         this.refreshedCurrentRuns.set(dto.current_runs);
+                        this.refreshedMissedRunAt.set(dto.schedule?.missed_run_at ?? null);
                         this.syncRefreshedDataToNode(dto);
                         this.schedulePoll(this.computeNextPollDelay(dto));
                     },
@@ -148,10 +152,14 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
     readonly formattedNextRun = computed<string>(() => {
         const refreshed = this.refreshedNextRun();
         const iso = refreshed !== undefined ? refreshed : this.node().data.nextRunDateTime;
-        if (!iso) return '—';
-        const date = this.parseIsoToDate(iso);
-        const time = this.parseIsoToTime(iso);
-        return date && time ? `${date} at ${time}` : date || time || '—';
+        return this.formatRunDateTime(iso) ?? '—';
+    });
+
+    /** The run-once start missed while the scheduler was unavailable, formatted as "Next run" is; `null` when none. */
+    protected readonly formattedMissedRun = computed<string | null>(() => {
+        const refreshed = this.refreshedMissedRunAt();
+        const iso = refreshed !== undefined ? refreshed : this.node().data.missedRunAt;
+        return this.formatRunDateTime(iso);
     });
 
     readonly runsLeft = computed<string>(() => {
@@ -328,6 +336,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         this.refreshedNextRun.set(undefined);
         this.refreshedIsActive.set(undefined);
         this.refreshedCurrentRuns.set(undefined);
+        this.refreshedMissedRunAt.set(undefined);
         this.initialNodeName = this.node().node_name;
         this.submitted.set(false);
         this.startRowError.set('');
@@ -478,6 +487,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
                         this.refreshedNextRun.set(dto.schedule?.next_run_date_time ?? null);
                         this.refreshedIsActive.set(dto.is_active);
                         this.refreshedCurrentRuns.set(dto.current_runs);
+                        this.refreshedMissedRunAt.set(dto.schedule?.missed_run_at ?? null);
                         this.syncRefreshedDataToNode(dto, false);
                         this.stopPolling$.next();
                         this.schedulePoll(this.computeNextPollDelay(dto));
@@ -487,6 +497,14 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         }
 
         return fg;
+    }
+
+    /** A run time as "dd.mm.yyyy at HH:MM", or whichever part parses; `null` when there is none or nothing parses. */
+    private formatRunDateTime(iso: string | null | undefined): string | null {
+        if (!iso) return null;
+        const date = this.parseIsoToDate(iso);
+        const time = this.parseIsoToTime(iso);
+        return date && time ? `${date} at ${time}` : date || time || null;
     }
 
     /**
@@ -682,6 +700,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
 
         const refreshedNext = this.refreshedNextRun();
         const refreshedCurrent = this.refreshedCurrentRuns();
+        const refreshedMissed = this.refreshedMissedRunAt();
 
         const data: ScheduleTriggerNodeData = {
             isActive: f.is_active ?? false,
@@ -696,6 +715,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
             currentRuns: refreshedCurrent !== undefined ? refreshedCurrent : (this.node().data.currentRuns ?? 0),
             timezone: (f.timezone as string | null) ?? '',
             nextRunDateTime: refreshedNext !== undefined ? refreshedNext : (this.node().data.nextRunDateTime ?? null),
+            missedRunAt: refreshedMissed !== undefined ? refreshedMissed : (this.node().data.missedRunAt ?? null),
         };
 
         const formName = f.node_name ?? this.node().node_name;
@@ -804,6 +824,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
                             this.refreshedNextRun.set(dto.schedule?.next_run_date_time ?? null);
                             this.refreshedIsActive.set(dto.is_active);
                             this.refreshedCurrentRuns.set(dto.current_runs);
+                            this.refreshedMissedRunAt.set(dto.schedule?.missed_run_at ?? null);
                             this.syncRefreshedDataToNode(dto);
                             this.schedulePoll(this.computeNextPollDelay(dto));
                         },
@@ -825,7 +846,8 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         if (
             (state.isActive === undefined || current.data.isActive === state.isActive) &&
             current.data.nextRunDateTime === state.nextRunDateTime &&
-            current.data.currentRuns === state.currentRuns
+            current.data.currentRuns === state.currentRuns &&
+            (current.data.missedRunAt ?? null) === state.missedRunAt
         ) {
             return;
         }

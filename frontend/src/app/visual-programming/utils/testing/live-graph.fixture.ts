@@ -245,6 +245,7 @@ const liveSchedule: GetScheduleTriggerNodeRequest = {
         timezone: 'Europe/Kyiv',
         start_date_time: '2026-07-01T12:00:00',
         next_run_date_time: null,
+        missed_run_at: null,
         interval: { every: 1, unit: 'hours', weekdays: [] },
         end: { type: 'on_date', date_time: '2026-12-01T12:00:00', max_runs: null },
     },
