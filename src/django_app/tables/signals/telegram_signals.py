@@ -46,14 +46,30 @@ def _cleanup_orphaned_telegram_node_auth(trigger_id: int | None) -> None:
 
 @receiver(pre_save, sender=TelegramTriggerNode)
 def telegram_trigger_node_pre_save_handler(sender, instance: TelegramTriggerNode, **_):
+    previous = None
     if instance.pk:
-        instance._previous_webhook_trigger_id = (
+        previous = (
             TelegramTriggerNode.objects.filter(pk=instance.pk)
-            .values_list("webhook_trigger_id", flat=True)
+            .values_list("webhook_trigger_id", "telegram_bot_api_key_secret_id")
             .first()
         )
-    else:
-        instance._previous_webhook_trigger_id = None
+    (
+        instance._previous_webhook_trigger_id,
+        instance._previous_bot_api_key_secret_id,
+    ) = previous or (None, None)
+
+
+def _retire_webhook_after_commit(instance: TelegramTriggerNode) -> None:
+    """Retire a binned or deleted node's bot webhook once the change has committed.
+
+    After commit, so a rolled-back delete keeps the webhook, and a delete +
+    recreate in one transaction (version restore, import replace) sees the
+    recreated node still using the bot. Called before the orphaned-auth
+    cleanup is queued, so it runs while the auth still exists.
+    """
+    TelegramTriggerService().retire_bot_webhook_after_commit(
+        instance.webhook_trigger_id, instance.telegram_bot_api_key_secret_id, instance.pk
+    )
 
 
 def _register_restored_node(id_: int) -> None:
@@ -79,12 +95,23 @@ def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **
     _resync_tunnel_registration(id_)
 
     if not instance.active:
+        _retire_webhook_after_commit(instance)
         _cleanup_orphaned_telegram_node_auth(instance.webhook_trigger_id)
         logger.info(f"TelegramTriggerNode {id_} is soft-deleted, skipping registration")
         return
 
     old_trigger_id = getattr(instance, "_previous_webhook_trigger_id", None)
     new_trigger_id = instance.webhook_trigger_id
+    old_bot_api_key_secret_id = getattr(instance, "_previous_bot_api_key_secret_id", None)
+    if (old_trigger_id, old_bot_api_key_secret_id) != (
+        new_trigger_id,
+        instance.telegram_bot_api_key_secret_id,
+    ):
+        # Before registering: registration overwrites the auth's record of the
+        # URL the old bot was registered at, which retiring compares against.
+        TelegramTriggerService().retire_bot_webhook_after_commit(
+            old_trigger_id, old_bot_api_key_secret_id, id_
+        )
     if old_trigger_id is not None and old_trigger_id != new_trigger_id:
         _cleanup_orphaned_telegram_node_auth(old_trigger_id)
 
@@ -95,4 +122,7 @@ def telegram_trigger_post_save_handler(sender, instance: TelegramTriggerNode, **
 def telegram_trigger_post_delete_handler(sender, instance: TelegramTriggerNode, **kwargs):
     logger.info(f"Triggered post_delete signal for TelegramTriggerNode ID: {instance.pk}")
     _resync_tunnel_registration(instance.pk)
+    if instance.active:
+        # A binned node's webhook was retired when it was binned.
+        _retire_webhook_after_commit(instance)
     _cleanup_orphaned_telegram_node_auth(instance.webhook_trigger_id)

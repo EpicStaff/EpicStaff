@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import requests
+from django.db import transaction
 from loguru import logger
 from requests.exceptions import (
     ConnectionError,
@@ -501,13 +502,144 @@ class TelegramTriggerService(metaclass=SingletonMeta):
 
         return result
 
-    def unregister_telegram_trigger(self, telegram_bot_api_key: str):
-        try:
-            return self._call_telegram_api(
-                method="POST", api_key=telegram_bot_api_key, endpoint="deleteWebhook"
+    def retire_bot_webhook_after_commit(
+        self,
+        webhook_trigger_id: int | None,
+        bot_api_key_secret_id: int | None,
+        retiring_node_id: int,
+    ) -> None:
+        """Delete, once the transaction commits, the webhook of a bot a node stopped using.
+
+        Telegram keeps one webhook per bot key and goes on posting to it with the
+        trigger's `secret_token`, so a bot a node was repointed away from, or a
+        deleted node's bot, would keep starting every flow on the trigger's path.
+
+        Deferred to commit, so a rolled-back save or delete leaves Telegram as
+        the database still describes it, and no Telegram call holds the
+        transaction's locks. The URL the trigger was registered at is read now:
+        registering the node's new bot in the same transaction overwrites it.
+        Call this before that registration, and before queuing the trigger's
+        orphaned-auth cleanup, which deletes the record the retirement updates.
+
+        Args:
+            webhook_trigger_id: The trigger the bot was registered for.
+            bot_api_key_secret_id: The secret holding the bot key the node stopped using.
+            retiring_node_id: The node that stopped using the bot; used in logs.
+        """
+        if webhook_trigger_id is None or bot_api_key_secret_id is None:
+            return
+        registered_webhook_url = (
+            WebhookTriggerAuth.all_objects.filter(
+                trigger_id=webhook_trigger_id, kind=WebhookTriggerAuthKind.TELEGRAM
             )
-        except Exception:
-            return {"ok": False, "description": "Unregistration failed"}
+            .values_list("registered_webhook_url", flat=True)
+            .first()
+        )
+        if not registered_webhook_url:
+            # Nothing was ever registered for this trigger, so no webhook can point at it.
+            return
+        transaction.on_commit(
+            functools.partial(
+                self._retire_bot_webhook,
+                webhook_trigger_id,
+                bot_api_key_secret_id,
+                retiring_node_id,
+                registered_webhook_url,
+            ),
+            robust=True,
+        )
+
+    def _retire_bot_webhook(
+        self,
+        webhook_trigger_id: int,
+        bot_api_key_secret_id: int,
+        retiring_node_id: int,
+        registered_webhook_url: str,
+    ) -> None:
+        # Never raises: the save or delete has committed, and a Telegram failure
+        # must not turn it into an error. A failure is logged by type only,
+        # because its text can carry the bot token.
+        try:
+            self._delete_bot_webhook_unless_still_used(
+                webhook_trigger_id, bot_api_key_secret_id, retiring_node_id, registered_webhook_url
+            )
+        except Exception as error:
+            logger.warning(
+                "[TelegramTrigger] Could not retire the previous bot webhook of node "
+                "{node_id} on webhook trigger {trigger_id}: {error_type}",
+                node_id=retiring_node_id,
+                trigger_id=webhook_trigger_id,
+                error_type=type(error).__name__,
+            )
+
+    def _delete_bot_webhook_unless_still_used(
+        self,
+        webhook_trigger_id: int,
+        bot_api_key_secret_id: int,
+        retiring_node_id: int,
+        registered_webhook_url: str,
+    ) -> None:
+        # Committed state: the retiring node counts only if it uses the bot again
+        # (switched back later in the same transaction); binned nodes do not.
+        bot_still_used_on_trigger = TelegramTriggerNode.objects.filter(
+            webhook_trigger_id=webhook_trigger_id,
+            telegram_bot_api_key_secret_id=bot_api_key_secret_id,
+        ).exists()
+        if bot_still_used_on_trigger:
+            return
+
+        trigger_auth = (
+            WebhookTriggerAuth.all_objects.select_related("trigger")
+            .filter(trigger_id=webhook_trigger_id, kind=WebhookTriggerAuthKind.TELEGRAM)
+            .first()
+        )
+        if trigger_auth is None:
+            return
+
+        bot_api_key = secret_resolver.resolve(
+            secret_id=bot_api_key_secret_id,
+            org_id=trigger_auth.trigger.org_id,
+            context="TelegramTriggerNode.telegram_bot_api_key (retired bot)",
+        )
+        webhook_info = self._fetch_webhook_info(bot_api_key, retiring_node_id)
+        bot_webhook_url = webhook_info.get("url") or ""
+        if not bot_webhook_url or not _is_same_callback_url(
+            bot_webhook_url, registered_webhook_url
+        ):
+            logger.info(
+                "[TelegramTrigger] The previous bot of node {node_id} no longer posts to "
+                "webhook trigger {trigger_id}; keeping its webhook.",
+                node_id=retiring_node_id,
+                trigger_id=webhook_trigger_id,
+            )
+            return
+
+        self._call_telegram_api(
+            method="POST",
+            api_key=bot_api_key,
+            endpoint="deleteWebhook",
+            single_attempt=True,
+        )
+        logger.info(
+            "[TelegramTrigger] Deleted the previous bot webhook of node {node_id} on "
+            "webhook trigger {trigger_id}.",
+            node_id=retiring_node_id,
+            trigger_id=webhook_trigger_id,
+        )
+
+        if trigger_auth.registered_bot_api_key_secret_id == bot_api_key_secret_id:
+            # The record described the registration just deleted; clearing it makes
+            # the next registration on this trigger send `setWebhook` again.
+            trigger_auth.registered_webhook_url = None
+            trigger_auth.registered_bot_api_key_secret_id = None
+            trigger_auth.registered_secret_id = None
+            trigger_auth.save(
+                update_fields=[
+                    "registered_webhook_url",
+                    "registered_bot_api_key_secret_id",
+                    "registered_secret_id",
+                ]
+            )
 
     def register_and_log(self, telegram_trigger_instance: TelegramTriggerNode) -> None:
         """Register the node's Telegram webhook; a failure is logged, never raised.
