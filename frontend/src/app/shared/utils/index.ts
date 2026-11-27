@@ -18,6 +18,7 @@ export * from './generate-uuid.util';
 export * from './get-provider-icon';
 export * from './get-relative-time.util';
 export * from './group-thousands.util';
+export * from './grouped-number-input.util';
 export * from './http-error.util';
 export * from './http-status.util';
 export * from './humanize-error-message.util';

@@ -55,6 +55,11 @@ RUN chmod +x /entrypoint.sh \
  && grep -q '^pid /tmp/nginx.pid;$' /etc/nginx/nginx.conf \
  && ! grep -q '^user[[:space:]]' /etc/nginx/nginx.conf
 
+# The frontend's own commit for the About dialog. The last layer with content, so only it changes per
+# commit; written before USER nginx because the html folder stays root-owned.
+ARG EPICSTAFF_GIT_SHA="" EPICSTAFF_COMMIT_DATE=""
+RUN printf '{"git_sha":"%s","commit_date":"%s"}\n' "$EPICSTAFF_GIT_SHA" "$EPICSTAFF_COMMIT_DATE" > /usr/share/nginx/html/version.json
+
 USER nginx
 
 EXPOSE 80

@@ -139,12 +139,11 @@ class _GraphRagUow(AbstractUnitOfWork):
     ids=["deleted-graph-rag", "never-indexed-graph-rag"],
 )
 def test_graph_search_that_cannot_run_answers_with_a_client_error_code(
-    monkeypatch, tmp_path, graph_exists, expected_status, expected_code
+    tmp_path, graph_exists, expected_status, expected_code
 ):
     """The agent tells the model whether retrying can help by these codes, not by a 500."""
     # An existing graph RAG with an empty output directory has never been indexed.
     repo = FakeGraphRagRepo(tmp_path if graph_exists else None)
-    monkeypatch.setattr(rag_controller, "is_graphrag_available", lambda: True)
     app = Litestar(
         route_handlers=[RagController],
         signature_types=[AbstractUnitOfWork, AbstractCryptographer],

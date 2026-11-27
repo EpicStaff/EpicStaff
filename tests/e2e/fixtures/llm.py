@@ -57,16 +57,15 @@ def openai_provider_id(user_client: ApiClient) -> int:
 
 @pytest.fixture(scope="session")
 def mock_llm_model(user_client: ApiClient, openai_provider_id: int) -> dict:
-    """A custom model on the openai provider whose base URL is mock-llm.
+    """A custom model on the openai provider; the config on it carries the mock-llm base URL.
 
-    The agent reads the base URL from the model; `LLMConfig.base_url` is not used.
+    A model has no base URL: the catalog keeps it in the config's `connection`.
     """
     return user_client.post(
         "/api/llm-models/",
         json={
             "name": f"mock-gpt-{unique_suffix()}",
             "llm_provider": openai_provider_id,
-            "base_url": MOCK_LLM_BASE_URL_IN_STACK,
         },
         expect=201,
     ).json()
@@ -74,15 +73,15 @@ def mock_llm_model(user_client: ApiClient, openai_provider_id: int) -> dict:
 
 @pytest.fixture(scope="session")
 def e2e_llm_config(user_client: ApiClient, mock_llm_model: dict, quickstart: Quickstart) -> dict:
-    """LLM config on the mock model, bound to the quickstart Secret (needs `secrets:use`)."""
+    """LLM config on the mock model that calls mock-llm, bound to the quickstart Secret (needs `secrets:use`)."""
     return user_client.post(
         "/api/llm-configs/",
         json={
             "custom_name": f"e2e-llm-{unique_suffix()}",
             "model": mock_llm_model["id"],
             "api_key_secret_id": quickstart.secret_id,
-            "temperature": 0,
-            "max_tokens": 1000,
+            "parameters": {"temperature": 0, "max_tokens": 1000},
+            "connection": {"base_url": MOCK_LLM_BASE_URL_IN_STACK},
         },
         expect=201,
     ).json()

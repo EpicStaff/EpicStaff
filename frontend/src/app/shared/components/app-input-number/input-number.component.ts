@@ -6,21 +6,22 @@ import {
     ElementRef,
     forwardRef,
     input,
+    linkedSignal,
     model,
     output,
     signal,
     viewChild,
 } from '@angular/core';
-import {
-    ControlValueAccessor,
-    FormsModule,
-    NG_VALIDATORS,
-    NG_VALUE_ACCESSOR,
-    ValidationErrors,
-    Validator,
-} from '@angular/forms';
+import { ControlValueAccessor, NG_VALIDATORS, NG_VALUE_ACCESSOR, ValidationErrors, Validator } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
-import { generateUuid, groupThousands } from '@shared/utils';
+import {
+    formatGroupedNumber,
+    formatGroupedValue,
+    generateUuid,
+    parseGroupedNumber,
+    setGroupedInputText,
+    skipGroupSeparator,
+} from '@shared/utils';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -30,7 +31,7 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
     templateUrl: './input-number.component.html',
     styleUrls: ['./input-number.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [AppSvgIconComponent, FormsModule, NgClass, TooltipComponent, MatTooltip],
+    imports: [AppSvgIconComponent, NgClass, TooltipComponent, MatTooltip],
     providers: [
         {
             provide: NG_VALUE_ACCESSOR,
@@ -102,7 +103,11 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
         return this.invalid() || this.isOutOfRange() || this.hasBadInput();
     });
 
-    protected readonly groups = computed(() => (this.hasBadInput() ? null : groupThousands(this.value())));
+    protected readonly text = linkedSignal<number | null, string>({
+        source: this.value,
+        computation: (value, previous) =>
+            previous && parseGroupedNumber(previous.value) === value ? previous.value : formatGroupedValue(value),
+    });
 
     isAboveWarning = computed(() => {
         const value = this.value();
@@ -134,29 +139,29 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     private controlDisabled = signal(false);
     isDisabled = computed(() => this.disabled() || this.controlDisabled());
 
-    onInputChange(value: number) {
-        // Deferred-commit mode lets the native input hold whatever the user types; we only read and clamp
-        // it on blur/Enter. The signal stays unchanged mid-edit, so ngModel won't fight the DOM.
-        if (this.commitOnBlur()) return;
+    protected onInput(event: Event): void {
+        const input = event.target as HTMLInputElement;
 
         // Only decimal fields accept typed separators, so only they can end up with malformed text.
         // Report it as an error instead of passing the empty value on, which would silently clear the field.
-        if (this.allowDecimal() && this.nativeInput()?.nativeElement.validity.badInput) {
+        if (this.allowDecimal() && !/^-?\d*(\.\d*)?$/.test(input.value.replace(/\s/g, ''))) {
+            this.text.set(input.value);
+            if (this.commitOnBlur()) return;
             this.hasBadInput.set(true);
             this.onValidatorChange();
             return;
         }
+
+        const notNumberChars = this.allowDecimal() ? /[^\d.-]/g : /[^\d-]/g;
+        const text = formatGroupedNumber(input.value.replace(notNumberChars, '').replace(/(?!^)-/g, ''));
+        setGroupedInputText(input, text);
+        this.text.set(text);
+
+        // Deferred-commit mode only reads and clamps the typed text on blur/Enter.
+        if (this.commitOnBlur()) return;
+
         this.hasBadInput.set(false);
-
-        if (value === null || value === undefined) {
-            this.updateValue(null);
-            return;
-        }
-
-        let num = Number(value);
-        if (Number.isNaN(num)) return;
-
-        this.updateValue(num);
+        this.updateValue(parseGroupedNumber(text));
     }
 
     protected onInputBlur(): void {
@@ -174,14 +179,13 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     private commitTypedValue(): void {
         const el = this.nativeInput()?.nativeElement;
         if (!el) return;
-        const raw = el.value.trim();
         const min = this.min();
         const max = this.max();
         const floor = min ?? 0;
 
         let next: number;
-        const parsed = Number(raw);
-        if (raw === '' || Number.isNaN(parsed)) {
+        const parsed = parseGroupedNumber(el.value);
+        if (parsed === null) {
             next = floor;
         } else {
             next = parsed;
@@ -192,9 +196,7 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
         if (next !== this.value()) {
             this.updateValue(next);
         }
-        if (el.valueAsNumber !== next) {
-            el.value = String(next);
-        }
+        this.text.set(formatGroupedValue(next));
     }
 
     onStep(direction: 1 | -1 = 1) {
@@ -239,6 +241,10 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
             this.onInputEnter(event);
             return;
         }
+        if (event.key === 'Backspace' || event.key === 'Delete') {
+            skipGroupSeparator(event);
+            return;
+        }
         const allowedKeys = ['Backspace', 'Tab', 'ArrowLeft', 'ArrowRight', 'Delete', 'Home', 'End'];
         if (allowedKeys.includes(event.key)) return;
         // Steps from the input itself, as a native number field does.
@@ -268,6 +274,7 @@ export class InputNumberComponent implements ControlValueAccessor, Validator {
     writeValue(value: number | null): void {
         this.hasBadInput.set(false);
         this.value.set(value);
+        this.text.set(formatGroupedValue(value));
     }
 
     validate(): ValidationErrors | null {

@@ -82,3 +82,8 @@ RUN groupadd --system --gid 1000 app \
  && chown app:app /app/src/django_app/media /srv/plugin-spa
 
 USER app
+
+# Build identity for the About dialog. Last on purpose: a per-commit value here rebuilds only this layer.
+ARG EPICSTAFF_VERSION="" EPICSTAFF_GIT_REF="" EPICSTAFF_GIT_SHA="" EPICSTAFF_COMMIT_DATE=""
+ENV EPICSTAFF_VERSION=$EPICSTAFF_VERSION EPICSTAFF_GIT_REF=$EPICSTAFF_GIT_REF \
+    EPICSTAFF_GIT_SHA=$EPICSTAFF_GIT_SHA EPICSTAFF_COMMIT_DATE=$EPICSTAFF_COMMIT_DATE

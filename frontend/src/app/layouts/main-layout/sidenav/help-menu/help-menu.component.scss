@@ -34,7 +34,9 @@
 }
 
 // A guide, drawn like a row of the apps list; its 16px icon sits 8px from the label, like the links under that list.
-.help-menu__item {
+// The About row is drawn the same way.
+.help-menu__item,
+.help-menu__about {
     display: flex;
     align-items: center;
     gap: var(--space-sm);
@@ -56,4 +58,25 @@
         outline: 2px solid var(--accent-color);
         outline-offset: -2px;
     }
+}
+
+// About sits apart from the guides, under a line, with the list's own padding.
+.help-menu__footer {
+    flex-shrink: 0;
+    padding: 4px;
+    border-top: 1px solid var(--color-divider-subtle);
+
+    :host(.help-menu--inline) & {
+        margin-top: var(--space-2xs);
+        padding: var(--space-2xs) 0 0;
+    }
+}
+
+// The build's short form, at the row's end: a few characters, never cut. Muted like the sidebar's other secondary
+// text (the account row's role, the links under the apps list).
+.help-menu__about-build {
+    color: var(--color-text-secondary);
+    flex-shrink: 0;
+    margin-left: auto;
+    white-space: nowrap;
 }

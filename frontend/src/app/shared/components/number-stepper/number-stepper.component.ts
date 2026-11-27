@@ -1,7 +1,17 @@
-import { ChangeDetectionStrategy, Component, computed, forwardRef, input, model, output, signal } from '@angular/core';
+import {
+    ChangeDetectionStrategy,
+    Component,
+    computed,
+    forwardRef,
+    input,
+    linkedSignal,
+    model,
+    output,
+    signal,
+} from '@angular/core';
 import { ControlValueAccessor, FormControl, FormsModule, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
-import { groupThousands } from '@shared/utils';
+import { formatGroupedNumber, parseGroupedNumber, setGroupedInputText, skipGroupSeparator } from '@shared/utils';
 
 import { AppSvgIconComponent } from '../app-svg-icon/app-svg-icon.component';
 import { TooltipComponent } from '../tooltip/tooltip.component';
@@ -119,7 +129,13 @@ export class NumberStepperComponent implements ControlValueAccessor {
         return val.toString();
     });
 
-    protected readonly groups = computed(() => (this.readonly() ? null : groupThousands(this.displayValue())));
+    protected readonly text = linkedSignal<string, string>({
+        source: this.displayValue,
+        computation: (display, previous) =>
+            previous && parseGroupedNumber(previous.value) === parseGroupedNumber(display)
+                ? previous.value
+                : formatGroupedNumber(display),
+    });
 
     canStepDown = computed(() => {
         const val = this.value();
@@ -151,6 +167,10 @@ export class NumberStepperComponent implements ControlValueAccessor {
     onKeyDown(event: KeyboardEvent) {
         if (this.readonly()) {
             event.preventDefault();
+            return;
+        }
+        if (event.key === 'Backspace' || event.key === 'Delete') {
+            skipGroupSeparator(event);
             return;
         }
         const allowedKeys = [
@@ -219,33 +239,30 @@ export class NumberStepperComponent implements ControlValueAccessor {
                 this.updateValue(maxVal);
             }
         }
+        this.text.set(formatGroupedNumber(this.displayValue()));
         this.onTouched();
     }
 
     onInputChange(event: Event) {
         if (this.readonly()) return;
         const target = event.target as HTMLInputElement;
+        const notNumberChars = this.integer() ? /[^\d-]/g : /[^\d.-]/g;
+        const typed = formatGroupedNumber(target.value.replace(notNumberChars, '').replace(/(?!^)-/g, ''));
+        const parsed = parseGroupedNumber(typed);
         let newValue: number | null;
-        if (target.value === '') {
+        if (parsed === null) {
             newValue = null;
         } else if (this.integer()) {
-            const parsed = parseInt(target.value, 10);
             const maxVal = this.max() ?? Number.MAX_SAFE_INTEGER;
-            newValue = isNaN(parsed) ? null : Math.min(parsed, maxVal);
+            newValue = Math.min(Math.trunc(parsed), maxVal);
         } else {
-            newValue = parseFloat(target.value);
+            newValue = parsed;
         }
+        // The value is clamped to max: the field then shows the clamped value, not what was typed.
+        const shown = parsed === newValue ? typed : formatGroupedNumber(String(newValue ?? ''));
+        setGroupedInputText(target, shown);
+        this.text.set(shown);
         this.updateValue(newValue);
-        // In integer mode, force the DOM to show the clamped/sanitized value.
-        // OnPush skips re-rendering when the signal value hasn't changed (e.g., value
-        // was already at max from the previous keystroke), so the raw typed string
-        // would remain visible without this direct DOM update.
-        if (this.integer()) {
-            const expected = newValue === null ? '' : String(newValue);
-            if (target.value !== expected) {
-                target.value = expected;
-            }
-        }
     }
 
     onStepDown() {
@@ -287,6 +304,7 @@ export class NumberStepperComponent implements ControlValueAccessor {
 
     writeValue(value: number | null): void {
         this.value.set(value);
+        this.text.set(formatGroupedNumber(this.displayValue()));
     }
 
     registerOnChange(fn: (value: number | null) => void): void {

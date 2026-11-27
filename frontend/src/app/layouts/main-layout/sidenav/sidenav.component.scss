@@ -12,6 +12,7 @@ $avatar-padding: ($row-size - $avatar-size) * 0.5;
 $avatar-label-gap: calc(#{$avatar-padding} + var(--space-sm));
 $logo-padding-top: 1.75rem;
 $logo-padding-bottom: 0.75rem;
+$bottom-nav-padding-bottom: 1.75rem; // 28px
 
 :host {
     display: block;
@@ -174,7 +175,24 @@ $logo-padding-bottom: 0.75rem;
 
     &.bottom-nav {
         flex-shrink: 0;
-        padding-bottom: 1.75rem; // 28px
+        padding-bottom: $bottom-nav-padding-bottom;
+    }
+
+    // The build under the account row, last in the bottom list. It sits 8px from the sidebar's bottom edge: its
+    // negative bottom margin takes back the list's padding down to the row gap. Collapsed it may use the whole 60px,
+    // so a 7-char sha in the open sidebar's text style still fits (at most about 55px of text in 56px); expanded,
+    // its text lines up with the account avatar's left edge (the label's own 4px padding taken back).
+    .sidenav-version {
+        flex-shrink: 0;
+        width: 100%;
+        min-width: 0;
+        margin-top: calc(-1 * var(--space-sm)); // closer to the account row than the rows are to each other
+        margin-bottom: calc(var(--space-sm) - #{$bottom-nav-padding-bottom});
+        padding: 0;
+
+        .sidenav.expanded & {
+            padding: 0 calc(#{$nav-padding-inline} + #{$avatar-padding} - var(--space-2xs));
+        }
     }
 
     // As wide as a row: centred in the collapsed sidebar, stretched between the row insets when expanded.
