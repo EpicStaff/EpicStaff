@@ -8,6 +8,8 @@ from common.utils import utcnow
 from domain.enums import DocumentStatusEnum, IndexStatusEnum
 from domain.errors import (
     ChunksNotIndexedError,
+    ContentStorageUnavailableError,
+    DocumentContentMissingError,
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
     NoPreviewChunksProducedError,
@@ -26,15 +28,19 @@ from loguru import logger
 
 class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
     async def on_execute(self, command: RunIndex) -> None:
+        # Claim the documents: load them and record them as taken by this run in one
+        # transaction under the RAG row lock, so an edit of their files either waits for
+        # the claim or is refused because of it. Their own statuses change only once
+        # each file is processed.
         async with self.uow:
-            rag = await self._get_rag_under_uow(command.rag_id)
+            rag = await self._get_rag_under_uow(command.rag_id, for_update=True)
             # After the RAG is loaded, so a secret that fails to decrypt fails the RAG.
             secrets = open_sealed_secrets(command, self.cryptographer)
             embedder = await self._get_embedder_under_uow(rag.id, secrets)
             documents = await self._get_documents_under_uow(rag.id, command.document_ids)
-
-        rag.mark_as_processing(command.document_ids)
-        await self._update_rag(rag)
+            rag.mark_as_processing(command.document_ids)
+            await self.uow.naive_rag_repo.update_rag(rag=rag)
+            await self.uow.commit()
 
         usage = self.state["usage"] = UsageTally()
         for document in documents:
@@ -60,7 +66,12 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
             try:
                 if not document.preview_chunks or document.has_config_changed():
                     extractor = build_file_text_extractor(document.extension)
-                    text = await extractor.extract(document.content)
+                    try:
+                        content = await self.content_reader.read(document.content_key)
+                    except DocumentContentMissingError as error:
+                        # The reader knows only the key; the user knows the file name.
+                        raise DocumentContentMissingError(documents=f"'{document.name}'") from error
+                    text = await extractor.extract(content)
 
                     chuncker = build_chunker(document.config.chunk_strategy, document.config)
                     preview_chunks = await chuncker.chunk(text)
@@ -82,7 +93,8 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
                 if not indexed_chunks:
                     raise ChunksNotIndexedError(document_id=document.id, rag_id=rag.id)
 
-            except RepositoryError:
+            # An unreachable storage fails every document alike: the run fails instead.
+            except (RepositoryError, ContentStorageUnavailableError):
                 raise
 
             except Exception as e:
@@ -138,8 +150,8 @@ class NaiveIndexOrchestrator(AbstractIndexOrchestrator):
             await self._update_rag(rag)
             await self._record_usage(rag.id)
 
-    async def _get_rag_under_uow(self, rag_id: int) -> Rag:
-        rag = await self.uow.naive_rag_repo.get_rag(rag_id=rag_id)
+    async def _get_rag_under_uow(self, rag_id: int, *, for_update: bool = False) -> Rag:
+        rag = await self.uow.naive_rag_repo.get_rag(rag_id=rag_id, for_update=for_update)
         if rag is None:
             raise RagNotFoundError(rag_id=rag_id)
         self.state["rag"] = rag

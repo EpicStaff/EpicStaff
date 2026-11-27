@@ -7,12 +7,13 @@ from application.sealed_secrets import open_sealed_secrets
 from common.utils import utcnow
 from domain.enums import DocumentStatusEnum, IndexStatusEnum, SlotEnum
 from domain.errors import (
+    DocumentContentMissingError,
     DocumentNotFoundError,
     GraphRagConfigNotFoundError,
     RagNotFoundError,
     RepositoryError,
 )
-from domain.models import GraphPricingConfig, Rag
+from domain.models import GraphDocument, GraphPricingConfig, Rag
 from domain.usage import IndexingRunUsage, UsageTally
 from graphrag.api import build_index
 from graphrag.config.models.graph_rag_config import GraphRagConfig
@@ -20,6 +21,7 @@ from graphrag_input import TextDocument
 from graphrag_storage import create_storage
 from infrastructure.database.mappers.embedding_arguments import embedding_call_arguments
 from infrastructure.database.mappers.graph import graph_rag_cache_config
+from infrastructure.file_text_extractors import build_file_text_extractor
 from infrastructure.graphrag.model_access import (
     apply_request_access,
     completion_call_arguments,
@@ -34,25 +36,34 @@ from loguru import logger
 
 class GraphIndexOrchestrator(AbstractIndexOrchestrator):
     async def on_execute(self, command: RunIndex):
-        async with self.uow:
-            rag = await self._get_rag_under_uow(command.rag_id)
-            documents = await self._get_documents_under_uow(rag.id, command.document_ids)
-
+        # Claim the documents: load them, read their files and record them as taken by
+        # this run in one transaction under the RAG row lock. A reindex also reads
+        # documents the run does not take, and an edit may replace their files once the
+        # claim commits, so the files are read before it does. A run that cannot start
+        # (no config, a secret that fails to decrypt) fails before it claims anything.
+        # Document statuses change only when the run finishes.
         is_update_run = False
         target_slot = None
-        if rag.status == IndexStatusEnum.COMPLETED:
-            if self._has_indexed_document(documents):
-                logger.debug("REINDEX")
-                documents += await self._get_indexed_documents_excluding(
-                    rag.id, command.document_ids
-                )
-                target_slot = SlotEnum.A if rag.slot == SlotEnum.B else SlotEnum.B
-                self.state["target_slot"] = target_slot
-            else:
-                is_update_run = True
+        async with self.uow:
+            rag = await self._get_rag_under_uow(command.rag_id, for_update=True)
+            documents = await self._get_documents_under_uow(rag.id, command.document_ids)
+            if rag.status == IndexStatusEnum.COMPLETED:
+                if self._has_indexed_document(documents):
+                    logger.debug("REINDEX")
+                    documents += await self.uow.graph_rag_repo.get_indexed_documents_excluding(
+                        rag_id=rag.id, ids=command.document_ids
+                    )
+                    target_slot = SlotEnum.A if rag.slot == SlotEnum.B else SlotEnum.B
+                    self.state["target_slot"] = target_slot
+                else:
+                    is_update_run = True
+            secrets = open_sealed_secrets(command, self.cryptographer)
+            config = await self._get_config_under_uow(rag.id, target_slot)
+            text_documents = await self._read_texts(documents)
+            rag.mark_as_processing(command.document_ids)
+            await self.uow.graph_rag_repo.update_rag(rag)
+            await self.uow.commit()
 
-        secrets = open_sealed_secrets(command, self.cryptographer)
-        config = await self._get_config_under_uow(rag.id, target_slot)
         embedding_model = config.embedding_models["default_embedding_model"]
         completion_model = config.completion_models["default_completion_model"]
         embedding_arguments = embedding_call_arguments(command.embedding_parameters)
@@ -76,10 +87,7 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             [(completion_model, completion_arguments), (embedding_model, embedding_arguments)],
         )
 
-        rag.mark_as_processing(command.document_ids)
-        await self._update_rag(rag)
-
-        input_documents = pandas.DataFrame(data=[asdict(d) for d in documents])
+        input_documents = pandas.DataFrame(data=[asdict(d) for d in text_documents])
         input_documents["human_readable_id"] = input_documents.index
         with track_usage(config) as usage:
             self.state["usage"] = usage
@@ -132,16 +140,15 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
             if target_slot:
                 await self._clear_slot_storage(rag.id, target_slot)
 
-    async def _get_rag_under_uow(self, rag_id: int) -> Rag:
-        rag = await self.uow.graph_rag_repo.get_rag(rag_id=rag_id)
+    async def _get_rag_under_uow(self, rag_id: int, *, for_update: bool = False) -> Rag:
+        rag = await self.uow.graph_rag_repo.get_rag(rag_id=rag_id, for_update=for_update)
         if rag is None:
             raise RagNotFoundError(rag_id=rag_id)
         self.state["rag"] = rag
         return rag
 
     async def _get_config_under_uow(self, rag_id: int, slot: SlotEnum) -> GraphRagConfig:
-        async with self.uow:
-            config = await self.uow.graph_rag_repo.get_config(rag_id=rag_id, slot=slot)
+        config = await self.uow.graph_rag_repo.get_config(rag_id=rag_id, slot=slot)
         if not config:
             raise GraphRagConfigNotFoundError(rag_id=rag_id)
         return config
@@ -192,26 +199,54 @@ class GraphIndexOrchestrator(AbstractIndexOrchestrator):
 
     async def _get_documents_under_uow(
         self, rag_id: int, ids: frozenset[int]
-    ) -> list[TextDocument]:
+    ) -> list[GraphDocument]:
         documents = await self.uow.graph_rag_repo.get_documents(rag_id=rag_id, ids=ids)
 
         if not documents:
             raise DocumentNotFoundError(f"No Document found for RAG(id={rag_id}).")
         return documents
 
-    async def _get_indexed_documents_excluding(self, rag_id: int, ids: frozenset[int]):
-        async with self.uow:
-            return await self.uow.graph_rag_repo.get_indexed_documents_excluding(
-                rag_id=rag_id, ids=ids
-            )
-
     async def _update_rag(self, rag: Rag):
         async with self.uow:
             await self.uow.graph_rag_repo.update_rag(rag)
             await self.uow.commit()
 
-    def _has_indexed_document(self, documents: list[TextDocument]) -> bool:
-        return any(d.raw_data["status"] == DocumentStatusEnum.COMPLETED for d in documents)
+    def _has_indexed_document(self, documents: list[GraphDocument]) -> bool:
+        return any(d.status == DocumentStatusEnum.COMPLETED for d in documents)
+
+    async def _read_texts(self, documents: list[GraphDocument]) -> list[TextDocument]:
+        """Read every document's file and extract its text, as graphrag takes it.
+
+        graphrag indexes all documents in one run, so a missing file fails the whole run
+        before it starts; the error names every document whose file is missing.
+
+        Raises:
+            DocumentContentMissingError: Some documents' files are gone from storage.
+            ContentStorageUnavailableError: The storage could not be reached.
+        """
+        text_documents: list[TextDocument] = []
+        missing_names: list[str] = []
+        for document in documents:
+            try:
+                content = await self.content_reader.read(document.content_key)
+            except DocumentContentMissingError:
+                missing_names.append(document.name)
+                continue
+            text = await build_file_text_extractor(document.extension).extract(content)
+            text_documents.append(
+                TextDocument(
+                    id=str(document.id),
+                    text=text,
+                    title=document.name,
+                    creation_date=document.created_at.isoformat(),
+                    raw_data={"status": document.status},
+                )
+            )
+        if missing_names:
+            raise DocumentContentMissingError(
+                documents=", ".join(f"'{name}'" for name in missing_names)
+            )
+        return text_documents
 
     async def _update_status_of_documents(
         self,

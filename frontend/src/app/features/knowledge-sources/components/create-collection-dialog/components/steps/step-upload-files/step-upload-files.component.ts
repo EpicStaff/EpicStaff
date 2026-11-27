@@ -18,12 +18,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
-import {
-    BlobPreviewComponent,
-    FileUploaderComponent,
-    HelpTooltipComponent,
-    ValidationErrorsComponent,
-} from '@shared/components';
+import { FileUploaderComponent, HelpTooltipComponent, ValidationErrorsComponent } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { notWhitespaceValidator } from '@shared/form-validators';
 import { ActionCode, ResourceCode } from '@shared/models';
@@ -50,6 +45,7 @@ import { CollectionsStorageService } from '../../../../../services/collections-s
 import { DocumentsApiService } from '../../../../../services/documents-api.service';
 import { DocumentsStorageService } from '../../../../../services/documents-storage.service';
 import { FileListService } from '../../../../../services/files-list.service';
+import { DocumentContentEditorComponent } from '../../../../document-content-editor/document-content-editor.component';
 import { FilesListComponent } from './files-list/files-list.component';
 
 interface PreviewState {
@@ -66,7 +62,7 @@ interface PreviewState {
         ReactiveFormsModule,
         FileUploaderComponent,
         FilesListComponent,
-        BlobPreviewComponent,
+        DocumentContentEditorComponent,
         UpperCasePipe,
         ValidationErrorsComponent,
         HasPermissionDirective,
@@ -89,6 +85,7 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
     description: FormControl = new FormControl('', [Validators.maxLength(COLLECTION_DESCRIPTION_MAX_LENGTH)]);
     private readonly descriptionTa = viewChild<ElementRef<HTMLTextAreaElement>>('descriptionTa');
     private readonly fileUploader = viewChild(FileUploaderComponent);
+    private readonly contentEditor = viewChild(DocumentContentEditorComponent);
     private readonly injector = inject(Injector);
     private readonly document = inject(DOCUMENT);
     private hadDocuments = false;
@@ -237,6 +234,17 @@ export class StepUploadFilesComponent implements OnInit, AfterViewInit {
                 })
             )
             .subscribe(() => this.toastService.success('Collection Updated'));
+    }
+
+    /** Resolves true when the step may be left: no unsaved edit, or the user agreed to drop it. */
+    confirmLeave(): Observable<boolean> {
+        return this.contentEditor()?.confirmDiscard() ?? of(true);
+    }
+
+    /** Fetches the selected document's preview and the collection's file sizes again, after its content changed. */
+    reloadSelectedDocument(): void {
+        this.selectedDocument.update((document) => (document ? { ...document } : document));
+        this.getCollectionDocuments(this.collection().collection_id);
     }
 
     onFilesUpload(files: FileList): void {

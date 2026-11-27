@@ -38,6 +38,7 @@ from tables.models.knowledge_models import (
     SourceCollection,
 )
 from tables.models.knowledge_models.collection_models import is_bare_file_name
+from tables.services.knowledge_services.document_content_storage import DocumentContentStorage
 from tables.services.knowledge_services.document_management_service import (
     DocumentManagementService,
 )
@@ -210,14 +211,14 @@ class SourceCollectionStrategy(EntityImportExportStrategy):
         for document in entry["documents"]:
             if document["content_path"] is None:
                 continue
-            content = (
+            object_key = (
                 DocumentContent.objects.filter(metadata_records__document_id=document["id"])
-                .values_list("content", flat=True)
+                .values_list("object_key", flat=True)
                 .first()
             )
-            if content is None:
+            if object_key is None:
                 raise _collection_changed(f"document {document['file_name']!r} is gone")
-            writer.add_bytes(document["content_path"], bytes(content))
+            writer.add_bytes(document["content_path"], DocumentContentStorage.read(object_key))
 
     @staticmethod
     def _write_naive_chunks(entry: dict, writer: ExportArchiveWriter) -> None:
@@ -371,15 +372,17 @@ class SourceCollectionStrategy(EntityImportExportStrategy):
         *,
         archive: ImportArchive | None = None,
         created_graph_rag_ids: list[int] | None = None,
+        created_object_keys: list[str] | None = None,
         org_id: int | None = None,
         user=None,
         **kwargs,
     ) -> SourceCollection:
         """Create the collection, its documents, chunks and graph indexes.
 
-        A graph index is restored in the knowledge service, outside the database
-        transaction; its RAG id goes to `created_graph_rag_ids` before the upload so
-        a failed import can remove it again.
+        A graph index is restored in the knowledge service and a document's file is
+        written to object storage, both outside the database transaction: the RAG id
+        goes to `created_graph_rag_ids` before the upload, the file's key to
+        `created_object_keys` once written, so a failed import can remove them again.
         """
         if archive is None:
             raise ValidationError(
@@ -390,6 +393,8 @@ class SourceCollectionStrategy(EntityImportExportStrategy):
             )
         if created_graph_rag_ids is None:
             created_graph_rag_ids = []
+        if created_object_keys is None:
+            created_object_keys = []
 
         collection = SourceCollection.objects.create(
             collection_name=data["collection_name"],
@@ -398,7 +403,9 @@ class SourceCollectionStrategy(EntityImportExportStrategy):
             org_id=org_id,
             created_by=resolve_author(user),
         )
-        document_ids = self._create_documents(data["documents"], collection, archive)
+        document_ids = self._create_documents(
+            data["documents"], collection, archive, created_object_keys
+        )
         collection.update_collection_status()
 
         for entry in data["naive_rags"]:
@@ -411,7 +418,10 @@ class SourceCollectionStrategy(EntityImportExportStrategy):
 
     @staticmethod
     def _create_documents(
-        documents: list[dict], collection: SourceCollection, archive: ImportArchive
+        documents: list[dict],
+        collection: SourceCollection,
+        archive: ImportArchive,
+        created_object_keys: list[str],
     ) -> dict[int, int]:
         """Create every document; returns old document id -> new.
 
@@ -442,9 +452,10 @@ class SourceCollectionStrategy(EntityImportExportStrategy):
             except DocumentUploadException as error:
                 raise invalid_archive(str(error.detail)) from error
             if entry["content_path"] is not None:
-                # Only the id is kept: the row object would hold the bytes until the end.
                 with archive.open_member(entry["content_path"]) as member:
-                    content_id = DocumentContent.objects.create(content=member.read()).pk
+                    content = DocumentContentStorage.create(collection.org_id, member.read())
+                created_object_keys.append(content.object_key)
+                content_id = content.pk
             rows.append(
                 (
                     entry["id"],

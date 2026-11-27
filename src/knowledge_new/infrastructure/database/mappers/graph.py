@@ -3,14 +3,13 @@ import json
 
 from domain.enums import SlotEnum
 from domain.errors import GraphRagConfigNotFoundError
-from domain.models import EmbeddingConfig, GraphPricingConfig, Rag
+from domain.models import EmbeddingConfig, GraphDocument, GraphPricingConfig, Rag
 from graphrag.config.models.cluster_graph_config import ClusterGraphConfig
 from graphrag.config.models.extract_graph_config import ExtractGraphConfig
 from graphrag.config.models.graph_rag_config import GraphRagConfig
 from graphrag.config.models.reporting_config import ReportingConfig
 from graphrag_cache import CacheConfig
 from graphrag_chunking.chunking_config import ChunkingConfig as GraphRagChunkingConfig
-from graphrag_input import TextDocument
 from graphrag_llm.config import ModelConfig
 from graphrag_storage import StorageConfig
 from infrastructure.database.models import EmbeddingConfig as ORMEmbeddingConfig
@@ -148,14 +147,15 @@ def graph_rag_orm_to_graphrag_config(orm_rag: GraphRag, *, slot: SlotEnum) -> Gr
     )
 
 
-def graph_document_orm_to_text_document(row: GraphRagDocument, text: str) -> TextDocument:
+def graph_document_orm_to_graph_document(row: GraphRagDocument) -> GraphDocument:
     document = row.document
-    return TextDocument(
-        id=str(row.graph_rag_document_id),
-        text=text,
-        title=document.file_name,
-        creation_date=row.created_at.isoformat(),
-        raw_data={"status": row.status},
+    return GraphDocument(
+        id=row.graph_rag_document_id,
+        name=document.file_name,
+        extension=f".{document.file_type}",
+        content_key=document.document_content.object_key,
+        created_at=row.created_at,
+        status=row.status,
     )
 
 

@@ -40,6 +40,7 @@ from tests.import_export_tests.knowledge_builders import make_document
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 from tests.storage_backend_fake import FakeStorageBackend
 from tests.transfer_job_helpers import FinishedExport, export_via_job
+from tests.knowledge_content import stored_document_bytes
 
 URL = "/api/agent-definitions/"
 EXPORT_JOBS_URL = f"{URL}export-jobs/"
@@ -564,7 +565,7 @@ def test_an_import_job_relinks_the_owned_surface_to_the_imported_collection(
     assert imported_collection.collection_id != collection.collection_id
     assert imported_collection.collection_name == "Handbook"
     [document] = DocumentMetadata.objects.filter(source_collection=imported_collection)
-    assert (document.file_name, bytes(document.document_content.content)) == (
+    assert (document.file_name, stored_document_bytes(document)) == (
         "policy.txt",
         b"policy bytes",
     )

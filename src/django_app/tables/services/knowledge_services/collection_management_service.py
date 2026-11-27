@@ -23,13 +23,14 @@ from tables.exceptions import (
     NoGraphRagForCollectionException,
     NoNaiveRagForCollectionException,
 )
-from tables.models import DocumentContent, DocumentMetadata, SourceCollection
+from tables.models import DocumentMetadata, SourceCollection
 from tables.models.knowledge_models import GraphRag, GraphRagIndexConfig, NaiveRag
 from tables.models.knowledge_models.naive_rag_models import (
     NaiveRagChunk,
     NaiveRagDocumentConfig,
     NaiveRagEmbedding,
 )
+from tables.services.knowledge_services.document_content_storage import DocumentContentStorage
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
 from tables.services.recycle_bin.deleting import move_to_recycle_bin
@@ -266,7 +267,8 @@ class CollectionManagementService:
     def purge_collection(collection: SourceCollection) -> dict[str, Any]:
         """
         Delete a collection for good: its documents (binned ones included), the
-        DocumentContent no other document references any more, and its GraphRAG
+        DocumentContent no other document references any more (its stored files once the
+        transaction commits), and its GraphRAG
         data: the GraphRagIndexConfig rows (a forward link the Collector doesn't
         follow) and, once the transaction commits, the indexes the knowledge
         service holds.
@@ -307,16 +309,9 @@ class CollectionManagementService:
                 lambda: CollectionManagementService._delete_graph_rag_indexes(graph_rag_ids)
             )
 
-        unreferenced_count = 0
-        if content_ids:
-            unreferenced_content = (
-                DocumentContent.objects.filter(id__in=content_ids)
-                .annotate(ref_count=models.Count("metadata_records"))
-                .filter(ref_count=0)
-            )
-            unreferenced_count = unreferenced_content.count()
-            if unreferenced_count > 0:
-                unreferenced_content.delete()
+        unreferenced_object_keys = DocumentContentStorage.delete_unreferenced_rows(content_ids)
+        DocumentContentStorage.delete_on_commit(unreferenced_object_keys)
+        unreferenced_count = len(unreferenced_object_keys)
 
         logger.info(
             "Purged collection '{}' (ID: {}) with {} documents and {} unreferenced content records",

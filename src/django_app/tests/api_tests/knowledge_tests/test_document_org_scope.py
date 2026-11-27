@@ -11,6 +11,7 @@ from rest_framework import status
 
 from tables.models import DocumentContent, DocumentMetadata, SourceCollection
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.knowledge_content import stored_document_content
 
 ACME_CONTENT = b"acme document"
 BETA_CONTENT = b"beta confidential document"
@@ -34,7 +35,7 @@ def _create_document(org, content, name):
     collection = SourceCollection.objects.create(collection_name=f"{name}-source", org=org)
     return DocumentMetadata.objects.create(
         source_collection=collection,
-        document_content=DocumentContent.objects.create(content=content),
+        document_content=stored_document_content(content),
         file_name=f"{name}.txt",
         file_type="txt",
         file_size=len(content),
@@ -81,6 +82,18 @@ def test_download_own_document_returns_its_content(acme_admin_client, acme_docum
 
     assert response.status_code == status.HTTP_200_OK
     assert response.content == ACME_CONTENT
+
+
+@pytest.mark.django_db
+def test_download_of_a_document_whose_file_is_gone_is_404(
+    acme_admin_client, acme_document, knowledge_bucket
+):
+    knowledge_bucket.files.pop(acme_document.document_content.object_key)
+
+    response = _download(acme_admin_client, acme_document)
+
+    assert response.status_code == status.HTTP_404_NOT_FOUND
+    assert response.json()["code"] == "document_content_missing"
 
 
 @pytest.mark.django_db

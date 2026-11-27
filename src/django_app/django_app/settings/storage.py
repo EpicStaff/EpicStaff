@@ -2,11 +2,17 @@ from botocore.config import Config
 
 from django_app.settings import env
 
-http = "https" if env.bool("STORAGE_SSL") else "http"
-STORAGE_ENDPOINT = f"{http}://{env.str('STORAGE_HOST')}:{env.int('STORAGE_PORT')}"
+STORAGE_HOST = env.str("STORAGE_HOST")
+STORAGE_PORT = env.int("STORAGE_PORT")
+STORAGE_SSL = env.bool("STORAGE_SSL")
+http = "https" if STORAGE_SSL else "http"
+STORAGE_ENDPOINT = f"{http}://{STORAGE_HOST}:{STORAGE_PORT}"
 STORAGE_ACCESS_KEY = env.str("STORAGE_USER")
 STORAGE_SECRET_KEY = env.str("STORAGE_PASSWORD")
 STORAGE_BUCKET_NAME = env.str("STORAGE_BUCKET")
+# Holds the content of knowledge documents, under `documents/`; the knowledge service
+# keeps its GraphRAG artifacts in the same bucket.
+KNOWLEDGE_STORAGE_BUCKET = env.str("KNOWLEDGE_STORAGE_BUCKET")
 AVATAR_URL_SIGNING_SECRET = env.secret("AVATAR_URL_SIGNING_SECRET")
 
 # TTL for temporary session storage credentials (hours). 0 means no expiration.

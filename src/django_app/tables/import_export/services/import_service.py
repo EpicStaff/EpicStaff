@@ -21,6 +21,7 @@ from tables.import_export.preparation import prepare_import_data
 from tables.import_export.registry import EntityRegistry
 from tables.import_export.schemas import ImportSettings
 from tables.import_export.strategies.source_collection import remove_restored_graph_indexes
+from tables.services.knowledge_services.document_content_storage import DocumentContentStorage
 from tables.services.storage_service.archive_unpacking.extraction_guard import ArchiveLimitExceeded
 from tables.services.trigger_nodes import TriggerNodeInspector, trigger_node_access
 from tables.validators.run_refusal_validator import assert_no_run_refusals_in_export
@@ -80,6 +81,8 @@ class ImportService:
         created_venv_ids: list[int] = []
         # Graph indexes are restored in the knowledge service, outside the transaction.
         created_graph_rag_ids: list[int] = []
+        # Document files are written to object storage, outside the transaction.
+        created_object_keys: list[str] = []
 
         try:
             with transaction.atomic():
@@ -113,6 +116,7 @@ class ImportService:
                             created_resources=created_resources,
                             created_venv_ids=created_venv_ids,
                             created_graph_rag_ids=created_graph_rag_ids,
+                            created_object_keys=created_object_keys,
                             archive=archive,
                             actor=actor,
                             **strategy_kwargs,
@@ -127,6 +131,7 @@ class ImportService:
         except Exception as error:
             VenvService().remove_upstream(created_venv_ids)
             remove_restored_graph_indexes(created_graph_rag_ids)
+            DocumentContentStorage.delete(created_object_keys)
             if isinstance(error, ArchiveLimitExceeded):
                 raise InvalidArchiveError(
                     {"code": "invalid_archive", "detail": str(error)}

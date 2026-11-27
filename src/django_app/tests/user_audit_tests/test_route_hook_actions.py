@@ -57,6 +57,7 @@ from tables.views.knowledge_views.naive_rag_views import NaiveRagViewSet
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 from user_audit.context import user_action_context
 from user_audit.middleware import UserActionMiddleware
+from tests.knowledge_content import stored_document_content
 
 pytestmark = pytest.mark.django_db
 
@@ -99,7 +100,7 @@ def _llm_config(org, name="Writer LLM") -> LLMConfig:
 def _document(collection, file_name="guide.txt") -> DocumentMetadata:
     return DocumentMetadata.objects.create(
         source_collection=collection,
-        document_content=DocumentContent.objects.create(content=b"text"),
+        document_content=stored_document_content(b"text"),
         file_name=file_name,
         file_type="txt",
         file_size=4,

@@ -73,6 +73,8 @@ export class BlobPreviewComponent {
     /** The blob holds only the beginning of the file. */
     truncated = input<boolean>(false);
     showDownload = input<boolean>(false);
+    /** Show the "<type> only view" badge; a host that lets the file be edited turns it off. */
+    showBadge = input<boolean>(true);
     downloadClick = output<void>();
 
     private sanitizer = inject(DomSanitizer);

@@ -35,6 +35,7 @@ from tables.services.storage_service.recycle_bin import StorageRecycleBinService
 from tests.rbac_cross_org_fixtures import acme, beta  # noqa: F401  -- fixtures
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file
 from utils.logger import logger
+from tests.knowledge_content import stored_document_content
 
 KNOWLEDGE_DELETE = "tables.clients.KnowledgeClient.delete"
 
@@ -64,9 +65,11 @@ class TestPurge:
 
         assert Graph.objects.filter(pk=graph.pk).exists()
 
-    def test_purge_of_a_collection_drops_its_unused_content(self, default_org):
+    def test_purge_of_a_collection_drops_its_unused_content(
+        self, default_org, knowledge_bucket, django_capture_on_commit_callbacks
+    ):
         collection = SourceCollection.objects.create(org=default_org, collection_name="Old docs")
-        content = DocumentContent.objects.create(content=b"old")
+        content = stored_document_content(b"old")
         DocumentMetadata.objects.create(
             source_collection=collection,
             document_content=content,
@@ -76,10 +79,14 @@ class TestPurge:
         )
         collection.delete()
 
-        PurgeService.purge(SourceCollection.all_objects.get(collection_id=collection.collection_id), actor="test")
+        with django_capture_on_commit_callbacks(execute=True):
+            PurgeService.purge(
+                SourceCollection.all_objects.get(collection_id=collection.collection_id), actor="test"
+            )
 
         assert not SourceCollection.all_objects.filter(collection_id=collection.collection_id).exists()
         assert not DocumentContent.objects.filter(id=content.id).exists()
+        assert content.object_key not in knowledge_bucket.files
 
 
 @pytest.mark.django_db
@@ -254,9 +261,11 @@ class TestPurgeExpired:
         assert not StorageFile.all_objects.filter(org=storage_org, path="docs/b.txt").exists()
         assert storage_manager._backend._objects[f"org_{storage_org.id}/docs/a.txt"][0] == b"a"
 
-    def test_an_expired_collection_drops_content_only_it_used(self, default_org):
-        mine = DocumentContent.objects.create(content=b"only mine")
-        shared = DocumentContent.objects.create(content=b"shared")
+    def test_an_expired_collection_drops_content_only_it_used(
+        self, default_org, knowledge_bucket, django_capture_on_commit_callbacks
+    ):
+        mine = stored_document_content(b"only mine")
+        shared = stored_document_content(b"shared")
         collection = SourceCollection.objects.create(org=default_org, collection_name="Old docs")
         live = SourceCollection.objects.create(org=default_org, collection_name="Live docs")
         for target, content, name in ((collection, mine, "m.txt"), (collection, shared, "s.txt"), (live, shared, "s.txt")):
@@ -266,11 +275,14 @@ class TestPurgeExpired:
         collection.delete()
         _backdate(SourceCollection, collection, 8)
 
-        PurgeService.purge_expired()
+        with django_capture_on_commit_callbacks(execute=True):
+            PurgeService.purge_expired()
 
         assert not SourceCollection.all_objects.filter(pk=collection.pk).exists()
         assert not DocumentContent.objects.filter(id=mine.id).exists()
         assert DocumentContent.objects.filter(id=shared.id).exists()
+        assert mine.object_key not in knowledge_bucket.files
+        assert knowledge_bucket.files[shared.object_key] == b"shared"
 
     def test_one_failing_root_does_not_stop_the_run_and_keeps_its_children(self, default_org):
         failing, failing_node = _binned_flow(default_org, "Fails", days_ago=8)

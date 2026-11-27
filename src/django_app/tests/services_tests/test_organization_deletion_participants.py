@@ -13,6 +13,7 @@ from rbac.models import Organization
 from tables.services.organization_deletion import TablesOrganizationDeletion
 from tables.services.storage_service.manager import StorageManager
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
+from tests.knowledge_content import stored_document_content
 
 
 @pytest.fixture(autouse=True)
@@ -251,7 +252,7 @@ def test_preview_counts_equal_real_delete_counts_with_the_participant_in_place(a
     openai_config = OpenAIRealtimeConfig.objects.create(org=acme, custom_name="acme-openai")
     RealtimeAgentChat.objects.create(connection_key="k", openai_config=openai_config)
     collection = SourceCollection.objects.create(org=acme, collection_name="acme-docs")
-    content = DocumentContent.objects.create(content=b"hello")
+    content = stored_document_content(b"hello")
     DocumentMetadata.objects.create(
         source_collection=collection, document_content=content, file_name="hello.txt"
     )

@@ -1,9 +1,11 @@
 import itertools
 
-from django.db.models import Count, F
+from django.db.models import Count, Exists, F, OuterRef
+from drf_spectacular.utils import extend_schema_field
 from loguru import logger
 from rbac.authorship import AuthorSummarySerializerMixin, LastEditFieldsSerializerMixin
 from rest_framework import serializers
+from tables.constants.knowledge_constants import DocumentContentScope
 from tables.models.knowledge_models import (
     BaseRagType,
     DocumentMetadata,
@@ -267,14 +269,27 @@ class ImportFromStorageResponseSerializer(serializers.Serializer):
     skipped = ImportFromStorageSkippedSerializer(many=True)
 
 
+class SharedCollectionSerializer(serializers.Serializer):
+    collection_id = serializers.IntegerField()
+    collection_name = serializers.CharField()
+
+
 class DocumentDetailSerializer(serializers.ModelSerializer):
     """
     Detailed serializer for single document view.
+
+    `content_hash` is the version an edit sends back, as nodes do;
+    `shared_with_collections` lists the other collections whose documents use the same
+    file, so the editor can ask whether an edit reaches them.
     """
 
     collection_name = serializers.CharField(
         source="source_collection.collection_name", read_only=True
     )
+    content_hash = serializers.CharField(
+        source="document_content.content_hash", read_only=True, allow_null=True
+    )
+    shared_with_collections = serializers.SerializerMethodField()
 
     class Meta:
         model = DocumentMetadata
@@ -285,8 +300,56 @@ class DocumentDetailSerializer(serializers.ModelSerializer):
             "file_size",
             "source_collection",
             "collection_name",
+            "content_hash",
+            "shared_with_collections",
         ]
         read_only_fields = fields
+
+    @extend_schema_field(SharedCollectionSerializer(many=True))
+    def get_shared_with_collections(self, document: DocumentMetadata) -> list[dict]:
+        if document.document_content_id is None:
+            return []
+        # Through the managers of live rows: a copy in the recycle bin, alone or with its
+        # collection, is not changed by an edit, so the user is not asked about it.
+        live_copies = DocumentMetadata.objects.filter(
+            source_collection=OuterRef("pk"),
+            document_content_id=document.document_content_id,
+        )
+        collections = (
+            SourceCollection.objects.filter(
+                Exists(live_copies), org_id=document.source_collection.org_id
+            )
+            .exclude(collection_id=document.source_collection_id)
+            .order_by("collection_name")
+        )
+        return [
+            {
+                "collection_id": collection.collection_id,
+                "collection_name": collection.collection_name,
+            }
+            for collection in collections
+        ]
+
+
+class DocumentTextSerializer(DocumentDetailSerializer):
+    """A text document with its current text, for the editor; `content_hash` is that text's hash."""
+
+    text = serializers.CharField(read_only=True)
+
+    class Meta(DocumentDetailSerializer.Meta):
+        fields = [*DocumentDetailSerializer.Meta.fields, "text"]
+        read_only_fields = fields
+
+
+class DocumentContentUpdateSerializer(serializers.Serializer):
+    """The new text of a document, sent as a file so its size is bound by the upload limit."""
+
+    file = serializers.FileField(allow_empty_file=True)
+    scope = serializers.ChoiceField(
+        choices=DocumentContentScope.choices, default=DocumentContentScope.THIS_COLLECTION
+    )
+    # The version the editor opened, as nodes send theirs; a different current one is a conflict.
+    content_hash = serializers.RegexField(r"^[0-9a-f]{64}$")
 
 
 class SourceCollectionListSerializer(LastEditFieldsSerializerMixin, serializers.ModelSerializer):

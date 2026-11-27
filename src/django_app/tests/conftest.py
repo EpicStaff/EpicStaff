@@ -13,9 +13,21 @@ from rbac.identity.api_keys.generator import ApiKeyGenerator
 from rbac.identity.passwords import reset_dispatcher
 
 from .helpers import InlineExecutor
+from .knowledge_content import InMemoryKnowledgeBucket
 
 # Import shared fixtures (graph, agent, session_data, etc.)
 from .fixtures import *  # noqa: F401,F403
+
+
+@pytest.fixture(autouse=True)
+def knowledge_bucket(monkeypatch):
+    """Keep every test's knowledge document files in memory instead of object storage."""
+    bucket = InMemoryKnowledgeBucket()
+    monkeypatch.setattr(
+        "tables.services.knowledge_services.document_content_storage.knowledge_bucket",
+        lambda: bucket,
+    )
+    yield bucket
 
 
 @pytest.fixture(scope="session", autouse=True)

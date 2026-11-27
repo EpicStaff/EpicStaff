@@ -2,6 +2,7 @@ import abc
 
 from application.commands import GetIndexEstimate
 from application.orchestrators.base import AbstractOrchestrator
+from application.ports import AbstractDocumentContentReader, AbstractUnitOfWork
 from application.results import IndexEstimateResult
 
 
@@ -12,3 +13,7 @@ class AbstractEstimateOrchestrator(
 
     Read-only: implementations must not call providers or write to the database.
     """
+
+    def __init__(self, uow: AbstractUnitOfWork, content_reader: AbstractDocumentContentReader):
+        super().__init__(uow)
+        self.content_reader = content_reader

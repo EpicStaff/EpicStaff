@@ -468,6 +468,38 @@ class DocumentNotFoundException(DocumentUploadException):
         super().__init__(f"Document with id {document_id} not found")
 
 
+class DocumentContentMissingException(CustomAPIExeption):
+    """A document's content is gone from object storage although its database row remains.
+
+    404 rather than 500: the row points at an object someone removed (a cleaned bucket, a
+    database restored without its bucket), which no retry fixes.
+    """
+
+    status_code = 404
+    default_detail = "The content of this document is missing from storage."
+    default_code = "document_content_missing"
+
+
+class DocumentNotEditableException(CustomAPIExeption):
+    """The document's type or the new text cannot be saved as an edit."""
+
+    status_code = 400
+    default_code = "document_not_editable"
+
+
+class DocumentIndexingInProgressException(CustomAPIExeption):
+    """A document the edit would reach is being indexed."""
+
+    status_code = 409
+    default_code = "document_indexing_in_progress"
+
+    def __init__(self, collection_names: list[str]):
+        super().__init__(
+            "The document is being indexed in these collections: "
+            f"{', '.join(collection_names)}. Try again once indexing finishes."
+        )
+
+
 class InvalidCollectionIdException(DocumentUploadException):
     """Raised when collection_id parameter is invalid."""
 

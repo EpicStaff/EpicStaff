@@ -1,6 +1,20 @@
+from django.db import models
 from tables.models.knowledge_models import DocumentMetadata
 
 ALLOWED_FILE_TYPES = {choice[0] for choice in DocumentMetadata.DocumentFileType.choices}
+
+# (code, detail) a RAG and its document entries carry once a document's content changed.
+DOCUMENT_CONTENT_CHANGED_REASON = ("document_content_changed", "Document content was changed.")
+
+# Text formats a user may edit in the browser; anything else would not survive the editor.
+EDITABLE_FILE_TYPES = frozenset({"txt", "md", "csv", "json", "html"})
+
+
+class DocumentContentScope(models.TextChoices):
+    """Which documents an edit reaches when other collections use the same file."""
+
+    THIS_COLLECTION = "this_collection"
+    ALL_COLLECTIONS = "all_collections"
 
 
 # Content types for inline document preview (Content-Disposition: inline)

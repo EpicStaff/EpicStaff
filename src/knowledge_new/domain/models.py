@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +34,7 @@ __all__ = [
     "Embedding",
     "EmbeddingConfig",
     "FoundChunk",
+    "GraphDocument",
     "GraphPricingConfig",
     "GraphSearchConfig",
     "IndexRequest",
@@ -104,7 +106,8 @@ class Document(Entity):
     """A file tracked through chunking and indexing."""
 
     name: str = Field(frozen=True)
-    content: bytes = Field(frozen=True)
+    # Where the file's bytes are stored; an `AbstractDocumentContentReader` reads them.
+    content_key: str = Field(frozen=True)
     config: ChunkingConfig = Field(frozen=True)
     last_indexing_config: ChunkingConfig | None = None
     status: DocumentStatusEnum
@@ -132,6 +135,18 @@ class Document(Entity):
     def mark_as_failed(self, error: Exception | str):
         self.status = DocumentStatusEnum.FAILED
         self.error_message = str(error)
+
+
+class GraphDocument(Entity):
+    """A file of a GraphRAG, located but not yet read: its text is extracted when indexed."""
+
+    name: str
+    # File extension with its dot, such as `.pdf`, which picks the text extractor.
+    extension: str
+    # Where the file's bytes are stored; an `AbstractDocumentContentReader` reads them.
+    content_key: str
+    created_at: datetime
+    status: str
 
 
 class EmbeddingConfig(ValueObject):

@@ -1,6 +1,6 @@
 from application.orchestrators.estimating import strategies
 from application.orchestrators.estimating.base import AbstractEstimateOrchestrator
-from application.ports import AbstractUnitOfWork
+from application.ports import AbstractDocumentContentReader, AbstractUnitOfWork
 from domain.enums import RAGStrategy
 from domain.errors import UnsupportedError
 
@@ -9,7 +9,9 @@ _STRATEGIES: dict[RAGStrategy, type[AbstractEstimateOrchestrator]] = {
 }
 
 
-def build_estimator(strategy: RAGStrategy, uow: AbstractUnitOfWork) -> AbstractEstimateOrchestrator:
+def build_estimator(
+    strategy: RAGStrategy, uow: AbstractUnitOfWork, content_reader: AbstractDocumentContentReader
+) -> AbstractEstimateOrchestrator:
     """Build the estimator registered for `strategy`.
 
     Raises:
@@ -17,4 +19,4 @@ def build_estimator(strategy: RAGStrategy, uow: AbstractUnitOfWork) -> AbstractE
     """
     if strategy not in _STRATEGIES:
         raise UnsupportedError(that="estimate strategy", got=strategy)
-    return _STRATEGIES[strategy](uow)
+    return _STRATEGIES[strategy](uow, content_reader)

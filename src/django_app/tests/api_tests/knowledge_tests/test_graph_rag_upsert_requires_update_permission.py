@@ -24,6 +24,7 @@ from tables.models.knowledge_models import (
 )
 from tests.api_tests.role_grant_clients import FULL_CRUD, client_with_grants
 from tests.rbac_cross_org_fixtures import beta  # noqa: F401
+from tests.knowledge_content import stored_document_content
 
 pytestmark = pytest.mark.django_db
 
@@ -151,7 +152,7 @@ def empty_collection(default_org):
 @pytest.fixture
 def test_document(test_collection):
     """Create a test document in the test collection."""
-    content = DocumentContent.objects.create(content=b"Test document content")
+    content = stored_document_content(b"Test document content")
     return DocumentMetadata.objects.create(
         source_collection=test_collection,
         document_content=content,

@@ -106,6 +106,7 @@ from tables.models import Crew, CrewNode
 from tables.services import cascade_org_guard
 from tables.services.cascade_org_guard import CascadeOrgGuard, org_paths
 from tests.rbac_cross_org_fixtures import acme, beta  # noqa: F401  -- fixtures
+from tests.knowledge_content import stored_document_content
 
 
 @pytest.mark.django_db
@@ -147,7 +148,7 @@ class TestFullCascadePerRoot:
         collection = SourceCollection.objects.create(
             org=default_org, collection_name="Docs KB"
         )
-        document_content = DocumentContent.objects.create(content=b"payload")
+        document_content = stored_document_content(b"payload")
         document = DocumentMetadata.objects.create(
             source_collection=collection,
             document_content=document_content,
@@ -363,7 +364,7 @@ class TestForwardFkExclusions:
         collection = SourceCollection.objects.create(
             org=default_org, collection_name="Docs KB 2"
         )
-        content = DocumentContent.objects.create(content=b"keep me")
+        content = stored_document_content(b"keep me")
         document = DocumentMetadata.objects.create(
             source_collection=collection,
             document_content=content,

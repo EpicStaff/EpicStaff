@@ -74,9 +74,11 @@
                     (documentSelected)="selectedDocument.set($event)"
                     class="dialog__files-list"
                 />
-                <app-blob-preview
+                <app-document-content-editor
+                    [document]="selectedDocument()"
                     [blob]="previewState().blob"
                     [fileName]="previewState().fileName"
+                    (contentChanged)="reloadSelectedDocument()"
                     class="dialog__file-preview"
                 />
             </div>

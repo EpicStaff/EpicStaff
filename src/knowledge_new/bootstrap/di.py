@@ -2,8 +2,11 @@ from collections.abc import Callable
 
 import settings
 from foundation.cryptographer import AbstractCryptographer, FernetRotatedCryptographer
+from foundation.s3_file_storage import S3Bucket
 from infrastructure.database.unit_of_work import SQLAlchemyUnitOfWork
+from infrastructure.document_content_reader import S3DocumentContentReader
 from infrastructure.graphrag.artifact_store import S3ArtifactStore
+from infrastructure.graphrag.s3_bucket import open_bucket
 from litestar.di import Provide
 
 __all__ = ["get_dependencies"]
@@ -47,14 +50,23 @@ def task_register() -> TaskRegister:
     return TaskRegister()
 
 
+def _knowledge_bucket() -> S3Bucket:
+    return open_bucket(
+        settings.STORAGE_ENDPOINT,
+        settings.KNOWLEDGE_BUCKET,
+        settings.STORAGE_ACCESS_KEY,
+        settings.STORAGE_SECRET_KEY,
+    )
+
+
 @register(use_cache=True, sync_to_thread=False)
 def artifact_store() -> S3ArtifactStore:
-    return S3ArtifactStore(
-        endpoint=settings.STORAGE_ENDPOINT,
-        bucket=settings.KNOWLEDGE_BUCKET,
-        access_key=settings.STORAGE_ACCESS_KEY,
-        secret_key=settings.STORAGE_SECRET_KEY,
-    )
+    return S3ArtifactStore(_knowledge_bucket())
+
+
+@register(use_cache=True, sync_to_thread=False)
+def content_reader() -> S3DocumentContentReader:
+    return S3DocumentContentReader(_knowledge_bucket())
 
 
 @register(use_cache=True, sync_to_thread=False)

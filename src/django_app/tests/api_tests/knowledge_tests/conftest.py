@@ -17,6 +17,7 @@ from tables.models.knowledge_models import (
     NaiveRagChunk,
 )
 from ai_models.models import EmbeddingConfig, EmbeddingModel, Provider
+from tests.knowledge_content import stored_document_content
 
 
 @pytest.fixture
@@ -38,7 +39,7 @@ def empty_collection(default_org):
 @pytest.fixture
 def document_content():
     """Create test document content."""
-    return DocumentContent.objects.create(content=b"Test file content")
+    return stored_document_content(b"Test file content")
 
 
 @pytest.fixture
@@ -58,7 +59,7 @@ def multiple_documents(source_collection):
     """Create multiple test documents."""
     documents = []
     for i in range(3):
-        content = DocumentContent.objects.create(content=f"Test content {i}".encode())
+        content = stored_document_content(f"Test content {i}".encode())
         doc = DocumentMetadata.objects.create(
             source_collection=source_collection,
             document_content=content,

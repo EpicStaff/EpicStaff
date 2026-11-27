@@ -1,12 +1,11 @@
 from domain.enums import DocumentStatusEnum, SlotEnum
-from domain.models import GraphPricingConfig, Rag
+from domain.models import GraphDocument, GraphPricingConfig, Rag
 from domain.ports.repositories import AbstractGraphRagRepository
 from domain.usage import IndexingRunUsage, merge_indexing_usage
 from graphrag.config.models.graph_rag_config import GraphRagConfig
-from graphrag_input import TextDocument
 from graphrag_storage import StorageConfig
 from infrastructure.database.mappers.graph import (
-    graph_document_orm_to_text_document,
+    graph_document_orm_to_graph_document,
     graph_rag_orm_to_graphrag_config,
     graph_rag_orm_to_pricing_config,
     graph_rag_orm_to_rag,
@@ -23,16 +22,16 @@ from infrastructure.database.models import (
 )
 from infrastructure.database.models import EmbeddingConfig as ORMEmbeddingConfig
 from infrastructure.database.repositories.base import BaseSQLAlchemyRepositoryMixin
-from infrastructure.file_text_extractors import build_file_text_extractor
 from sqlalchemy import delete, exists, select, update
 from sqlalchemy.orm import joinedload
 
 
 class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphRagRepository):
-    async def get_rag(self, rag_id: int) -> Rag | None:
-        result = await self._session.execute(
-            select(GraphRag).where(GraphRag.graph_rag_id == rag_id)
-        )
+    async def get_rag(self, rag_id: int, *, for_update: bool = False) -> Rag | None:
+        statement = select(GraphRag).where(GraphRag.graph_rag_id == rag_id)
+        if for_update:
+            statement = statement.with_for_update()
+        result = await self._session.execute(statement)
         if (data := result.scalar_one_or_none()) is not None:
             return graph_rag_orm_to_rag(data)
         return None
@@ -55,7 +54,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
             .values(indexing_usage=merge_indexing_usage(stored, run))
         )
 
-    async def _get_documents(self, rag_id: int, *conditions) -> list[TextDocument]:
+    async def _get_documents(self, rag_id: int, *conditions) -> list[GraphDocument]:
         result = await self._session.execute(
             select(GraphRagDocument)
             .where(GraphRagDocument.graph_rag_id == rag_id, *conditions)
@@ -63,17 +62,9 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
                 joinedload(GraphRagDocument.document).joinedload(DocumentMetadata.document_content)
             )
         )
-        rows = result.scalars().all()
-        documents = []
-        for row in rows:
-            document = row.document
-            extension = f".{document.file_type}"
-            extractor = build_file_text_extractor(extension)
-            text = await extractor.extract(document.document_content.content)
-            documents.append(graph_document_orm_to_text_document(row, text))
-        return documents
+        return [graph_document_orm_to_graph_document(row) for row in result.scalars().all()]
 
-    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[TextDocument]:
+    async def get_documents(self, rag_id: int, ids: frozenset[int]) -> list[GraphDocument]:
         return await self._get_documents(
             rag_id,
             GraphRagDocument.graph_rag_document_id.in_(ids),
@@ -81,7 +72,7 @@ class GraphRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractGraphR
 
     async def get_indexed_documents_excluding(
         self, rag_id: int, ids: frozenset[int]
-    ) -> list[TextDocument]:
+    ) -> list[GraphDocument]:
         return await self._get_documents(
             rag_id,
             GraphRagDocument.graph_rag_document_id.not_in(ids),

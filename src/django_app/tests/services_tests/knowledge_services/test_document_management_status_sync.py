@@ -20,6 +20,7 @@ from tables.services.knowledge_services.document_management_service import (
 )
 from tables.services.knowledge_services.graph_rag_service import GraphRagService
 from tables.services.knowledge_services.naive_rag_service import NaiveRagService
+from tests.knowledge_content import stored_document_content
 
 pytestmark = pytest.mark.django_db
 
@@ -40,7 +41,7 @@ def _make_collection(default_org, suffix=""):
 
 
 def _make_doc(collection, suffix=""):
-    content = DocumentContent.objects.create(content=b"dm doc content")
+    content = stored_document_content(b"dm doc content")
     return DocumentMetadata.objects.create(
         source_collection=collection,
         document_content=content,

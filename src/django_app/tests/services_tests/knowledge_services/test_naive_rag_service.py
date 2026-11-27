@@ -19,6 +19,7 @@ from tables.exceptions import (
 )
 
 from .conftest import make_naive_rag_config
+from tests.knowledge_content import stored_document_content
 
 pytestmark = pytest.mark.django_db
 
@@ -29,7 +30,7 @@ pytestmark = pytest.mark.django_db
 
 
 def _make_doc(collection, suffix=""):
-    content = DocumentContent.objects.create(content=b"x")
+    content = stored_document_content(b"x")
     return DocumentMetadata.objects.create(
         source_collection=collection,
         document_content=content,
@@ -485,7 +486,7 @@ class TestInitDocumentConfigs:
         # Per constants: UNIVERSAL_STRATEGIES = {"token","character"} — token IS allowed for all.
         # So there is no standard file type that skips the default strategy.
         # This test verifies that all standard types get configs (skip logic never fires for defaults).
-        content = DocumentContent.objects.create(content=b"json doc")
+        content = stored_document_content(b"json doc")
         json_doc = DocumentMetadata.objects.create(
             source_collection=source_collection,
             document_content=content,

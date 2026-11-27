@@ -1,6 +1,8 @@
 from collections.abc import Callable
 
 from domain.errors import (
+    ContentStorageUnavailableError,
+    DocumentContentMissingError,
     DocumentNotFoundError,
     EmbeddingConfigNotFoundError,
     EntityNotFoundError,
@@ -74,6 +76,21 @@ def handler_graph_not_indexed(request: Request, error: Exception) -> Response:
     # indexing, not a missing resource. django_app recognises the code and tells the
     # browser so.
     return create_response(request, status_codes.HTTP_409_CONFLICT, "graph_not_indexed", error)
+
+
+@registry(DocumentContentMissingError)
+def handle_document_content_missing(request, error: Exception) -> Response:
+    # The row is there, its file is not: no retry helps, so it is a 404 with its own code.
+    return create_response(
+        request, status_codes.HTTP_404_NOT_FOUND, "document_content_missing", error
+    )
+
+
+@registry(ContentStorageUnavailableError)
+def handle_content_storage_unavailable(request, error: Exception) -> Response:
+    return create_response(
+        request, status_codes.HTTP_503_SERVICE_UNAVAILABLE, "storage_unavailable", error
+    )
 
 
 @registry(UnsupportedError)

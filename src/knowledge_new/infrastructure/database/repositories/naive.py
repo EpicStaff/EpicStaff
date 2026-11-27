@@ -39,10 +39,11 @@ from sqlalchemy.orm import joinedload, selectinload
 
 
 class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractNaiveRagRepository):
-    async def get_rag(self, rag_id: int) -> Rag | None:
-        result = await self._session.execute(
-            select(NaiveRag).where(NaiveRag.naive_rag_id == rag_id)
-        )
+    async def get_rag(self, rag_id: int, *, for_update: bool = False) -> Rag | None:
+        statement = select(NaiveRag).where(NaiveRag.naive_rag_id == rag_id)
+        if for_update:
+            statement = statement.with_for_update()
+        result = await self._session.execute(statement)
         if orm_rag := result.scalar_one_or_none():
             return naive_rag_orm_to_rag(orm_rag)
         return None
@@ -216,9 +217,9 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractNaiveR
         )
         return search_rows_to_found_chunks(result.all(), similarity_threshold)
 
-    async def get_document_content(
+    async def get_document_content_key(
         self, rag_id: int, document_id: int
-    ) -> tuple[bytes, FileExtensionEnum]:
+    ) -> tuple[str, FileExtensionEnum]:
         result = await self._session.execute(
             select(NaiveRagDocumentConfig)
             .where(
@@ -236,6 +237,5 @@ class NaiveRagSQLAlchemyRepository(BaseSQLAlchemyRepositoryMixin, AbstractNaiveR
             raise DocumentNotFoundError(rag_id=rag_id, document_id=document_id)
 
         metadata = config.document
-        content = bytes(metadata.document_content.content)
         extension = FileExtensionEnum(Path(metadata.file_name).suffix.lower())
-        return content, extension
+        return metadata.document_content.object_key, extension

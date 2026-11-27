@@ -20,6 +20,7 @@ from tables.exceptions import (
 )
 
 from .conftest import make_graph_rag_document
+from tests.knowledge_content import stored_document_content
 
 pytestmark = pytest.mark.django_db
 
@@ -32,7 +33,7 @@ S = GraphRagDocument.Status
 
 
 def _make_doc(collection, suffix=""):
-    content = DocumentContent.objects.create(content=b"graph doc")
+    content = stored_document_content(b"graph doc")
     return DocumentMetadata.objects.create(
         source_collection=collection,
         document_content=content,

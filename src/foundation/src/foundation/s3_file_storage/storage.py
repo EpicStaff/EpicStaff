@@ -1,6 +1,9 @@
 import asyncio
+from collections.abc import AsyncIterator, Iterable, Iterator
+from datetime import datetime
 from typing import TYPE_CHECKING, BinaryIO
 
+from foundation.utils import humanize
 from foundation.utils.lazy import LazyImport
 
 if TYPE_CHECKING:
@@ -12,9 +15,14 @@ else:
     Boto3Config = LazyImport("botocore.config", "Config")
     boto3_exceptions = LazyImport("botocore.exceptions")
 
-from .errors import handle_error
+from .errors import S3ObjectError, S3ObjectNotExistError, handle_error
 
 __all__ = ["S3Bucket", "S3FileStorage", "S3Object"]
+
+# The most keys one `DeleteObjects` request may name.
+_DELETE_OBJECTS_BATCH_SIZE = 1000
+# Bytes of an object held in memory at a time while it is streamed.
+_DEFAULT_CHUNK_SIZE = humanize.to_byte_size("1mb")
 
 
 class S3FileStorage:
@@ -160,7 +168,8 @@ class S3Bucket:
             max: Stop once this many objects have been collected.
 
         Returns:
-            One handle per matching object, not necessarily sorted.
+            One handle per matching object, not necessarily sorted, each with the
+            `size` the listing reported.
         """
         kwargs = {"Bucket": self._name}
         if prefix is not None:
@@ -170,9 +179,36 @@ class S3Bucket:
         objects: list[S3Object] = []
         for page in paginator.paginate(**kwargs, PaginationConfig=pagination_config):
             objects.extend(
-                S3Object(self._client, self._name, d["Key"]) for d in page.get("Contents", [])
+                S3Object(self._client, self._name, d["Key"], size=d["Size"])
+                for d in page.get("Contents", [])
             )
         return objects
+
+    @handle_error
+    def delete_objects(self, keys: Iterable[str]):
+        """Delete every object in `keys`, up to 1000 per `DeleteObjects` request.
+
+        A key that doesn't exist is skipped, as in `S3Object.delete`.
+
+        Raises:
+            S3ObjectError: The store refused to delete some keys of a batch. The error
+                carries the first refusal's code and key; earlier batches stay deleted.
+        """
+        keys = list(keys)
+        for start in range(0, len(keys), _DELETE_OBJECTS_BATCH_SIZE):
+            batch = keys[start : start + _DELETE_OBJECTS_BATCH_SIZE]
+            response = self._client.delete_objects(
+                Bucket=self._name,
+                Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
+            )
+            if failures := response.get("Errors"):
+                first = failures[0]
+                raise S3ObjectError(
+                    f"{len(failures)} object(s) were not deleted: {first.get('Message')}",
+                    code=first.get("Code"),
+                    bucket=self._name,
+                    key=first.get("Key"),
+                )
 
     async def aexist(self) -> bool:
         """Async version of `exist`, run in a worker thread."""
@@ -190,14 +226,19 @@ class S3Bucket:
         """Async version of `objects`, run in a worker thread."""
         return await asyncio.to_thread(self.objects, prefix, max)
 
+    async def adelete_objects(self, keys: Iterable[str]):
+        """Async version of `delete_objects`, run in a worker thread."""
+        await asyncio.to_thread(self.delete_objects, keys)
+
 
 class S3Object:
     """Handle to one object (key) in a bucket. Construct via `S3Bucket.object()`, not directly."""
 
-    def __init__(self, client, bucket: str, key: str):
+    def __init__(self, client, bucket: str, key: str, size: int | None = None):
         self._client = client
         self._bucket = bucket
         self._key = key
+        self._size = size
 
     @property
     def bucket(self) -> str:
@@ -206,6 +247,11 @@ class S3Object:
     @property
     def key(self) -> str:
         return self._key
+
+    @property
+    def size(self) -> int | None:
+        """Size in bytes as `S3Bucket.objects()` listed it; None on a handle from `S3Bucket.object()`."""
+        return self._size
 
     @handle_error
     def exist(self) -> bool:
@@ -224,6 +270,27 @@ class S3Object:
         return True
 
     @handle_error
+    def last_modified(self) -> datetime:
+        """Return when this object was last written, as a timezone-aware datetime.
+
+        Raises:
+            S3ObjectNotExistError: No object with this key exists in the bucket.
+        """
+        try:
+            response = self._client.head_object(Bucket=self._bucket, Key=self._key)
+        except boto3_exceptions.ClientError as e:
+            # HeadObject answers without a body, so a missing key is a bare 404, not NoSuchKey.
+            if e.response["ResponseMetadata"]["HTTPStatusCode"] == 404:
+                raise S3ObjectNotExistError(
+                    "The specified key does not exist.",
+                    code="NoSuchKey",
+                    bucket=self._bucket,
+                    key=self._key,
+                ) from e
+            raise
+        return response["LastModified"]
+
+    @handle_error
     def read(self) -> bytes:
         """Return the full object body.
 
@@ -235,6 +302,31 @@ class S3Object:
         """
         response = self._client.get_object(Bucket=self._bucket, Key=self._key)
         return response["Body"].read()
+
+    def iter_chunks(self, chunk_size: int = _DEFAULT_CHUNK_SIZE) -> Iterator[bytes]:
+        """Yield the object's body in chunks of up to `chunk_size` bytes.
+
+        Only one chunk is in memory at a time, unlike `read`. The connection is released
+        when the iteration ends, also when it is abandoned early.
+
+        Raises:
+            S3ObjectNotExistError: No object with this key exists in the bucket; raised
+                on the first iteration.
+        """
+        body = self._open_body()
+        try:
+            while chunk := self._read_chunk(body, chunk_size):
+                yield chunk
+        finally:
+            body.close()
+
+    @handle_error
+    def _open_body(self):
+        return self._client.get_object(Bucket=self._bucket, Key=self._key)["Body"]
+
+    @handle_error
+    def _read_chunk(self, body, chunk_size: int) -> bytes:
+        return body.read(chunk_size)
 
     @handle_error
     def write(self, data: bytes):
@@ -280,9 +372,22 @@ class S3Object:
         """Async version of `exist`, run in a worker thread."""
         return await asyncio.to_thread(self.exist)
 
+    async def alast_modified(self) -> datetime:
+        """Async version of `last_modified`, run in a worker thread."""
+        return await asyncio.to_thread(self.last_modified)
+
     async def aread(self) -> bytes:
         """Async version of `read`, run in a worker thread."""
         return await asyncio.to_thread(self.read)
+
+    async def aiter_chunks(self, chunk_size: int = _DEFAULT_CHUNK_SIZE) -> AsyncIterator[bytes]:
+        """Async version of `iter_chunks`; each chunk is read in a worker thread."""
+        body = await asyncio.to_thread(self._open_body)
+        try:
+            while chunk := await asyncio.to_thread(self._read_chunk, body, chunk_size):
+                yield chunk
+        finally:
+            body.close()
 
     async def awrite(self, data: bytes):
         """Async version of `write`, run in a worker thread."""

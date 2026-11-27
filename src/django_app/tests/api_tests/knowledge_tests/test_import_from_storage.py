@@ -13,6 +13,7 @@ from tables.models import DocumentContent, DocumentMetadata, SourceCollection, S
 from tables.views.knowledge_views.document_management_views import _audit_actor
 from tables.services.storage_service.manager import StorageManager
 from tests.storage_tests.in_memory_backend import InMemoryStorageBackend, seed_file, zip_bytes
+from tests.knowledge_content import stored_document_content, stored_document_bytes
 
 pytestmark = pytest.mark.django_db
 
@@ -126,7 +127,7 @@ class TestImportFromStorage:
         assert document_data["source_collection"] == empty_collection.collection_id
 
         document = DocumentMetadata.objects.get(document_id=document_data["document_id"])
-        assert bytes(document.document_content.content) == b"quarter three"
+        assert stored_document_bytes(document) == b"quarter three"
 
         empty_collection.refresh_from_db()
         assert empty_collection.status == SourceCollection.SourceCollectionStatus.COMPLETED
@@ -144,7 +145,7 @@ class TestImportFromStorage:
         StorageFile.objects.filter(id=system_file.id).update(is_system=True)
         DocumentMetadata.objects.create(
             source_collection=empty_collection,
-            document_content=DocumentContent.objects.create(content=b"seen"),
+            document_content=stored_document_content(b"seen"),
             file_name="seen.txt",
             file_type="txt",
             file_size=4,

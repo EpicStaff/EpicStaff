@@ -1,0 +1,66 @@
+<div class="document-editor">
+    @if (mode() === 'edit') {
+        <div class="document-editor__toolbar">
+            <span
+                class="document-editor__message text-body-small"
+                role="alert"
+            >
+                @if (conflict()) {
+                    This document was changed after you opened it. Your text is kept below.
+                }
+            </span>
+            @if (conflict()) {
+                <app-button
+                    type="outline-secondary"
+                    mod="small"
+                    (click)="reloadCurrentVersion()"
+                    >Load current version</app-button
+                >
+            }
+            <app-button
+                type="secondary"
+                mod="small"
+                (click)="cancelEdit()"
+                >Cancel</app-button
+            >
+            <app-button
+                type="primary"
+                mod="small"
+                [disabled]="isSaving()"
+                (click)="save()"
+                >Save</app-button
+            >
+        </div>
+        <ngx-monaco-editor
+            class="document-editor__monaco"
+            [options]="monacoOptions()"
+            [ngModel]="draft()"
+            (ngModelChange)="draft.set($event)"
+            (onInit)="onEditorInit($event)"
+        ></ngx-monaco-editor>
+    } @else {
+        @if (canEdit()) {
+            <div class="document-editor__toolbar">
+                <app-button
+                    #editButton
+                    type="outline-primary"
+                    mod="small"
+                    (click)="startEdit()"
+                    >Edit</app-button
+                >
+            </div>
+        } @else if (isNotUtf8()) {
+            <div class="document-editor__toolbar">
+                <span class="document-editor__message text-body-small">
+                    This file is not UTF-8 text, so it cannot be edited.
+                </span>
+            </div>
+        }
+        <app-blob-preview
+            class="document-editor__preview"
+            [blob]="blob()"
+            [fileName]="fileName()"
+            [showBadge]="false"
+        />
+    }
+</div>

@@ -154,6 +154,8 @@ services:
       REALTIME_DB_USER: ${REALTIME_DB_USER:?}
       DJANGO_SGI_WORKERS: ${DJANGO_SGI_WORKERS:?}
       DJANGO_SGI_THREADS: ${DJANGO_SGI_THREADS:?}
+      # Knowledge documents' content lives in this bucket; django_app writes and deletes it.
+      KNOWLEDGE_STORAGE_BUCKET: ${KNOWLEDGE_STORAGE_BUCKET:?}
       DJANGO_SGI_MAX_REQUESTS: ${DJANGO_SGI_MAX_REQUESTS:?}
       DJANGO_SGI_MAX_REQUESTS_JITTER: ${DJANGO_SGI_MAX_REQUESTS_JITTER:?}
       DJANGO_SGI_MAX_CONCURRENT_REQUESTS: ${DJANGO_SGI_MAX_CONCURRENT_REQUESTS:?}
@@ -288,6 +290,9 @@ services:
         condition: service_healthy
       storage:
         condition: service_healthy
+      # The migrations write knowledge documents into the buckets storage-init creates.
+      storage-init:
+        condition: service_completed_successfully
       sandbox_new:
         condition: service_healthy
     healthcheck:
@@ -652,7 +657,8 @@ services:
     depends_on:
       storage:
         condition: service_healthy
-    # The policy PUT replaces the bucket's whole policy: anonymous read of system/avatars/ only.
+    # Creates the storage bucket and the knowledge bucket (409 = already there).
+    # The policy PUT replaces the storage bucket's whole policy: anonymous read of system/avatars/ only.
     # storage publishes no port, so this only lets nginx read avatars without credentials
     # inside the docker network; the gate for clients is nginx's avatar URL signature check.
     # curl takes the credentials from the environment (--variable %NAME): on a command line every
@@ -667,6 +673,11 @@ services:
       --variable %STORAGE_USER --variable %STORAGE_PASSWORD --expand-user '{{STORAGE_USER}}:{{STORAGE_PASSWORD}}'
       http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${STORAGE_BUCKET:?}) &&
       case $$status in 200|409) echo 'Bucket ready.' ;; *) echo \"Bucket creation failed: HTTP $$status\" && exit 1 ;; esac &&
+      status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
+      --aws-sigv4 'aws:amz:us-east-1:s3'
+      --variable %STORAGE_USER --variable %STORAGE_PASSWORD --expand-user '{{STORAGE_USER}}:{{STORAGE_PASSWORD}}'
+      http://${STORAGE_HOST:?}:${STORAGE_PORT:?}/${KNOWLEDGE_STORAGE_BUCKET:?}) &&
+      case $$status in 200|409) echo 'Knowledge bucket ready.' ;; *) echo \"Knowledge bucket creation failed: HTTP $$status\" && exit 1 ;; esac &&
       status=$$(curl -s -o /dev/null -w '%{http_code}' -X PUT
       --aws-sigv4 'aws:amz:us-east-1:s3'
       --variable %STORAGE_USER --variable %STORAGE_PASSWORD --expand-user '{{STORAGE_USER}}:{{STORAGE_PASSWORD}}'

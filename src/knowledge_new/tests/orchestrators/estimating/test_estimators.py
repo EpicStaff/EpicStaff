@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import pytest
 from application.commands import GetIndexEstimate
 from application.orchestrators.estimating import build_estimator
@@ -9,7 +11,12 @@ from domain.enums import (
     IndexStatusEnum,
     RAGStrategy,
 )
-from domain.errors import DocumentNotFoundError, RagNotFoundError, UnsupportedError
+from domain.errors import (
+    ContentStorageUnavailableError,
+    DocumentNotFoundError,
+    RagNotFoundError,
+    UnsupportedError,
+)
 from domain.models import (
     ChunkingConfig,
     Document,
@@ -18,6 +25,8 @@ from domain.models import (
     Rag,
 )
 from infrastructure import token_estimation
+
+from tests.fakes.document_content_reader import FakeDocumentContentReader
 
 OPENAI_EMBEDDING = EmbeddingConfig(
     provider=EmbedderProviderEnum.OPENAI, model="text-embedding-3-small"
@@ -31,6 +40,10 @@ CHUNKING = ChunkingConfig(
 )
 
 
+# Files of the documents `_document` builds, under keys unique to each call.
+_STORED_FILES: dict[str, bytes] = {}
+
+
 def _rag(status: IndexStatusEnum = IndexStatusEnum.NEW) -> Rag:
     return Rag(id=1, status=status, indexing_document_ids=set())
 
@@ -41,10 +54,12 @@ def _document(
     status: DocumentStatusEnum = DocumentStatusEnum.NEW,
     **kwargs,
 ) -> Document:
+    content_key = f"documents/test/{uuid4().hex}"
+    _STORED_FILES[content_key] = content
     return Document(
         id=doc_id,
         name=f"doc_{doc_id}.txt",
-        content=content,
+        content_key=content_key,
         config=CHUNKING,
         status=status,
         **kwargs,
@@ -87,7 +102,8 @@ class FakeUoW:
 
 def _naive(documents: list[Document], **kwargs) -> tuple[NaiveEstimateOrchestrator, FakeNaiveRepo]:
     repo = FakeNaiveRepo(documents, **kwargs)
-    return NaiveEstimateOrchestrator(FakeUoW(naive_rag_repo=repo)), repo
+    reader = FakeDocumentContentReader(_STORED_FILES)
+    return NaiveEstimateOrchestrator(FakeUoW(naive_rag_repo=repo), reader), repo
 
 
 async def test_naive_uses_preview_chunks_when_they_exist():
@@ -296,10 +312,34 @@ async def test_naive_unknown_rag_raises():
 
 def test_build_estimator_supports_only_naive():
     uow = FakeUoW()
-    assert isinstance(build_estimator(RAGStrategy.NAIVE, uow), NaiveEstimateOrchestrator)
+    reader = FakeDocumentContentReader()
+    assert isinstance(
+        build_estimator(RAGStrategy.NAIVE, uow, reader), NaiveEstimateOrchestrator
+    )
     with pytest.raises(UnsupportedError):
-        build_estimator(RAGStrategy.GRAPH, uow)
+        build_estimator(RAGStrategy.GRAPH, uow, reader)
     with pytest.raises(UnsupportedError):
-        build_estimator("other", uow)
+        build_estimator("other", uow, reader)
+
+
+async def test_naive_skips_a_document_whose_file_is_missing():
+    readable = _document(1)
+    missing = _document(2)
+    del _STORED_FILES[missing.content_key]
+    orchestrator, _ = _naive([readable, missing])
+
+    result = await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=frozenset({1, 2})))
+
+    assert result.document_count == 1
+
+
+async def test_naive_fails_when_storage_is_unreachable():
+    repo = FakeNaiveRepo([_document(1)])
+    orchestrator = NaiveEstimateOrchestrator(
+        FakeUoW(naive_rag_repo=repo), FakeDocumentContentReader(unavailable=True)
+    )
+
+    with pytest.raises(ContentStorageUnavailableError):
+        await orchestrator.execute(GetIndexEstimate(rag_id=1, document_ids=frozenset({1})))
 
 

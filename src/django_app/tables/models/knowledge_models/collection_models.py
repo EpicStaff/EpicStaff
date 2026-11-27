@@ -146,11 +146,19 @@ class SourceCollection(OrgScopedModel, LastEditTrackedModel, SoftDeleteMixin, mo
 
 
 class DocumentContent(models.Model):
-    """
-    Binary storage for file contents.
+    """The stored file behind a document and every copy of it.
+
+    The bytes live in the knowledge bucket of object storage, read and written through
+    `DocumentContentStorage`. Copies of a document point at the same row, so the file is
+    deleted only once no document refers to the row any more.
     """
 
-    content = models.BinaryField(help_text="Binary file content (max 12MB)")
+    object_key = models.CharField(
+        max_length=512, unique=True, help_text="Key of the stored file in the knowledge bucket."
+    )
+    content_hash = models.CharField(
+        max_length=64, help_text="SHA-256 of the stored file's bytes, as hex."
+    )
 
     def __str__(self):
         return f"Content {self.content_id}"
