@@ -36,93 +36,15 @@
     will-change: width, height, max-height, transform;
 }
 
-@mixin shortcutsOneColumnLayout() {
-    .shortcuts__flow {
-        columns: auto;
-        height: auto;
-    }
-
-    .shortcuts__card:not(:first-child) .shortcuts__card-title {
-        margin-top: 16px;
-    }
-}
-
-@mixin shortcutsCustomScroll() {
-    .shortcuts__content {
-        overflow-y: auto;
-        overflow-x: hidden;
-        margin-right: -24px;
-        padding-right: 24px;
-    }
-}
-
-@mixin shortcutsScrollbar() {
-    .shortcuts__content {
-        overscroll-behavior: contain;
-        scrollbar-width: thin;
-        scrollbar-color: var(--graphite-750) transparent;
-    }
-
-    .shortcuts__content::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
-    }
-
-    .shortcuts__content::-webkit-scrollbar-button {
-        display: none !important;
-        width: 0;
-        height: 0;
-    }
-
-    .shortcuts__content::-webkit-scrollbar-button:single-button {
-        display: none;
-    }
-
-    .shortcuts__content::-webkit-scrollbar-button:start:decrement,
-    .shortcuts__content::-webkit-scrollbar-button:end:increment {
-        display: none;
-    }
-
-    .shortcuts__content::-webkit-scrollbar-track {
-        background: transparent;
-    }
-
-    .shortcuts__content::-webkit-scrollbar-thumb {
-        background: var(--graphite-750);
-        border-radius: 999px;
-    }
-
-    .shortcuts__content::-webkit-scrollbar-corner {
-        background: transparent;
-    }
-
-    .shortcuts__content::-webkit-resizer {
-        display: none;
-    }
-}
-
+// The editor inside lays its rows out in four columns; the panel widens for them.
 .shortcuts__modal--four-columns {
     --shortcuts-modal-width: min(1368px, calc(100vw - 32px));
-
-    .shortcuts__flow {
-        column-count: 4;
-    }
 }
 
 .shortcuts__modal--compact {
     --shortcuts-modal-width: min(376px, calc(100vw - 32px));
 
     transform: scale(0.99);
-    opacity: 1;
-
-    @include shortcutsOneColumnLayout();
-    @include shortcutsCustomScroll();
-}
-
-@include shortcutsScrollbar();
-
-.shortcuts__modal--wide .shortcuts__flow {
-    transform: scale(1);
     opacity: 1;
 }
 
@@ -140,23 +62,6 @@
     transition:
         padding 200ms ease,
         gap 200ms ease;
-}
-
-.shortcuts__content {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-x: hidden;
-    overflow-y: auto;
-}
-
-.shortcuts__content--scrolling {
-    overflow-x: hidden;
-    overflow-y: auto;
-
-    .shortcuts__flow {
-        height: auto;
-        column-fill: balance;
-    }
 }
 
 .shortcuts__header {
@@ -258,252 +163,17 @@
     height: 20px;
 }
 
-.shortcuts__flow {
-    height: 100%;
-    column-count: 3;
-    column-gap: 40px;
-    column-fill: auto;
-    transition:
-        column-gap 200ms ease,
-        opacity 120ms ease;
-}
-
-.shortcuts__modal .shortcuts__flow.shortcuts__flow--reflowing {
-    opacity: 0;
-}
-
 .shortcuts__modal--settling {
     transition: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .shortcuts__modal,
-    .shortcuts__flow {
+    .shortcuts__modal {
         transition: none;
     }
 }
 
-.shortcuts__card,
-.shortcuts__card-body,
-.shortcuts__card-item {
-    display: contents;
-}
-
-// Firefox ignores break-after: avoid in multi-column layout (Chromium honours it), so a heading left at the
-// bottom of a column would be cut off from its rows. The first item carries the heading inside one unbreakable
-// box; the remaining rows stay separate column items, so a long section still continues into the next column.
-.shortcuts__card-item:first-child {
-    display: block;
-    break-inside: avoid;
-}
-
-.shortcuts__card:not(:first-child) .shortcuts__card-title {
-    margin-top: 30px;
-}
-
-.shortcuts__card-title {
-    font-weight: var(--text-body-medium-weight);
-    font-size: var(--text-body-medium-size);
-    line-height: var(--text-body-medium-line-height);
-    color: var(--fog-200);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    margin-bottom: 12px;
-}
-
-.shortcuts__row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    min-height: 32px;
-    padding: 4px;
-    box-sizing: border-box;
-    break-inside: avoid;
-}
-
-.shortcuts__card-item:first-child > .shortcuts__row {
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
-}
-
-.shortcuts__card-item:last-child > .shortcuts__row:last-child {
-    border-bottom-left-radius: 8px;
-    border-bottom-right-radius: 8px;
-}
-
-.shortcuts__row--alt {
-    background: var(--color-ks-transparent-black-28);
-}
-
-.shortcuts__label {
-    font-weight: var(--text-body-small-weight);
-    font-size: var(--text-body-small-size);
-    line-height: var(--text-body-small-line-height);
-    color: var(--fog-alpha-80);
-    white-space: nowrap;
-}
-
-.shortcuts__label--muted {
-    color: var(--color-ks-transparent-text-60);
-}
-
-.shortcuts__keys {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.shortcuts__or {
-    font-weight: var(--text-caption-weight);
-    font-size: var(--text-caption-size);
-    line-height: var(--text-caption-line-height);
-    color: var(--color-ks-transparent-text-60);
-}
-
-.shortcuts__key {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 32px;
-    height: 24px;
-    padding: 4px 8px;
-    border-radius: 2px;
-    border: 1px solid var(--graphite-700);
-    font-weight: var(--text-body-small-weight);
-    font-size: var(--text-body-small-size);
-    line-height: var(--text-body-small-line-height);
-    color: var(--fog-200);
-}
-
-.shortcuts__arrow-keys {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-}
-
-// A one-character key (a letter, "/", an arrow, a Mac symbol) is a square keycap; words like Ctrl stay wider.
-.shortcuts__key--square,
-.shortcuts__key--arrow {
-    width: 24px;
-    min-width: 0;
-    padding: 0;
-}
-
-.shortcuts__not-set {
-    font-weight: var(--text-body-small-weight);
-    font-size: var(--text-body-small-size);
-    line-height: var(--text-body-small-line-height);
-    color: var(--color-ks-transparent-text-60);
-}
-
-.shortcuts__row--custom {
-    gap: 8px;
-
-    .shortcuts__label {
-        flex: 1 1 auto;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-}
-
-.shortcuts__row--editable {
-    gap: 8px;
-
-    .shortcuts__label {
-        flex: 1 1 auto;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-}
-
-.shortcuts__row-feedback {
-    padding: 0 4px 4px;
-    font-size: var(--text-body-small-size);
-    font-weight: var(--text-body-small-weight);
-    line-height: var(--text-body-small-line-height);
-    color: var(--color-error);
-    break-inside: avoid;
-}
-
-.shortcuts__reset-key {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border: 1px solid var(--accent-color);
-    border-radius: 4px;
-    background: transparent;
-    color: var(--accent-color);
-    cursor: pointer;
-    transition:
-        background-color 0.15s ease,
-        border-color 0.15s ease,
-        color 0.15s ease;
-
-    &:hover,
-    &:focus-visible {
-        background: var(--color-ghost-btn-active);
-        outline: none;
-    }
-}
-
-.shortcuts__row-actions {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-
-    app-edit-button ::ng-deep .edit-btn {
-        border-color: var(--accent-color);
-        color: var(--accent-color);
-        transition:
-            background-color 0.15s ease,
-            border-color 0.15s ease,
-            color 0.15s ease;
-
-        &:hover:not(:disabled),
-        &:focus-visible {
-            background: var(--color-ghost-btn-active);
-            outline: none;
-        }
-    }
-}
-
-.shortcuts__flow > app-shortcut-editor {
-    margin-top: 16px;
-}
-
-.shortcuts__add-line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    margin-top: 16px;
-    break-inside: avoid;
-}
-
-.shortcuts__line-button ::ng-deep .btn {
-    min-width: 7.5rem;
-}
-
-.shortcuts__add-button {
-    --shortcuts-add-icon-inset: calc(1.1rem * 4 / 24);
-
-    margin-left: auto;
-
-    ::ng-deep .btn.btn--mod-small {
-        padding-left: calc(0.5rem - var(--shortcuts-add-icon-inset));
-    }
-}
-
 @media (max-width: bp.$breakpoint-shortcuts) {
-    @include shortcutsOneColumnLayout();
-    @include shortcutsCustomScroll();
-
     .shortcuts__modal {
         --shortcuts-modal-width: min(376px, calc(100vw - 32px));
 

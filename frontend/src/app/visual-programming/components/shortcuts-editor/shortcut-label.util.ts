@@ -1,8 +1,8 @@
 import { ShortcutParams } from '@shared/models';
 
-import { ACTION_PARAMS, EDITOR_ACTIONS } from '../../../../../../visual-programming/core/keymap/editor-actions';
-import { flowIdOf } from '../../../../../../visual-programming/core/keymap/shortcut-params';
-import { ChordHolder } from '../../../../../../visual-programming/core/keymap/shortcut-resolution';
+import { ACTION_PARAMS, EDITOR_ACTIONS } from '../../core/keymap/editor-actions';
+import { flowIdOf } from '../../core/keymap/shortcut-params';
+import { ChordHolder } from '../../core/keymap/shortcut-resolution';
 
 export interface ShortcutLabel {
     readonly text: string;
