@@ -21,6 +21,7 @@ import {
     NumberStepperComponent,
     SelectComponent,
     SelectItem,
+    TimePickerComponent,
     ValidationErrorsComponent,
 } from '@shared/components';
 import { EnterSubmitDirective, ServerErrorsDirective, ServerErrorsRef } from '@shared/directives';
@@ -39,13 +40,17 @@ import { ToastService } from '../../../../services/notifications';
 import { AdminOrganizationsService } from '../../services/admin/organizations.service';
 import { OrganizationsStorageService } from '../../services/admin/organizations-storage.service';
 import {
+    buildDashboardScheduleUpdate,
     buildRetentionItems,
     buildRetentionUpdate,
+    DashboardScheduleMode,
+    DEFAULT_DASHBOARD_DAILY_AT,
     describeRetentionLowerings,
     findRetentionLowerings,
     rbacErrorMessage,
     RetentionChoice,
     RetentionField,
+    toDashboardScheduleValue,
     toRetentionChoice,
     USE_DEFAULT_RETENTION,
 } from '../../utils';
@@ -90,6 +95,7 @@ const RETENTION_COLUMNS: RetentionColumnConfig[] = [
         ReactiveFormsModule,
         SelectComponent,
         ServerErrorsDirective,
+        TimePickerComponent,
         ValidationErrorsComponent,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
@@ -160,6 +166,33 @@ export class CreateOrganizationDialogComponent implements OnInit {
         }));
     });
 
+    protected readonly scheduleLabelId = `${this.retentionLabelIdPrefix}-dashboard-schedule`;
+    protected readonly scheduleForm = new FormGroup({
+        mode: new FormControl<DashboardScheduleMode>('default', { nonNullable: true }),
+        dashboard_refresh_minutes: new FormControl<number | null>(null),
+        dashboard_refresh_daily_at: new FormControl(DEFAULT_DASHBOARD_DAILY_AT, { nonNullable: true }),
+    });
+    protected readonly scheduleErrorsRef = new ServerErrorsRef();
+    protected readonly scheduleMode = toSignal(this.scheduleForm.controls.mode.valueChanges, {
+        initialValue: this.scheduleForm.controls.mode.value,
+    });
+    protected readonly scheduleModeItems = computed<SelectItem<DashboardScheduleMode>[]>(() => [
+        {
+            name: `Default (every ${this.retention()?.dashboard_refresh_policy.default_minutes} minutes)`,
+            value: 'default',
+        },
+        { name: 'Every N minutes', value: 'minutes' },
+        { name: 'Every day at', value: 'daily' },
+    ]);
+    protected readonly scheduleHint = computed(() => {
+        const policy = this.retention()?.dashboard_refresh_policy;
+        if (this.scheduleMode() === 'minutes' && policy) {
+            return `From ${policy.min_minutes} to ${policy.max_minutes} minutes.`;
+        }
+        if (this.scheduleMode() === 'daily') return 'Updated once a day at this time (UTC).';
+        return 'How often the dashboard data of this organization is updated.';
+    });
+
     isSubmitting = signal(false);
 
     readonly hasInvalidInput = computed(() => this.isNameInvalid() || (this.membersEditor()?.hasInvalidRow() ?? false));
@@ -214,8 +247,12 @@ export class CreateOrganizationDialogComponent implements OnInit {
         const retention = this.retention();
         const retentionUpdate = retention ? buildRetentionUpdate(retention, this.retentionForm.getRawValue()) : null;
         const lowerings = retention ? findRetentionLowerings(retention, retentionUpdate) : [];
+        const scheduleUpdate = retention
+            ? buildDashboardScheduleUpdate(retention, this.scheduleForm.getRawValue())
+            : null;
+        const update = retentionUpdate || scheduleUpdate ? { ...retentionUpdate, ...scheduleUpdate } : null;
         if (lowerings.length === 0) {
-            this.save(retentionUpdate);
+            this.save(update);
             return;
         }
 
@@ -232,7 +269,7 @@ export class CreateOrganizationDialogComponent implements OnInit {
             .pipe(takeUntilDestroyed(this.destroyRef))
             .subscribe((result) => {
                 if (result === true) {
-                    this.save(retentionUpdate);
+                    this.save(update);
                 } else {
                     this.isSubmitting.set(false);
                 }
@@ -284,14 +321,18 @@ export class CreateOrganizationDialogComponent implements OnInit {
         if (!update) return of(null);
 
         this.retentionErrorsRef.clear();
+        this.scheduleErrorsRef.clear();
         return this.organizationsApi.updateRetention(organizationId, update).pipe(
             tap((retention) => this.applyRetention(retention)),
             catchError((err: HttpErrorResponse) => {
                 const fieldErrors = err.validationErrors ?? [];
+                const retentionErrors = fieldErrors.filter((error) => error.field in this.retentionForm.controls);
+                const scheduleErrors = fieldErrors.filter((error) => error.field in this.scheduleForm.controls);
                 const isShownInline =
-                    fieldErrors.length > 0 && fieldErrors.every((error) => error.field in this.retentionForm.controls);
+                    fieldErrors.length > 0 && retentionErrors.length + scheduleErrors.length === fieldErrors.length;
                 if (isShownInline) {
-                    this.retentionErrorsRef.setErrors(fieldErrors);
+                    this.retentionErrorsRef.setErrors(retentionErrors);
+                    this.scheduleErrorsRef.setErrors(scheduleErrors);
                     return EMPTY;
                 }
                 return throwError(() => err);
@@ -307,6 +348,7 @@ export class CreateOrganizationDialogComponent implements OnInit {
             audit_days: toRetentionChoice(retention.audit_days, policy.audit.default_days),
             conversations_days: toRetentionChoice(retention.conversations_days, policy.conversations.default_days),
         });
+        this.scheduleForm.setValue(toDashboardScheduleValue(retention));
     }
 }
 

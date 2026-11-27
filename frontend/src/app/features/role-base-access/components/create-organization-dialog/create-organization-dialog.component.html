@@ -116,6 +116,50 @@
                 How far back members can see audit events. Doesn't change how long they are stored.
             </span>
         </div>
+
+        @if (retention(); as retention) {
+            <div
+                class="control"
+                [appServerErrors]="scheduleForm"
+                [errorsRef]="scheduleErrorsRef"
+            >
+                <label
+                    class="label retention__label"
+                    [id]="scheduleLabelId"
+                >
+                    Dashboard updates
+                </label>
+                <div class="retention">
+                    <app-select
+                        class="retention__unit dashboard-schedule__mode"
+                        [items]="scheduleModeItems()"
+                        [formControl]="scheduleForm.controls.mode"
+                        [ariaLabelledby]="scheduleLabelId"
+                    />
+                    @if (scheduleMode() === 'minutes') {
+                        <app-number-stepper
+                            class="retention__amount"
+                            ariaLabel="Dashboard update interval in minutes"
+                            [alwaysShowButtons]="true"
+                            [integer]="true"
+                            [min]="retention.dashboard_refresh_policy.min_minutes"
+                            [max]="retention.dashboard_refresh_policy.max_minutes"
+                            [formControl]="scheduleForm.controls.dashboard_refresh_minutes"
+                        />
+                        <span class="dashboard-schedule__unit text-body">minutes</span>
+                    } @else if (scheduleMode() === 'daily') {
+                        <app-time-picker
+                            class="retention__amount"
+                            [formControl]="scheduleForm.controls.dashboard_refresh_daily_at"
+                        />
+                        <span class="dashboard-schedule__unit text-body">UTC</span>
+                    }
+                </div>
+                <app-validation-errors [control]="scheduleForm.controls.dashboard_refresh_minutes" />
+                <app-validation-errors [control]="scheduleForm.controls.dashboard_refresh_daily_at" />
+                <span class="retention__hint text-body-small">{{ scheduleHint() }}</span>
+            </div>
+        }
     </div>
 
     <app-org-members-editor

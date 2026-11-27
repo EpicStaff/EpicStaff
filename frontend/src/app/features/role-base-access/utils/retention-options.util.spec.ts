@@ -28,6 +28,9 @@ function retention(overrides: Partial<OrganizationRetention> = {}): Organization
         updated_at: null,
         updated_by: null,
         retention_policy: POLICY,
+        dashboard_refresh_minutes: null,
+        dashboard_refresh_daily_at: null,
+        dashboard_refresh_policy: { default_minutes: 60, min_minutes: 15, max_minutes: 1440 },
         ...overrides,
     };
 }
