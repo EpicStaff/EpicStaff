@@ -1,7 +1,7 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { Overlay, OverlayModule, OverlayPositionBuilder, OverlayRef } from '@angular/cdk/overlay';
 import { TemplatePortal } from '@angular/cdk/portal';
-import { NgClass } from '@angular/common';
+import { NgClass, NgTemplateOutlet } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -29,15 +29,27 @@ import { TooltipComponent } from '../tooltip/tooltip.component';
 
 /**
  * An optional trailing action button at the end of an item row. A button with only an icon needs a name, so the label
- * comes with the icon.
+ * comes with the icon. Clicking it emits `itemAction` and leaves the selection and the panel as they are.
  */
 type SelectItemTrailingAction =
-    | { trailingActionIcon?: undefined; trailingActionLabel?: undefined }
+    | {
+          trailingActionIcon?: undefined;
+          trailingActionLabel?: undefined;
+          trailingActionPressed?: undefined;
+          trailingActionTooltip?: undefined;
+      }
     | {
           /** app-svg-icon id of the button (e.g. edit-pencil). */
           trailingActionIcon: string;
           /** Names the button (its aria-label and tooltip), e.g. "Edit". */
           trailingActionLabel: string;
+          /**
+           * Makes the button a toggle that is on (true) or off (false): said by `aria-pressed`, and shown in the accent
+           * color when on. app-select only; app-multi-select ignores it.
+           */
+          trailingActionPressed?: boolean;
+          /** The tooltip, when it should say more than the name, e.g. what a toggle does next. app-select only. */
+          trailingActionTooltip?: string;
       };
 
 export type SelectItem<T = unknown> = SelectItemFields<T> & SelectItemTrailingAction;
@@ -73,6 +85,7 @@ let nextSelectId = 0;
     selector: 'app-select',
     imports: [
         NgClass,
+        NgTemplateOutlet,
         OverlayModule,
         CdkTrapFocus,
         TooltipComponent,
@@ -166,6 +179,8 @@ export class SelectComponent implements ControlValueAccessor {
     onCreate = output<void>();
     /** The search text as typed, for a caller that loads `items` by it; cleared ('') when the panel opens or closes. */
     searchChange = output<string>();
+    /** Emits item.value when an item's trailing action button (see SelectItem.trailingActionIcon) is clicked. */
+    itemAction = output<unknown>();
 
     selectedValue = model<unknown | null>(null);
 

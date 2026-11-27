@@ -4,6 +4,7 @@ import pytest
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import RefreshToken
 from tables.models import Graph
+from ai_models.models import LLMModel, Provider
 from tables.models.mcp_models import McpTool
 from tables.models.python_models import PythonCode, PythonCodeTool
 
@@ -17,6 +18,7 @@ BROAD_ACCESS = [
     {"resource_type": "flows", "actions": ["read", "create", "update", "use"], "reason": "Flows."},
     {"resource_type": "tools", "actions": ["read", "create", "update"], "reason": "Tools."},
     {"resource_type": "voice", "actions": ["read", "create"], "reason": "Voice."},
+    {"resource_type": "llm_configs", "actions": ["read"], "reason": "LLM models."},
 ]
 
 
@@ -43,6 +45,12 @@ def surfaces(acme):
         name="tool", description="", python_code=PythonCode.objects.create(code="x", entrypoint="main"), org=acme
     )
     mcp_tool = McpTool.objects.create(name="mcp-tool", transport="https://example.com", tool_name="do_thing", org=acme)
+    LLMModel.objects.create(
+        name="gpt-4o",
+        llm_provider=Provider.objects.get_or_create(name="openai")[0],
+        predefined=True,
+        is_custom=False,
+    )
     flow_assistant = f"/api/flow-assistants/{graph.pk}/"
     conversation = f"{flow_assistant}conversations/1/"
     return [
@@ -50,6 +58,7 @@ def surfaces(acme):
         ("audit presets create", "post", "/api/audit-filter-presets/", {"name": "Mine", "filters": {}}),
         ("python tool favorite", "post", f"/api/python-code-tool/{python_tool.pk}/favorite/", None),
         ("mcp tool favorite", "post", f"/api/mcp-tools/{mcp_tool.pk}/favorite/", None),
+        ("llm model favorite", "post", "/api/ai-models/favorite/?provider=openai&model=gpt-4o", None),
         ("flow assistant config", "get", flow_assistant, None),
         ("flow assistant conversations", "get", f"{flow_assistant}conversations/", None),
         ("flow assistant conversation", "get", conversation, None),
@@ -89,6 +98,11 @@ def test_a_person_is_not_refused_by_the_gate(person_client, surfaces):
 def test_a_person_still_lists_and_favorites(person_client, surfaces):
     by_name = {name: (method, url, body) for name, method, url, body in surfaces}
 
-    for name, expected in (("audit presets list", 200), ("python tool favorite", 201), ("mcp tool favorite", 201)):
+    for name, expected in (
+        ("audit presets list", 200),
+        ("python tool favorite", 201),
+        ("mcp tool favorite", 201),
+        ("llm model favorite", 200),
+    ):
         method, url, body = by_name[name]
         assert getattr(person_client, method)(url, body, format="json").status_code in (expected, 200, 204), name

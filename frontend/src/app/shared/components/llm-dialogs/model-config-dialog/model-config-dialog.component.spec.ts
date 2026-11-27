@@ -25,6 +25,7 @@ const LARGE_MODEL: CatalogModel = {
     deprecation_date: null,
     limits: { max_output_tokens: 16384 },
     custom: false,
+    is_favorite: false,
 };
 const SMALL_MODEL: CatalogModel = {
     name: 'gpt-small',
@@ -32,6 +33,7 @@ const SMALL_MODEL: CatalogModel = {
     deprecation_date: null,
     limits: { max_output_tokens: 8192 },
     custom: false,
+    is_favorite: false,
 };
 /** The organization's own model, saved earlier under a typed name. */
 const TEAM_MODEL: CatalogModel = {
@@ -40,6 +42,7 @@ const TEAM_MODEL: CatalogModel = {
     deprecation_date: null,
     limits: {},
     custom: true,
+    is_favorite: false,
 };
 
 const OTHER: CatalogProvider = { name: 'other', label: 'Other', recommended: false, custom_models: false };
@@ -686,6 +689,156 @@ describe('ModelConfigDialogComponent', () => {
             expect(element(rendered.fixture).querySelector('[data-field="temperature"]')!.textContent).toContain(
                 'Too hot.'
             );
+        });
+    });
+
+    describe('favorite models', () => {
+        const STARRED_SMALL: CatalogModel = { ...SMALL_MODEL, is_favorite: true };
+
+        /** A new LLM config with OpenAI chosen, its `models` listed and the model list open. */
+        function openModelList(models: CatalogModel[]): Rendered {
+            const rendered = render({ kind: 'llm' });
+            answer(rendered, '/api/ai-models/providers/', [OPENAI, OTHER]);
+            choose(rendered.fixture, '.dialog__provider', 'OpenAI');
+            answer(rendered, '/api/ai-models/models/', models, { provider: 'openai', search: '' });
+            element(rendered.fixture).querySelector<HTMLButtonElement>('.dialog__model .selector__btn')!.click();
+            rendered.fixture.detectChanges();
+            return rendered;
+        }
+
+        /** The open list, top to bottom: group headings as `# name`, then the options. */
+        function listed(): string[] {
+            return Array.from(
+                document.querySelectorAll('.selector__group-label, .selector__option .selector__text'),
+                (node) =>
+                    node.classList.contains('selector__group-label')
+                        ? `# ${node.textContent!.trim()}`
+                        : node.textContent!.trim()
+            );
+        }
+
+        /** The star of the first row of `model`, which is its Favorites row when it has one. */
+        function star(model: string): HTMLButtonElement {
+            return document.querySelector<HTMLButtonElement>(
+                `.selector__option-action[aria-label="Favorite ${model}"]`
+            )!;
+        }
+
+        function favoriteRequest(rendered: Rendered, method: 'POST' | 'DELETE'): TestRequest {
+            return rendered.http.expectOne(
+                (candidate) => candidate.url === '/api/ai-models/favorite/' && candidate.method === method
+            );
+        }
+
+        it('lists the starred models first, under Favorites, and every model again under All models', () => {
+            openModelList([LARGE_MODEL, STARRED_SMALL]);
+
+            expect(listed()).toEqual(['# Favorites', 'gpt-small', '# All models', 'gpt-large', 'gpt-small']);
+            expect(star('gpt-small').getAttribute('aria-pressed')).toBe('true');
+            expect(star('gpt-large').getAttribute('aria-pressed')).toBe('false');
+        });
+
+        it('lists the models under no heading while none is starred, each with its star', () => {
+            openModelList([LARGE_MODEL, SMALL_MODEL]);
+
+            expect(listed()).toEqual(['gpt-large', 'gpt-small']);
+            expect(document.querySelectorAll('.selector__option-action')).toHaveLength(2);
+        });
+
+        it('stars a model at once, without picking it or closing the list', () => {
+            const rendered = openModelList([LARGE_MODEL, SMALL_MODEL]);
+
+            star('gpt-large').click();
+            rendered.fixture.detectChanges();
+
+            const request = favoriteRequest(rendered, 'POST');
+            expect(request.request.params.get('provider')).toBe('openai');
+            expect(request.request.params.get('model')).toBe('gpt-large');
+            expect(listed()).toEqual(['# Favorites', 'gpt-large', '# All models', 'gpt-large', 'gpt-small']);
+            expect(element(rendered.fixture).querySelector('.dialog__model .selector__btn')!.textContent).toContain(
+                'Select a model'
+            );
+            request.flush(null);
+            rendered.fixture.detectChanges();
+            expect(star('gpt-large').getAttribute('aria-pressed')).toBe('true');
+            rendered.http.verify();
+        });
+
+        it('unstars a favorite, and drops the Favorites group with its last model', () => {
+            const rendered = openModelList([LARGE_MODEL, STARRED_SMALL]);
+
+            star('gpt-small').click();
+            rendered.fixture.detectChanges();
+            favoriteRequest(rendered, 'DELETE').flush(null);
+            rendered.fixture.detectChanges();
+
+            expect(listed()).toEqual(['gpt-large', 'gpt-small']);
+            expect(star('gpt-small').getAttribute('aria-pressed')).toBe('false');
+        });
+
+        it('puts the star back and says why when the server refuses it', () => {
+            const rendered = openModelList([LARGE_MODEL, SMALL_MODEL]);
+
+            star('gpt-large').click();
+            rendered.fixture.detectChanges();
+            favoriteRequest(rendered, 'POST').flush(
+                { message: 'Unknown model.' },
+                { status: 404, statusText: 'Not Found' }
+            );
+            rendered.fixture.detectChanges();
+
+            expect(listed()).toEqual(['gpt-large', 'gpt-small']);
+            expect(TestBed.inject(ToastService).error).toHaveBeenCalledWith(expect.stringContaining('Unknown model.'));
+        });
+
+        it('ignores another click on a star whose toggle still waits for the server', () => {
+            const rendered = openModelList([LARGE_MODEL, SMALL_MODEL]);
+
+            star('gpt-large').click();
+            rendered.fixture.detectChanges();
+            star('gpt-large').click();
+            rendered.fixture.detectChanges();
+
+            favoriteRequest(rendered, 'POST').flush(null);
+            rendered.http.verify();
+            expect(star('gpt-large').getAttribute('aria-pressed')).toBe('true');
+        });
+
+        it('keeps a star toggled here over a list loaded before the toggle reached the server', () => {
+            const rendered = openModelList([LARGE_MODEL, SMALL_MODEL]);
+            star('gpt-large').click();
+            rendered.fixture.detectChanges();
+            favoriteRequest(rendered, 'POST').flush(null);
+
+            // A list without the new star, as one sent before it was saved.
+            rendered.fixture.componentInstance['catalogModels'].set([LARGE_MODEL, SMALL_MODEL]);
+            rendered.fixture.detectChanges();
+
+            expect(listed()).toEqual(['# Favorites', 'gpt-large', '# All models', 'gpt-large', 'gpt-small']);
+        });
+
+        it('picks a model from the Favorites group', () => {
+            const rendered = openModelList([LARGE_MODEL, STARRED_SMALL]);
+
+            Array.from(document.querySelectorAll<HTMLButtonElement>('.selector__option'))[0].click();
+            rendered.fixture.detectChanges();
+
+            answer(rendered, '/api/ai-models/schemas/', SMALL_SCHEMAS, { model: 'gpt-small' });
+            expect(element(rendered.fixture).querySelector('.dialog__model .selector__btn')!.textContent).toContain(
+                'gpt-small'
+            );
+        });
+
+        it('offers no stars on an embedding model', () => {
+            const rendered = render({ kind: 'embedding' });
+            answer(rendered, '/api/ai-models/providers/', [OPENAI], { kind: 'embedding' });
+            choose(rendered.fixture, '.dialog__provider', 'OpenAI');
+            answer(rendered, '/api/ai-models/models/', [{ ...LARGE_MODEL, name: 'embed-large' }]);
+            element(rendered.fixture).querySelector<HTMLButtonElement>('.dialog__model .selector__btn')!.click();
+            rendered.fixture.detectChanges();
+
+            expect(listed()).toEqual(['embed-large']);
+            expect(document.querySelector('.selector__option-action')).toBeNull();
         });
     });
 

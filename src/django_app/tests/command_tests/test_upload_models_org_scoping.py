@@ -2,7 +2,7 @@ import pytest
 
 from ai_models.domain.catalog import Catalog
 from ai_models.management.commands import upload_models
-from ai_models.models import EmbeddingModel, LLMModel, Provider
+from ai_models.models import EmbeddingModel, LLMModel, LLMModelFavorite, Provider
 from ai_models.repository import CatalogRepository
 from tables.models.llm_models import RealtimeModel, RealtimeTranscriptionModel
 from rbac.models import Organization
@@ -93,6 +93,25 @@ def test_seeding_never_adopts_an_org_llm_model(org):
     assert org_row.org_id == org.id
     assert org_row.is_custom is True
     assert org_row.predefined is False, "seeding adopted an org-owned row"
+
+
+@pytest.mark.django_db
+def test_reseeding_keeps_a_catalog_model_and_its_favorites(django_user_model):
+    """Favorites point at a catalog row by id, so a re-run must update the row in place."""
+    upload_models.Command().handle()
+    catalog_model = LLMModel.objects.filter(org__isnull=True, predefined=True).order_by("pk").first()
+    assert catalog_model, "upload_models must seed at least one catalog LLM model"
+    user = django_user_model.objects.create_user(
+        email="favorite-reseed@example.com", password="StrongPass123!"
+    )
+    LLMModelFavorite.objects.create(user=user, llm_model=catalog_model)
+
+    upload_models.Command().handle()
+
+    assert LLMModel.objects.filter(
+        pk=catalog_model.pk, name=catalog_model.name, org__isnull=True
+    ).exists()
+    assert LLMModelFavorite.objects.filter(user=user, llm_model_id=catalog_model.pk).exists()
 
 
 @pytest.mark.django_db

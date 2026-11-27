@@ -8,6 +8,7 @@ from rbac.access.cross_org_resolver import (
 from rbac.access.org_context import OrgContextService, cache_active_org_id
 from rbac.access.principals import is_plugin_credential
 from rbac.access.resolver import PermissionResolver
+from rbac.authorship import resolve_author
 from rbac.models import ApiKey
 
 
@@ -144,6 +145,24 @@ class DenyPluginCredential(BasePermission):
 
     def has_permission(self, request, view):
         return not is_plugin_credential(request)
+
+
+class IsPerson(BasePermission):
+    """Allows only a persisted `User`: a person, or a USER API key acting as its owner.
+
+    For a request that must act as a persisted person, such as one that writes a row
+    keyed to `request.user`. The system API key's principal is not a `User`, yet it
+    passes `IsAuthenticated`, the superadmin bypass of `HasOrgPermission` and
+    `DenyPluginCredential`; without this gate such a request fails on the write
+    instead of being refused. A plugin principal, even one acting for a person, is
+    refused too. Pair AFTER IsAuthenticated, and after `DenyPluginCredential` so a
+    plugin keeps that gate's message.
+    """
+
+    message = "Only a person can use this endpoint. Authenticate as a user or with a user API key."
+
+    def has_permission(self, request, view):
+        return resolve_author(request.user) is not None
 
 
 class DenyPersonalAndSystemApiKeys(BasePermission):

@@ -158,6 +158,79 @@ describe('SelectComponent', () => {
         });
     });
 
+    describe('a trailing action', () => {
+        const STARRED: SelectItem = {
+            name: 'gpt-large',
+            value: 'gpt-large',
+            trailingActionIcon: 'star-filled',
+            trailingActionLabel: 'Favorite gpt-large',
+            trailingActionPressed: true,
+            trailingActionTooltip: 'Remove from favorites',
+        };
+        const PLAIN: SelectItem = { name: 'gpt-small', value: 'gpt-small' };
+
+        function actions(): HTMLButtonElement[] {
+            return Array.from(document.querySelectorAll<HTMLButtonElement>('.selector__option-action'));
+        }
+
+        it('is offered only on the options that have one, beside the option and not inside it', () => {
+            openPanel([STARRED, PLAIN], false);
+
+            expect(actions().map((action) => action.getAttribute('aria-label'))).toEqual(['Favorite gpt-large']);
+            expect(actions()[0].closest('.selector__option')).toBeNull();
+            expect(rows()).toEqual(['gpt-large', 'gpt-small']);
+        });
+
+        it('emits the item value, and leaves the selection and the panel as they are', () => {
+            const fixture = openPanel([STARRED, PLAIN], false);
+            const emitted: unknown[] = [];
+            fixture.componentInstance.itemAction.subscribe((value) => emitted.push(value));
+
+            actions()[0].click();
+            fixture.detectChanges();
+
+            expect(emitted).toEqual(['gpt-large']);
+            expect(fixture.componentInstance.selectedValue()).toBeNull();
+            expect(fixture.componentInstance.open()).toBe(true);
+        });
+
+        it.each([
+            ['on', true, 'true'],
+            ['off', false, 'false'],
+            ['not a toggle', undefined, null],
+        ])('says a toggle that is %s through aria-pressed', (_case, pressed, ariaPressed) => {
+            openPanel([{ ...STARRED, trailingActionPressed: pressed }], false);
+
+            expect(actions()[0].getAttribute('aria-pressed')).toBe(ariaPressed);
+            expect(actions()[0].classList.contains('selector__option-action--pressed')).toBe(pressed === true);
+        });
+
+        it('takes its tooltip from the tooltip given, else from its name', () => {
+            openPanel(
+                [STARRED, { ...STARRED, name: 'other', value: 'other', trailingActionTooltip: undefined }],
+                false
+            );
+
+            const tooltips = actions().map((action) => getDebugNode(action)!.injector.get(MatTooltip).message);
+            expect(tooltips).toEqual(['Remove from favorites', 'Favorite gpt-large']);
+        });
+
+        it('keeps its options under their group headings', () => {
+            openPanel(
+                [
+                    { ...STARRED, group: 'Favorites' },
+                    { ...STARRED, group: 'All models' },
+                    { ...PLAIN, group: 'All models' },
+                ],
+                true
+            );
+
+            expect(headings()).toEqual(['Favorites', 'All models']);
+            expect(rows()).toEqual(['gpt-large', 'gpt-large', 'gpt-small']);
+            expect(actions()).toHaveLength(2);
+        });
+    });
+
     it.each([
         ['shows the selected tip in the trigger when opted in', true, 'Default'],
         ['keeps the trigger to the name by default', false, undefined],

@@ -15,6 +15,7 @@ const GPT_4O: CatalogModel = {
     deprecation_date: null,
     limits: { max_output_tokens: 16384 },
     custom: false,
+    is_favorite: false,
 };
 
 const GPT_4O_SCHEMAS: ModelSchemas = {
@@ -95,6 +96,21 @@ describe('ModelCatalogService', () => {
         const request = http.expectOne((sent) => sent.url === '/api/ai-models/schemas/');
         expect(request.request.params.toString()).toBe(`kind=${kind}&provider=${provider}&model=${model}`);
         request.flush(GPT_4O_SCHEMAS);
+    });
+
+    it.each([
+        ['stars a model with a POST', true, 'POST'],
+        ['unstars a model with a DELETE', false, 'DELETE'],
+    ] as const)('%s naming its provider and model', (_case, favorite, method) => {
+        let done = false;
+        service.setFavorite('openai', 'gpt-4o', favorite).subscribe({ complete: () => (done = true) });
+
+        const request = http.expectOne('/api/ai-models/favorite/?provider=openai&model=gpt-4o');
+        expect(request.request.method).toBe(method);
+        expect(request.request.body).toBeNull();
+        request.flush(null);
+
+        expect(done).toBe(true);
     });
 
     it('asks again for schemas whose request failed', () => {

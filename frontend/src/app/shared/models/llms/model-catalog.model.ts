@@ -22,6 +22,8 @@ export interface CatalogModel {
     limits: Record<string, number>;
     /** The organization's own model, saved earlier under a typed name; listed before the catalog's. */
     custom: boolean;
+    /** The current user starred the model (`ModelCatalogService.setFavorite`); always false for an embedding model. */
+    is_favorite: boolean;
 }
 
 /** `GET ai-models/schemas/?kind=&provider=&model=`: what a config of one model may hold. */

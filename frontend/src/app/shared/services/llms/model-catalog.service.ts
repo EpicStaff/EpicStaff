@@ -6,8 +6,8 @@ import { Observable, shareReplay } from 'rxjs';
 import { ConfigService } from '../../../services/config';
 
 /**
- * The read-only model catalog behind the config form: providers per kind, models per provider, and the settings and
- * connection schemas of one model. Schemas are the same for every organization and change only with a deploy, so each
+ * The model catalog behind the config form: providers per kind, models per provider, and the settings and
+ * connection schemas of one model; also the current user's stars on LLM models, which the model list carries back. Schemas are the same for every organization and change only with a deploy, so each
  * model's are fetched once per session. The model list also holds the organization's own custom models, which change
  * when a config saves a new one, so it is fetched every time.
  */
@@ -34,6 +34,16 @@ export class ModelCatalogService {
     models(kind: ModelKind, provider: string, search: string): Observable<CatalogModel[]> {
         const params = new HttpParams({ fromObject: { kind, provider, search } });
         return this.http.get<CatalogModel[]>(`${this.apiUrl}models/`, { params });
+    }
+
+    /**
+     * Stars or unstars the LLM model `model` of `provider` for the current user. Both ways are idempotent; starring a
+     * model the organization has no stored row of (a custom name no config saved yet) is refused with a 404.
+     */
+    setFavorite(provider: string, model: string, favorite: boolean): Observable<void> {
+        const url = `${this.apiUrl}favorite/`;
+        const params = { provider, model };
+        return favorite ? this.http.post<void>(url, null, { params }) : this.http.delete<void>(url, { params });
     }
 
     /** The settings and connection schemas of `model`, and the settings a new config starts with. */

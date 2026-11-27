@@ -104,6 +104,7 @@ def test_registering_an_already_known_label_is_refused():
 
 def test_tables_labels_resolve_through_the_registry_for_user_and_org_deletes():
     assert resource_name("tables.McpToolFavorite") == "tool_favorites"
+    assert resource_name("ai_models.LLMModelFavorite") == "llm_model_favorites"
     assert resource_name("tables.FlowAssistantMessage") == "assistant_conversations"
     assert resource_name("agents.Surface") == "surfaces"
     assert resource_name("tables.Task") == "tasks"

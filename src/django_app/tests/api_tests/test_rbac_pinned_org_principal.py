@@ -21,6 +21,7 @@ from rbac.access.gates import (
     DenyApiKeyAuth,
     DenyPersonalAndSystemApiKeys,
     DenyPluginCredential,
+    IsPerson,
     RestrictApiKeyToUserKeyReads,
 )
 from rbac.access.org_context import OrgContextService
@@ -48,7 +49,7 @@ from tables.import_export.export_tabular_projections.session import (
 )
 from tables.import_export.serializers.session import SessionPrincipalExportSerializer
 from tables.models import McpTool, StorageFile
-from ai_models.models import LLMConfig, LLMModel, Provider
+from ai_models.models import LLMConfig, LLMModel, LLMModelFavorite, Provider
 from tables.models.graph_models import Graph, GraphOrganizationUser, GraphSessionMessage
 from tables.models.session_models import Session, SessionPrincipal
 from tables.serializers.model_serializers.session_serializers import (
@@ -81,6 +82,9 @@ DECLARED = {
     ResourceType.SECRETS: Permission.READ | Permission.CREATE | Permission.USE,
     ResourceType.TOOLS: Permission.READ,
     ResourceType.FILES: Permission.READ | Permission.CREATE | Permission.UPDATE | Permission.DELETE,
+    # Granted so that a refusal on the LLM model favorite below can only come from
+    # DenyPluginCredential, and so that the model catalog lists to the principal.
+    ResourceType.LLM_CONFIGS: Permission.READ,
     # Neither is declarable by a real plugin; granted here so that a refusal on the
     # person-only surfaces below can only come from DenyPluginCredential.
     ResourceType.AUDIT: Permission.READ,
@@ -348,6 +352,19 @@ def test_deny_plugin_credential_refuses_only_plugin_credentials(
     assert gate.has_permission(_request(SystemServicePrincipal(), system_key), view=None) is True
 
 
+def test_is_person_admits_only_a_user(principal_for_member, member_only, issue_api_key):
+    _, user_key = issue_api_key(user=member_only)
+    _, system_key = issue_api_key(user=None)
+    gate = IsPerson()
+
+    assert gate.has_permission(_request(member_only), view=None) is True
+    assert gate.has_permission(_request(member_only, user_key), view=None) is True
+    assert gate.has_permission(_request(SystemServicePrincipal(), system_key), view=None) is False
+    assert gate.has_permission(_request(AnonymousUser()), view=None) is False
+    # Acting for a person does not make a plugin principal one.
+    assert gate.has_permission(_request(principal_for_member, FakePluginKey()), view=None) is False
+
+
 def test_deny_personal_and_system_api_keys_passes_a_plugin_credential(
     principal, member_only, issue_api_key
 ):
@@ -371,6 +388,8 @@ def test_deny_personal_and_system_api_keys_passes_a_plugin_credential(
         ("post", "/api/audit-filter-presets/"),
         ("post", "/api/python-code-tool/1/favorite/"),
         ("delete", "/api/mcp-tools/1/favorite/"),
+        ("post", "/api/ai-models/favorite/?provider=openai&model=gpt-4o"),
+        ("delete", "/api/ai-models/favorite/?provider=openai&model=gpt-4o"),
         ("get", "/api/flow-assistants/1/"),
         ("get", "/api/flow-assistants/1/conversations/"),
         ("get", "/api/flow-assistants/1/conversations/1/"),
@@ -505,6 +524,25 @@ def test_tool_lists_show_no_favorites_to_a_pinned_principal(plugin_client, princ
     assert [tool["is_favorite"] for tool in mcp_tools.json()["results"]] == [False]
     assert python_tools.status_code == 200, python_tools.content
     assert all(tool["is_favorite"] is False for tool in python_tools.json()["results"])
+
+
+def test_the_model_catalog_shows_no_favorites_to_a_pinned_principal(
+    plugin_client, principal_for_member, member_only, acme
+):
+    openai, _ = Provider.objects.get_or_create(name="openai")
+    model = LLMModel.objects.create(
+        name="acme-favorite-model", llm_provider=openai, org=acme, is_custom=True
+    )
+    LLMModelFavorite.objects.create(user=member_only, llm_model=model)
+
+    response = plugin_client(principal_for_member).get(
+        "/api/ai-models/models/", {"kind": "llm", "provider": "openai"}
+    )
+
+    assert response.status_code == 200, response.content
+    listed = {row["name"]: row["is_favorite"] for row in response.json()}
+    assert listed["acme-favorite-model"] is False
+    assert set(listed.values()) == {False}
 
 
 def test_graph_user_is_the_on_behalf_of_persons(principal_for_member, member_only, acme):

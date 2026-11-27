@@ -23,6 +23,7 @@ TABLES_RESOURCE_NAMES: dict[str, str] = {
     # user cascade
     "tables.PythonCodeToolFavorite": "tool_favorites",
     "tables.McpToolFavorite": "tool_favorites",
+    "ai_models.LLMModelFavorite": "llm_model_favorites",
     "tables.FlowAssistantConversation": "assistant_conversations",
     "tables.FlowAssistantMessage": "assistant_conversations",
     # org cascade -- direct
