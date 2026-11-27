@@ -231,6 +231,15 @@ async def test_data_loader_logs_llm_settings_but_never_a_connection_value():
 
 
 @pytest.mark.asyncio
+async def test_data_loader_logs_prompt_caching_setting_as_is():
+    with capture_logs_at("DEBUG") as logs:
+        await _loader_returning(json.dumps(_wire_blob())).load(_ENVELOPE)
+
+    request_line = log_line_starting_with(logs, "AgentRequest correlation_id=")
+    assert "'prompt_caching_enabled': True" in request_line
+
+
+@pytest.mark.asyncio
 async def test_validation_failure_logs_types_and_locations_without_rejected_values():
     """A rejected value reaches pydantic's own rendering verbatim, so the ERROR line
     must carry only the failure type and its location."""

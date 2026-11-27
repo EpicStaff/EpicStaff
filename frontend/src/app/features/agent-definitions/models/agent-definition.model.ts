@@ -37,7 +37,7 @@ export interface AgentDefinition extends AuthorshipFields {
     max_iter: number;
     max_rpm: number;
     max_execution_time: number;
-    cache: boolean;
+    prompt_caching_enabled: boolean;
     max_retry_limit: number;
     default_temperature: number | null;
     max_tool_calls: number;
@@ -61,7 +61,7 @@ export interface CreateAgentDefinitionRequest {
     max_iter?: number;
     max_rpm?: number;
     max_execution_time?: number;
-    cache?: boolean;
+    prompt_caching_enabled?: boolean;
     max_retry_limit?: number;
     default_temperature?: number | null;
     max_tool_calls?: number;

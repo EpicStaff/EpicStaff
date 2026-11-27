@@ -93,7 +93,7 @@ class AgentDefinitionCopyService(BaseCopyService):
             max_iter=agent.max_iter,
             max_rpm=agent.max_rpm,
             max_execution_time=agent.max_execution_time,
-            cache=agent.cache,
+            prompt_caching_enabled=agent.prompt_caching_enabled,
             max_retry_limit=agent.max_retry_limit,
             default_temperature=agent.default_temperature,
             max_tool_calls=agent.max_tool_calls,

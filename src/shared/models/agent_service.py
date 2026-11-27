@@ -142,7 +142,7 @@ class AgentSpec(BaseModel):
     max_rpm: int | None = None
     max_execution_time: float | None = None
     """Wall-clock budget in seconds honored by ``DefaultAgentLoop``; ``None`` means no limit."""
-    cache: bool | None = None
+    prompt_caching_enabled: bool = False
     max_retry_limit: int | None = None
     """Maximum LLM call retry attempts; ``None`` uses the client default."""
     default_temperature: float | None = None

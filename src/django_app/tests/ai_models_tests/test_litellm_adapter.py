@@ -97,6 +97,37 @@ def test_llm_parameters_come_from_litellm(adapter, entries):
     assert {"temperature", "top_p", "max_tokens", "tools"} <= set(names)
 
 
+@pytest.mark.parametrize(
+    ("provider", "name"),
+    [
+        ("anthropic", "claude-sonnet-5-5"),
+        ("bedrock", "us.anthropic.claude-sonnet-5-5"),
+        ("vertex_ai", "vertex_ai/claude-opus-5-5"),
+        ("bedrock", "us.openai.gpt-5.6-sol"),
+    ],
+)
+def test_a_model_litellm_refuses_sampling_for_takes_no_sampling_setting(adapter, entries, provider, name):
+    names = set(adapter.llm_parameters(entries[ModelKind.LLM][(provider, name)]))
+
+    assert not names & {"temperature", "top_p", "top_k"}
+    assert "max_tokens" in names
+
+
+@pytest.mark.parametrize(
+    ("provider", "name"),
+    [
+        ("anthropic", "claude-sonnet-4-6"),
+        # Marked `supports_sampling_params: false`, but LiteLLM still sends sampling to it.
+        ("gemini", "gemini/gemini-3.5-flash-lite"),
+        ("vertex_ai", "vertex_ai/gemini-3.8-flash"),
+    ],
+)
+def test_a_model_litellm_sends_sampling_to_keeps_its_sampling_settings(adapter, entries, provider, name):
+    names = adapter.llm_parameters(entries[ModelKind.LLM][(provider, name)])
+
+    assert {"temperature", "top_p"} <= set(names)
+
+
 def test_embedding_parameters_without_a_litellm_config_class_are_none(adapter):
     # LiteLLM's generic call would answer the chat settings here; the adapter must not.
     assert adapter.embedding_parameters("openai") is None

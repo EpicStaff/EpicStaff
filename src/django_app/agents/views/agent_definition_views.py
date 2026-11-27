@@ -64,7 +64,12 @@ class AgentDefinitionViewSet(
     export_job_definition = export_definition(TransferJob.MainEntity.AGENT_DEFINITION)
     export_job_request_serializer_class = KnowledgeExportJobCreateSerializer
     queryset = AgentDefinition.objects.select_related(
-        "org", "llm_config", "fallback_llm_config", "fcm_llm_config", "realtime_agent"
+        "org",
+        # The write serializer's prompt caching rule reads the stored configs' models.
+        "llm_config__model__llm_provider",
+        "fallback_llm_config__model__llm_provider",
+        "fcm_llm_config",
+        "realtime_agent",
     ).prefetch_related("default_surfaces__surface", "owned_surfaces", *authorship_prefetches())
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ["llm_config", "fallback_llm_config", "fcm_llm_config"]

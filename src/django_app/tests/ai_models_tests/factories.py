@@ -1,11 +1,12 @@
 from collections.abc import Iterator, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 
 from ai_models.domain.catalog import Catalog
 from ai_models.domain.registry import ParameterRegistry
 from ai_models.domain.specs import (
     ConnectionFieldSpec,
+    DefaultThinkingSpec,
     ModelKind,
     ModelSpec,
     ParameterSpec,
@@ -80,6 +81,7 @@ def make_registry(**fields) -> ParameterRegistry:
         "hidden_names": frozenset({"tools", "stream"}),
         "kind_parameters": {},
         "recommended_models": {},
+        "default_thinking": {},
     }
     values.update(fields)
     return ParameterRegistry(**values)
@@ -94,6 +96,7 @@ class FakeLiteLLMAdapter:
     embedding: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     transcription: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     annotations: Mapping[str, object] = field(default_factory=dict)
+    adaptive_thinking: frozenset[str] = frozenset()
 
     def version(self) -> str:
         return "1.108.1"
@@ -103,6 +106,9 @@ class FakeLiteLLMAdapter:
 
     def llm_parameters(self, model: ModelSpec) -> tuple[str, ...]:
         return self.llm.get(model.name, ())
+
+    def supports_adaptive_thinking(self, model: ModelSpec) -> bool:
+        return model.name in self.adaptive_thinking
 
     def embedding_parameters(self, provider: str) -> tuple[str, ...] | None:
         return self.embedding.get(provider)
@@ -266,6 +272,50 @@ def make_runtime_catalog() -> Catalog:
     return Catalog(
         litellm_version="1.108.1", parameters=parameters, providers=providers, models=models
     )
+
+
+def make_thinking_catalog() -> Catalog:
+    """`make_runtime_catalog` plus one Anthropic model of each `default_thinking` case.
+
+    `claude-between-tools` and `claude-disabled` think by default and are turned off with
+    that `thinking.type`; `claude-always-thinks` cannot be turned off (no "none");
+    `claude-gateway-thinks` thinks by default but is reached where `thinking` is not
+    sent; `claude-asks-to-think` thinks only when asked.
+    """
+    catalog = make_runtime_catalog()
+    efforts = ("none", "low", "medium", "high")
+    thinking_models = [
+        make_model(
+            name="claude-between-tools",
+            options={"reasoning_effort": efforts},
+            default_thinking=DefaultThinkingSpec("high", "between_tools"),
+        ),
+        make_model(
+            name="claude-disabled",
+            options={"reasoning_effort": efforts},
+            default_thinking=DefaultThinkingSpec("medium", "disabled"),
+        ),
+        make_model(
+            name="claude-always-thinks",
+            options={"reasoning_effort": efforts[1:]},
+            default_thinking=DefaultThinkingSpec("medium", None),
+        ),
+        make_model(
+            name="claude-gateway-thinks",
+            options={"reasoning_effort": efforts},
+            default_thinking=DefaultThinkingSpec(
+                "high", "disabled", provider_accepts_thinking=False
+            ),
+        ),
+        make_model(name="claude-asks-to-think", options={"reasoning_effort": efforts}),
+    ]
+    anthropic_models = dict(catalog.models[ModelKind.LLM]["anthropic"])
+    for model in thinking_models:
+        anthropic_models[model.name] = replace(
+            model, provider="anthropic", parameter_names=("reasoning_effort", "temperature")
+        )
+    llm_models = {**catalog.models[ModelKind.LLM], "anthropic": anthropic_models}
+    return replace(catalog, models={**catalog.models, ModelKind.LLM: llm_models})
 
 
 def make_catalog() -> Catalog:

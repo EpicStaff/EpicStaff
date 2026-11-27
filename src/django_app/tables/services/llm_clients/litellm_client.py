@@ -5,7 +5,11 @@ from collections import defaultdict
 from collections.abc import AsyncIterator
 
 import litellm
-from src.shared.litellm_model_names import litellm_call_model, litellm_routed_provider
+from src.shared.litellm_model_names import (
+    litellm_call_model,
+    litellm_generation_kwargs,
+    litellm_routed_provider,
+)
 from src.shared.models import LLMConfigData
 from utils.logger import logger
 
@@ -155,7 +159,13 @@ class LiteLLMClient(BaseLLMClient):
         kwargs.update(config.connection_kwargs())
         # Flow Assistant and CDT Explain expect a structured JSON reply; stop sequences
         # set on the config for agents could cut that reply short.
-        kwargs.update(config.to_litellm_kwargs(provider=self._routed_provider, exclude={"stop"}))
+        kwargs.update(
+            litellm_generation_kwargs(
+                config,
+                model=litellm_call_model(self._provider_name, config.model),
+                exclude={"stop"},
+            )
+        )
         # Structured-output requests pass an output_schema, which becomes the
         # response_format sent to the model. The provider litellm routes to decides
         # the format: a google_ai row is called as gemini.

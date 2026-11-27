@@ -132,9 +132,10 @@ def _seed(old_apps) -> dict:
             output_cost_per_token=0.000002,
             context_window=64000,
         ),
+        # A model that takes sampling settings: Claude 4.7 and later take none.
         "anthropic": shape.llm_config(
             "Anthropic",
-            shape.llm_model("anthropic", "claude-sonnet-5-5"),
+            shape.llm_model("anthropic", "claude-sonnet-4-6"),
             temperature=1.5,
             top_p=1.0,
             max_tokens=4096,

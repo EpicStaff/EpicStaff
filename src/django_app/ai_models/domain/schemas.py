@@ -10,6 +10,7 @@ from typing import Protocol
 from utils.secret_marker import SECRET_MARKER_PATTERN
 
 from ai_models.domain.specs import (
+    REASONING_EFFORT_PARAMETER,
     ConnectionFieldSpec,
     ModelKind,
     ModelSpec,
@@ -64,6 +65,12 @@ class ConfigSchemaFactory:
         for name in self._repository.parameter_names(kind, provider, model_name):
             spec = self._repository.parameter(name, provider)
             properties[name] = self._value_types.get(spec.value_type).schema_fragment(spec, model)
+        reasoning_effort = properties.get(REASONING_EFFORT_PARAMETER)
+        if reasoning_effort is not None and model is not None and model.default_thinking:
+            reasoning_effort["description"] += (
+                " Not set: the model thinks at its default effort "
+                f"({model.default_thinking.default_effort})."
+            )
         return _object_schema(properties, required=[])
 
     def _build_connection_schema(self, provider: str) -> dict:

@@ -16,6 +16,9 @@ from shared.models.agent_service import TokenUsage
 
 _MISSING = object()
 
+_ANSWER_INSTRUCTION = f"Call {ANSWER_TOOL} with your final answer matching the required schema."
+_ANSWER_TOOL_NOT_CALLED = f"You must call {ANSWER_TOOL}. {_ANSWER_INSTRUCTION}"
+
 
 @dataclass(frozen=True)
 class EnforcementResult:
@@ -41,11 +44,11 @@ class StructuredOutputEnforcer:
         usage = TokenUsage()
         iterations = 0
         tool_invocations = 0
-        corrective = "Call submit_final_answer with your final answer matching the required schema."
+        corrective = _ANSWER_INSTRUCTION
 
         for attempt in range(self._max_retries + 1):
             spec, capture, wrapped = build_answer_tool(output_schema)
-            registry = ToolRegistry()
+            registry = ToolRegistry(unknown_tool_executor=capture.reject_field_called_as_tool)
             registry.register(spec, capture)
             context.tool_choice = {
                 "type": "function",
@@ -73,7 +76,18 @@ class StructuredOutputEnforcer:
                     attempt,
                     context.correlation_id,
                 )
-                corrective = "You must call submit_final_answer. " + corrective
+
+                if capture.fields_called_as_tools:
+                    corrective = (
+                        f"You called {', '.join(capture.fields_called_as_tools)} as tools, "
+                        f"but they are fields of the {ANSWER_TOOL} arguments, not tools. "
+                        f"Call {ANSWER_TOOL} once, with all fields in its arguments, "
+                        "matching the required schema."
+                    )
+
+                else:
+                    corrective = _ANSWER_TOOL_NOT_CALLED
+
                 continue
 
             candidate = (
@@ -103,9 +117,9 @@ class StructuredOutputEnforcer:
 
             logger.opt(lazy=True).debug(
                 "schema_enforce attempt={} correlation_id={} ok=False error={}",
-                lambda: attempt,
+                lambda attempt=attempt: attempt,
                 lambda: context.correlation_id,
-                lambda: redact_value(outcome.error),
+                lambda error=outcome.error: redact_value(error),
             )
             corrective = (
                 f"Your answer did not match the schema: {outcome.error}. "

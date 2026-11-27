@@ -21,6 +21,18 @@
 #   whose account is called. Changing one on a config that carries a secret needs
 #   secrets:USE, and a plugin credential may not set one. When unsure, mark it: a
 #   false positive only asks for a permission.
+# default_thinking.<base model name>:  whether the model thinks when no thinking setting
+#   is sent, which LiteLLM does not say. thinks_by_default is required. When true,
+#   default_effort (the effort it then thinks at) and thinking_type_to_turn_off are
+#   required too: the thinking.type a run sends for reasoning_effort "none" (between_tools
+#   or disabled), or null when thinking cannot be turned off, so "none" is not offered.
+#   Where LiteLLM does not list `thinking` for a model's provider, the catalog marks the
+#   model provider_accepts_thinking false and a run sends "none" as stored.
+#   An entry covers every catalog key holding its name after a separator and ending there
+#   or with a suffix that is not a number (us.anthropic.<name>, vertex_ai/<name>@default,
+#   azure_ai/<name>-fast), the longest name first; a dated snapshot (<name>-20260101)
+#   needs its own entry. build_model_catalog --check fails on a model of a listed provider
+#   that LiteLLM flags supports_adaptive_thinking and no entry covers.
 
 parameters:
   temperature:
@@ -883,3 +895,27 @@ recommended_models:
     - gpt-4o
     - gpt-4o-mini
     - text-embedding-3-small
+
+# Facts from Anthropic's model documentation.
+default_thinking:
+  # Thinks by default; "none" sends the thinking.type that turns it off.
+  claude-sonnet-5-5: {thinks_by_default: true, default_effort: high, thinking_type_to_turn_off: between_tools}
+  claude-opus-5: {thinks_by_default: true, default_effort: high, thinking_type_to_turn_off: disabled}
+  claude-sonnet-5: {thinks_by_default: true, default_effort: high, thinking_type_to_turn_off: disabled}
+  claude-haiku-5-5: {thinks_by_default: true, default_effort: medium, thinking_type_to_turn_off: disabled}
+  # Always thinks: "none" is not offered.
+  claude-opus-5-5: {thinks_by_default: true, default_effort: medium, thinking_type_to_turn_off: null}
+  claude-fable-5: {thinks_by_default: true, default_effort: high, thinking_type_to_turn_off: null}
+  claude-fable-5-1: {thinks_by_default: true, default_effort: high, thinking_type_to_turn_off: null}
+  claude-mythos-5: {thinks_by_default: true, default_effort: high, thinking_type_to_turn_off: null}
+  claude-mythos-5-1: {thinks_by_default: true, default_effort: high, thinking_type_to_turn_off: null}
+  # Thinks only when asked: "none" already means no thinking.
+  claude-opus-4-8: {thinks_by_default: false}
+  claude-opus-4-7: {thinks_by_default: false}
+  claude-opus-4-7-20260416: {thinks_by_default: false}
+  claude-opus-4-6: {thinks_by_default: false}
+  claude-opus-4-6-20260205: {thinks_by_default: false}
+  claude-sonnet-4-6: {thinks_by_default: false}
+  # Anthropic's documentation does not say how this preview model thinks by default:
+  # classified so that it behaves as it did before this section existed.
+  claude-mythos-preview: {thinks_by_default: false}

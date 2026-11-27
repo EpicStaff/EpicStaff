@@ -1,5 +1,6 @@
 import pytest
 
+from src.shared.litellm_model_names import litellm_generation_kwargs
 from src.shared.models import (
     AgentDefinitionData,
     AgentSpec,
@@ -17,7 +18,7 @@ def test_converter_carries_config_name(llm_config):
 
 def test_config_name_never_reaches_litellm():
     config = LLMConfigData(model="gpt-4o", parameters={"temperature": 0.2}, custom_name="Key A")
-    kwargs = config.to_litellm_kwargs(provider="openai")
+    kwargs = litellm_generation_kwargs(config, model="gpt-4o")
     assert kwargs == {"temperature": 0.2}
 
 

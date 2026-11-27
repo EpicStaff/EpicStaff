@@ -33,7 +33,7 @@ _AGENT_PASSTHROUGH_KEYS = {
     "schema_max_retries",
     "max_rpm",
     "max_execution_time",
-    "cache",
+    "prompt_caching_enabled",
     "max_retry_limit",
     "default_temperature",
     "max_tool_calls",

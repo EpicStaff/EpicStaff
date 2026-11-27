@@ -95,9 +95,9 @@ class AgentDefinition(
         validators=[MinValueValidator(60), MaxValueValidator(1800)],
         help_text="Wall-clock budget in seconds for a single agent run.",
     )
-    cache = models.BooleanField(
+    prompt_caching_enabled = models.BooleanField(
         default=False,
-        help_text="Enable tool-result caching for this agent.",
+        help_text="Send prompt-cache markers on supported Claude models. The first call of a prompt costs 25% more on input; repeats within 5 minutes cost 5-10%.",
     )
     max_retry_limit = models.IntegerField(
         default=3,

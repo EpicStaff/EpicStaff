@@ -160,3 +160,11 @@ def test_completion_call_arguments_are_the_request_s_settings_graphrag_may_send(
     model_config = _model_config(model_provider=provider)
 
     assert completion_call_arguments(model_config, parameters) == expected
+
+
+def test_completion_call_arguments_leave_out_sampling_settings_the_model_refuses():
+    model_config = _model_config(model_provider="bedrock", model="us.anthropic.claude-sonnet-5-5")
+
+    assert completion_call_arguments(
+        model_config, {"temperature": 0.5, "top_p": 0.9, "max_tokens": 2048}
+    ) == {"max_tokens": 2048}

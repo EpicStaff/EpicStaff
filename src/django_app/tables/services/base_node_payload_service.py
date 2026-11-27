@@ -60,7 +60,7 @@ class BaseNodePayloadService:
             max_iter=agent_definition.max_iter,
             max_rpm=agent_definition.max_rpm,
             max_execution_time=agent_definition.max_execution_time,
-            cache=agent_definition.cache,
+            prompt_caching_enabled=agent_definition.prompt_caching_enabled,
             max_retry_limit=agent_definition.max_retry_limit,
             default_temperature=agent_definition.default_temperature,
             max_tool_calls=agent_definition.max_tool_calls,

@@ -423,7 +423,7 @@ export class AgentDefinitionsPageComponent implements OnInit, CanComponentDeacti
                 max_iter: payload.max_iter,
                 max_rpm: payload.max_rpm,
                 max_execution_time: payload.max_execution_time,
-                cache: payload.cache,
+                prompt_caching_enabled: payload.prompt_caching_enabled,
                 max_retry_limit: payload.max_retry_limit,
                 default_temperature: payload.default_temperature,
                 max_tool_calls: payload.max_tool_calls,

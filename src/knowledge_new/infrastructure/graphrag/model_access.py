@@ -1,5 +1,9 @@
 from graphrag_llm.config import ModelConfig
-from src.shared.litellm_model_names import litellm_call_model, litellm_routed_provider
+from src.shared.litellm_model_names import (
+    litellm_call_model,
+    litellm_generation_kwargs,
+    litellm_routed_provider,
+)
 from src.shared.models.ai_providers import LLMConfigData
 
 # GraphRAG never sends an LLM config's stop sequences: written for agents, they would cut
@@ -13,8 +17,10 @@ def completion_call_arguments(model_config: ModelConfig, parameters: dict) -> di
 
     Call it before `apply_request_access` rewrites the provider of `model_config`.
     """
-    return LLMConfigData(model=model_config.model, parameters=parameters).to_litellm_kwargs(
-        provider=model_config.model_provider, exclude=_GRAPHRAG_EXCLUDED_GENERATION_FIELDS
+    return litellm_generation_kwargs(
+        LLMConfigData(model=model_config.model, parameters=parameters),
+        model=litellm_call_model(model_config.model_provider, model_config.model),
+        exclude=_GRAPHRAG_EXCLUDED_GENERATION_FIELDS,
     )
 
 

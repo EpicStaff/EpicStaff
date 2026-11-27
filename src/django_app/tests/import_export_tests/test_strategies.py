@@ -9,7 +9,7 @@ from rest_framework.exceptions import ValidationError
 from rbac.models import Organization
 from rbac.models.enums import Permission, ResourceType
 from tables.models import AgentNode, Graph, McpTool, PythonCodeTool, WebhookTrigger
-from ai_models.models import LLMConfig, LLMModel
+from ai_models.models import LLMConfig, LLMModel, Provider
 from agents.models import (
     AgentDefaultSurface,
     AgentDefinition,
@@ -615,7 +615,6 @@ LEGACY_SINGLETON_VALUES = {
     "max_iter": 25,
     "max_rpm": 10,
     "max_execution_time": 60,
-    "cache": False,
     "max_retry_limit": 3,
     "max_tool_calls": 15,
     "tool_timeout": 300,
@@ -736,6 +735,148 @@ class TestAgentDefinitionStrategyLegacyExecutionFields:
             )
 
         assert "max_iter" in error.value.detail
+
+
+@pytest.fixture
+def claude_agent_definition(agent_definition):
+    """`agent_definition`, its primary config switched to a model that takes cache markers."""
+    provider = Provider.objects.get_or_create(name="anthropic")[0]
+    model = LLMModel.objects.get_or_create(name="claude-sonnet-5-5", llm_provider=provider)[0]
+    LLMConfig.objects.filter(pk=agent_definition.llm_config_id).update(model=model)
+    return AgentDefinition.objects.get(pk=agent_definition.pk)
+
+
+@pytest.mark.django_db
+class TestAgentDefinitionPromptCaching:
+    def test_export_and_import_keep_prompt_caching_enabled(
+        self, claude_agent_definition, export_service, import_service, beta
+    ):
+        agent_definition = claude_agent_definition
+        AgentDefinition.objects.filter(pk=agent_definition.pk).update(
+            prompt_caching_enabled=True
+        )
+        export_data = export_service.export_entities(
+            EntityType.AGENT_DEFINITION,
+            [agent_definition.id],
+            policy=UNRESTRICTED_EXPORT_POLICY,
+        ).data
+
+        assert export_data[EntityType.AGENT_DEFINITION][0]["prompt_caching_enabled"] is True
+        id_mapper, _ = import_service.import_data(
+            export_data, export_data["main_entity"], org_id=beta.id
+        )
+
+        imported = AgentDefinition.objects.get(
+            id=id_mapper.get_created_ids(EntityType.AGENT_DEFINITION)[0]
+        )
+        assert imported.org_id == beta.id
+        assert imported.prompt_caching_enabled is True
+
+    @pytest.mark.parametrize(
+        "legacy_fields",
+        [{}, {"cache": True}, {"cache": None}],
+        ids=["no-caching-key", "removed-cache-true", "removed-cache-null"],
+    )
+    def test_file_without_prompt_caching_enabled_imports_it_disabled(
+        self, agent_definition, export_service, default_org, legacy_fields
+    ):
+        AgentDefinition.objects.filter(pk=agent_definition.pk).update(
+            prompt_caching_enabled=True
+        )
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, **legacy_fields
+        )
+        del data["prompt_caching_enabled"]
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.id != agent_definition.id
+        assert created.prompt_caching_enabled is False
+
+    def test_find_existing_skips_agent_with_prompt_caching_disabled(
+        self, claude_agent_definition, export_service, default_org
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, claude_agent_definition, prompt_caching_enabled=True
+        )
+
+        found = _get_strategy(EntityType.AGENT_DEFINITION).find_existing(
+            data, mapper, org_id=default_org.id
+        )
+
+        assert found is None
+
+    def test_create_entity_turns_it_off_when_no_config_takes_cache_markers(
+        self, agent_definition, export_service, default_org
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, prompt_caching_enabled=True
+        )
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.llm_config_id == agent_definition.llm_config_id
+        assert created.prompt_caching_enabled is False
+
+    def test_create_entity_keeps_it_on_when_the_fallback_takes_cache_markers(
+        self, agent_definition, export_service, default_org
+    ):
+        provider = Provider.objects.get_or_create(name="anthropic")[0]
+        claude_model = LLMModel.objects.get_or_create(
+            name="claude-sonnet-5-5", llm_provider=provider
+        )[0]
+        claude_fallback = LLMConfig.objects.create(
+            custom_name="claude fallback", model=claude_model, org=default_org
+        )
+        AgentDefinition.objects.filter(pk=agent_definition.pk).update(
+            fallback_llm_config=claude_fallback
+        )
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, prompt_caching_enabled=True
+        )
+
+        created = _get_strategy(EntityType.AGENT_DEFINITION).create_entity(
+            data, mapper, org_id=default_org.id
+        )
+
+        created.refresh_from_db()
+        assert created.fallback_llm_config_id == claude_fallback.id
+        assert created.prompt_caching_enabled is True
+
+    def test_find_existing_reuses_agent_stored_off_when_no_config_takes_cache_markers(
+        self, agent_definition, export_service, default_org
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, prompt_caching_enabled=True
+        )
+
+        found = _get_strategy(EntityType.AGENT_DEFINITION).find_existing(
+            data, mapper, org_id=default_org.id
+        )
+
+        assert found is not None
+        assert found.id == agent_definition.id
+
+    def test_find_existing_reuses_agent_for_file_with_removed_cache_key(
+        self, agent_definition, export_service, default_org
+    ):
+        data, mapper = _legacy_agent_definition_payload(
+            export_service, agent_definition, cache=True
+        )
+        del data["prompt_caching_enabled"]
+
+        found = _get_strategy(EntityType.AGENT_DEFINITION).find_existing(
+            data, mapper, org_id=default_org.id
+        )
+
+        assert found is not None
+        assert found.id == agent_definition.id
 
 
 # ──────────────────────────────────────────

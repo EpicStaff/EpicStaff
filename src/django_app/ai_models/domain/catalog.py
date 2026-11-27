@@ -7,6 +7,7 @@ from datetime import date
 
 from ai_models.domain.specs import (
     ConnectionFieldSpec,
+    DefaultThinkingSpec,
     ModelKind,
     ModelSpec,
     ParameterSpec,
@@ -84,6 +85,10 @@ def _model_to_dict(model: ModelSpec) -> dict:
     fields = _without(asdict(model), "name", "provider", "kind")
     if model.deprecation_date is not None:
         fields["deprecation_date"] = model.deprecation_date.isoformat()
+    # Written only where set: few models think by default, and a null on every other
+    # model would only grow the file.
+    if model.default_thinking is None:
+        del fields["default_thinking"]
     return fields
 
 
@@ -124,6 +129,7 @@ def _provider_from_dict(name: str, fields: dict) -> ProviderSpec:
 
 def _model_from_dict(name: str, provider: str, kind: ModelKind, fields: dict) -> ModelSpec:
     deprecation_date = fields["deprecation_date"]
+    default_thinking = fields.get("default_thinking")
     return ModelSpec(
         name=name,
         provider=provider,
@@ -133,4 +139,5 @@ def _model_from_dict(name: str, provider: str, kind: ModelKind, fields: dict) ->
         limits=fields["limits"],
         parameter_names=tuple(fields["parameter_names"]),
         options={setting: tuple(values) for setting, values in fields["options"].items()},
+        default_thinking=DefaultThinkingSpec(**default_thinking) if default_thinking else None,
     )

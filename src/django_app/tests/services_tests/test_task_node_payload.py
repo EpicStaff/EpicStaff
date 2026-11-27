@@ -344,7 +344,7 @@ class TestDefaultAgentDefinitionConfigSeededDefaults:
         assert agent_data.max_iter == 15
         assert agent_data.max_rpm == 30
         assert agent_data.max_execution_time == 600
-        assert agent_data.cache is False
+        assert agent_data.prompt_caching_enabled is False
         assert agent_data.max_retry_limit == 3
         assert agent_data.schema_max_retries == 2
 
@@ -355,7 +355,7 @@ class TestDefaultAgentDefinitionConfigSeededDefaults:
         agent.max_iter = 42
         agent.max_rpm = 42
         agent.max_execution_time = 120
-        agent.cache = True
+        agent.prompt_caching_enabled = True
         agent.max_retry_limit = 7
         agent.default_temperature = 0.2
         agent.schema_max_retries = 9
@@ -370,7 +370,7 @@ class TestDefaultAgentDefinitionConfigSeededDefaults:
         assert agent_data.max_iter == 42
         assert agent_data.max_rpm == 42
         assert agent_data.max_execution_time == 120
-        assert agent_data.cache is True
+        assert agent_data.prompt_caching_enabled is True
         assert agent_data.max_retry_limit == 7
         assert agent_data.default_temperature == 0.2
         assert agent_data.schema_max_retries == 9

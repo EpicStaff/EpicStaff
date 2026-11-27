@@ -1687,6 +1687,11 @@
           "recommended": false
         },
         "aihubmix/claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": false,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -1694,7 +1699,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high"
@@ -1738,6 +1742,11 @@
           "recommended": false
         },
         "aihubmix/claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": false,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -1755,6 +1764,11 @@
           "recommended": false
         },
         "aihubmix/claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": false,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -2898,6 +2912,11 @@
       },
       "anthropic": {
         "claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -2905,7 +2924,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -2916,13 +2934,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "claude-fable-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -2930,7 +2951,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -2941,9 +2961,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -2994,6 +3012,11 @@
           "recommended": false
         },
         "claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -3012,13 +3035,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "claude-mythos-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -3026,7 +3052,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -3037,13 +3062,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "claude-mythos-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -3051,7 +3079,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -3062,9 +3089,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -3087,9 +3112,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -3206,9 +3229,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -3231,9 +3252,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -3256,13 +3275,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -3281,13 +3303,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -3295,7 +3320,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -3306,9 +3330,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": true
         },
@@ -3383,6 +3405,11 @@
           "recommended": false
         },
         "claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -3401,13 +3428,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -3426,9 +3456,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": true
         }
@@ -9277,6 +9305,11 @@
           "recommended": false
         },
         "azure_ai/claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": "2027-12-05",
           "limits": {
             "max_input_tokens": 1000000,
@@ -9284,7 +9317,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -9295,13 +9327,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "azure_ai/claude-fable-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": "2027-12-05",
           "limits": {
             "max_input_tokens": 1000000,
@@ -9309,7 +9344,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -9320,9 +9354,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -9350,6 +9382,11 @@
           "recommended": false
         },
         "azure_ai/claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": "2027-09-29",
           "limits": {
             "max_input_tokens": 1000000,
@@ -9368,9 +9405,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -9440,9 +9475,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -9465,13 +9498,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "azure_ai/claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": "2027-07-08",
           "limits": {
             "max_input_tokens": 1000000,
@@ -9490,13 +9526,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "azure_ai/claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": "2027-09-18",
           "limits": {
             "max_input_tokens": 1000000,
@@ -9504,7 +9543,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -9515,13 +9553,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "azure_ai/claude-opus-5-5-fast": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": "2027-10-01",
           "limits": {
             "max_input_tokens": 1000000,
@@ -9529,7 +9570,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -9594,6 +9634,11 @@
           "recommended": false
         },
         "azure_ai/claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": "2027-06-30",
           "limits": {
             "max_input_tokens": 1000000,
@@ -9612,13 +9657,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "azure_ai/claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": "2027-09-29",
           "limits": {
             "max_input_tokens": 1000000,
@@ -9637,9 +9685,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -12029,6 +12075,11 @@
           "recommended": false
         },
         "anthropic.claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12036,7 +12087,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -12047,13 +12097,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "anthropic.claude-fable-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12061,7 +12114,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -12072,9 +12124,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -12125,6 +12175,11 @@
           "recommended": false
         },
         "anthropic.claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12143,9 +12198,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -12165,6 +12218,11 @@
           "recommended": false
         },
         "anthropic.claude-mythos-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12172,7 +12230,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -12183,9 +12240,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -12324,9 +12379,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -12349,13 +12402,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "anthropic.claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12374,13 +12430,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "anthropic.claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12388,7 +12447,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -12399,9 +12457,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -12476,6 +12532,11 @@
           "recommended": false
         },
         "anthropic.claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12494,13 +12555,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "anthropic.claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12519,9 +12583,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -12647,6 +12709,11 @@
           "recommended": false
         },
         "apac.anthropic.claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12654,7 +12721,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -12665,9 +12731,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -12695,6 +12759,11 @@
           "recommended": false
         },
         "apac.anthropic.claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12713,9 +12782,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -12761,9 +12828,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -12786,13 +12851,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "apac.anthropic.claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12811,13 +12879,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "apac.anthropic.claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12825,7 +12896,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -12836,9 +12906,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -12890,6 +12958,11 @@
           "recommended": false
         },
         "apac.anthropic.claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12908,13 +12981,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "apac.anthropic.claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12933,13 +13009,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "au.anthropic.claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -12947,7 +13026,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -12958,9 +13036,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -12988,6 +13064,11 @@
           "recommended": false
         },
         "au.anthropic.claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -13006,9 +13087,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -13078,9 +13157,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -13103,13 +13180,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "au.anthropic.claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -13128,13 +13208,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "au.anthropic.claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -13142,7 +13225,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -13153,9 +13235,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -13207,6 +13287,11 @@
           "recommended": false
         },
         "au.anthropic.claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -13225,13 +13310,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "au.anthropic.claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -13250,9 +13338,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -13911,6 +13997,11 @@
           "recommended": false
         },
         "bedrock/claude_platform/claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -13918,7 +14009,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -13929,13 +14019,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock/claude_platform/claude-fable-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -13943,7 +14036,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -13954,9 +14046,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -13984,6 +14074,11 @@
           "recommended": false
         },
         "bedrock/claude_platform/claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -14002,9 +14097,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -14074,9 +14167,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -14099,13 +14190,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock/claude_platform/claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -14124,13 +14218,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock/claude_platform/claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -14138,7 +14235,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -14149,9 +14245,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -14203,6 +14297,11 @@
           "recommended": false
         },
         "bedrock/claude_platform/claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -14221,13 +14320,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock/claude_platform/claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -14246,9 +14348,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -15575,6 +15675,11 @@
           "recommended": false
         },
         "bedrock/us-gov-east-1/anthropic.claude-fable-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -15582,7 +15687,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -15593,9 +15697,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -15623,6 +15725,11 @@
           "recommended": false
         },
         "bedrock/us-gov-east-1/anthropic.claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -15641,9 +15748,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -15666,13 +15771,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock/us-gov-east-1/anthropic.claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -15691,13 +15799,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock/us-gov-east-1/anthropic.claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -15705,7 +15816,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -15716,9 +15826,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -15746,6 +15854,11 @@
           "recommended": false
         },
         "bedrock/us-gov-east-1/anthropic.claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -15764,13 +15877,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock/us-gov-east-1/anthropic.claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -15789,9 +15905,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -16049,6 +16163,11 @@
           "recommended": false
         },
         "bedrock/us-gov-west-1/anthropic.claude-fable-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -16056,7 +16175,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -16067,9 +16185,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -16097,6 +16213,11 @@
           "recommended": false
         },
         "bedrock/us-gov-west-1/anthropic.claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -16115,9 +16236,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -16140,13 +16259,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock/us-gov-west-1/anthropic.claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -16165,13 +16287,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock/us-gov-west-1/anthropic.claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -16179,7 +16304,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -16190,9 +16314,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -16220,6 +16342,11 @@
           "recommended": false
         },
         "bedrock/us-gov-west-1/anthropic.claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -16238,13 +16365,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock/us-gov-west-1/anthropic.claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -16263,9 +16393,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -17088,6 +17216,11 @@
           "recommended": false
         },
         "eu.anthropic.claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17095,7 +17228,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -17106,13 +17238,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "eu.anthropic.claude-fable-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17120,7 +17255,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -17131,9 +17265,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -17161,6 +17293,11 @@
           "recommended": false
         },
         "eu.anthropic.claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17179,9 +17316,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -17297,9 +17432,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -17322,13 +17455,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "eu.anthropic.claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17347,13 +17483,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "eu.anthropic.claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17361,7 +17500,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -17372,9 +17510,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -17449,6 +17585,11 @@
           "recommended": false
         },
         "eu.anthropic.claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17467,13 +17608,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "eu.anthropic.claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17492,9 +17636,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -17600,6 +17742,11 @@
           "recommended": false
         },
         "global.anthropic.claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17607,7 +17754,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -17618,13 +17764,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "global.anthropic.claude-fable-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17632,7 +17781,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -17643,9 +17791,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -17673,6 +17819,11 @@
           "recommended": false
         },
         "global.anthropic.claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17691,13 +17842,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "global.anthropic.claude-mythos-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17705,7 +17859,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -17716,9 +17869,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -17788,9 +17939,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -17813,13 +17962,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "global.anthropic.claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17838,13 +17990,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "global.anthropic.claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17852,7 +18007,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -17863,9 +18017,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -17940,6 +18092,11 @@
           "recommended": false
         },
         "global.anthropic.claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17958,13 +18115,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "global.anthropic.claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -17983,9 +18143,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -18081,9 +18239,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -18112,9 +18268,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -18143,9 +18297,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -18173,9 +18325,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -18204,9 +18354,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -18235,9 +18383,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -18265,9 +18411,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -18486,6 +18630,11 @@
           "recommended": false
         },
         "jp.anthropic.claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -18504,9 +18653,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -18530,9 +18677,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -18555,13 +18700,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "jp.anthropic.claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -18580,13 +18728,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "jp.anthropic.claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -18594,7 +18745,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -18605,9 +18755,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -18659,6 +18807,11 @@
           "recommended": false
         },
         "jp.anthropic.claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -18677,13 +18830,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "jp.anthropic.claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -18702,9 +18858,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -19578,6 +19732,11 @@
           "recommended": false
         },
         "us-gov.anthropic.claude-fable-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -19585,7 +19744,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -19596,13 +19754,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "us-gov.anthropic.claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -19621,9 +19782,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -19646,13 +19805,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "us-gov.anthropic.claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -19671,13 +19833,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "us-gov.anthropic.claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -19685,7 +19850,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -19696,9 +19860,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -19726,6 +19888,11 @@
           "recommended": false
         },
         "us-gov.anthropic.claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -19744,13 +19911,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "us-gov.anthropic.claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -19769,9 +19939,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -20076,6 +20244,11 @@
           "recommended": false
         },
         "us.anthropic.claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -20083,7 +20256,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -20094,13 +20266,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "us.anthropic.claude-fable-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -20108,7 +20283,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -20119,9 +20293,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -20149,6 +20321,11 @@
           "recommended": false
         },
         "us.anthropic.claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -20167,13 +20344,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "us.anthropic.claude-mythos-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -20181,7 +20361,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -20192,13 +20371,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "us.anthropic.claude-mythos-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -20206,7 +20388,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -20217,9 +20398,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -20358,9 +20537,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -20383,13 +20560,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "us.anthropic.claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -20408,13 +20588,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "us.anthropic.claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -20422,7 +20605,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -20433,9 +20615,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -20510,6 +20690,11 @@
           "recommended": false
         },
         "us.anthropic.claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -20528,13 +20713,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "us.anthropic.claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -20553,9 +20741,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -20861,9 +21047,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -20892,9 +21076,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -20923,9 +21105,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -20953,9 +21133,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -20984,9 +21162,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -21015,9 +21191,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -21045,9 +21219,7 @@
             "reasoning_effort",
             "seed",
             "stop",
-            "temperature",
-            "top_logprobs",
-            "top_p"
+            "top_logprobs"
           ],
           "recommended": false
         },
@@ -21321,6 +21493,11 @@
           "recommended": false
         },
         "bedrock_mantle/anthropic.claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -21339,13 +21516,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock_mantle/anthropic.claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -21353,7 +21533,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -21364,13 +21543,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock_mantle/anthropic.claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -21389,9 +21571,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -21886,6 +22066,11 @@
           "recommended": false
         },
         "bedrock_mantle/us-gov-west-1/anthropic.claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -21904,13 +22089,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock_mantle/us-gov-west-1/anthropic.claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -21918,7 +22106,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -21929,13 +22116,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "bedrock_mantle/us-gov-west-1/anthropic.claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -21954,9 +22144,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -24814,6 +25002,11 @@
       },
       "databricks": {
         "databricks/databricks-claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -24821,7 +25014,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high"
@@ -24837,6 +25029,11 @@
           "recommended": false
         },
         "databricks/databricks-claude-fable-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -24844,7 +25041,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high"
@@ -25021,6 +25217,11 @@
           "recommended": false
         },
         "databricks/databricks-claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -25044,6 +25245,11 @@
           "recommended": false
         },
         "databricks/databricks-claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -25160,6 +25366,11 @@
           "recommended": false
         },
         "databricks/databricks-claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -26983,13 +27194,17 @@
           "recommended": false
         },
         "deepinfra/anthropic/claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": false,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high"
@@ -27083,6 +27298,11 @@
           "recommended": false
         },
         "deepinfra/anthropic/claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": false,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000
@@ -27133,6 +27353,11 @@
           "recommended": false
         },
         "deepinfra/anthropic/claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": false,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000
@@ -40555,6 +40780,11 @@
       },
       "github_copilot": {
         "github_copilot/claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 200000,
@@ -40562,7 +40792,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high"
@@ -40729,6 +40958,11 @@
           "recommended": false
         },
         "github_copilot/claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": "2026-11-16",
           "limits": {
             "max_input_tokens": 200000,
@@ -40816,6 +41050,11 @@
           "recommended": false
         },
         "github_copilot/claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 200000,
@@ -65073,6 +65312,11 @@
           "recommended": false
         },
         "vertex_ai/claude-fable-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": "2027-06-08",
           "limits": {
             "max_input_tokens": 1000000,
@@ -65080,7 +65324,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -65091,13 +65334,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "vertex_ai/claude-fable-5-1": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": "2027-03-01",
           "limits": {
             "max_input_tokens": 1000000,
@@ -65105,7 +65351,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -65116,13 +65361,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "vertex_ai/claude-fable-5-1@default": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": "2027-03-01",
           "limits": {
             "max_input_tokens": 1000000,
@@ -65130,7 +65378,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -65141,13 +65388,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "vertex_ai/claude-fable-5@default": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": "2027-06-08",
           "limits": {
             "max_input_tokens": 1000000,
@@ -65155,7 +65405,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -65166,9 +65415,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -65219,6 +65466,11 @@
           "recommended": false
         },
         "vertex_ai/claude-haiku-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -65237,13 +65489,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "vertex_ai/claude-haiku-5-5@default": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -65262,9 +65517,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -65381,9 +65634,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -65406,9 +65657,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -65431,9 +65680,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -65456,13 +65703,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "vertex_ai/claude-opus-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": "2027-01-24",
           "limits": {
             "max_input_tokens": 1000000,
@@ -65481,13 +65731,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "vertex_ai/claude-opus-5-5": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -65495,7 +65748,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -65506,13 +65758,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "vertex_ai/claude-opus-5-5@default": {
+          "default_thinking": {
+            "default_effort": "medium",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": null
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -65520,7 +65775,6 @@
           },
           "options": {
             "reasoning_effort": [
-              "none",
               "low",
               "medium",
               "high",
@@ -65531,13 +65785,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "vertex_ai/claude-opus-5@default": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": "2027-01-24",
           "limits": {
             "max_input_tokens": 1000000,
@@ -65556,9 +65813,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
@@ -65657,6 +65912,11 @@
           "recommended": false
         },
         "vertex_ai/claude-sonnet-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": "2026-12-24",
           "limits": {
             "max_input_tokens": 1000000,
@@ -65675,13 +65935,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "vertex_ai/claude-sonnet-5-5": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -65700,13 +65963,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "vertex_ai/claude-sonnet-5-5@default": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "between_tools"
+          },
           "deprecation_date": null,
           "limits": {
             "max_input_tokens": 1000000,
@@ -65725,13 +65991,16 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },
         "vertex_ai/claude-sonnet-5@default": {
+          "default_thinking": {
+            "default_effort": "high",
+            "provider_accepts_thinking": true,
+            "thinking_type_to_turn_off": "disabled"
+          },
           "deprecation_date": "2026-12-24",
           "limits": {
             "max_input_tokens": 1000000,
@@ -65750,9 +66019,7 @@
           "parameter_names": [
             "max_tokens",
             "reasoning_effort",
-            "stop",
-            "temperature",
-            "top_p"
+            "stop"
           ],
           "recommended": false
         },

@@ -2,13 +2,35 @@ from importlib import import_module
 
 import pytest
 from django.db import connection
+from django.db.migrations.loader import MigrationLoader
 
 from agents.models import AgentDefinition
 from rbac.models import Organization
 
-backfill_migration = import_module("agents.migrations.0010_agentdefinition_backfill_exec_fields")
+BACKFILL_MIGRATION_NAME = "0010_agentdefinition_backfill_exec_fields"
+backfill_migration = import_module(f"agents.migrations.{BACKFILL_MIGRATION_NAME}")
 
-NULLABLE_BEFORE_MIGRATION = (*backfill_migration.INTEGER_FIELD_RULES, "cache")
+NULLABLE_BEFORE_MIGRATION = tuple(backfill_migration.INTEGER_FIELD_RULES)
+
+
+@pytest.fixture(scope="module")
+def agent_definition_at_backfill():
+    state = MigrationLoader(None, ignore_no_migrations=True).project_state(
+        ("agents", BACKFILL_MIGRATION_NAME)
+    )
+    return state.apps.get_model("agents", "AgentDefinition")
+
+
+@pytest.fixture
+def backfill_agent_definition(db, agent_definition_at_backfill):
+    """AgentDefinition as migration 0010 saw it, on a table that has its `cache` column back.
+
+    The backfill also fills `cache`, a field removed later. Postgres DDL is transactional:
+    the test transaction's rollback drops the restored column again.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute("ALTER TABLE agents_agentdefinition ADD COLUMN cache boolean NULL;")
+    yield agent_definition_at_backfill
 
 
 @pytest.fixture
@@ -38,8 +60,14 @@ def _null_agent(organization, name):
     return agent
 
 
+def _cache_value(backfill_agent_definition, agent):
+    return backfill_agent_definition.objects.values_list("cache", flat=True).get(pk=agent.pk)
+
+
 @pytest.mark.django_db
-def test_nulls_take_singleton_values(allow_null_execution_fields, organization):
+def test_nulls_take_singleton_values(
+    backfill_agent_definition, allow_null_execution_fields, organization
+):
     agent = _null_agent(organization, "null-agent")
     singleton_values = {
         "max_iter": 25,
@@ -50,23 +78,25 @@ def test_nulls_take_singleton_values(allow_null_execution_fields, organization):
         "max_tool_calls": 15,
         "tool_timeout": 300,
         "max_consecutive_failures": 3,
-        "cache": True,
     }
 
-    backfill_migration.backfill_execution_fields(AgentDefinition, singleton_values)
+    backfill_migration.backfill_execution_fields(
+        backfill_agent_definition, {**singleton_values, "cache": True}
+    )
 
     agent.refresh_from_db()
     for field_name, value in singleton_values.items():
         assert getattr(agent, field_name) == value
+    assert _cache_value(backfill_agent_definition, agent) is True
 
 
 @pytest.mark.django_db
 def test_null_singleton_values_fall_back_to_new_defaults(
-    allow_null_execution_fields, organization
+    backfill_agent_definition, allow_null_execution_fields, organization
 ):
     agent = _null_agent(organization, "null-agent")
 
-    backfill_migration.backfill_execution_fields(AgentDefinition, {"max_rpm": None})
+    backfill_migration.backfill_execution_fields(backfill_agent_definition, {"max_rpm": None})
 
     agent.refresh_from_db()
     assert agent.max_iter == 15
@@ -77,17 +107,17 @@ def test_null_singleton_values_fall_back_to_new_defaults(
     assert agent.max_tool_calls == 15
     assert agent.tool_timeout == 300
     assert agent.max_consecutive_failures == 3
-    assert agent.cache is False
+    assert _cache_value(backfill_agent_definition, agent) is False
 
 
 @pytest.mark.django_db
 def test_out_of_range_singleton_value_is_clamped_after_backfill(
-    allow_null_execution_fields, organization
+    backfill_agent_definition, allow_null_execution_fields, organization
 ):
     agent = _null_agent(organization, "null-agent")
 
     backfill_migration.backfill_execution_fields(
-        AgentDefinition, {"max_execution_time": 30, "tool_timeout": 5000}
+        backfill_agent_definition, {"max_execution_time": 30, "tool_timeout": 5000}
     )
 
     agent.refresh_from_db()
@@ -96,7 +126,9 @@ def test_out_of_range_singleton_value_is_clamped_after_backfill(
 
 
 @pytest.mark.django_db
-def test_out_of_range_values_are_clamped_and_in_range_values_kept(organization):
+def test_out_of_range_values_are_clamped_and_in_range_values_kept(
+    backfill_agent_definition, organization
+):
     too_low = AgentDefinition.objects.create(org=organization, name="too-low")
     too_high = AgentDefinition.objects.create(org=organization, name="too-high")
     in_range = AgentDefinition.objects.create(
@@ -125,7 +157,7 @@ def test_out_of_range_values_are_clamped_and_in_range_values_kept(organization):
         default_temperature=5.0,
     )
 
-    backfill_migration.backfill_execution_fields(AgentDefinition, {})
+    backfill_migration.backfill_execution_fields(backfill_agent_definition, {})
 
     too_low.refresh_from_db()
     too_high.refresh_from_db()
@@ -141,11 +173,13 @@ def test_out_of_range_values_are_clamped_and_in_range_values_kept(organization):
 
 @pytest.mark.django_db
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
-def test_non_finite_default_temperature_becomes_null(organization, value):
+def test_non_finite_default_temperature_becomes_null(
+    backfill_agent_definition, organization, value
+):
     agent = AgentDefinition.objects.create(org=organization, name="non-finite")
     AgentDefinition.objects.filter(pk=agent.pk).update(default_temperature=value)
 
-    backfill_migration.backfill_execution_fields(AgentDefinition, {})
+    backfill_migration.backfill_execution_fields(backfill_agent_definition, {})
 
     agent.refresh_from_db()
     assert agent.default_temperature is None

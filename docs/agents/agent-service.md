@@ -121,7 +121,7 @@ Per-agent configuration with resource references.
 | `schema_max_retries` | `int \| None` | Enforcer tries = `range(n + 1)`; `None` → env default. |
 | `max_rpm` | `int \| None` | Forwarded to `LiteLLMClient` as `runtime_config["max_rpm"]`. |
 | `max_execution_time` | `float \| None` | Wall-clock seconds; enforced via `asyncio.wait_for` in `DefaultAgentLoop.run`. |
-| `cache` | `bool \| None` | |
+| `prompt_caching_enabled` | `bool` | Send Anthropic prompt-cache markers on every LLM call whose model takes them; `False` by default. See **Prompt caching** in §6. |
 | `max_retry_limit` | `int \| None` | Max LLM call retry attempts; `None` → client default. |
 | `default_temperature` | `float \| None` | |
 | `max_tool_calls` | `int \| None` | Max tool calls executed **per iteration**; `None` → unlimited. |
@@ -283,6 +283,30 @@ wrapped in `retry.aretry(...)`. Usage/cost normalization happens per chunk:
 `cached_prompt_tokens` (OpenAI `prompt_tokens_details.cached_tokens`,
 Anthropic `cache_read_input_tokens` fallback); `_usage_cost_usd` calls
 `litellm.cost_per_token` best-effort, swallowing any exception to `0.0`.
+
+**Prompt caching.** When the agent's `prompt_caching_enabled` is on and the model
+of the call takes Anthropic cache markers (`litellm_needs_cache_markers`: Claude
+served by Anthropic, Bedrock, Vertex AI or Azure AI; not Claude behind a gateway
+such as OpenRouter), `_build_model_config` adds
+`cache_control_injection_points` and litellm places two markers:
+
+- on the first message, the system prompt, which caches the tool definitions and
+  the system prompt across runs. The S3 manifest is a second system message and
+  gets no marker;
+- on the last message, so each step of a tool loop reuses the conversation of the
+  step before.
+
+The decision is made per call, so the structured-output attempts, the final call
+without tools and a fallback to another model each follow their own model. With
+the switch off, or for any other model, the request is unchanged. Anthropic
+allows four markers per request; the agent uses two. Anthropic caches nothing
+below a minimum prefix length, which depends on the model (512 tokens on Sonnet
+5.5), and says nothing when it skips. A cache entry lives five minutes from its
+last use. A cache write costs 25% more than plain input; a cache read costs a
+small fraction of the input price (a tenth on most Claude models, less on some
+newer ones). Session cost uses those rates from litellm's price map, except when
+the LLM config sets its own cost per token: then every prompt token, cached or
+not, is billed at that input price, so the cost shown carries no cache discount.
 
 `router_pool.py` ([`src/agent/app/llm/router_pool.py`](../../src/agent/app/llm/router_pool.py)):
 `RouterPool` is a process-singleton (`get_router_pool()`) keyed by a

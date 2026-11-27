@@ -9,6 +9,10 @@ from dataclasses import dataclass, replace
 from datetime import date
 from enum import StrEnum
 
+REASONING_EFFORT_PARAMETER = "reasoning_effort"
+NO_REASONING_EFFORT = "none"
+THINKING_PARAMETER = "thinking"
+
 
 class ModelKind(StrEnum):
     """What a model is used for. LiteLLM calls `LLM` mode "chat"; only the adapter knows."""
@@ -91,11 +95,29 @@ class ProviderSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class DefaultThinkingSpec:
+    """How a model that thinks when no `thinking` setting is sent behaves.
+
+    `default_effort` is the effort it then thinks at. `thinking_type_to_turn_off` is the
+    `thinking.type` that turns thinking off, because LiteLLM sends nothing for a stored
+    `reasoning_effort` "none" and the model would think anyway; None means thinking
+    cannot be turned off, so "none" is not offered. `provider_accepts_thinking` is False
+    where LiteLLM does not list `thinking` for the model's provider: "none" is then sent
+    as stored, since LiteLLM would drop `thinking` or refuse the call.
+    """
+
+    default_effort: str
+    thinking_type_to_turn_off: str | None
+    provider_accepts_thinking: bool = True
+
+
+@dataclass(frozen=True, slots=True)
 class ModelSpec:
     """One model of one provider and kind.
 
     `limits` holds model limits such as `max_output_tokens`; `options` holds per-model
     choices that narrow a choice setting's options (e.g. `reasoning_effort` levels).
+    `default_thinking` is set for a model that thinks by default.
     """
 
     name: str
@@ -106,3 +128,4 @@ class ModelSpec:
     limits: Mapping[str, float]
     parameter_names: tuple[str, ...]
     options: Mapping[str, tuple[str, ...]]
+    default_thinking: DefaultThinkingSpec | None = None

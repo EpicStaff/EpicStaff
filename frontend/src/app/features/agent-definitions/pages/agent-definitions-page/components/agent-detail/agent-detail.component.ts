@@ -20,7 +20,8 @@ import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, HelpTooltipComponent, LlmModelSelectorComponent } from '@shared/components';
 import { EnterBlurDirective, HasPermissionDirective, HideInlineSubtitleOnOverflowDirective } from '@shared/directives';
-import { ActionCode, LabelDto, ResourceCode } from '@shared/models';
+import { ActionCode, GetLlmConfigRequest, LabelDto, ResourceCode } from '@shared/models';
+import { FullLLMConfigService } from '@shared/services';
 
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
@@ -59,7 +60,7 @@ export interface AgentSavePayload {
     max_iter?: number;
     max_rpm?: number;
     max_execution_time?: number;
-    cache?: boolean;
+    prompt_caching_enabled?: boolean;
     max_retry_limit?: number;
     default_temperature?: number | null;
     max_tool_calls?: number;
@@ -121,6 +122,7 @@ export class AgentDetailComponent implements OnInit {
     private readonly host: ElementRef<HTMLElement> = inject(ElementRef);
     private readonly permissionService = inject(PermissionsService);
     private readonly realtimeApi = inject(RealtimeAgentDefinitionsApiService);
+    private readonly llmConfigService = inject(FullLLMConfigService);
 
     agent = input<AgentDefinition | null>(null);
     isCreating = input<boolean>(false);
@@ -394,7 +396,7 @@ export class AgentDetailComponent implements OnInit {
             max_iter: a?.max_iter,
             max_rpm: a?.max_rpm,
             max_execution_time: a?.max_execution_time,
-            cache: a?.cache,
+            prompt_caching_enabled: a?.prompt_caching_enabled,
             max_retry_limit: a?.max_retry_limit,
             default_temperature: a?.default_temperature,
             max_tool_calls: a?.max_tool_calls,
@@ -484,6 +486,30 @@ export class AgentDetailComponent implements OnInit {
     }
 
     private openSettingsDialog(a: AgentDefinition, realtime: RealtimeAgentDefinition | null): void {
+        // The model selectors load the configs only while Basics is open, so they may not be loaded yet.
+        this.llmConfigService
+            .getFullLLMConfigs()
+            .pipe(takeUntilDestroyed(this.destroyRef))
+            .subscribe({
+                next: (configs) => this.showSettingsDialog(a, realtime, this.isPromptCachingAvailable(configs)),
+                error: () => this.showSettingsDialog(a, realtime, false),
+            });
+    }
+
+    /** Whether the primary or fallback config picked in the form takes prompt-cache markers. */
+    private isPromptCachingAvailable(configs: GetLlmConfigRequest[]): boolean {
+        const { llm_config, fallback_llm_config } = this.form.getRawValue();
+        return configs.some(
+            (config) =>
+                (config.id === llm_config || config.id === fallback_llm_config) && config.needs_prompt_cache_markers
+        );
+    }
+
+    private showSettingsDialog(
+        a: AgentDefinition,
+        realtime: RealtimeAgentDefinition | null,
+        promptCachingAvailable: boolean
+    ): void {
         const data: AgentAdditionalSettingsData = {
             fcm_llm_config: a.fcm_llm_config,
             openai_config: realtime?.openai_config ?? null,
@@ -494,7 +520,8 @@ export class AgentDetailComponent implements OnInit {
             max_rpm: a.max_rpm,
             max_execution_time: a.max_execution_time,
             max_retry_limit: a.max_retry_limit,
-            cache: a.cache,
+            prompt_caching_enabled: a.prompt_caching_enabled,
+            promptCachingAvailable,
             max_tool_calls: a.max_tool_calls,
             tool_timeout: a.tool_timeout,
             max_consecutive_failures: a.max_consecutive_failures,
@@ -532,7 +559,7 @@ export class AgentDetailComponent implements OnInit {
             max_iter: result.max_iter,
             max_rpm: result.max_rpm,
             max_execution_time: result.max_execution_time,
-            cache: result.cache,
+            prompt_caching_enabled: result.prompt_caching_enabled,
             max_retry_limit: result.max_retry_limit,
             default_temperature: a.default_temperature,
             max_tool_calls: result.max_tool_calls,
@@ -560,8 +587,11 @@ export class AgentDetailComponent implements OnInit {
         }
 
         const noneSelected = next.openai_config == null && next.elevenlabs_config == null && next.gemini_config == null;
-        if (existing != null || noneSelected) {
+        if (existing != null) {
             this.patchRealtimeConfig(a.id, next, onDone);
+        } else if (noneSelected) {
+            // No voice row and no provider picked: there is nothing to save, and no row to update.
+            onDone();
         } else {
             this.createRealtimeConfig(a.id, next, onDone);
         }

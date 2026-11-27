@@ -56,7 +56,11 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from django.conf import settings
 from filelock import FileLock, Timeout
 from loguru import logger
-from src.shared.litellm_model_names import litellm_lookup_name
+from src.shared.litellm_model_names import (
+    litellm_call_model,
+    litellm_lookup_name,
+    litellm_needs_cache_markers,
+)
 from src.shared.models.ai_providers import REASONING_EFFORT_VALUES
 
 from ai_models.domain.specs import ModelKind
@@ -351,6 +355,17 @@ def model_reasoning_support(model: "LLMModel") -> ReasoningSupport:
         return NO_REASONING_SUPPORT
     efforts = frozenset(spec.options.get("reasoning_effort", ()))
     return ReasoningSupport(supports_reasoning=bool(efforts), efforts=efforts)
+
+
+def model_needs_prompt_cache_markers(model: "LLMModel | None") -> bool:
+    """Return True when a stored LLM model takes Anthropic prompt-cache markers.
+
+    A model without a provider cannot run, so it takes none.
+    """
+    provider = model.llm_provider if model else None
+    if provider is None:
+        return False
+    return litellm_needs_cache_markers(litellm_call_model(provider.name, model.name))
 
 
 def _lookup_provider(lookup: str) -> str:

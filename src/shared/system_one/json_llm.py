@@ -5,7 +5,7 @@ from typing import Any
 import litellm
 from litellm.types.utils import CostPerToken
 from loguru import logger
-from src.shared.litellm_model_names import litellm_call_model, litellm_routed_provider
+from src.shared.litellm_model_names import litellm_call_model, litellm_generation_kwargs
 from src.shared.models.ai_providers import LLMConfigData, LLMData
 from src.shared.models.sessions import TokenUsage
 
@@ -99,7 +99,9 @@ async def run_json_llm(
     # Holds the resolved secrets: params are never logged.
     params = {
         "model": model,
-        **llm_config.to_litellm_kwargs(provider=litellm_routed_provider(model)),
+        **litellm_generation_kwargs(
+            llm_config, model=litellm_call_model(llm.provider, llm_config.model)
+        ),
         **llm_config.connection_kwargs(),
         "response_format": response_format,
         "extra_headers": llm_config.extra_headers,

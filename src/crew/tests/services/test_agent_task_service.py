@@ -320,6 +320,16 @@ async def test_task_request_carries_the_agent_spec_and_task(service, client):
     assert request.storage_credentials == credentials
 
 
+@pytest.mark.parametrize("prompt_caching_enabled", [True, False])
+async def test_request_spec_carries_prompt_caching_enabled(service, client, prompt_caching_enabled):
+    node = _task_node(prompt_caching_enabled=prompt_caching_enabled)
+
+    _, agent = await _run(service, client, run=lambda: service.run_task(node, StopEvent()))
+
+    (spec,) = AgentRequest(correlation_id="unused", **agent.request).agents
+    assert spec.prompt_caching_enabled is prompt_caching_enabled
+
+
 @pytest.mark.parametrize(
     "fallback_llm",
     [LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet")), None],

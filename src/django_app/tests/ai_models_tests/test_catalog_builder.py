@@ -8,7 +8,7 @@ from ai_models.domain.discovery import (
     LLMParameterDiscoveryStrategy,
     TranscriptionParameterDiscoveryStrategy,
 )
-from ai_models.domain.specs import ModelKind
+from ai_models.domain.specs import DefaultThinkingSpec, ModelKind
 from ai_models.domain.value_types import ValueTypeRegistry
 
 from tests.ai_models_tests.factories import (
@@ -148,3 +148,47 @@ def test_changes_lists_removed_models_and_settings(adapter):
 
 def test_changes_without_a_previous_catalog_counts_every_model_as_added(adapter):
     assert CatalogBuilder.changes(None, _build(adapter))[0] == "models added: 4"
+
+
+@pytest.mark.parametrize(
+    ("model_name", "takes_thinking", "efforts", "default_thinking"),
+    [
+        # Turned off with a thinking.type: "none" stays, the run sends that type.
+        ("claude-turned-off", True, ("none", "low", "high"), DefaultThinkingSpec("high", "disabled")),
+        # Reached where LiteLLM does not send `thinking`: "none" stays and is sent as is.
+        (
+            "claude-turned-off",
+            False,
+            ("none", "low", "high"),
+            DefaultThinkingSpec("high", "disabled", provider_accepts_thinking=False),
+        ),
+        # Cannot be turned off: "none" is not offered.
+        ("claude-always-thinks", True, ("low", "high"), DefaultThinkingSpec("medium", None)),
+        (
+            "claude-always-thinks",
+            False,
+            ("low", "high"),
+            DefaultThinkingSpec("medium", None, provider_accepts_thinking=False),
+        ),
+        # Thinks only when asked, or no entry: unchanged.
+        ("claude-asks-to-think", True, ("none", "low", "high"), None),
+        ("gpt-4o", True, ("none", "low", "high"), None),
+    ],
+)
+def test_registry_default_thinking_reaches_the_model(model_name, takes_thinking, efforts, default_thinking):
+    registry = make_registry(
+        default_thinking={
+            "claude-turned-off": DefaultThinkingSpec("high", "disabled"),
+            "claude-always-thinks": DefaultThinkingSpec("medium", None),
+            "claude-asks-to-think": None,
+        }
+    )
+    adapter = FakeLiteLLMAdapter(
+        models=[make_model(name=model_name, options={"reasoning_effort": ("none", "low", "high")})],
+        llm={model_name: ("reasoning_effort", "thinking") if takes_thinking else ("reasoning_effort",)},
+    )
+
+    model = _build(adapter, registry).models[ModelKind.LLM]["openai"][model_name]
+
+    assert model.options == {"reasoning_effort": efforts}
+    assert model.default_thinking == default_thinking

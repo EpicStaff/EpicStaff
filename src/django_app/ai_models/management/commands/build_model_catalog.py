@@ -14,6 +14,7 @@ from ai_models.domain.checks import (
     ConnectionFieldsRequiredRule,
     NoDraftParametersRule,
     NumberRangeRequiredRule,
+    UnclassifiedThinkingModelRule,
     UnusedRegistryEntryRule,
 )
 from ai_models.domain.discovery import (
@@ -36,6 +37,7 @@ _CHECK_RULES = (
     CatalogUpToDateRule(),
     ConnectionFieldsRequiredRule(),
     UnusedRegistryEntryRule(),
+    UnclassifiedThinkingModelRule(LiteLLMAdapter()),
 )
 
 

@@ -266,6 +266,59 @@ async def test_tool_choice_reaches_the_llm_only_when_set(tool_choice):
     assert config.get("tool_choice", "absent") == (tool_choice or "absent")
 
 
+_FORCED_ANSWER_TOOL = {"type": "function", "function": {"name": "submit_final_answer"}}
+_MODEL_REFUSING_FORCED_TOOLS = "test-model-refusing-forced-tools"
+
+
+@pytest.mark.parametrize(
+    ("map_entry", "tool_choice", "expected_tool_choice"),
+    [
+        ({"supports_forced_tool_use": False}, _FORCED_ANSWER_TOOL, "auto"),
+        ({"supports_forced_tool_use": False}, "required", "auto"),
+        ({"supports_forced_tool_use": False}, "none", "none"),
+        ({"supports_forced_tool_use": True}, _FORCED_ANSWER_TOOL, _FORCED_ANSWER_TOOL),
+        ({"max_tokens": 1000}, _FORCED_ANSWER_TOOL, _FORCED_ANSWER_TOOL),
+        (None, _FORCED_ANSWER_TOOL, _FORCED_ANSWER_TOOL),
+    ],
+    ids=["refused-named", "refused-required", "refused-none", "supported", "flag-absent", "unmapped"],
+)
+async def test_forced_tool_choice_becomes_auto_only_for_models_that_refuse_it(
+    monkeypatch, map_entry, tool_choice, expected_tool_choice
+):
+    if map_entry is not None:
+        monkeypatch.setitem(litellm.model_cost, _MODEL_REFUSING_FORCED_TOOLS, map_entry)
+    llm = LLMData(provider="anthropic", config=LLMConfigData(model=_MODEL_REFUSING_FORCED_TOOLS))
+
+    config = await _model_config(llm, tool_choice=tool_choice)
+
+    assert config["tool_choice"] == expected_tool_choice
+
+
+async def test_azure_model_is_checked_by_its_model_name_and_called_by_its_deployment(monkeypatch):
+    monkeypatch.setitem(
+        litellm.model_cost, f"azure/{_MODEL_REFUSING_FORCED_TOOLS}", {"supports_forced_tool_use": False}
+    )
+    llm = LLMData(
+        provider="azure",
+        config=LLMConfigData(
+            model=_MODEL_REFUSING_FORCED_TOOLS, connection={"deployment_id": "team-deployment"}
+        ),
+    )
+
+    config = await _model_config(llm, tool_choice=_FORCED_ANSWER_TOOL)
+
+    assert config["model"] == "azure/team-deployment"
+    assert config["tool_choice"] == "auto"
+
+
+async def test_bundled_model_map_sends_auto_tool_choice_to_claude_sonnet_5_5():
+    llm = LLMData(provider="anthropic", config=LLMConfigData(model="claude-sonnet-5-5"))
+
+    config = await _model_config(llm, tool_choice=_FORCED_ANSWER_TOOL)
+
+    assert config["tool_choice"] == "auto"
+
+
 async def test_llm_call_receives_every_set_config_field():
     llm_config = LLMConfigData(
         model="gpt-4o",
@@ -438,6 +491,8 @@ async def test_undecryptable_llm_secret_fails_the_run_without_the_value(
         ("anthropic", "openai/gpt-4o", {}),
         # A provider litellm does not know is taken from the model prefix.
         ("my_gateway", "claude-sonnet-4-6", {"temperature": 0.5, "top_p": 0.9}),
+        # A model litellm refuses sampling settings for gets none, on any provider.
+        ("bedrock", "us.anthropic.claude-sonnet-5-5", {}),
     ],
 )
 async def test_sampling_params_follow_the_routed_provider(provider, model, expected_sampling):
@@ -1609,6 +1664,28 @@ async def test_final_answer_call_switches_to_fallback():
     assert _called_models(llm) == [_PRIMARY_MODEL, _PRIMARY_MODEL, _FALLBACK_MODEL]
     assert llm.received_tools[-1] == []
     assert "tool_choice" not in llm.received_configs[-1]
+
+
+async def test_fallback_that_refuses_forced_tool_use_gets_auto_tool_choice(monkeypatch):
+    monkeypatch.setitem(
+        litellm.model_cost, _MODEL_REFUSING_FORCED_TOOLS, {"supports_forced_tool_use": False}
+    )
+    fallback = LLMData(
+        provider="anthropic",
+        config=LLMConfigData(model=_MODEL_REFUSING_FORCED_TOOLS, api_key=seal("key-b")),
+    )
+    llm = FakeLLMClient([_provider_error(litellm.RateLimitError), text_chunks("fallback answer")])
+
+    await _run(
+        llm,
+        _context_with_fallback(fallback=fallback, tool_choice=_FORCED_ANSWER_TOOL),
+        RecordingEmitter(),
+    )
+
+    assert [config["tool_choice"] for config in llm.received_configs] == [
+        _FORCED_ANSWER_TOOL,
+        "auto",
+    ]
 
 
 @pytest.mark.parametrize(

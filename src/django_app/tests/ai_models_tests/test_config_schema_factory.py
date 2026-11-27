@@ -1,4 +1,5 @@
 import time
+from dataclasses import replace
 
 import pytest
 from ai_models.domain.schemas import ConfigSchemaFactory
@@ -7,7 +8,7 @@ from ai_models.domain.value_types import ValueTypeRegistry
 from ai_models.repository import CatalogRepository
 from jsonschema import Draft202012Validator
 
-from tests.ai_models_tests.factories import make_runtime_catalog
+from tests.ai_models_tests.factories import make_runtime_catalog, make_thinking_catalog
 
 
 @pytest.fixture
@@ -201,3 +202,41 @@ def test_fireworks_model_offers_its_tuning_settings_unset(committed_factory):
     assert _valid(schema, {"prompt_truncate_len": input_window, "safe_tokenization": None})
     assert not _valid(schema, {"prompt_truncate_len": input_window + 1})
     assert not _valid(schema, {"mirostat_target": 10.5})
+
+
+_GENERIC_EFFORT_HELP = "Help for reasoning_effort."
+
+
+@pytest.mark.parametrize(
+    ("model_name", "description"),
+    [
+        ("claude-between-tools", f"{_GENERIC_EFFORT_HELP} Not set: the model thinks at its default effort (high)."),
+        ("claude-always-thinks", f"{_GENERIC_EFFORT_HELP} Not set: the model thinks at its default effort (medium)."),
+        ("claude-asks-to-think", _GENERIC_EFFORT_HELP),
+    ],
+)
+def test_reasoning_effort_help_names_the_default_effort_of_a_model_that_thinks_by_default(
+    model_name, description
+):
+    factory = ConfigSchemaFactory(CatalogRepository(make_thinking_catalog()), ValueTypeRegistry())
+
+    properties = factory.parameters_schema(ModelKind.LLM, "anthropic", model_name)["properties"]
+
+    assert properties["reasoning_effort"]["description"] == description
+
+
+def test_gpt_reasoning_effort_keeps_the_generic_help(factory):
+    properties = factory.parameters_schema(ModelKind.LLM, "openai", "gpt-4o")["properties"]
+
+    assert properties["reasoning_effort"]["description"] == _GENERIC_EFFORT_HELP
+
+
+def test_custom_model_offered_reasoning_effort_keeps_the_generic_help():
+    catalog = make_thinking_catalog()
+    anthropic = replace(catalog.providers["anthropic"], common_parameters={ModelKind.LLM: ("reasoning_effort",)})
+    catalog = replace(catalog, providers={**catalog.providers, "anthropic": anthropic})
+    factory = ConfigSchemaFactory(CatalogRepository(catalog), ValueTypeRegistry())
+
+    properties = factory.parameters_schema(ModelKind.LLM, "anthropic", "my-claude")["properties"]
+
+    assert properties["reasoning_effort"]["description"] == _GENERIC_EFFORT_HELP

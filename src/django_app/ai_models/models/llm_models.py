@@ -61,7 +61,10 @@ class LLMConfig(OrgScopedModel, LastEditTrackedModel):
         null=True,
         blank=True,
         validators=[validate_finite_number, MinValueValidator(0.0)],
-        help_text="USD per prompt token. Null uses litellm's price map. Set together with output_cost_per_token.",
+        help_text=(
+            "USD per prompt token. Null uses litellm's price map. Set together with output_cost_per_token. "
+            "Cached prompt tokens are also counted at this price, so the session cost shown does not reflect prompt-cache discounts."
+        ),
     )
     output_cost_per_token = models.FloatField(
         null=True,

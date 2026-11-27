@@ -69,7 +69,7 @@ back to `DefaultAgentDefinitionConfig` (see §3). The other fields reject `null`
 | `max_iter` | `IntegerField` | 1..90 | 15 | Max reasoning iterations per task. |
 | `max_rpm` | `IntegerField` | 1..240 | 30 | LLM request rate cap (requests/minute). |
 | `max_execution_time` | `IntegerField` | 60..1800 | 600 | Wall-clock budget in seconds for a single agent run. Also drives the runtime dispatch timeout (see §9). |
-| `cache` | `BooleanField` | — | `False` | Enable tool-result caching. Not read by the runtime. |
+| `prompt_caching_enabled` | `BooleanField` | — | `False` | Send Anthropic prompt-cache markers so repeated prompt prefixes are billed at the cached rate. Off by default. The agent service sends the markers only to models that take them (Claude served by Anthropic, Bedrock, Vertex AI or Azure AI); other models get the request unchanged. Unless the primary or the fallback LLM config runs a model that takes markers, a create, update or import saves it as `False`, whatever was sent or stored; picking such a model again later leaves it off until the user turns it on. See *Prompt caching* in [agent-service.md](agent-service.md). |
 | `max_retry_limit` | `IntegerField` | 0..10 | 3 | Max retries on transient LLM/tool failures. |
 | `default_temperature` | `FloatField`, null | 0..2 | `None` | Sampling temperature when the LLMConfig itself leaves it unset. |
 | `max_tool_calls` | `IntegerField` | 1..300 | 15 | Max tool calls per loop iteration. |
@@ -159,8 +159,8 @@ Directory: [`src/django_app/tables/import_export/`](../../src/django_app/tables/
 
 ## 9. Runtime bridge — how a definition reaches execution
 
-1. **Pydantic contract** — `AgentDefinitionData` ([`src/shared/models/graph_nodes.py`](../../src/shared/models/graph_nodes.py), line 133, `model_config = ConfigDict(from_attributes=True)`) mirrors the Django execution-config fields (`max_iter`, `max_rpm`, `max_execution_time`, `cache`, `max_retry_limit`, `default_temperature`, `max_tool_calls`, `tool_timeout`, `max_consecutive_failures`, `schema_max_retries`) plus `llm_config_id`/`fcm_llm_config_id` and resolved `llm`/`fcm_llm` (`LLMData`). `GraphData` carries `task_node_list: list[TaskNodeData]` and `agent_node_list: list[AgentNodeData]` (lines 276–277) — the crew-side halves of the cross-layer contract from §7.
-2. **`AgentTaskService._build_agent_spec`** ([`src/crew/services/agent_task_service.py`](../../src/crew/services/agent_task_service.py), line 207) builds an `AgentSpec` from the `AgentDefinitionData`: appends surface instructions to the base `instructions`, maps `llm`/`fcm_llm`/`max_iter`/`schema_max_retries`/`max_rpm`/`max_execution_time`/`cache`/`max_retry_limit`/`default_temperature`/`max_tool_calls`/`tool_timeout`/`max_consecutive_failures`, and attaches `tool_refs` / `collection_refs` / `s3_refs` (unique names / ids resolved from surfaces).
+1. **Pydantic contract** — `AgentDefinitionData` ([`src/shared/models/graph_nodes.py`](../../src/shared/models/graph_nodes.py), line 133, `model_config = ConfigDict(from_attributes=True)`) mirrors the Django execution-config fields (`max_iter`, `max_rpm`, `max_execution_time`, `prompt_caching_enabled`, `max_retry_limit`, `default_temperature`, `max_tool_calls`, `tool_timeout`, `max_consecutive_failures`, `schema_max_retries`) plus `llm_config_id`/`fcm_llm_config_id` and resolved `llm`/`fcm_llm` (`LLMData`). `GraphData` carries `task_node_list: list[TaskNodeData]` and `agent_node_list: list[AgentNodeData]` (lines 276–277) — the crew-side halves of the cross-layer contract from §7.
+2. **`AgentTaskService._build_agent_spec`** ([`src/crew/services/agent_task_service.py`](../../src/crew/services/agent_task_service.py), line 207) builds an `AgentSpec` from the `AgentDefinitionData`: appends surface instructions to the base `instructions`, maps `llm`/`fcm_llm`/`max_iter`/`schema_max_retries`/`max_rpm`/`max_execution_time`/`prompt_caching_enabled`/`max_retry_limit`/`default_temperature`/`max_tool_calls`/`tool_timeout`/`max_consecutive_failures`, and attaches `tool_refs` / `collection_refs` / `s3_refs` (unique names / ids resolved from surfaces).
 3. **Dispatch** — the built `AgentSpec` is sent to the `src/agent` microservice over Redis Streams: request published to `agent.requests`, result awaited on the run's own stream `agent.results:<correlation_id>` (`agent.result` payload; non-success `stop_reason` values raise `AgentTaskError`). `max_execution_time` (multiplied by task count, plus a fixed buffer) drives the dispatch timeout (line 137).
 
 ## 10. Migrations
@@ -191,7 +191,7 @@ classDiagram
         +max_iter
         +max_rpm
         +max_execution_time
-        +cache
+        +prompt_caching_enabled
         +max_retry_limit
         +default_temperature nullable
         +max_tool_calls

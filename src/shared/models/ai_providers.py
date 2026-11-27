@@ -8,10 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field
 ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 REASONING_EFFORT_VALUES: tuple[str, ...] = get_args(ReasoningEffort)
 
-# Only Anthropic's own API is covered. Claude reached through bedrock, vertex_ai or
-# azure_ai shares a litellm provider prefix with non-Claude models, so the rules below
-# cannot be keyed on the provider there.
-_ANTHROPIC_PROVIDER = "anthropic"
 _AZURE_DEPLOYMENT_ARGUMENT = "deployment_id"
 
 
@@ -51,35 +47,6 @@ class LLMConfigData(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    def to_litellm_kwargs(self, *, provider: str, exclude: set[str] | None = None) -> dict:
-        """Return the generation parameters to pass to litellm, omitting unset ones.
-
-        Generation params only: `parameters` plus `timeout`. The model string,
-        `connection_kwargs()`, extra_headers, store, response_format and tools stay
-        with each caller.
-
-        On Anthropic, sampling params its API would reject are left out, because litellm
-        forwards them unchanged: current Claude models answer 400 to temperature together
-        with top_p, and to any temperature but 1 while thinking is on. So top_p is dropped
-        whenever temperature is sent or thinking is on, and temperature is dropped while
-        thinking is on unless it is 1. Other providers get every set param.
-
-        Args:
-            provider: The litellm provider the call is routed to (``"anthropic"`` for
-                ``"anthropic/claude-sonnet-4-6"`` and for a bare ``"claude-sonnet-4-6"``).
-            exclude: Generation fields the caller must not send (e.g. a client
-                that sets its own stop sequences or timeout).
-        """
-        excluded = exclude or set()
-        kwargs = {
-            name: value
-            for name, value in {**self.parameters, "timeout": self.timeout}.items()
-            if name not in excluded and value is not None
-        }
-        if provider == _ANTHROPIC_PROVIDER:
-            _drop_sampling_params_anthropic_rejects(kwargs)
-        return kwargs
-
     def connection_kwargs(self) -> dict[str, str]:
         """Return the connection arguments and the main secret for a litellm call.
 
@@ -88,15 +55,6 @@ class LLMConfigData(BaseModel):
         Holds the resolved secrets: never log it or put it in an error message.
         """
         return _connection_kwargs(self.connection, self.main_secret_argument, self.api_key)
-
-
-def _drop_sampling_params_anthropic_rejects(kwargs: dict) -> None:
-    # litellm maps reasoning_effort "none" to no thinking block at all.
-    thinking_enabled = kwargs.get("reasoning_effort", "none") != "none"
-    if thinking_enabled and kwargs.get("temperature", 1) != 1:
-        del kwargs["temperature"]
-    if thinking_enabled or "temperature" in kwargs:
-        kwargs.pop("top_p", None)
 
 
 def _connection_kwargs(

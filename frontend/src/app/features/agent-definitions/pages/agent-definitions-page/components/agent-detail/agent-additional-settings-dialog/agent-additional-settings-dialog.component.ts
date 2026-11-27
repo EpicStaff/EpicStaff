@@ -29,7 +29,9 @@ export interface AgentAdditionalSettingsData {
     max_rpm: number;
     max_execution_time: number;
     max_retry_limit: number;
-    cache: boolean;
+    prompt_caching_enabled: boolean;
+    /** Whether the agent's primary or fallback model takes prompt-cache markers; only then is the Advanced tab shown. */
+    promptCachingAvailable: boolean;
     max_tool_calls: number;
     tool_timeout: number;
     max_consecutive_failures: number;
@@ -46,7 +48,7 @@ export interface AgentAdditionalSettingsResult {
     max_rpm: number;
     max_execution_time: number;
     max_retry_limit: number;
-    cache: boolean;
+    prompt_caching_enabled: boolean;
     max_tool_calls: number;
     tool_timeout: number;
     max_consecutive_failures: number;
@@ -86,12 +88,14 @@ export class AgentAdditionalSettingsDialogComponent implements OnInit {
     readonly loadingLLMs = signal<boolean>(true);
     readonly combinedLLMs = this.fullLlmConfigService.fullConfigs;
     readonly voicesMap = signal<Record<string, RealtimeVoice[]>>({});
+    protected readonly promptCachingAvailable = this.data.promptCachingAvailable;
 
     readonly tabs: Tab[] = [
         { id: TabId.GENERAL, label: 'General' },
         { id: TabId.VOICE, label: 'Voice' },
         { id: TabId.EXECUTION, label: 'Execution' },
-        { id: TabId.ADVANCED, label: 'Advanced' },
+        // Prompt caching is the tab's only setting.
+        ...(this.promptCachingAvailable ? [{ id: TabId.ADVANCED, label: 'Advanced' }] : []),
     ];
 
     readonly activeProvider = signal<RealtimeProvider | null>(this.initialProvider());
@@ -132,8 +136,7 @@ export class AgentAdditionalSettingsDialogComponent implements OnInit {
             this.data.max_consecutive_failures,
             [Validators.required, Validators.min(1), Validators.max(20)],
         ],
-        // Cache is not implemented on the backend runtime yet — shown but disabled.
-        cache: [{ value: this.data.cache, disabled: true }],
+        prompt_caching_enabled: [this.data.prompt_caching_enabled],
     });
 
     ngOnInit(): void {

@@ -158,7 +158,7 @@ class AgentDefinitionData(BaseModel):
     max_iter: int | None = None
     max_rpm: int | None = None
     max_execution_time: int | None = None
-    cache: bool | None = None
+    prompt_caching_enabled: bool = False
     max_retry_limit: int | None = None
     default_temperature: float | None = None
     max_tool_calls: int | None = None

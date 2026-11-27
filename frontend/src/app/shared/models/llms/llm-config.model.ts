@@ -31,6 +31,8 @@ export interface GetLlmConfigRequest extends AuthorshipFields, CatalogConfigFiel
     tags: Tag[];
     /** Read-only ISO 8601 creation time; null for configs created before it was recorded. Never sent back. */
     created_at: string | null;
+    /** Read-only: whether the model takes Anthropic prompt-cache markers, decided by the backend. Never sent back. */
+    needs_prompt_cache_markers: boolean;
 }
 
 /** The writable fields of an LLM config besides its model. A create without `parameters` gets the model's defaults. */

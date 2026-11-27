@@ -13,6 +13,7 @@ from tables.services.converter_service import ConverterService
 from tables.services.llm_clients import get_llm_client
 from tables.services.secrets import secret_resolver, secret_service
 from tables.services.secrets.exceptions import SecretMarkerNotReferenceableError
+from src.shared.litellm_model_names import litellm_generation_kwargs
 
 from tests.sealed_values import open_sealed_headers
 from tests.ai_models_tests.factories import (
@@ -21,6 +22,7 @@ from tests.ai_models_tests.factories import (
     make_parameter,
     make_provider,
     make_runtime_catalog,
+    make_thinking_catalog,
 )
 
 pytestmark = pytest.mark.django_db
@@ -68,7 +70,7 @@ def test_a_setting_only_the_catalog_names_reaches_litellm(monkeypatch, default_o
 
     data = ConverterService().convert_llm_config_data(config)
 
-    assert data.to_litellm_kwargs(provider="openai", exclude={"timeout"}) == {
+    assert litellm_generation_kwargs(data, model="openai/gpt-next", exclude={"timeout"}) == {
         "temperature": 0.3,
         "speculation_depth": 8,
     }
@@ -423,3 +425,64 @@ def test_a_principal_s_client_refuses_a_marker_naming_a_secret_it_may_not_refere
         get_llm_client(config, principal=_PinnedPrincipal(default_org, own_secret_ids=()))
     # The same principal owning the secret may use it.
     get_llm_client(config, principal=_PinnedPrincipal(default_org, own_secret_ids=(person_secret.pk,)))
+
+
+@pytest.fixture
+def thinking_catalog(monkeypatch):
+    repository = CatalogRepository(make_thinking_catalog())
+    monkeypatch.setattr(CatalogRepository, "default", classmethod(lambda cls: repository))
+
+
+@pytest.mark.parametrize(
+    ("model_name", "thinking_type"),
+    [("claude-between-tools", "between_tools"), ("claude-disabled", "disabled")],
+)
+def test_none_effort_turns_off_thinking_of_a_model_that_thinks_by_default(
+    thinking_catalog, default_org, model_name, thinking_type
+):
+    # LiteLLM sends no thinking field for "none", so the model would think anyway, and it
+    # replaces a thinking field sent next to reasoning_effort with adaptive thinking.
+    config = _config(
+        default_org, "anthropic", model_name, parameters={"reasoning_effort": "none", "temperature": 1}
+    )
+
+    data = ConverterService().convert_llm_config_data(config)
+
+    assert litellm_generation_kwargs(data, model=f"anthropic/{model_name}", exclude={"timeout"}) == {
+        "thinking": {"type": thinking_type},
+        "temperature": 1,
+    }
+    config.refresh_from_db()
+    assert config.parameters == {"reasoning_effort": "none", "temperature": 1}
+
+
+@pytest.mark.parametrize(
+    ("model_name", "parameters"),
+    [
+        ("claude-disabled", {"reasoning_effort": "low"}),
+        ("claude-disabled", {"temperature": 1}),
+        ("claude-always-thinks", {"reasoning_effort": "low"}),
+        ("claude-gateway-thinks", {"reasoning_effort": "none"}),
+        ("claude-asks-to-think", {"reasoning_effort": "none"}),
+    ],
+    ids=[
+        "other-effort",
+        "effort-not-set",
+        "cannot-be-turned-off",
+        "thinking-not-sent-there",
+        "thinks-only-when-asked",
+    ],
+)
+def test_other_efforts_and_models_are_sent_as_stored(thinking_catalog, default_org, model_name, parameters):
+    config = _config(default_org, "anthropic", model_name, parameters=parameters)
+
+    assert ConverterService().convert_llm_config_data(config).parameters == parameters
+
+
+def test_none_on_a_model_that_cannot_stop_thinking_refuses_the_run(thinking_catalog, default_org):
+    config = _config(default_org, "anthropic", "claude-always-thinks", parameters={"reasoning_effort": "none"})
+
+    with pytest.raises(ConfigNeedsReviewError) as refusal:
+        ConverterService().convert_llm_config_data(config)
+
+    assert [problem.split(":")[0] for problem in refusal.value.problems] == ["reasoning_effort"]

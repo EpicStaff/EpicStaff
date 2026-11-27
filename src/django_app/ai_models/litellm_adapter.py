@@ -16,7 +16,13 @@ import litellm
 from litellm.litellm_core_utils.get_model_cost_map import get_model_cost_map_source_info
 from litellm.types.utils import LlmProviders
 from litellm.utils import ProviderConfigManager
-from src.shared.litellm_model_names import litellm_lookup_name
+from src.shared.litellm_model_names import (
+    SAMPLING_PARAMETERS,
+    litellm_call_model,
+    litellm_lookup_name,
+    litellm_model_capability,
+    litellm_refuses_sampling,
+)
 
 from ai_models.domain.specs import ModelKind, ModelSpec
 from ai_models.utils.litellm_model_info import reasoning_support
@@ -124,13 +130,31 @@ class LiteLLMAdapter:
         )
 
     def llm_parameters(self, model: ModelSpec) -> tuple[str, ...]:
-        names = _ask(
-            f"list the settings of {model.name}",
-            lambda: litellm.get_supported_openai_params(
+        """Return the settings LiteLLM lets the model take.
+
+        A model LiteLLM refuses sampling for (`litellm_refuses_sampling`) takes no
+        sampling setting, even where LiteLLM's supported-parameter list still names one.
+        """
+        return _ask(f"list the settings of {model.name}", lambda: self._llm_parameters(model))
+
+    def _llm_parameters(self, model: ModelSpec) -> tuple[str, ...]:
+        names = tuple(
+            litellm.get_supported_openai_params(
                 model=model.name, custom_llm_provider=model.provider
-            ),
+            )
+            or ()
         )
-        return tuple(names or ())
+        if litellm_refuses_sampling(litellm_call_model(model.provider, model.name)):
+            return tuple(name for name in names if name not in SAMPLING_PARAMETERS)
+        return names
+
+    def supports_adaptive_thinking(self, model: ModelSpec) -> bool:
+        return (
+            litellm_model_capability(
+                litellm_call_model(model.provider, model.name), "supports_adaptive_thinking"
+            )
+            is True
+        )
 
     def embedding_parameters(self, provider: str) -> tuple[str, ...] | None:
         """Return the provider's embedding settings; None when LiteLLM has no config class.

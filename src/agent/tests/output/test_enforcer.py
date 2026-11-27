@@ -14,8 +14,8 @@ from app.exceptions import (
     InvalidOutputSchemaError,
     SchemaValidationError,
 )
-from app.llm.client import LLMChunk
-from app.loop.agent_loop import AgentLoop
+from app.llm.client import LLMChunk, ToolCallFragment
+from app.loop.agent_loop import AgentLoop, DefaultAgentLoop
 from app.loop.context import AgentContext
 from app.loop.stop_policy import StopPolicy
 from app.output.enforcer import StructuredOutputEnforcer
@@ -25,6 +25,8 @@ from shared.models.agent_service import AgentSpec, LoopResult, TokenUsage, ToolR
 from shared.models.ai_providers import LLMConfigData, LLMData
 from tests.cancellation import never_cancelled
 from tests.log_capture import log_line_starting_with, capture_logs_at
+from tests.loop.test_default_agent_loop import FakeLLMClient, text_chunks
+from tests.secret_sealing import agent_cryptographer
 
 # ---------------------------------------------------------------------------
 # Test doubles
@@ -501,3 +503,178 @@ async def test_missing_result_key_exhausts_retries_as_schema_validation_error():
 
     with pytest.raises(SchemaValidationError):
         await enforcer.enforce(context, STRING_SCHEMA, FakeEmitter())
+
+
+# ---------------------------------------------------------------------------
+# Tests: the model calls schema fields as if they were tools (real loop)
+# ---------------------------------------------------------------------------
+
+
+EMAIL_SCHEMA = {
+    "type": "object",
+    "properties": {"initial_email": {"type": "string"}, "status": {"type": "string"}},
+    "required": ["initial_email", "status"],
+}
+
+LIST_OF_TITLES_SCHEMA = {
+    "type": "array",
+    "items": {"type": "object", "properties": {"title": {"type": "string"}}},
+}
+
+
+def _tool_calls_response(*calls: tuple[str, str, str]) -> list[LLMChunk]:
+    chunks = [
+        LLMChunk(tool_call_fragment=ToolCallFragment(id=call_id, name=name, arguments_delta=args))
+        for call_id, name, args in calls
+    ]
+    chunks.append(LLMChunk(finish_reason="tool_calls"))
+    return chunks
+
+
+def _tool_results(context: AgentContext) -> dict[str, str]:
+    return {
+        message["tool_call_id"]: message["content"]
+        for message in context.messages
+        if message.get("role") == "tool"
+    }
+
+
+def _field_explanation(name: str) -> str:
+    return (
+        f"'{name}' is not a tool: it is a field of the {ANSWER_TOOL} arguments. "
+        f"Call {ANSWER_TOOL} once, with all fields in its arguments."
+    )
+
+
+async def test_field_called_as_tool_gets_explanation_and_unknown_name_keeps_generic_error():
+    llm = FakeLLMClient(
+        [
+            _tool_calls_response(
+                ("call-email", "initial_email", '{"value": "Hi"}'),
+                ("call-search", "web_search", "{}"),
+                ("call-status", "status", "{}"),
+            ),
+            _tool_calls_response(
+                ("call-answer", ANSWER_TOOL, '{"initial_email": "Hi", "status": "sent"}')
+            ),
+        ]
+    )
+    enforcer = StructuredOutputEnforcer(DefaultAgentLoop(llm, agent_cryptographer()), max_retries=2)
+    context = _make_context()
+
+    result = await enforcer.enforce(context, EMAIL_SCHEMA, FakeEmitter())
+
+    tool_results = _tool_results(context)
+    assert _field_explanation("initial_email") in tool_results["call-email"]
+    assert _field_explanation("status") in tool_results["call-status"]
+    assert "Unknown tool: web_search" in tool_results["call-search"]
+    assert result.parsed == {"initial_email": "Hi", "status": "sent"}
+    assert [tool.name for tool in llm.received_tools[0]] == [ANSWER_TOOL]
+
+
+async def test_corrective_message_names_fields_called_as_tools_when_no_answer_captured():
+    llm = FakeLLMClient(
+        [
+            _tool_calls_response(
+                ("call-email", "initial_email", "{}"), ("call-status", "status", "{}")
+            ),
+            _tool_calls_response(
+                ("call-answer", ANSWER_TOOL, '{"initial_email": "Hi", "status": "sent"}')
+            ),
+        ]
+    )
+    enforcer = StructuredOutputEnforcer(DefaultAgentLoop(llm, agent_cryptographer()), max_retries=2)
+    context = _make_context()
+
+    await enforcer.enforce(context, EMAIL_SCHEMA, FakeEmitter())
+
+    user_messages = [m["content"] for m in context.messages if m.get("role") == "user"]
+    assert user_messages[-1] == (
+        f"You called initial_email, status as tools, but they are fields of the {ANSWER_TOOL} "
+        f"arguments, not tools. Call {ANSWER_TOOL} once, with all fields in its arguments, "
+        "matching the required schema."
+    )
+
+
+async def test_corrective_message_without_field_calls_is_unchanged():
+    llm = FakeLLMClient(
+        [
+            _tool_calls_response(("call-search", "web_search", "{}")),
+            _tool_calls_response(
+                ("call-answer", ANSWER_TOOL, '{"initial_email": "Hi", "status": "sent"}')
+            ),
+        ]
+    )
+    enforcer = StructuredOutputEnforcer(DefaultAgentLoop(llm, agent_cryptographer()), max_retries=2)
+    context = _make_context()
+
+    await enforcer.enforce(context, EMAIL_SCHEMA, FakeEmitter())
+
+    user_messages = [m["content"] for m in context.messages if m.get("role") == "user"]
+    assert user_messages[-1] == (
+        "You must call submit_final_answer. "
+        "Call submit_final_answer with your final answer matching the required schema."
+    )
+
+
+_TEXT_ONLY_CORRECTIVE = (
+    f"You must call {ANSWER_TOOL}. "
+    f"Call {ANSWER_TOOL} with your final answer matching the required schema."
+)
+
+
+async def test_text_only_attempt_after_field_calls_does_not_repeat_the_field_complaint():
+    llm = FakeLLMClient(
+        [
+            _tool_calls_response(("call-email", "initial_email", "{}")),
+            text_chunks("plain text"),
+            _tool_calls_response(
+                ("call-answer", ANSWER_TOOL, '{"initial_email": "Hi", "status": "sent"}')
+            ),
+        ]
+    )
+    enforcer = StructuredOutputEnforcer(DefaultAgentLoop(llm, agent_cryptographer()), max_retries=2)
+    context = _make_context()
+
+    await enforcer.enforce(context, EMAIL_SCHEMA, FakeEmitter())
+
+    user_messages = [m["content"] for m in context.messages if m.get("role") == "user"]
+    assert user_messages[-1] == _TEXT_ONLY_CORRECTIVE
+
+
+async def test_repeated_text_only_attempts_do_not_stack_the_corrective_prefix():
+    llm = FakeLLMClient(
+        [
+            text_chunks("first"),
+            text_chunks("second"),
+            text_chunks("third"),
+            _tool_calls_response(
+                ("call-answer", ANSWER_TOOL, '{"initial_email": "Hi", "status": "sent"}')
+            ),
+        ]
+    )
+    enforcer = StructuredOutputEnforcer(DefaultAgentLoop(llm, agent_cryptographer()), max_retries=3)
+    context = _make_context()
+
+    await enforcer.enforce(context, EMAIL_SCHEMA, FakeEmitter())
+
+    user_messages = [m["content"] for m in context.messages if m.get("role") == "user"]
+    assert user_messages[-3:] == [_TEXT_ONLY_CORRECTIVE] * 3
+
+
+async def test_wrapped_schema_counts_only_result_as_a_field():
+    llm = FakeLLMClient(
+        [
+            _tool_calls_response(("call-result", "result", "{}"), ("call-title", "title", "{}")),
+            _tool_calls_response(("call-answer", ANSWER_TOOL, '{"result": [{"title": "A"}]}')),
+        ]
+    )
+    enforcer = StructuredOutputEnforcer(DefaultAgentLoop(llm, agent_cryptographer()), max_retries=2)
+    context = _make_context()
+
+    result = await enforcer.enforce(context, LIST_OF_TITLES_SCHEMA, FakeEmitter())
+
+    tool_results = _tool_results(context)
+    assert _field_explanation("result") in tool_results["call-result"]
+    assert "Unknown tool: title" in tool_results["call-title"]
+    assert result.parsed == [{"title": "A"}]

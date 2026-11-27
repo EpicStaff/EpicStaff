@@ -8,9 +8,11 @@ alone compares it with the committed file.
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
 from ai_models.domain.catalog import Catalog
 from ai_models.domain.registry import ParameterRegistry
+from ai_models.domain.specs import ModelKind, ModelSpec
 
 _NUMBER_TYPES = frozenset({"number", "integer"})
 _CHOICE_TYPE = "choice"
@@ -100,20 +102,62 @@ class ConnectionFieldsRequiredRule(BaseCatalogCheckRule):
 
 
 class UnusedRegistryEntryRule(BaseCatalogCheckRule):
-    """Warn about registry providers LiteLLM has no model of; they may be renamed or gone."""
+    """Warn about registry providers and `default_thinking` entries LiteLLM has no model of.
+
+    They may be renamed or gone.
+    """
 
     def check(self, committed, fresh, registry):
         providers_with_models = {
             provider for by_provider in fresh.models.values() for provider in by_provider
         }
+        classified_base_names = {
+            registry.thinking_base_name(model_name)
+            for by_name in fresh.models.get(ModelKind.LLM, {}).values()
+            for model_name in by_name
+        }
+        unused = [
+            provider.name
+            for provider in registry.providers()
+            if provider.name not in providers_with_models
+        ] + sorted(registry.thinking_base_names() - classified_base_names)
         return [
             CatalogCheckFinding(
                 rule=type(self).__name__,
-                message=f"{provider.name}: in parameter_registry.yaml, but LiteLLM has no model of it.",
+                message=f"{name}: in parameter_registry.yaml, but LiteLLM has no model of it.",
                 is_error=False,
             )
-            for provider in registry.providers()
-            if provider.name not in providers_with_models
+            for name in unused
+        ]
+
+
+class _AdaptiveThinkingSource(Protocol):
+    def supports_adaptive_thinking(self, model: ModelSpec) -> bool: ...
+
+
+class UnclassifiedThinkingModelRule(BaseCatalogCheckRule):
+    """A model LiteLLM says thinks adaptively needs a `default_thinking` entry.
+
+    LiteLLM does not say whether such a model thinks when no thinking setting is sent,
+    nor how to turn that off, so without an entry "none" may silently leave it thinking.
+    Asks LiteLLM through `source`. Only models of registry providers are checked: no
+    config can use the others.
+    """
+
+    def __init__(self, source: _AdaptiveThinkingSource) -> None:
+        self._source = source
+
+    def check(self, committed, fresh, registry):
+        llm_models = fresh.models.get(ModelKind.LLM, {})
+        return [
+            self._error(
+                f"{model.name}: LiteLLM says it thinks adaptively, but no default_thinking "
+                "entry in parameter_registry.yaml classifies it; add one."
+            )
+            for provider in fresh.providers
+            for model in llm_models.get(provider, {}).values()
+            if registry.thinking_base_name(model.name) is None
+            and self._source.supports_adaptive_thinking(model)
         ]
 
 

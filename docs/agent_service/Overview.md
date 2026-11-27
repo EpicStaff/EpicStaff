@@ -50,7 +50,7 @@ both services):
   `payload: dict`.
 - **`AgentSpec`** — `id`, `name`, `instructions`, `llm`, `fcm_llm`, `max_iter`,
   `max_rpm`, `max_execution_time`, `max_retry_limit`, `default_temperature`,
-  `cache`, `max_tool_calls`, `tool_timeout`, `max_consecutive_failures`, and ref
+  `prompt_caching_enabled`, `max_tool_calls`, `tool_timeout`, `max_consecutive_failures`, and ref
   lists `tool_refs` / `collection_refs` / `s3_refs` into the pools. A node runs
   **one** agent.
 - **`AgentTaskSpec`** (LIST_OF_TASKS payload entry) — `name`, `instructions`,

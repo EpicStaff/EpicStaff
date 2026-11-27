@@ -7,7 +7,14 @@ from typing import Protocol
 from ai_models.domain.catalog import Catalog
 from ai_models.domain.discovery import BaseParameterDiscoveryStrategy
 from ai_models.domain.registry import ParameterRegistry
-from ai_models.domain.specs import ModelKind, ModelSpec, ParameterSpec
+from ai_models.domain.specs import (
+    NO_REASONING_EFFORT,
+    REASONING_EFFORT_PARAMETER,
+    THINKING_PARAMETER,
+    ModelKind,
+    ModelSpec,
+    ParameterSpec,
+)
 from ai_models.domain.value_types import ValueTypeRegistry
 
 # A draft has no range or options, so it gets a control that works without them.
@@ -27,6 +34,8 @@ class _ModelSource(Protocol):
 
     def model_entries(self, kind: ModelKind) -> Iterator[ModelSpec]: ...
 
+    def llm_parameters(self, model: ModelSpec) -> tuple[str, ...]: ...
+
     def completion_annotations(self) -> Mapping[str, object]: ...
 
 
@@ -36,7 +45,9 @@ class CatalogBuilder:
     The catalog holds the registry's settings that a model or a provider's custom-model
     list uses, plus a draft for every setting LiteLLM reports that the registry lacks.
     Only registry providers get a `ProviderSpec`; models of other providers are kept
-    under their provider name with none.
+    under their provider name with none. An LLM that thinks by default per the registry
+    carries its `default_thinking`, and is not offered "none" when thinking cannot be
+    turned off.
     """
 
     def __init__(
@@ -56,11 +67,14 @@ class CatalogBuilder:
         for kind in ModelKind:
             by_provider = {}
             for model in self._adapter.model_entries(kind):
-                by_provider.setdefault(model.provider, {})[model.name] = replace(
+                model = replace(
                     model,
                     recommended=self._registry.is_recommended(model.provider, model.name),
                     parameter_names=self._strategies[kind].discover(model),
                 )
+                if kind == ModelKind.LLM:
+                    model = self._with_default_thinking(model)
+                by_provider.setdefault(model.provider, {})[model.name] = model
             if by_provider:
                 models[kind] = by_provider
         providers = {provider.name: provider for provider in self._registry.providers()}
@@ -75,6 +89,23 @@ class CatalogBuilder:
             providers=providers,
             models=models,
         )
+
+    def _with_default_thinking(self, model: ModelSpec) -> ModelSpec:
+        thinking = self._registry.default_thinking(model.name)
+        if thinking is None:
+            return model
+        options = dict(model.options)
+        if thinking.thinking_type_to_turn_off is None and REASONING_EFFORT_PARAMETER in options:
+            options[REASONING_EFFORT_PARAMETER] = tuple(
+                effort
+                for effort in options[REASONING_EFFORT_PARAMETER]
+                if effort != NO_REASONING_EFFORT
+            )
+        thinking = replace(
+            thinking,
+            provider_accepts_thinking=THINKING_PARAMETER in self._adapter.llm_parameters(model),
+        )
+        return replace(model, options=options, default_thinking=thinking)
 
     def _draft(self, name: str, annotation: object) -> ParameterSpec:
         value_type = self._value_types.guess(annotation).name

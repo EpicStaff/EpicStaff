@@ -129,6 +129,7 @@ const STORED_CONFIG: GetLlmConfigRequest = {
     output_cost_per_token: null,
     tags: [],
     created_at: null,
+    needs_prompt_cache_markers: false,
     created_by: null,
     last_edited_by: null,
     last_edited_at: null,
@@ -333,6 +334,14 @@ describe('ModelConfigDialogComponent', () => {
 
         expect(body).toEqual(expect.objectContaining({ id: 3, model: 11, custom_name: 'support assistant' }));
         expect(body).not.toHaveProperty('provider');
+    });
+
+    it("does not send back the backend's prompt-cache flag", () => {
+        const rendered = renderEdit({ ...STORED_CONFIG, needs_prompt_cache_markers: true });
+
+        const body = save(rendered, '/api/llm-configs/3/', 'PUT');
+
+        expect(body).not.toHaveProperty('needs_prompt_cache_markers');
     });
 
     it('creates a config from the provider, the model name, its settings and its connection, with no flat fields', () => {

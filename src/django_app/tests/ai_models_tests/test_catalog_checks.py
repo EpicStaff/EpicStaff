@@ -9,12 +9,15 @@ from ai_models.domain.checks import (
     ConnectionFieldsRequiredRule,
     NoDraftParametersRule,
     NumberRangeRequiredRule,
+    UnclassifiedThinkingModelRule,
     UnusedRegistryEntryRule,
 )
-from ai_models.domain.specs import ModelKind
+from ai_models.domain.specs import DefaultThinkingSpec, ModelKind
 
 from tests.ai_models_tests.factories import (
+    FakeLiteLLMAdapter,
     make_catalog,
+    make_model,
     make_parameter,
     make_provider,
     make_registry,
@@ -77,6 +80,7 @@ def test_rule_reports_one_error_naming_the_culprit(rule, bad_catalog, named):
         CatalogUpToDateRule(),
         ConnectionFieldsRequiredRule(),
         UnusedRegistryEntryRule(),
+        UnclassifiedThinkingModelRule(FakeLiteLLMAdapter()),
     ],
 )
 def test_rule_passes_a_complete_current_catalog(rule):
@@ -155,3 +159,52 @@ def test_unused_rule_counts_models_of_every_kind():
     )
 
     assert UnusedRegistryEntryRule().check(vertex_embeds_only, vertex_embeds_only, registry) == []
+
+
+def _with_llm_models(catalog, provider, *models):
+    llm_models = {**catalog.models[ModelKind.LLM], provider: {model.name: model for model in models}}
+    return replace(catalog, models={**catalog.models, ModelKind.LLM: llm_models})
+
+
+_THINKING_MODELS = ("claude-new", "us.anthropic.claude-new-fast", "claude-asks")
+_ADAPTIVE = FakeLiteLLMAdapter(adaptive_thinking=frozenset({*_THINKING_MODELS, "other-thinker"}))
+
+
+def test_adaptive_thinking_model_no_entry_classifies_is_an_error_naming_it():
+    catalog = _with_llm_models(make_catalog(), "openai", *(make_model(name=name) for name in _THINKING_MODELS))
+    registry = make_registry(default_thinking={"claude-asks": None})
+
+    findings = UnclassifiedThinkingModelRule(_ADAPTIVE).check(catalog, catalog, registry)
+
+    assert [finding.is_error for finding in findings] == [True, True]
+    assert [finding.message.split(":")[0] for finding in findings] == ["claude-new", "us.anthropic.claude-new-fast"]
+
+
+def test_classified_adaptive_thinking_models_pass():
+    catalog = _with_llm_models(make_catalog(), "openai", *(make_model(name=name) for name in _THINKING_MODELS))
+    registry = make_registry(
+        default_thinking={"claude-new": DefaultThinkingSpec("high", "disabled"), "claude-asks": None}
+    )
+
+    assert UnclassifiedThinkingModelRule(_ADAPTIVE).check(catalog, catalog, registry) == []
+
+
+def test_adaptive_thinking_model_of_a_provider_no_config_can_use_is_not_checked():
+    catalog = _with_llm_models(make_catalog(), "tencent", make_model(name="other-thinker", provider="tencent"))
+
+    assert UnclassifiedThinkingModelRule(_ADAPTIVE).check(catalog, catalog, make_registry()) == []
+
+
+def test_default_thinking_entry_no_model_matches_is_a_warning():
+    catalog = _with_llm_models(make_catalog(), "openai", make_model(name="vertex_ai/claude-new@default"))
+    registry = make_registry(default_thinking={"claude-new": None, "claude-gone": None})
+
+    findings = UnusedRegistryEntryRule().check(catalog, catalog, registry)
+
+    assert findings == [
+        CatalogCheckFinding(
+            rule="UnusedRegistryEntryRule",
+            message="claude-gone: in parameter_registry.yaml, but LiteLLM has no model of it.",
+            is_error=False,
+        )
+    ]

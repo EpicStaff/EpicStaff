@@ -3,6 +3,7 @@ from collections import Counter, defaultdict
 from copy import deepcopy
 
 from agents.models import AgentDefaultSurface, AgentDefinition
+from agents.services.prompt_caching import prompt_caching_available
 from ai_models.models import LLMConfig
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db.models import Q
@@ -38,7 +39,7 @@ COMPARED_FIELDS = (
     "max_iter",
     "max_rpm",
     "max_execution_time",
-    "cache",
+    "prompt_caching_enabled",
     "max_retry_limit",
     "default_temperature",
     "max_tool_calls",
@@ -78,7 +79,6 @@ _LEGACY_NULL_REPLACEMENTS = {
     "max_iter": 25,
     "max_rpm": 10,
     "max_execution_time": 60,
-    "cache": False,
     "max_retry_limit": 3,
     "max_tool_calls": 15,
     "tool_timeout": 300,
@@ -287,6 +287,14 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         else:
             filters["fallback_llm_config_id"] = new_fallback_llm_config_id
 
+        # Compare what create_entity would store for these configs.
+        if filters.get("prompt_caching_enabled") and not prompt_caching_available(
+            *LLMConfig.objects.select_related("model__llm_provider").filter(
+                id__in=[new_llm_config_id, new_fallback_llm_config_id]
+            )
+        ):
+            filters["prompt_caching_enabled"] = False
+
         # SQL narrows on stored columns; whether the owned and default surfaces
         # match is decided in Python.
         content_key_by_old_surface_id, entry_default_rows = self._entry_surfaces(
@@ -434,11 +442,17 @@ class AgentDefinitionStrategy(EntityImportExportStrategy):
         if new_llm_config_id is None or new_fallback_llm_config_id == new_llm_config_id:
             new_fallback_llm_config_id = None
 
-        agent_definition.llm_config = LLMConfig.objects.filter(id=new_llm_config_id).first()
+        configs_with_models = LLMConfig.objects.select_related("model__llm_provider")
+        agent_definition.llm_config = configs_with_models.filter(id=new_llm_config_id).first()
         agent_definition.fcm_llm_config = LLMConfig.objects.filter(id=new_fcm_llm_config_id).first()
-        agent_definition.fallback_llm_config = LLMConfig.objects.filter(
+        agent_definition.fallback_llm_config = configs_with_models.filter(
             id=new_fallback_llm_config_id
         ).first()
+        # The configs resolved here may run other models than in the source organization.
+        if not prompt_caching_available(
+            agent_definition.llm_config, agent_definition.fallback_llm_config
+        ):
+            agent_definition.prompt_caching_enabled = False
         agent_definition.save()
 
     def _assign_default_surfaces(

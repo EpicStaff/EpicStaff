@@ -55,7 +55,7 @@ const AGENT: AgentDefinition = {
     max_iter: 20,
     max_rpm: 10,
     max_execution_time: 60,
-    cache: true,
+    prompt_caching_enabled: true,
     max_retry_limit: 2,
     default_temperature: 0.7,
     max_tool_calls: 15,

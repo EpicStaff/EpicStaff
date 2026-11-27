@@ -1,3 +1,4 @@
+import { Dialog } from '@angular/cdk/dialog';
 import { OverlayContainer } from '@angular/cdk/overlay';
 import { provideHttpClient } from '@angular/common/http';
 import { provideHttpClientTesting } from '@angular/common/http/testing';
@@ -9,14 +10,19 @@ import { By } from '@angular/platform-browser';
 import { AppSvgIconComponent, HelpTooltipComponent, LlmModelSelectorComponent } from '@shared/components';
 import { EnterBlurDirective, HasPermissionDirective } from '@shared/directives';
 import { FullLLMConfig, FullLLMConfigService, FullRealtimeConfigService } from '@shared/services';
-import { of } from 'rxjs';
+import { Observable, of, Subject, throwError } from 'rxjs';
 
 import { tourAnchorSelector } from '../../../../../../core/guided-tour';
 import { PermissionsService } from '../../../../../../services/auth/permissions.service';
 import { ToastService } from '../../../../../../services/notifications';
 import { CREATE_AGENT_TOUR_ANCHORS } from '../../../../../create-agent-tour/create-agent-tour-anchors';
 import { AgentDefinition } from '../../../../models/agent-definition.model';
+import { RealtimeAgentDefinition } from '../../../../models/realtime-agent-definition.model';
 import { RealtimeAgentDefinitionsApiService } from '../../../../services/realtime-agent-definitions-api.service';
+import {
+    AgentAdditionalSettingsData,
+    AgentAdditionalSettingsResult,
+} from './agent-additional-settings-dialog/agent-additional-settings-dialog.component';
 import { AgentDetailComponent, AgentSavePayload } from './agent-detail.component';
 
 function llmConfig(id: number, modelName: string): FullLLMConfig {
@@ -43,7 +49,7 @@ const AGENT: AgentDefinition = {
     max_iter: 20,
     max_rpm: 10,
     max_execution_time: 60,
-    cache: true,
+    prompt_caching_enabled: true,
     max_retry_limit: 2,
     default_temperature: 0.7,
     max_tool_calls: 15,
@@ -351,11 +357,20 @@ class LlmModelSelectorStubComponent implements ControlValueAccessor {
     readonly excludedConfigId = input<number | null>(null);
     readonly readonly = input(false);
 
+    private onChange: (configId: number | null) => void = () => {};
+
     writeValue(): void {}
 
-    registerOnChange(): void {}
+    registerOnChange(onChange: (configId: number | null) => void): void {
+        this.onChange = onChange;
+    }
 
     registerOnTouched(): void {}
+
+    /** What picking a config in the dropdown hands to the form. */
+    pick(configId: number | null): void {
+        this.onChange(configId);
+    }
 }
 
 describe('AgentDetailComponent Create Agent tour anchors', () => {
@@ -417,5 +432,191 @@ describe('AgentDetailComponent Create Agent tour anchors', () => {
         expect(host.querySelector(tourAnchorSelector(CREATE_AGENT_TOUR_ANCHORS.surfaces))?.textContent).toContain(
             'Surfaces'
         );
+    });
+});
+
+describe('AgentDetailComponent prompt caching settings', () => {
+    /** Configs 1 and 2 run Claude, config 3 does not. */
+    const PROMPT_CACHE_CONFIGS = [
+        { id: 1, needs_prompt_cache_markers: true },
+        { id: 2, needs_prompt_cache_markers: true },
+        { id: 3, needs_prompt_cache_markers: false },
+        { id: 4, needs_prompt_cache_markers: false },
+    ] as FullLLMConfig[];
+
+    const NO_VOICE: RealtimeAgentDefinition = {
+        agent_definition: AGENT.id,
+        openai_config: null,
+        elevenlabs_config: null,
+        gemini_config: null,
+        voice: '',
+        wake_word: null,
+        stop_prompt: null,
+        language: null,
+        voice_recognition_prompt: null,
+    };
+
+    /** What the user saved in the dialog: everything as stored, prompt caching switched off. */
+    const DIALOG_RESULT: AgentAdditionalSettingsResult = {
+        fcm_llm_config: null,
+        openai_config: null,
+        elevenlabs_config: null,
+        gemini_config: null,
+        voice: '',
+        max_iter: AGENT.max_iter,
+        max_rpm: AGENT.max_rpm,
+        max_execution_time: AGENT.max_execution_time,
+        max_retry_limit: AGENT.max_retry_limit,
+        prompt_caching_enabled: false,
+        max_tool_calls: AGENT.max_tool_calls,
+        tool_timeout: AGENT.tool_timeout,
+        max_consecutive_failures: AGENT.max_consecutive_failures,
+        schema_max_retries: AGENT.schema_max_retries,
+    };
+
+    /** Shows the agent; the configs load only when Additional Settings asks for them, as with Basics collapsed. */
+    function renderAgent(
+        agent: AgentDefinition,
+        configs: Observable<FullLLMConfig[]> = of(PROMPT_CACHE_CONFIGS),
+        realtimeApi: Partial<RealtimeAgentDefinitionsApiService> = { getByAgentId: () => of(NO_VOICE) }
+    ): {
+        fixture: ComponentFixture<AgentDetailComponent>;
+        opened: AgentAdditionalSettingsData[];
+        saved: AgentSavePayload[];
+    } {
+        const opened: AgentAdditionalSettingsData[] = [];
+        TestBed.configureTestingModule({
+            providers: [
+                {
+                    provide: FullLLMConfigService,
+                    useValue: { fullLLMConfigs: signal([]), getFullLLMConfigs: () => configs },
+                },
+                { provide: PermissionsService, useValue: { can: () => true, canAny: () => true } },
+                { provide: ToastService, useValue: {} },
+                { provide: RealtimeAgentDefinitionsApiService, useValue: realtimeApi },
+                {
+                    provide: Dialog,
+                    useValue: {
+                        open: (_component: unknown, config: { data: AgentAdditionalSettingsData }) => {
+                            opened.push(config.data);
+                            return { closed: of(DIALOG_RESULT) };
+                        },
+                    },
+                },
+            ],
+        });
+        TestBed.overrideComponent(AgentDetailComponent, {
+            set: {
+                imports: [
+                    ReactiveFormsModule,
+                    EnterBlurDirective,
+                    HasPermissionDirective,
+                    LlmModelSelectorStubComponent,
+                ],
+                schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            },
+        });
+        const fixture = TestBed.createComponent(AgentDetailComponent);
+        fixture.componentRef.setInput('agent', agent);
+        fixture.detectChanges();
+        const saved: AgentSavePayload[] = [];
+        fixture.componentInstance.save.subscribe((payload) => saved.push(payload));
+        return { fixture, opened, saved };
+    }
+
+    function clickAdditionalSettings(fixture: ComponentFixture<AgentDetailComponent>): void {
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('[aria-label="Additional Settings"]')!
+            .click();
+    }
+
+    function openSettings(
+        agent: AgentDefinition,
+        configs?: Observable<FullLLMConfig[]>
+    ): { opened: AgentAdditionalSettingsData[]; saved: AgentSavePayload[] } {
+        const { fixture, opened, saved } = renderAgent(agent, configs);
+        clickAdditionalSettings(fixture);
+        return { opened, saved };
+    }
+
+    /** Picks a config in the primary selector without saving the agent. */
+    function pickPrimary(fixture: ComponentFixture<AgentDetailComponent>, configId: number): void {
+        fixture.debugElement
+            .queryAll(By.directive(LlmModelSelectorStubComponent))
+            [PRIMARY].componentInstance.pick(configId);
+        fixture.detectChanges();
+    }
+
+    it.each([
+        { case: 'a Claude primary', llm_config: 1, fallback_llm_config: 3, available: true },
+        { case: 'a Claude fallback only', llm_config: 3, fallback_llm_config: 2, available: true },
+        { case: 'no Claude config', llm_config: 3, fallback_llm_config: 4, available: false },
+        { case: 'no config picked', llm_config: null, fallback_llm_config: null, available: false },
+    ])('offers prompt caching for $case: $available', ({ llm_config, fallback_llm_config, available }) => {
+        const { opened } = openSettings({ ...AGENT, llm_config, fallback_llm_config });
+
+        expect(opened).toHaveLength(1);
+        expect(opened[0].promptCachingAvailable).toBe(available);
+    });
+
+    it('hands the stored setting to the dialog and saves what the dialog returns, under its new name only', () => {
+        const { opened, saved } = openSettings({ ...AGENT, prompt_caching_enabled: true });
+
+        expect(opened[0].prompt_caching_enabled).toBe(true);
+        expect(saved).toHaveLength(1);
+        expect(saved[0].prompt_caching_enabled).toBe(false);
+        expect(saved[0]).not.toHaveProperty('cache');
+    });
+
+    it('saves the agent without touching voice settings when the agent has none and no provider is picked', () => {
+        const partialUpdate = vi.fn();
+        const create = vi.fn();
+        const { fixture, saved } = renderAgent(AGENT, of(PROMPT_CACHE_CONFIGS), {
+            getByAgentId: () => of(null),
+            partialUpdate,
+            create,
+        });
+
+        clickAdditionalSettings(fixture);
+
+        expect(partialUpdate).not.toHaveBeenCalled();
+        expect(create).not.toHaveBeenCalled();
+        expect(saved).toHaveLength(1);
+    });
+
+    it('still opens the settings, without prompt caching, when the configs fail to load', () => {
+        const { opened } = openSettings(
+            AGENT,
+            throwError(() => new Error('configs unavailable'))
+        );
+
+        expect(opened).toHaveLength(1);
+        expect(opened[0].promptCachingAvailable).toBe(false);
+    });
+
+    it.each([
+        { case: 'a Claude primary picked over a saved other one', saved: 3, picked: 1, available: true },
+        { case: 'another primary picked over a saved Claude one', saved: 1, picked: 4, available: false },
+    ])('offers prompt caching by the unsaved form for $case: $available', ({ saved, picked, available }) => {
+        const { fixture, opened } = renderAgent({ ...AGENT, llm_config: saved, fallback_llm_config: 3 });
+
+        pickPrimary(fixture, picked);
+        clickAdditionalSettings(fixture);
+
+        expect(opened).toHaveLength(1);
+        expect(opened[0].promptCachingAvailable).toBe(available);
+    });
+
+    it('waits for the configs before opening the settings', () => {
+        const configs = new Subject<FullLLMConfig[]>();
+        const { opened } = openSettings({ ...AGENT, llm_config: 1, fallback_llm_config: 3 }, configs);
+
+        expect(opened).toEqual([]);
+
+        configs.next(PROMPT_CACHE_CONFIGS);
+        configs.complete();
+
+        expect(opened).toHaveLength(1);
+        expect(opened[0].promptCachingAvailable).toBe(true);
     });
 });

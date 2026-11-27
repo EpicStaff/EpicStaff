@@ -13,6 +13,7 @@ from agents.models.agent_models import (
     SurfacePlace,
 )
 from agents.models.surface_models import Surface
+from agents.services.prompt_caching import prompt_caching_available
 from agents.services.surface_service import AgentDefinitionSurfaceService
 from agents.validators.surface_validator import SurfaceValidator
 
@@ -129,7 +130,7 @@ class AgentDefinitionReadSerializer(LastEditFieldsSerializerMixin, serializers.M
             "max_iter",
             "max_rpm",
             "max_execution_time",
-            "cache",
+            "prompt_caching_enabled",
             "max_retry_limit",
             "default_temperature",
             "max_tool_calls",
@@ -151,13 +152,14 @@ DUPLICATE_NAME_MESSAGE = "An agent with this name already exists in the organiza
 class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.ModelSerializer):
     last_edit_state_serializer_class = AgentDefinitionReadSerializer
 
+    # The model and provider are read by the prompt caching rule in `validate`.
     llm_config = OrgScopedPrimaryKeyRelatedField(
-        queryset=LLMConfig.objects.all(),
+        queryset=LLMConfig.objects.select_related("model__llm_provider"),
         required=False,
         allow_null=True,
     )
     fallback_llm_config = OrgScopedPrimaryKeyRelatedField(
-        queryset=LLMConfig.objects.all(),
+        queryset=LLMConfig.objects.select_related("model__llm_provider"),
         required=False,
         allow_null=True,
     )
@@ -195,7 +197,7 @@ class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.
             "max_iter",
             "max_rpm",
             "max_execution_time",
-            "cache",
+            "prompt_caching_enabled",
             "max_retry_limit",
             "default_temperature",
             "max_tool_calls",
@@ -215,7 +217,12 @@ class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.
                 {"instructions": "This field is read-only. Send instruction_list instead."}
             )
 
-        self._validate_fallback_llm_config(attrs)
+        primary, fallback = self._effective_llm_configs(attrs)
+        self._validate_fallback_llm_config(primary, fallback)
+        # The form offers caching only for a model that takes markers, so a value it can
+        # no longer show is not kept: switching back to such a model leaves caching off.
+        if not prompt_caching_available(primary, fallback):
+            attrs["prompt_caching_enabled"] = False
 
         default_surfaces_data = attrs.get("default_surfaces")
 
@@ -227,12 +234,15 @@ class AgentDefinitionWriteSerializer(AuthorStampingSerializerMixin, serializers.
 
         return attrs
 
-    def _validate_fallback_llm_config(self, attrs):
+    def _effective_llm_configs(self, attrs):
         # A partial update sends only some fields: judge the saved pair after the write.
         primary = attrs.get("llm_config", self.instance.llm_config if self.instance else None)
         fallback = attrs.get(
             "fallback_llm_config", self.instance.fallback_llm_config if self.instance else None
         )
+        return primary, fallback
+
+    def _validate_fallback_llm_config(self, primary, fallback):
         if fallback is None:
             return
         # Deleting the primary config leaves (None, fallback) behind. Resending that stored

@@ -953,3 +953,50 @@ async def test_non_streamed_usage_cost_uses_the_config_prices():
 
     usage_chunks = [c for c in result if c.usage is not None]
     assert usage_chunks[0].usage["total_cost_usd"] == pytest.approx(100 * 0.001 + 20 * 0.002)
+
+
+def _claude_cache_usage_response() -> SimpleNamespace:
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="ok", tool_calls=None), finish_reason="stop")],
+        usage=_anthropic_usage(plain=100, cache_read=2000, write_5m=3000, write_1h=0),
+    )
+
+
+async def _non_streamed_usage(model_config: dict) -> dict:
+    router = MagicMock()
+    router.model_list = [{"model_name": "synth-model-001"}]
+    router.acompletion = AsyncMock(return_value=_claude_cache_usage_response())
+    client = LiteLLMClient(retry=RetryPolicy(max_retries=0), pool=make_pool_with_router(router))
+
+    result = [chunk async for chunk in client.chat(MESSAGES, [], model_config, stream=False)]
+
+    (usage_chunk,) = [c for c in result if c.usage is not None]
+    return usage_chunk.usage
+
+
+async def test_config_prices_bill_claude_cache_reads_and_writes_at_the_input_price():
+    """Hard-coded dollars: 5100 prompt tokens (2000 cache-read and 3000 cache-write among
+    them) at $3/M and 50 output tokens at $15/M; the cache discount is not applied."""
+    usage = await _non_streamed_usage(
+        {
+            "model": "anthropic/claude-sonnet-5-5",
+            "connection": {"api_key": "sk-test"},
+            "input_cost_per_token": 3e-06,
+            "output_cost_per_token": 1.5e-05,
+        }
+    )
+
+    assert usage["total_cost_usd"] == pytest.approx(0.01605)
+    assert usage["cached_prompt_tokens"] == 2000
+
+
+async def test_price_map_bills_claude_sonnet_5_5_cache_reads_and_writes_at_their_own_rates():
+    """Hard-coded dollars: 100 input at $2/M, 2000 cache-read at $0.10/M, 3000 5m cache-write
+    at $2.50/M and 50 output at $10/M."""
+    usage = await _non_streamed_usage(
+        {"model": "anthropic/claude-sonnet-5-5", "connection": {"api_key": "sk-test"}}
+    )
+
+    assert usage["total_cost_usd"] == pytest.approx(0.0084)
+    assert usage["cached_prompt_tokens"] == 2000
+    assert usage["prompt_tokens"] == 5100

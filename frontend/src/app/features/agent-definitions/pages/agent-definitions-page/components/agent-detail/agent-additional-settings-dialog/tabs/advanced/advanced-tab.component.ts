@@ -11,7 +11,4 @@ import { ToggleSwitchComponent } from '@shared/components';
 })
 export class AdvancedTabComponent {
     form = input.required<FormGroup>();
-    cacheTooltip = input<string>(
-        'Enable caching to store and reuse previous responses for better performance and cost efficiency.'
-    );
 }

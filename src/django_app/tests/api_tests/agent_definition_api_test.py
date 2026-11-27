@@ -1,7 +1,10 @@
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from agents.models import AgentDefinition, Surface
+from ai_models.models import LLMConfig, LLMModel, Provider
 from tests.rbac_cross_org_fixtures import *  # noqa: F401,F403
 
 EXECUTION_FIELD_BOUNDS = [
@@ -134,7 +137,8 @@ class TestAgentDefinitionExecutionFieldBounds:
         assert not AgentDefinition.objects.exists()
 
     @pytest.mark.parametrize(
-        "field_name", [field_name for field_name, *_ in EXECUTION_FIELD_BOUNDS] + ["cache"]
+        "field_name",
+        [field_name for field_name, *_ in EXECUTION_FIELD_BOUNDS] + ["prompt_caching_enabled"],
     )
     def test_null_is_rejected(self, client, field_name):
         _assert_invalid(_create(client, **{field_name: None}), field_name)
@@ -146,7 +150,8 @@ class TestAgentDefinitionExecutionFieldBounds:
         assert response.status_code == 201, body
         for field_name, _minimum, _maximum, default in EXECUTION_FIELD_BOUNDS:
             assert body[field_name] == default
-        assert body["cache"] is False
+        assert body["prompt_caching_enabled"] is False
+        assert "cache" not in body
         assert body["default_temperature"] is None
 
     def test_patch_out_of_range_value_returns_400(self, client, acme):
@@ -172,6 +177,243 @@ class TestAgentDefinitionExecutionFieldBounds:
     @pytest.mark.parametrize("value", [-0.01, 2.01, "nan", "inf", "-inf"])
     def test_default_temperature_outside_bounds_is_rejected(self, client, value):
         _assert_invalid(_create(client, default_temperature=value), "default_temperature")
+
+
+def _llm_config(org, custom_name, provider_name, model_name):
+    model = None
+    if model_name is not None:
+        provider = Provider.objects.get_or_create(name=provider_name)[0] if provider_name else None
+        model = LLMModel.objects.get_or_create(name=model_name, llm_provider=provider)[0]
+    return LLMConfig.objects.create(custom_name=custom_name, model=model, org=org)
+
+
+@pytest.fixture
+def claude_config(acme):
+    return _llm_config(acme, "claude", "anthropic", "claude-sonnet-5-5")
+
+
+@pytest.fixture
+def gpt_config(acme):
+    return _llm_config(acme, "gpt", "openai", "gpt-4o")
+
+
+@pytest.fixture
+def second_gpt_config(acme):
+    return _llm_config(acme, "second-gpt", "openai", "gpt-4o-mini")
+
+
+def _patch(client, agent, **fields):
+    return client.patch(
+        reverse("agentdefinition-detail", args=[agent.id]), fields, format="json"
+    )
+
+
+def _assert_prompt_caching(response, agent_id, expected):
+    body = response.json()
+    assert response.status_code in (200, 201), body
+    assert body["prompt_caching_enabled"] is expected
+    assert AgentDefinition.objects.get(id=agent_id).prompt_caching_enabled is expected
+
+
+@pytest.mark.django_db
+class TestAgentDefinitionPromptCaching:
+    def test_patch_enables_prompt_caching(self, client, acme, claude_config):
+        agent = AgentDefinition.objects.create(org=acme, name="caching", llm_config=claude_config)
+
+        response = _patch(client, agent, prompt_caching_enabled=True)
+
+        _assert_prompt_caching(response, agent.id, True)
+
+    def test_create_with_removed_cache_field_ignores_it(self, client):
+        response = _create(client, cache=True)
+
+        body = response.json()
+        assert response.status_code == 201, body
+        assert body["prompt_caching_enabled"] is False
+        assert AgentDefinition.objects.get(id=body["id"]).prompt_caching_enabled is False
+
+    def test_patch_with_removed_cache_field_ignores_it(self, client, acme):
+        agent = AgentDefinition.objects.create(org=acme, name="legacy-client")
+
+        response = client.patch(
+            reverse("agentdefinition-detail", args=[agent.id]),
+            {"cache": True, "description": "changed"},
+            format="json",
+        )
+
+        assert response.status_code == 200, response.json()
+        agent.refresh_from_db()
+        assert agent.description == "changed"
+        assert agent.prompt_caching_enabled is False
+
+    def test_member_of_other_organization_cannot_enable_prompt_caching(
+        self, client_as, member_only, acme, beta
+    ):
+        foreign_agent = AgentDefinition.objects.create(org=beta, name="foreign")
+        member_client = client_as(member_only)
+        member_client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
+
+        response = member_client.patch(
+            reverse("agentdefinition-detail", args=[foreign_agent.id]),
+            {"prompt_caching_enabled": True},
+            format="json",
+        )
+
+        assert response.status_code == 404
+        foreign_agent.refresh_from_db()
+        assert foreign_agent.prompt_caching_enabled is False
+
+
+@pytest.mark.django_db
+class TestAgentDefinitionPromptCachingFollowsTheModels:
+    """Caching is stored only while the primary or the fallback config takes cache markers."""
+
+    @pytest.mark.parametrize(
+        "provider_name, model_name",
+        [
+            ("openai", "gpt-4o"),
+            # A model whose provider was deleted cannot run at all.
+            (None, "claude-sonnet-5-5"),
+            (None, None),
+        ],
+        ids=["openai-model", "model-without-provider", "config-without-model"],
+    )
+    def test_create_with_a_primary_taking_no_markers_saves_it_off(
+        self, client, acme, provider_name, model_name
+    ):
+        config = _llm_config(acme, "primary", provider_name, model_name)
+
+        response = _create(client, llm_config=config.id, prompt_caching_enabled=True)
+
+        _assert_prompt_caching(response, response.json()["id"], False)
+
+    def test_create_without_configs_saves_it_off(self, client):
+        response = _create(client, prompt_caching_enabled=True)
+
+        _assert_prompt_caching(response, response.json()["id"], False)
+
+    def test_create_with_a_claude_primary_keeps_it_on(self, client, claude_config):
+        response = _create(client, llm_config=claude_config.id, prompt_caching_enabled=True)
+
+        _assert_prompt_caching(response, response.json()["id"], True)
+
+    def test_create_with_a_claude_fallback_keeps_it_on(self, client, gpt_config, claude_config):
+        response = _create(
+            client,
+            llm_config=gpt_config.id,
+            fallback_llm_config=claude_config.id,
+            prompt_caching_enabled=True,
+        )
+
+        _assert_prompt_caching(response, response.json()["id"], True)
+
+    def test_patching_the_primary_to_another_model_turns_it_off(
+        self, client, acme, claude_config, gpt_config
+    ):
+        agent = AgentDefinition.objects.create(
+            org=acme, name="caching", llm_config=claude_config, prompt_caching_enabled=True
+        )
+
+        response = _patch(client, agent, llm_config=gpt_config.id)
+
+        _assert_prompt_caching(response, agent.id, False)
+
+    def test_put_with_another_primary_turns_it_off(self, client, acme, claude_config, gpt_config):
+        agent = AgentDefinition.objects.create(
+            org=acme, name="caching", llm_config=claude_config, prompt_caching_enabled=True
+        )
+
+        response = client.put(
+            reverse("agentdefinition-detail", args=[agent.id]),
+            {"name": "caching", "llm_config": gpt_config.id, "prompt_caching_enabled": True},
+            format="json",
+        )
+
+        _assert_prompt_caching(response, agent.id, False)
+
+    def test_patching_the_primary_keeps_it_on_while_the_fallback_is_claude(
+        self, client, acme, claude_config, gpt_config, second_gpt_config
+    ):
+        agent = AgentDefinition.objects.create(
+            org=acme,
+            name="caching",
+            llm_config=gpt_config,
+            fallback_llm_config=claude_config,
+            prompt_caching_enabled=True,
+        )
+
+        response = _patch(client, agent, llm_config=second_gpt_config.id)
+
+        _assert_prompt_caching(response, agent.id, True)
+
+    def test_enabling_it_on_an_agent_without_claude_configs_keeps_it_off(
+        self, client, acme, gpt_config, second_gpt_config
+    ):
+        agent = AgentDefinition.objects.create(
+            org=acme, name="caching", llm_config=gpt_config, fallback_llm_config=second_gpt_config
+        )
+
+        response = _patch(client, agent, prompt_caching_enabled=True)
+
+        _assert_prompt_caching(response, agent.id, False)
+
+    def test_switching_back_to_claude_does_not_turn_it_on_again(
+        self, client, acme, claude_config, gpt_config
+    ):
+        agent = AgentDefinition.objects.create(
+            org=acme, name="caching", llm_config=claude_config, prompt_caching_enabled=True
+        )
+        _patch(client, agent, llm_config=gpt_config.id)
+
+        response = _patch(client, agent, llm_config=claude_config.id)
+
+        _assert_prompt_caching(response, agent.id, False)
+
+    def test_claude_config_of_another_organization_is_rejected(
+        self, client, acme, beta, gpt_config
+    ):
+        foreign_config = _llm_config(beta, "foreign-claude", "anthropic", "claude-sonnet-5-5")
+        agent = AgentDefinition.objects.create(org=acme, name="caching", llm_config=gpt_config)
+
+        response = _patch(
+            client, agent, llm_config=foreign_config.id, prompt_caching_enabled=True
+        )
+
+        _assert_invalid(response, "llm_config")
+        agent.refresh_from_db()
+        assert agent.llm_config_id == gpt_config.id
+        assert agent.prompt_caching_enabled is False
+
+    @pytest.mark.parametrize("configs_sent", [False, True], ids=["stored-configs", "sent-configs"])
+    def test_the_rule_adds_no_query_per_config(self, client, acme, claude_config, configs_sent):
+        # Configs without a model have nothing to load, so a lazy load of the Claude
+        # configs' model or provider would show up as extra queries.
+        claude_fallback = _llm_config(acme, "claude-fallback", "anthropic", "claude-sonnet-5-5")
+        modelless_primary = _llm_config(acme, "modelless-primary", None, None)
+        modelless_fallback = _llm_config(acme, "modelless-fallback", None, None)
+
+        def patch_query_count(name, primary, fallback):
+            if configs_sent:
+                agent = AgentDefinition.objects.create(org=acme, name=name)
+                fields = {"llm_config": primary.id, "fallback_llm_config": fallback.id}
+            else:
+                agent = AgentDefinition.objects.create(
+                    org=acme, name=name, llm_config=primary, fallback_llm_config=fallback
+                )
+                fields = {}
+            # A changed description makes both requests record the edit: without it only
+            # the Claude agent, whose switch stays on, would change and pay for that record.
+            fields["description"] = f"{name} edited"
+            with CaptureQueriesContext(connection) as queries:
+                response = _patch(client, agent, prompt_caching_enabled=True, **fields)
+            assert response.status_code == 200, response.json()
+            return len(queries)
+
+        # The first request warms caches (content types) that the measured ones share.
+        patch_query_count("warm-up", modelless_primary, modelless_fallback)
+        assert patch_query_count("claude", claude_config, claude_fallback) == patch_query_count(
+            "modelless", modelless_primary, modelless_fallback
+        )
 
 
 @pytest.mark.django_db

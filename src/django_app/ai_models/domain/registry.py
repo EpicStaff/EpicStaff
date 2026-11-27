@@ -4,13 +4,22 @@ from collections.abc import Collection, Iterable, Mapping
 from pathlib import Path
 
 import yaml
+from src.shared.models.ai_providers import REASONING_EFFORT_VALUES
 
-from ai_models.domain.specs import ConnectionFieldSpec, ModelKind, ParameterSpec, ProviderSpec
+from ai_models.domain.specs import (
+    NO_REASONING_EFFORT,
+    ConnectionFieldSpec,
+    DefaultThinkingSpec,
+    ModelKind,
+    ParameterSpec,
+    ProviderSpec,
+)
 from ai_models.domain.value_types import ValueTypeRegistry
 
 _TOP_LEVEL_KEYS = frozenset(
     {"parameters", "hidden", "providers", "kind_parameters", "recommended_models"}
 )
+_TOP_LEVEL_OPTIONAL = {"default_thinking": {}}
 _CONTROLS = frozenset(
     {"slider", "percent", "stepper", "toggle", "select", "chips", "list", "json", "text"}
 )
@@ -45,6 +54,11 @@ _CONNECTION_FIELD_OPTIONAL = {
     "endpoint": False,
 }
 
+_DEFAULT_THINKING_REQUIRED = frozenset({"thinks_by_default"})
+_DEFAULT_THINKING_FIELDS = frozenset({"default_effort", "thinking_type_to_turn_off"})
+_THINKING_TYPES_TO_TURN_OFF = frozenset({"between_tools", "disabled"})
+_DEFAULT_EFFORTS = frozenset(REASONING_EFFORT_VALUES) - {NO_REASONING_EFFORT}
+
 
 class ParameterRegistry:
     """Read-only view of `parameter_registry.yaml`.
@@ -61,12 +75,14 @@ class ParameterRegistry:
         hidden_names: frozenset[str],
         kind_parameters: Mapping[ModelKind, Mapping[str, tuple[str, ...]]],
         recommended_models: Mapping[str, frozenset[str]],
+        default_thinking: Mapping[str, DefaultThinkingSpec | None],
     ) -> None:
         self._parameters = parameters
         self._providers = providers
         self.hidden_names = hidden_names
         self._kind_parameters = kind_parameters
         self._recommended_models = recommended_models
+        self._default_thinking = default_thinking
 
     @classmethod
     def load(cls, path: Path) -> "ParameterRegistry":
@@ -76,7 +92,9 @@ class ParameterRegistry:
             ValueError: The file has an unknown key, misses a required one, or names a
                 parameter, provider, kind, value type or control that does not exist.
         """
-        data = _with_defaults(yaml.safe_load(path.read_text()), _TOP_LEVEL_KEYS, {}, "registry")
+        data = _with_defaults(
+            yaml.safe_load(path.read_text()), _TOP_LEVEL_KEYS, _TOP_LEVEL_OPTIONAL, "registry"
+        )
         provider_names = frozenset(_mapping(data["providers"], "providers"))
         parameters = {
             name: _parameter(name, fields, provider_names)
@@ -100,6 +118,12 @@ class ParameterRegistry:
             recommended_models={
                 provider: frozenset(models) for provider, models in recommended_models.items()
             },
+            default_thinking={
+                base_name: _default_thinking(base_name, fields)
+                for base_name, fields in _mapping(
+                    data["default_thinking"], "default_thinking"
+                ).items()
+            },
         )
 
     def parameter(self, name: str) -> ParameterSpec | None:
@@ -120,6 +144,26 @@ class ParameterRegistry:
 
     def is_recommended(self, provider: str, model: str) -> bool:
         return model in self._recommended_models.get(provider, frozenset())
+
+    def thinking_base_names(self) -> frozenset[str]:
+        return frozenset(self._default_thinking)
+
+    def thinking_base_name(self, model_name: str) -> str | None:
+        """Return the longest `default_thinking` base name `model_name` is a variant of.
+
+        A variant holds the base name after a separator (or at its start) and ends there
+        or goes on with a suffix that is not a number: `us.anthropic.claude-x`,
+        `vertex_ai/claude-x@default` and `claude-x-fast` are variants of `claude-x`;
+        `claude-x-5` (a later version) and `claude-x-20260101` (a dated snapshot) are not,
+        so a new model is never classified as an older one. None: no entry classifies it.
+        """
+        matches = [base for base in self._default_thinking if _is_variant(model_name, base)]
+        return max(matches, key=len, default=None)
+
+    def default_thinking(self, model_name: str) -> DefaultThinkingSpec | None:
+        """Return how the model thinks by default; None when it does not or no entry says."""
+        base_name = self.thinking_base_name(model_name)
+        return self._default_thinking[base_name] if base_name else None
 
 
 def _mapping(value: object, where: str) -> dict:
@@ -245,3 +289,33 @@ def _kind_parameters(
             provider: tuple(names) for provider, names in by_provider.items()
         }
     return kind_parameters
+
+
+def _default_thinking(base_name: str, value: object) -> DefaultThinkingSpec | None:
+    where = f"default_thinking.{base_name}"
+    fields = _check_keys(value, _DEFAULT_THINKING_REQUIRED, _DEFAULT_THINKING_FIELDS, where)
+    if not isinstance(fields["thinks_by_default"], bool):
+        raise ValueError(f"{where}.thinks_by_default: must be true or false")  # noqa: TRY004
+    if not fields["thinks_by_default"]:
+        _check_keys(fields, _DEFAULT_THINKING_REQUIRED, (), where)
+        return None
+    _check_keys(fields, _DEFAULT_THINKING_REQUIRED | _DEFAULT_THINKING_FIELDS, (), where)
+    if fields["default_effort"] not in _DEFAULT_EFFORTS:
+        raise ValueError(f"{where}.default_effort: unknown effort: {fields['default_effort']}")
+    thinking_type = fields["thinking_type_to_turn_off"]
+    if thinking_type is not None and thinking_type not in _THINKING_TYPES_TO_TURN_OFF:
+        raise ValueError(f"{where}.thinking_type_to_turn_off: unknown type: {thinking_type}")
+    return DefaultThinkingSpec(
+        default_effort=fields["default_effort"], thinking_type_to_turn_off=thinking_type
+    )
+
+
+def _is_variant(model_name: str, base_name: str) -> bool:
+    start = model_name.find(base_name)
+    while start != -1:
+        before = model_name[:start]
+        suffix = model_name[start + len(base_name) :]
+        if not before[-1:].isalnum() and not suffix[:1].isalnum() and not suffix[1:2].isdigit():
+            return True
+        start = model_name.find(base_name, start + 1)
+    return False

@@ -54,12 +54,13 @@
             [voicesMap]="voicesMap()"
             (providerChange)="onProviderSelect($event)"
         />
-        <app-advanced-tab
-            class="tab-content"
-            [class.visible-tab]="activeTab() === TabId.ADVANCED"
-            [form]="form"
-            cacheTooltip="Not available yet — response caching is not supported by the runtime."
-        />
+        @if (promptCachingAvailable) {
+            <app-advanced-tab
+                class="tab-content"
+                [class.visible-tab]="activeTab() === TabId.ADVANCED"
+                [form]="form"
+            />
+        }
     </div>
 
     <div class="actions">

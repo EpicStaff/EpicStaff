@@ -67,6 +67,7 @@ const LLM_CONFIG: GetLlmConfigRequest = {
     output_cost_per_token: null,
     tags: [],
     created_at: '2026-03-12T13:28:23Z',
+    needs_prompt_cache_markers: false,
     created_by: LLM_OWNER,
     last_edited_by: null,
     last_edited_at: null,

@@ -35,7 +35,13 @@ from app.loop.stop_policy import StopPolicy
 from app.secret_decryption import decrypt_header_markers
 from app.tools.registry import ToolRegistry
 from app.usage import TokenUsageAccumulator
-from shared.litellm_model_names import litellm_call_model, litellm_routed_provider
+from shared.litellm_model_names import (
+    litellm_call_model,
+    litellm_generation_kwargs,
+    litellm_model_capability,
+    litellm_needs_cache_markers,
+    litellm_routed_provider,
+)
 from shared.models.agent_service import LoopResult, StopReason, ToolResult
 from shared.models.ai_providers import LLMConfigData, LLMData
 from shared.untrusted_content import wrap_untrusted_tool_result
@@ -139,9 +145,10 @@ def _build_model_config(context: AgentContext, cryptographer: AbstractCryptograp
     """
     llm_config = context.active_llm.config
     model = _model_str(context)
+    model_identity = litellm_call_model(context.active_llm.provider, llm_config.model)
     provider = litellm_routed_provider(model)
     config = {
-        **llm_config.to_litellm_kwargs(provider=provider),
+        **litellm_generation_kwargs(llm_config, model=model_identity),
         "model": model,
         # RouterPool puts these on the Router deployment; LiteLLMClient never sends them
         # as call kwargs. They hold the decrypted secrets.
@@ -161,8 +168,21 @@ def _build_model_config(context: AgentContext, cryptographer: AbstractCryptograp
     if provider in _STORE_OPT_OUT_PROVIDERS:
         config["store"] = False
 
+    if context.agent.prompt_caching_enabled and litellm_needs_cache_markers(model_identity):
+        # Index 0, not role "system": the S3 manifest is a second system message.
+        config["cache_control_injection_points"] = [
+            {"location": "message", "index": 0},
+            {"location": "message", "index": -1},
+        ]
+
     if context.tool_choice is not None:
         config["tool_choice"] = context.tool_choice
+        # litellm rejects a forced choice (a named tool or "required") for models that refuse one.
+        if (
+            context.tool_choice not in ("auto", "none")
+            and litellm_model_capability(model_identity, "supports_forced_tool_use") is False
+        ):
+            config["tool_choice"] = "auto"
 
     return config
 

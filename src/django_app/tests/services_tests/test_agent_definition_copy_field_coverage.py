@@ -32,7 +32,7 @@ AGENT_FIELDS_COPIED_FROM_SOURCE = {
     "max_iter",
     "max_rpm",
     "max_execution_time",
-    "cache",
+    "prompt_caching_enabled",
     "max_retry_limit",
     "default_temperature",
     "max_tool_calls",

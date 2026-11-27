@@ -4,7 +4,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, OnInit, signal, viewChild } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import { DEFAULT_STEP_SIZE, TOKEN_PRICE_HINT } from '@shared/constants';
+import { DEFAULT_STEP_SIZE, INPUT_TOKEN_PRICE_HINT, TOKEN_PRICE_HINT } from '@shared/constants';
 import { EnterSubmitDirective } from '@shared/directives';
 import { pricePairValidator } from '@shared/form-validators';
 import {
@@ -219,6 +219,7 @@ export class ModelConfigDialogComponent implements OnInit {
     protected readonly optionLabels = OPTION_LABELS;
     protected readonly connectionPlaceholders = CONNECTION_PLACEHOLDERS;
     protected readonly TOKEN_PRICE_HINT = TOKEN_PRICE_HINT;
+    protected readonly INPUT_TOKEN_PRICE_HINT = INPUT_TOKEN_PRICE_HINT;
     protected readonly DEFAULT_STEP_SIZE = DEFAULT_STEP_SIZE;
 
     private readonly dialogRef = inject(DialogRef);

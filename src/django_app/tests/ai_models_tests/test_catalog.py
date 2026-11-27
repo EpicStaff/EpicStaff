@@ -2,7 +2,7 @@ import json
 
 from ai_models.domain.catalog import Catalog
 
-from tests.ai_models_tests.factories import make_catalog
+from tests.ai_models_tests.factories import make_catalog, make_thinking_catalog
 
 
 def test_catalog_round_trips_through_json():
@@ -25,3 +25,16 @@ def test_each_parameter_spec_is_stored_once():
     assert llm_model["parameter_names"] == ["reasoning_effort", "temperature"]
     assert data["parameters"]["temperature"]["default"] == 0.7
     assert make_catalog().to_json().count('"help_text"') == len(data["parameters"])
+
+
+def test_default_thinking_round_trips_and_is_written_only_where_set():
+    catalog = make_thinking_catalog()
+    anthropic_models = json.loads(catalog.to_json())["models"]["llm"]["anthropic"]
+
+    assert Catalog.from_json(catalog.to_json()) == catalog
+    assert anthropic_models["claude-disabled"]["default_thinking"] == {
+        "default_effort": "medium",
+        "thinking_type_to_turn_off": "disabled",
+        "provider_accepts_thinking": True,
+    }
+    assert "default_thinking" not in anthropic_models["claude-asks-to-think"]

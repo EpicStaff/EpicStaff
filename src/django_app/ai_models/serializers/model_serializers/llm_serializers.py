@@ -26,7 +26,10 @@ from ai_models.serializers.utils.catalog_config_fields import (
     CatalogConfigFieldsMixin,
     reject_removed_fields,
 )
-from ai_models.utils.litellm_model_info import model_reasoning_support
+from ai_models.utils.litellm_model_info import (
+    model_needs_prompt_cache_markers,
+    model_reasoning_support,
+)
 
 
 class LLMConfigSerializer(
@@ -58,6 +61,7 @@ class LLMConfigSerializer(
             )
         ]
     )
+    needs_prompt_cache_markers = serializers.SerializerMethodField()
 
     class Meta:
         model = LLMConfig
@@ -75,6 +79,9 @@ class LLMConfigSerializer(
             ),
         )
         return attrs
+
+    def get_needs_prompt_cache_markers(self, config: LLMConfig) -> bool:
+        return model_needs_prompt_cache_markers(config.model)
 
 
 class LLMModelSerializer(

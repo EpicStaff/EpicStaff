@@ -38,13 +38,19 @@ class ToolRegistry:
     forwarded to the LLM and ``execute`` to run a named tool after the LLM
     requests it.
 
-    Invariant: ``execute`` must only be called with names that were
-    previously passed to ``register``; unknown names raise ``KeyError``.
+    Unknown names raise ``KeyError``, unless ``unknown_tool_executor`` is given:
+    it then receives ``(name, args)`` for every unregistered name and may itself
+    raise ``KeyError`` for names it does not handle. It is never advertised via
+    ``tool_specs``.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        unknown_tool_executor: Callable[[str, dict], Awaitable[ToolResult]] | None = None,
+    ) -> None:
         self._specs: dict[str, ToolSpec] = {}
         self._executors: dict[str, Callable[[dict], Awaitable[ToolResult]]] = {}
+        self._unknown_tool_executor = unknown_tool_executor
 
     def register(
         self,
@@ -66,11 +72,19 @@ class ToolRegistry:
         """Dispatch a tool call by name and return its result.
 
         Args:
-            name: must match a previously registered ``ToolSpec.name``.
+            name: a registered ``ToolSpec.name``, or any name when an
+                ``unknown_tool_executor`` handles it.
             args: parsed JSON arguments from the LLM tool-call request.
 
         Raises:
-            KeyError: if ``name`` has not been registered.
+            KeyError: if ``name`` is unregistered and no ``unknown_tool_executor`` handles it.
         """
-        executor = self._executors[name]
+        executor = self._executors.get(name)
+
+        if executor is None:
+            if self._unknown_tool_executor is None:
+                raise KeyError(name)
+
+            return await self._unknown_tool_executor(name, args)
+
         return await executor(args)
