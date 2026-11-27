@@ -2,7 +2,8 @@ name: Licence scan
 
 # Daily, on main: regenerates THIRD-PARTY-NOTICES.md from the real install
 # trees (nothing is committed) and checks every shipped package's licence
-# against scripts/license-policy.json. Pull requests get the cheap version of
+# against scripts/license-policy.json, and the OS packages in the published
+# images against scripts/os-license-policy.json. Pull requests get the cheap version of
 # the same check in pr.yml; this run is what catches a hand-edited notices
 # file and a policy that was tightened after a package landed.
 #
@@ -92,12 +93,66 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # The OS packages inside the images users run: base image plus whatever the
+  # Dockerfiles install with apt/apk, checked against scripts/os-license-policy.json.
+  # Catches a policy tightened after an image was built; pull requests check
+  # each image they build in compose-build.yml.
+  images:
+    name: Shipped image OS package licences
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          # Same scanner version as dependency-scan.yml.
+          version: v0.74.0
+
+      # :latest is what every push to main publishes (build-and-push.yml).
+      # Third-party images in the compose file (redis, opensearch, ...) are not
+      # ours to ship, so only ghcr.io/epicstaff images are checked.
+      - name: Scan the published images
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          images=$(grep -ohE '^\s*image:\s*ghcr\.io/epicstaff/[a-z0-9_-]+' src/docker-compose.yaml | awk '{print $2}' | sort -u)
+          [ -n "$images" ] || { echo "::error::No ghcr.io/epicstaff images found in src/docker-compose.yaml"; exit 1; }
+          mkdir image-reports
+          for image in $images; do
+            trivy image --quiet --scanners license --pkg-types os --format json \
+              --output "image-reports/$(basename "$image").json" "$image:latest"
+          done
+
+      - name: Check licences
+        run: |
+          set -o pipefail
+          node scripts/check-image-licenses.mjs image-reports/*.json | tee image-license-report.txt
+
+      - name: Keep the report for the alert
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: image-license-report
+          path: image-license-report.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
   # A separate job on a fresh runner: the scan above installs and runs every
   # shipped Python package, and the mailbox password must never share a runner
   # with that code. Only this job sees the secrets; the license-alerts
   # environment limits them to main.
   alert:
-    needs: scan
+    needs: [scan, images]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     environment: license-alerts
@@ -126,18 +181,27 @@ jobs:
           name: license-report
           path: report
 
+      - name: Fetch the image report
+        if: needs.images.result != 'success'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        continue-on-error: true
+        with:
+          name: image-license-report
+          path: report
+
       # Recipients are a secret, not a variable: the runner prints a step's env
       # in the public log and masks only secrets.
       - name: Check the mailbox login and email any problem
         run: |
-          cat report/license-report.txt report/frontend-notices.log > alert.txt 2>/dev/null || true
+          cat report/license-report.txt report/frontend-notices.log report/image-license-report.txt > alert.txt 2>/dev/null || true
           python .github/scripts/send_license_alert.py
         env:
           LICENSE_ALERT_SMTP_HOST: ${{ secrets.LICENSE_ALERT_SMTP_HOST }}
           LICENSE_ALERT_SMTP_USER: ${{ secrets.LICENSE_ALERT_SMTP_USER }}
           LICENSE_ALERT_SMTP_PASSWORD: ${{ secrets.LICENSE_ALERT_SMTP_PASSWORD }}
           LICENSE_ALERT_RECIPIENTS: ${{ secrets.LICENSE_ALERT_RECIPIENTS }}
-          SCAN_RESULT: ${{ needs.scan.result }}
+          # One result for both scans: anything but success sends the alert.
+          SCAN_RESULT: ${{ (needs.scan.result == 'success' && needs.images.result == 'success') && 'success' || 'failure' }}
           REPORT_PATH: alert.txt
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
