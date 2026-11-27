@@ -92,7 +92,7 @@ describe('LlmModelSelectorComponent Clear', () => {
         fixture.detectChanges();
 
         openDropdown(fixture);
-        overlay.querySelector<HTMLElement>('.deselect-option')!.click();
+        overlay.querySelector<HTMLElement>('.dropdown-footer button')!.click();
 
         expect(onChange).toHaveBeenCalledWith(null);
         expect(emitted).toEqual([undefined]);
