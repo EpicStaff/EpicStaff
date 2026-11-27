@@ -1,0 +1,23 @@
+<nav
+    class="side-section-nav"
+    [attr.aria-label]="ariaLabel()"
+>
+    @for (item of items(); track item.route) {
+        <a
+            class="row"
+            [routerLink]="item.route"
+            routerLinkActive="row--selected"
+            ariaCurrentWhenActive="page"
+            [matTooltip]="item.label"
+            matTooltipPosition="right"
+            appTooltipOnOverflow=".row__label"
+        >
+            <i
+                class="row__icon ti"
+                [class]="item.icon"
+                aria-hidden="true"
+            ></i>
+            <span class="row__label">{{ item.label }}</span>
+        </a>
+    }
+</nav>

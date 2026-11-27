@@ -18,9 +18,13 @@ import { ControlValueAccessor, FormsModule, NG_VALUE_ACCESSOR } from '@angular/f
 import { MatTooltip } from '@angular/material/tooltip';
 
 import { nextListIndex } from '../../utils/list-navigation.util';
+import { browserTimeZone, IANA_ALIASES, normalizeIana } from '../../utils/timezone.util';
 
 interface TimezoneOption {
-    iana: string;
+    /** What picking the option writes to the control: an IANA name, or `null` for the browser's zone. */
+    value: string | null;
+    /** The option's main line in the list. */
+    label: string;
     offsetLabel: string;
     displayLabel: string;
     searchText: string;
@@ -43,14 +47,6 @@ function getUtcOffsetLabel(iana: string): string {
     } catch {
         return 'UTC+00:00';
     }
-}
-
-const IANA_ALIASES: Record<string, string> = {
-    'Europe/Kiev': 'Europe/Kyiv',
-};
-
-export function normalizeIana(iana: string): string {
-    return IANA_ALIASES[iana] ?? iana;
 }
 
 function buildTimezoneOptions(): TimezoneOption[] {
@@ -86,13 +82,24 @@ function buildTimezoneOptions(): TimezoneOption[] {
             .map(([alias]) => alias.toLowerCase());
         const searchText = [`${iana} ${offsetLabel}`.toLowerCase(), ...aliases].join(' ');
 
-        options.push({ iana, offsetLabel, displayLabel: `${iana} · ${offsetLabel}`, searchText });
+        options.push({ value: iana, label: iana, offsetLabel, displayLabel: `${iana} · ${offsetLabel}`, searchText });
     }
 
     return options;
 }
 
 const ALL_TIMEZONE_OPTIONS: TimezoneOption[] = buildTimezoneOptions();
+
+// Stands for an empty value: no zone chosen here, so `zone`, kept elsewhere, is used.
+function buildEmptyValueOption(label: string, zone: string): TimezoneOption {
+    return {
+        value: null,
+        label,
+        offsetLabel: getUtcOffsetLabel(zone),
+        displayLabel: label,
+        searchText: label.toLowerCase(),
+    };
+}
 
 let nextSelectorId = 0;
 
@@ -107,6 +114,17 @@ let nextSelectorId = 0;
 export class TimezoneSelectorComponent implements ControlValueAccessor {
     /** Readonly mode: renders the current timezone as plain text (no dropdown). */
     readonly = input<boolean>(false);
+    /**
+     * Offers "Use browser timezone" as the first option. It writes `null` to the control, and a `null` value shows it
+     * as picked rather than as the placeholder. Off by default: a field that must hold a zone leaves it out.
+     */
+    readonly offerBrowserZone = input<boolean>(false);
+    /**
+     * Offers "Use my default (<zone>)" as the first option, for a field that falls back on a default zone kept
+     * elsewhere. Like the browser option it writes `null`, shows a `null` value as picked, and takes that option's
+     * place. Left out (`null`), the list is as `offerBrowserZone` makes it.
+     */
+    readonly offerDefaultZone = input<string | null>(null);
 
     open = signal(false);
     isDisabled = signal(false);
@@ -116,15 +134,27 @@ export class TimezoneSelectorComponent implements ControlValueAccessor {
     readonly activeIndex = signal(-1);
     protected readonly listId = `tz-selector-list-${nextSelectorId++}`;
 
-    readonly allOptions = ALL_TIMEZONE_OPTIONS;
+    /** The option that stands for an empty value, if the list offers one. */
+    private readonly emptyValueOption = computed<TimezoneOption | null>(() => {
+        const defaultZone = this.offerDefaultZone();
+        if (defaultZone) return buildEmptyValueOption(`Use my default (${defaultZone})`, defaultZone);
+        if (!this.offerBrowserZone()) return null;
+        const browserZone = browserTimeZone();
+        return buildEmptyValueOption(`Use browser timezone (${browserZone})`, browserZone);
+    });
+
+    readonly allOptions = computed(() => {
+        const emptyValueOption = this.emptyValueOption();
+        return emptyValueOption ? [emptyValueOption, ...ALL_TIMEZONE_OPTIONS] : ALL_TIMEZONE_OPTIONS;
+    });
 
     filteredOptions = computed(() => {
         const q = this.searchQuery().toLowerCase().trim();
-        if (!q) return this.allOptions;
-        return this.allOptions.filter((tz) => tz.searchText.includes(q));
+        if (!q) return this.allOptions();
+        return this.allOptions().filter((tz) => tz.searchText.includes(q));
     });
 
-    selectedOption = computed(() => this.allOptions.find((tz) => tz.iana === this.selectedValue()) ?? null);
+    selectedOption = computed(() => this.allOptions().find((tz) => tz.value === this.selectedValue()) ?? null);
 
     @ViewChild('triggerBtn') triggerBtn!: ElementRef<HTMLButtonElement>;
     @ViewChild('dropdownTemplate') dropdownTemplate!: TemplateRef<unknown>;
@@ -136,7 +166,7 @@ export class TimezoneSelectorComponent implements ControlValueAccessor {
     private readonly vcr = inject(ViewContainerRef);
     private readonly destroyRef = inject(DestroyRef);
 
-    private onChange: (value: string) => void = () => {};
+    private onChange: (value: string | null) => void = () => {};
     private onTouched: () => void = () => {};
 
     toggle(): void {
@@ -191,7 +221,7 @@ export class TimezoneSelectorComponent implements ControlValueAccessor {
         this.open.set(true);
         this.searchQuery.set('');
         // The list opens on the current timezone, so the arrows start from it.
-        this.activeIndex.set(this.filteredOptions().findIndex((tz) => tz.iana === this.selectedValue()));
+        this.activeIndex.set(this.filteredOptions().findIndex((tz) => tz.value === this.selectedValue()));
         setTimeout(() => {
             this.searchInput?.nativeElement?.focus();
             this.scrollToActive();
@@ -248,17 +278,17 @@ export class TimezoneSelectorComponent implements ControlValueAccessor {
 
     onSelect(tz: TimezoneOption): void {
         if (this.readonly()) return;
-        this.selectedValue.set(tz.iana);
-        this.onChange(tz.iana);
+        this.selectedValue.set(tz.value);
+        this.onChange(tz.value);
         this.onTouched();
         this.close();
     }
 
-    writeValue(value: string): void {
+    writeValue(value: string | null): void {
         this.selectedValue.set(value ?? null);
     }
 
-    registerOnChange(fn: (value: string) => void): void {
+    registerOnChange(fn: (value: string | null) => void): void {
         this.onChange = fn;
     }
 

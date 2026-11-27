@@ -1,0 +1,29 @@
+<app-settings-section
+    heading="Shortcuts"
+    description="Keys for the flow editor. Changes apply in every flow."
+>
+    <ng-container ngProjectAs="[settingsSectionActions]">
+        @if (editor.canResetToDefaults()) {
+            <app-button
+                type="outline-secondary"
+                (click)="editor.confirmReset()"
+                >Reset to defaults</app-button
+            >
+        }
+        <app-button
+            #addButton
+            type="primary"
+            leftIcon="plus"
+            (click)="editor.startAdding()"
+            >Add shortcut</app-button
+        >
+    </ng-container>
+
+    <app-shortcuts-editor
+        #editor
+        layout="page"
+        [flows]="flows()"
+        [currentFlowId]="null"
+        (focusReturned)="addButton.focus()"
+    />
+</app-settings-section>

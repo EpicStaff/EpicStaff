@@ -1,0 +1,49 @@
+@use 'settings-layout' as layout;
+
+:host {
+    display: block;
+    max-width: layout.$column-max-width;
+}
+
+// The title and description on the left; a section's own actions, if it projects any, on the right, centred against
+// them.
+.settings-section__header {
+    display: flex;
+    align-items: center;
+    gap: layout.$row-gap;
+    margin-bottom: 16px;
+}
+
+.settings-section__heading {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.settings-section__actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 12px;
+
+    // A section with no actions keeps the whole width for its title.
+    &:empty {
+        display: none;
+    }
+}
+
+// As tall as a menu row, with the text centred in it, so the title sits on the same line as the first menu row.
+.settings-section__title {
+    display: flex;
+    align-items: center;
+    min-height: layout.$menu-row-height;
+    margin: 0;
+    color: var(--color-text-primary);
+}
+
+.settings-section__description {
+    margin: 0;
+    color: var(--color-text-secondary);
+}

@@ -13,6 +13,7 @@ import { ToastService } from '../../../../services/notifications';
 import { ProfileApiKeysStorageService } from '../../services/profile-api-keys-storage.service';
 import { ProfileApiKeysTabComponent } from './api-keys-tab/profile-api-keys-tab.component';
 import { ProfilePageComponent } from './profile-page.component';
+import { SettingsTabComponent } from './settings-tab/settings-tab.component';
 
 // jsdom has no ResizeObserver; app-button's overflow directive only needs it to exist.
 class ResizeObserverStub {
@@ -127,7 +128,10 @@ describe('ProfilePageComponent with the API keys tab open', () => {
                     {
                         path: 'profile',
                         component: ProfilePageComponent,
-                        children: [{ path: 'api-keys', component: ProfileApiKeysTabComponent }],
+                        children: [
+                            { path: 'api-keys', component: ProfileApiKeysTabComponent },
+                            { path: 'settings', component: SettingsTabComponent },
+                        ],
                     },
                 ]),
                 { provide: Dialog, useValue: { open: openDialog } as unknown as Dialog },
@@ -184,6 +188,26 @@ describe('ProfilePageComponent with the API keys tab open', () => {
 
         expect(getMyApiKeys).toHaveBeenCalledTimes(2);
         expect(renderedStatuses(harness)).toEqual(['Revoked']);
+    });
+
+    it('shows a Settings tab that opens the settings with their section menu', async () => {
+        getMyApiKeys.mockReturnValueOnce(of([]));
+        const harness = await openApiKeysTab();
+        const element: HTMLElement = harness.fixture.nativeElement;
+        const settingsTab = Array.from(element.querySelectorAll<HTMLAnchorElement>('a.route-tab')).find(
+            (tab) => tab.textContent?.trim() === 'Settings'
+        )!;
+
+        settingsTab.click();
+        await harness.fixture.whenStable();
+        harness.detectChanges();
+
+        expect(texts(harness, 'a.route-tab.active')).toEqual(['Settings']);
+        expect(texts(harness, 'app-settings-tab app-side-section-nav a')).toEqual([
+            'General',
+            'Flow editor',
+            'Shortcuts',
+        ]);
     });
 
     it('shows the organization each key belongs to', async () => {

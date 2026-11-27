@@ -1,0 +1,42 @@
+@use 'settings-layout' as layout;
+
+:host {
+    @include layout.row;
+}
+
+// A hairline between rows; none above the first, so it does not compete with the section header.
+:host:not(:first-child) {
+    @include layout.row-divider;
+}
+
+.settings-row__text {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: layout.$row-text-gap;
+    min-width: 0;
+}
+
+.settings-row__label {
+    @include layout.row-label;
+}
+
+.settings-row__hint {
+    @include layout.row-hint;
+}
+
+// Pickers and the segmented choice get the same box, right-aligned, so they line up. It narrows with the page before
+// the label does.
+.settings-row__control {
+    display: flex;
+    flex: 0 1 layout.$control-width;
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+    min-height: layout.$control-min-height;
+
+    // A toggle needs only its own width: the row's text takes the rest, so a hint is not wrapped next to empty space.
+    &:has(> app-toggle-switch) {
+        flex: 0 0 auto;
+    }
+}

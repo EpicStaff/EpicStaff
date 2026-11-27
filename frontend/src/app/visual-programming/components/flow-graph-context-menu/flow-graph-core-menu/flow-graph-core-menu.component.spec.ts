@@ -1,7 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActionCode, GetMeResponse, NodeType, ResourceCode } from '@shared/models';
+import { ActionCode, DEFAULT_USER_PREFERENCES, GetMeResponse, NodeType, ResourceCode } from '@shared/models';
 
 import { PLATFORM_IS_MAC } from '../../../../core/services/platform-is-mac.token';
 import { ProfileService } from '../../../../services/auth/profile.service';
@@ -185,6 +185,7 @@ const USER: GetMeResponse = {
     avatar_url: null,
     completed_tours: ['quick-start'],
     custom_shortcuts: { custom: [], overrides: {} },
+    preferences: DEFAULT_USER_PREFERENCES,
 };
 
 describe('FlowGraphCoreMenuComponent key hint', () => {

@@ -533,6 +533,41 @@ export const routes: Routes = [
                                         (m) => m.ProfileApiKeysTabComponent
                                     ),
                             },
+                            {
+                                path: 'settings',
+                                loadComponent: () =>
+                                    import('./features/role-base-access/pages/profile-page/settings-tab/settings-tab.component').then(
+                                        (m) => m.SettingsTabComponent
+                                    ),
+                                children: [
+                                    {
+                                        path: '',
+                                        redirectTo: 'general',
+                                        pathMatch: 'full',
+                                    },
+                                    {
+                                        path: 'general',
+                                        loadComponent: () =>
+                                            import('./features/role-base-access/pages/profile-page/settings-tab/sections/general/general-section.component').then(
+                                                (m) => m.GeneralSectionComponent
+                                            ),
+                                    },
+                                    {
+                                        path: 'flow-editor',
+                                        loadComponent: () =>
+                                            import('./features/role-base-access/pages/profile-page/settings-tab/sections/flow-editor/flow-editor-section.component').then(
+                                                (m) => m.FlowEditorSectionComponent
+                                            ),
+                                    },
+                                    {
+                                        path: 'shortcuts',
+                                        loadComponent: () =>
+                                            import('./features/role-base-access/pages/profile-page/settings-tab/sections/shortcuts/shortcuts-section.component').then(
+                                                (m) => m.ShortcutsSectionComponent
+                                            ),
+                                    },
+                                ],
+                            },
                         ],
                     },
                 ],

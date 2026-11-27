@@ -1,6 +1,7 @@
 import { HttpTestingController } from '@angular/common/http/testing';
 import {
     ActivePermissions,
+    DEFAULT_USER_PREFERENCES,
     GetMeResponse,
     MyOrgPermissionsResponse,
     Organization,
@@ -37,6 +38,7 @@ export function memberOf(...organizations: Organization[]): GetMeResponse {
         avatar_url: null,
         completed_tours: [],
         custom_shortcuts: { custom: [], overrides: {} },
+        preferences: DEFAULT_USER_PREFERENCES,
     };
 }
 

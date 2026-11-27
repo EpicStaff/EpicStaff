@@ -12,8 +12,10 @@ import {
     PasswordChangeConfirmRequest,
     PasswordChangeVerifyRequest,
     PasswordChangeVerifyResponse,
+    PreferenceSection,
     ShortcutSettings,
     UpdateMeRequest,
+    UserPreferences,
     UserRole,
 } from '@shared/models';
 import { AppStorageService } from '@shared/services';
@@ -44,6 +46,14 @@ export class ProfileService {
     private readonly currentUser = signal<GetMeResponse | null>(null);
     currentUserSignal = this.currentUser.asReadonly();
 
+    /**
+     * Counts the preferences saves the cached user took; `sectionSaves` holds the count each section was last saved
+     * at. A profile response remembers the count its request started at, so `setUser` can tell which saved sections
+     * it is older than.
+     */
+    private preferencesSaves = 0;
+    private readonly sectionSaves = new Map<PreferenceSection, number>();
+
     isMeSuperAdmin = computed(() => this.currentUser()?.is_superadmin ?? false);
 
     readonly shortcutSettings = computed<ShortcutSettings>(
@@ -70,10 +80,13 @@ export class ProfileService {
      *  Reuses cached profile if already fetched; otherwise fetches profile first.
      *  Called once by the route resolver on app load. */
     bootstrapUser(): Observable<GetMeResponse> {
-        const cachedUser = this.currentUserSignal();
-        const user$ = cachedUser ? of(cachedUser) : this.getCurrentUser();
+        return defer(() => {
+            const savesAtRequest = this.preferencesSaves;
+            const cachedUser = this.currentUserSignal();
+            const user$ = cachedUser ? of(cachedUser) : this.getCurrentUser();
 
-        return user$.pipe(switchMap((user) => this.selectActiveOrgAndLoadPermissions(user)));
+            return user$.pipe(switchMap((user) => this.selectActiveOrgAndLoadPermissions(user, savesAtRequest)));
+        });
     }
 
     /**
@@ -91,9 +104,10 @@ export class ProfileService {
         return defer(() => {
             const previousUser = this.currentUser();
             const previousActiveOrgId = this.activeOrgService.activeOrgId();
+            const savesAtRequest = this.preferencesSaves;
             const skipForbiddenReload = (): HttpContext => new HttpContext().set(SKIP_FORBIDDEN_RELOAD, true);
             return this.http.get<GetMeResponse>(this.baseUrl, { context: skipForbiddenReload() }).pipe(
-                switchMap((user) => this.selectActiveOrgAndLoadPermissions(user, skipForbiddenReload)),
+                switchMap((user) => this.selectActiveOrgAndLoadPermissions(user, savesAtRequest, skipForbiddenReload)),
                 map((user) =>
                     describeReload(previousUser, previousActiveOrgId, user, this.activeOrgService.activeOrgId())
                 )
@@ -102,7 +116,7 @@ export class ProfileService {
     }
 
     updateCurrentUser(dto: UpdateMeRequest): Observable<GetMeResponse> {
-        return this.http.patch<GetMeResponse>(this.baseUrl, dto).pipe(tap((user) => this.setUser(user)));
+        return this.adoptProfileFrom(this.http.patch<GetMeResponse>(this.baseUrl, dto));
     }
 
     updateShortcutSettings(settings: ShortcutSettings): Observable<ShortcutSettings> {
@@ -110,6 +124,20 @@ export class ProfileService {
             map((user) => user.custom_shortcuts),
             tap((saved) => this.updateUser({ custom_shortcuts: saved }))
         );
+    }
+
+    /**
+     * Saves `change` into the preferences section `section` and emits the section's effective value. The cached user
+     * takes it only while the user who made the change is still signed in, as with `markTourCompleted`.
+     */
+    updatePreferencesSection<S extends PreferenceSection>(
+        section: S,
+        change: Partial<UserPreferences[S]>
+    ): Observable<UserPreferences[S]> {
+        const userId = this.currentUser()?.id ?? null;
+        return this.http
+            .patch<UserPreferences[S]>(`${this.baseUrl}preferences/${section}/`, change)
+            .pipe(tap((saved) => this.setPreferencesSection(userId, section, saved)));
     }
 
     updateAvatar(avatar: FormData): Observable<GetMeResponse> {
@@ -178,7 +206,15 @@ export class ProfileService {
     }
 
     private fetchCurrentUser(context: HttpContext): Observable<GetMeResponse> {
-        return this.http.get<GetMeResponse>(this.baseUrl, { context }).pipe(tap((user) => this.setUser(user)));
+        return this.adoptProfileFrom(this.http.get<GetMeResponse>(this.baseUrl, { context }));
+    }
+
+    /** Sends `request`, which is answered with the profile, and adopts the answer as `setUser` does. Emits it adopted. */
+    private adoptProfileFrom(request: Observable<GetMeResponse>): Observable<GetMeResponse> {
+        return defer(() => {
+            const savesAtRequest = this.preferencesSaves;
+            return request.pipe(map((user) => this.setUser(user, savesAtRequest)));
+        });
     }
 
     /**
@@ -188,6 +224,7 @@ export class ProfileService {
      */
     private selectActiveOrgAndLoadPermissions(
         user: GetMeResponse,
+        savesAtRequest: number,
         requestContext: () => HttpContext = () => new HttpContext()
     ): Observable<GetMeResponse> {
         const previousOrgId = this.activeOrgService.activeOrgId();
@@ -201,7 +238,7 @@ export class ProfileService {
             // Still loaded with no org left, so downstream gates read `is_superadmin: false, orgs: []`.
             orgs: this.permissionsService.fetchOrgPermissions(requestContext()),
         }).pipe(
-            tap(({ active, orgs }) => {
+            map(({ active, orgs }) => {
                 // Leaving an org the app worked in: every org-scoped cache still holds its data. As in `switchOrg()`,
                 // clear first, then set the org and its permissions.
                 if (previousOrgId !== null && orgId !== previousOrgId) {
@@ -209,27 +246,59 @@ export class ProfileService {
                 }
                 // No organization left sets `null`: a cached id would keep sending the header of an org the user lost.
                 this.activeOrgService.set(orgId);
-                this.setUser(user);
+                const adopted = this.setUser(user, savesAtRequest);
                 this.permissionsService.applyOrgPermissions(orgs);
                 if (active !== null) {
                     this.permissionsService.applyActivePermissions(active);
                 } else if (!user.is_superadmin) {
                     this.permissionsService.setActivePermissions(null);
                 }
-            }),
-            map(() => user)
+                return adopted;
+            })
         );
     }
 
-    private setUser(user: GetMeResponse): void {
-        this.currentUser.set(user);
-        this.permissionsService.setSuperadmin(user.is_superadmin);
+    /**
+     * Adopts `user`, answered to a request started when `savesAtRequest` preferences saves were taken, and returns it as
+     * adopted. A request can be answered after a preferences save it started before (`switchOrg()` reloads the profile
+     * right after a change), and then carries the section as it was before that save: the saved section is kept.
+     */
+    private setUser(user: GetMeResponse, savesAtRequest: number): GetMeResponse {
+        const adopted = this.withNewerPreferences(user, savesAtRequest);
+        this.currentUser.set(adopted);
+        this.permissionsService.setSuperadmin(adopted.is_superadmin);
+        return adopted;
+    }
+
+    /** `user` with the cached value of each preferences section saved after its request started. */
+    private withNewerPreferences(user: GetMeResponse, savesAtRequest: number): GetMeResponse {
+        const current = this.currentUser();
+        if (current === null || current.id !== user.id) return user;
+        let preferences = user.preferences;
+        for (const [section, saveNumber] of this.sectionSaves) {
+            if (saveNumber > savesAtRequest) {
+                preferences = { ...preferences, [section]: current.preferences[section] };
+            }
+        }
+        return preferences === user.preferences ? user : { ...user, preferences };
     }
 
     private updateUser(partial: Partial<GetMeResponse>): void {
         const current = this.currentUser();
         if (!current) return;
         this.currentUser.set({ ...current, ...partial });
+    }
+
+    private setPreferencesSection<S extends PreferenceSection>(
+        userId: number | null,
+        section: S,
+        value: UserPreferences[S]
+    ): void {
+        const current = this.currentUser();
+        if (current === null || current.id !== userId) return;
+        this.preferencesSaves += 1;
+        this.sectionSaves.set(section, this.preferencesSaves);
+        this.updateUser({ preferences: { ...current.preferences, [section]: value } });
     }
 
     private updateUserIfStillSignedIn(userId: number, partial: Partial<GetMeResponse>): void {

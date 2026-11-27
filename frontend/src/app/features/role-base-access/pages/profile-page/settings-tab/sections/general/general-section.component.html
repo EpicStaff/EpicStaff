@@ -1,0 +1,24 @@
+<app-settings-section
+    heading="General"
+    description="The timezones for the dates you see and the schedules you create."
+>
+    <app-settings-row
+        label="Display timezone"
+        hint="Dates and times across the app are shown in it"
+    >
+        <app-timezone-selector
+            [formControl]="form.controls.display_timezone"
+            [offerBrowserZone]="true"
+        />
+    </app-settings-row>
+
+    <app-settings-row
+        label="Default timezone"
+        hint="Used when you create schedule triggers"
+    >
+        <app-timezone-selector
+            [formControl]="form.controls.default_timezone"
+            [offerBrowserZone]="true"
+        />
+    </app-settings-row>
+</app-settings-section>

@@ -1,0 +1,30 @@
+<app-settings-section
+    heading="Flow editor"
+    description="How every flow looks for you. A change in a flow's own settings applies to that flow only."
+>
+    @for (toggle of toggles; track toggle.label) {
+        <app-settings-row
+            [label]="toggle.label"
+            [hint]="toggle.hint"
+            [labelsControl]="false"
+        >
+            <app-toggle-switch
+                [ariaLabel]="toggle.label"
+                [checked]="toggle.isOn(flowEditor())"
+                (checkedChange)="setToggle(toggle, $event)"
+            />
+        </app-settings-row>
+    }
+
+    <app-settings-row
+        label="When a flow opens"
+        [hint]="onOpenHint"
+    >
+        <app-radio-button
+            mod="segmented"
+            [options]="onOpenOptions"
+            [value]="flowEditor().on_open"
+            (valueChange)="setOnOpen($event)"
+        />
+    </app-settings-row>
+</app-settings-section>

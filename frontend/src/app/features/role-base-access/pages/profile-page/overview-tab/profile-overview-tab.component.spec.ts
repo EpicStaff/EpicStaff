@@ -6,6 +6,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
     ActionCode,
     CatalogResponse,
+    DEFAULT_USER_PREFERENCES,
     FullMembership,
     GetMeResponse,
     MyOrgPermissionsResponse,
@@ -48,6 +49,7 @@ function user(overrides: Partial<GetMeResponse>): GetMeResponse {
         avatar_url: null,
         completed_tours: [],
         custom_shortcuts: {} as GetMeResponse['custom_shortcuts'],
+        preferences: DEFAULT_USER_PREFERENCES,
         ...overrides,
     };
 }

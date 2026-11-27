@@ -1,0 +1,26 @@
+@use '../../../../../../styles/header-layout' as header;
+
+// The menu starts at the profile tab row's left edge, so its icons sit under the tab icons: the tab content is inset
+// further than the tab row, and this takes the difference back.
+:host {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    margin-left: calc(#{header.$page-inset-left} - var(--tab-content-inset-left, 0px));
+    overflow: hidden;
+}
+
+// The menu and the open section start on the same top line.
+.settings-nav {
+    flex: 0 0 220px;
+    padding-right: 12px;
+    border-right: 1px solid var(--color-divider-subtle);
+    overflow-y: auto;
+}
+
+.settings-content {
+    flex: 1;
+    min-width: 0;
+    padding: 0 0 16px 24px;
+    overflow-y: auto;
+}

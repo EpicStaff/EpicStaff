@@ -1,0 +1,65 @@
+@use 'side-section-nav-metrics' as metrics;
+
+:host {
+    display: block;
+}
+
+.side-section-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+// Same rows as the agents page explorer (tree-node .row), padded like a route tab so the icons line up with a tab
+// row above the menu.
+.row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: metrics.$row-height;
+    padding: 0 metrics.$row-padding-inline;
+    color: var(--color-text-primary);
+    text-decoration: none;
+    border-radius: 4px;
+    user-select: none;
+
+    &:hover {
+        background-color: var(--color-ghost-btn-hover);
+    }
+
+    // Drawn inside, so a clipped menu column does not cut it off.
+    &:focus-visible {
+        outline: 2px solid var(--accent-color);
+        outline-offset: -2px;
+    }
+
+    &--selected {
+        background-color: color-mix(in srgb, var(--accent-color) 18%, transparent);
+
+        .row__icon,
+        .row__label {
+            color: var(--accent-color);
+        }
+    }
+
+    &__icon {
+        flex-shrink: 0;
+        width: metrics.$icon-box-size;
+        text-align: center;
+        font-size: 1rem;
+        line-height: 1;
+        color: var(--color-text-primary);
+    }
+
+    &__label {
+        min-width: 0;
+        flex: 1 1 auto;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        color: var(--color-text-primary);
+    }
+}

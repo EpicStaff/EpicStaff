@@ -1,10 +1,24 @@
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { ActivePermissions, GetMeResponse, ShortcutSettings } from '@shared/models';
+import {
+    ActivePermissions,
+    DEFAULT_USER_PREFERENCES,
+    FlowEditorPreferences,
+    GeneralPreferences,
+    GetMeResponse,
+    ShortcutSettings,
+} from '@shared/models';
 
 import { ConfigService } from '../config';
 import { ProfileService } from './profile.service';
+import {
+    ACTIVE_PERMISSIONS_URL,
+    memberOf,
+    ORG_PERMISSIONS_URL,
+    ORGANIZATION_A,
+    ORGANIZATION_B,
+} from './testing/current-user-fixtures';
 
 const PROFILE_URL = '/api/profile/';
 
@@ -29,6 +43,7 @@ const BASE_USER: GetMeResponse = {
     avatar_url: null,
     completed_tours: [],
     custom_shortcuts: { custom: [], overrides: {} },
+    preferences: DEFAULT_USER_PREFERENCES,
 };
 
 describe('ProfileService shortcut settings', () => {
@@ -204,5 +219,150 @@ describe('ProfileService tour progress', () => {
         expectTourSave('quick-start').flush({ ...BASE_USER, completed_tours: ['quick-start'] });
 
         expect(service.currentUserSignal()).toEqual(OTHER_USER);
+    });
+});
+
+describe('ProfileService preferences saved while the profile loads', () => {
+    let service: ProfileService;
+    let httpMock: HttpTestingController;
+
+    const FLOW_EDITOR_URL = `${PROFILE_URL}preferences/flow_editor/`;
+    const STORED_FLOW_EDITOR: FlowEditorPreferences = { ...DEFAULT_USER_PREFERENCES.flow_editor, show_minimap: true };
+    const STORED_USER: GetMeResponse = {
+        ...BASE_USER,
+        preferences: { ...DEFAULT_USER_PREFERENCES, flow_editor: STORED_FLOW_EDITOR },
+    };
+
+    beforeEach(() => {
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                { provide: ConfigService, useValue: { apiUrl: '/api/' } as unknown as ConfigService },
+            ],
+        });
+        service = TestBed.inject(ProfileService);
+        httpMock = TestBed.inject(HttpTestingController);
+        service.getCurrentUser().subscribe();
+        httpMock.expectOne({ method: 'GET', url: PROFILE_URL }).flush(STORED_USER);
+    });
+
+    afterEach(() => {
+        // The active org is persisted; a new `ActiveOrgService` must not start in the last spec's org.
+        localStorage.clear();
+        httpMock.verify();
+    });
+
+    function saveMinimapOff(): TestRequest {
+        service.updatePreferencesSection('flow_editor', { show_minimap: false }).subscribe();
+        return httpMock.expectOne({ method: 'PATCH', url: FLOW_EDITOR_URL });
+    }
+
+    function storedSave(save: TestRequest): void {
+        save.flush({ ...STORED_FLOW_EDITOR, show_minimap: false });
+    }
+
+    /** Answers a reload of the user who belongs to no organization: the profile, then the cross-org permissions. */
+    function answerReload(profile: TestRequest, user: GetMeResponse): void {
+        profile.flush(user);
+        httpMock.expectOne({ method: 'GET', url: ORG_PERMISSIONS_URL }).flush({ is_superadmin: false, orgs: [] });
+    }
+
+    it.each([
+        {
+            load: 'a profile fetch',
+            start: (): void => void service.getCurrentUser().subscribe(),
+            answer: (profile: TestRequest, user: GetMeResponse): void => profile.flush(user),
+        },
+        {
+            load: 'a reload of the user',
+            start: (): void => void service.reloadCurrentUser().subscribe(),
+            answer: answerReload,
+        },
+    ])(
+        'keeps the saved section when $load sent before the save was stored is answered after it',
+        ({ start, answer }) => {
+            const save = saveMinimapOff();
+            start();
+            const profile = httpMock.expectOne({ method: 'GET', url: PROFILE_URL });
+            storedSave(save);
+
+            // The backend read the profile before the save, and the display name changed since.
+            answer(profile, { ...STORED_USER, display_name: 'Jane Smith' });
+
+            expect(service.currentUserSignal()?.preferences.flow_editor.show_minimap).toBe(false);
+            expect(service.currentUserSignal()?.display_name).toBe('Jane Smith');
+        }
+    );
+
+    it('takes the section as the server sends it when the fetch was sent after the save was stored', () => {
+        storedSave(saveMinimapOff());
+
+        service.getCurrentUser().subscribe();
+        // Changed back in another tab since.
+        httpMock.expectOne({ method: 'GET', url: PROFILE_URL }).flush(STORED_USER);
+
+        expect(service.currentUserSignal()?.preferences.flow_editor.show_minimap).toBe(true);
+    });
+
+    it("takes the server's other sections from a fetch answered after a save of one section", () => {
+        const save = saveMinimapOff();
+        service.getCurrentUser().subscribe();
+        const profile = httpMock.expectOne({ method: 'GET', url: PROFILE_URL });
+        storedSave(save);
+
+        const general: GeneralPreferences = { display_timezone: 'Europe/Kyiv', default_timezone: null };
+        profile.flush({ ...STORED_USER, preferences: { ...STORED_USER.preferences, general } });
+
+        expect(service.currentUserSignal()?.preferences.general).toEqual(general);
+    });
+
+    it('keeps a section saved while a bootstrap waits for the permissions after the profile arrived', () => {
+        // The bootstrap guard runs only while no user is cached.
+        service.clearCurrentUser();
+        service.bootstrapUser().subscribe();
+        httpMock
+            .expectOne({ method: 'GET', url: PROFILE_URL })
+            .flush({ ...memberOf(ORGANIZATION_A), preferences: STORED_USER.preferences });
+        const orgPermissions = httpMock.expectOne({ method: 'GET', url: ORG_PERMISSIONS_URL });
+        const activePermissions = httpMock.expectOne({ method: 'GET', url: ACTIVE_PERMISSIONS_URL });
+
+        storedSave(saveMinimapOff());
+        orgPermissions.flush({ is_superadmin: false, orgs: [] });
+        activePermissions.flush({ ...ACTIVE_PERMISSIONS, org_id: ORGANIZATION_A.id });
+
+        expect(service.currentUserSignal()?.preferences.flow_editor.show_minimap).toBe(false);
+    });
+
+    it('keeps the saved section and takes the new display name from a rename answered after the save', () => {
+        service.updateCurrentUser({ display_name: 'Jane Smith' }).subscribe();
+        const rename = httpMock.expectOne({ method: 'PATCH', url: PROFILE_URL });
+        storedSave(saveMinimapOff());
+
+        // The backend read the preferences before the save.
+        rename.flush({ ...STORED_USER, display_name: 'Jane Smith' });
+
+        expect(service.currentUserSignal()?.preferences.flow_editor.show_minimap).toBe(false);
+        expect(service.currentUserSignal()?.display_name).toBe('Jane Smith');
+    });
+
+    it('keeps the saved section and takes the memberships from an org switch answered after the save', () => {
+        service.switchOrg(ORGANIZATION_B.id).subscribe();
+        const profile = httpMock.expectOne({ method: 'GET', url: PROFILE_URL });
+        const activePermissions = httpMock.expectOne({ method: 'GET', url: ACTIVE_PERMISSIONS_URL });
+        const orgPermissions = httpMock.expectOne({ method: 'GET', url: ORG_PERMISSIONS_URL });
+        storedSave(saveMinimapOff());
+
+        // The backend read the preferences before the save; the user has joined two organizations since.
+        profile.flush({ ...memberOf(ORGANIZATION_A, ORGANIZATION_B), preferences: STORED_USER.preferences });
+        activePermissions.flush({ ...ACTIVE_PERMISSIONS, org_id: ORGANIZATION_B.id });
+        orgPermissions.flush({ is_superadmin: false, orgs: [] });
+
+        const user = service.currentUserSignal();
+        expect(user?.preferences.flow_editor.show_minimap).toBe(false);
+        expect(user?.memberships.map(({ organization, role }) => [organization.name, role.name])).toEqual([
+            ['A', 'Member'],
+            ['B', 'Member'],
+        ]);
     });
 });
