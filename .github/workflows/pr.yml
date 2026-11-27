@@ -75,7 +75,7 @@ jobs:
 
           # A dependency change always rewrites the notices (the two jobs above
           # fail when it does not), so the notices file stands in for every lockfile.
-          filter licenses '^(THIRD-PARTY-NOTICES\.md$|scripts/license-policy\.(json|mjs)$|scripts/check-licenses(\.test)?\.mjs$|\.github/workflows/pr\.yml$)'
+          filter licenses '^(THIRD-PARTY-NOTICES\.md$|scripts/(os-)?license-policy\.(json|mjs)$|scripts/check-(image-)?licenses(\.test)?\.mjs$|\.github/workflows/pr\.yml$)'
 
           # Wider than src/ and frontend/ on purpose: the compose matrix generator
           # in compose-build.yml also runs scripts/envtool.py and
@@ -441,8 +441,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - name: Test the licence checker
-        run: node --test scripts/check-licenses.test.mjs
+      # The image checker runs on each built image in compose-build.yml; its
+      # tests run here so a policy-only change is still checked.
+      - name: Test the licence checkers
+        run: node --test scripts/check-licenses.test.mjs scripts/check-image-licenses.test.mjs
 
       - name: Check shipped dependency licences
         run: node scripts/check-licenses.mjs

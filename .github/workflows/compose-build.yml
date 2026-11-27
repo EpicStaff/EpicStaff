@@ -87,6 +87,24 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           push: false
+          # Loaded into the runner's Docker so the licence scan below can read it.
+          load: true
           tags: local/${{ steps.img.outputs.repo }}-${{ matrix.service }}:pr-${{ github.event.pull_request.number }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # The base image and whatever the Dockerfile installs with apt/apk ship
+      # to users with the image, so their licences are checked the same day a
+      # Dockerfile changes them. Python and npm packages are check-licenses' job.
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
+        with:
+          # Same scanner version as dependency-scan.yml.
+          version: v0.74.0
+
+      - name: Check OS package licences of ${{ matrix.service }}
+        env:
+          IMAGE: local/${{ steps.img.outputs.repo }}-${{ matrix.service }}:pr-${{ github.event.pull_request.number }}
+        run: |
+          trivy image --quiet --scanners license --pkg-types os --format json --output image-licenses.json "$IMAGE"
+          node scripts/check-image-licenses.mjs image-licenses.json
