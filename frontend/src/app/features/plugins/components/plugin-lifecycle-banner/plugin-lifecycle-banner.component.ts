@@ -1,6 +1,6 @@
-import { DatePipe } from '@angular/common';
 import { Component, computed, input } from '@angular/core';
 import { Spinner2Component } from '@shared/components';
+import { UserDatePipe } from '@shared/pipes';
 
 import {
     PluginDetail,
@@ -69,7 +69,7 @@ const STAGE_ACTIVITIES: Readonly<Record<PluginUpgradeStage, string>> = {
  */
 @Component({
     selector: 'app-plugin-lifecycle-banner',
-    imports: [DatePipe, Spinner2Component],
+    imports: [UserDatePipe, Spinner2Component],
     templateUrl: './plugin-lifecycle-banner.component.html',
     styleUrl: './plugin-lifecycle-banner.component.scss',
 })

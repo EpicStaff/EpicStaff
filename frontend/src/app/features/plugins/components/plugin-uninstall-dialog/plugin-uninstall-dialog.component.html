@@ -61,7 +61,7 @@
                 />
             }
             <p class="uninstall__kept text-body">
-                Its data is kept until <strong>{{ preview.dataKeptUntil | date: 'mediumDate' }}</strong
+                Its data is kept until <strong>{{ preview.dataKeptUntil | userDate: 'mediumDate' }}</strong
                 >. Reinstall before then to restore everything.
             </p>
         }

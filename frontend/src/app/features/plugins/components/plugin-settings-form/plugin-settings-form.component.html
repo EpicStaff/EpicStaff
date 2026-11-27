@@ -154,7 +154,7 @@
                     <p class="settings__reset text-body-small">
                         @if (setting.updated_at) {
                             <span class="settings__muted">
-                                Changed {{ setting.updated_at | date: 'medium' }}
+                                Changed {{ setting.updated_at | userDate: 'medium' }}
                                 @if (setting.updated_by) {
                                     by {{ setting.updated_by.email }}
                                 }

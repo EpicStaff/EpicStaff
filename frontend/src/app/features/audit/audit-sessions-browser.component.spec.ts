@@ -2,7 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { GetMeResponse } from '@shared/models';
+import { GeneralPreferences, GetMeResponse } from '@shared/models';
 import { APP_STORAGE, AppStorageService } from '@shared/services';
 import { of } from 'rxjs';
 
@@ -10,9 +10,11 @@ import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { AuthService } from '../../services/auth/auth.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
 import { ProfileService } from '../../services/auth/profile.service';
+import { memberOf, ORGANIZATION_A } from '../../services/auth/testing/current-user-fixtures';
 import { ConfigService } from '../../services/config';
 import { AuditSessionsBrowserComponent } from './audit-sessions-browser.component';
 import { EMPTY_AUDIT_FILTER } from './models/audit-filter.models';
+import { AuditSessionEvent } from './models/audit-session.models';
 import { AuditFilterStorageService } from './services/audit-filter-storage.service';
 import { AuditTokenService } from './services/audit-token.service';
 import { auditFilterStorageKey, writeStoredAuditFilter } from './utils/audit-filter-storage.util';
@@ -135,5 +137,80 @@ describe('AuditSessionsBrowserComponent saved filter', () => {
         fixture.detectChanges();
 
         expect(storedAuditFilterKeys()).toEqual([]);
+    });
+});
+
+describe('AuditSessionsBrowserComponent export', () => {
+    const EXPORT_URL = '/auditor/api/audit/sessions/export';
+    const SESSION_EVENT: AuditSessionEvent = {
+        id: 'session-1',
+        parent_id: '',
+        session_id: 11,
+        session_message_id: null,
+        kind: 'session',
+        status: 'completed',
+        name: 'Billing',
+        flow_name: 'Billing',
+        node_type: '',
+        input: null,
+        output: null,
+        error: null,
+        details: {},
+        event_time: '2026-10-30T10:00:00Z',
+        record_time: null,
+        ord_id: 1,
+        filter_matched: true,
+    };
+
+    beforeEach(() => {
+        vi.stubGlobal('ResizeObserver', ResizeObserverStub);
+        localStorage.clear();
+        // The zone the browser reports while the user chose no display timezone, by the old name Intl may still use.
+        vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
+            timeZone: 'Europe/Kiev',
+        } as Intl.ResolvedDateTimeFormatOptions);
+        TestBed.configureTestingModule({
+            providers: [
+                provideHttpClient(),
+                provideHttpClientTesting(),
+                provideRouter([]),
+                { provide: ConfigService, useValue: { apiUrl: '/api/', auditorUrl: '/auditor/' } },
+                { provide: AuditTokenService, useValue: { getToken: () => of('audit-token') } },
+                { provide: ActiveOrgService, useValue: { activeOrgId: () => ORG_ID } },
+                { provide: PermissionsService, useValue: { can: () => true, setSuperadmin: () => undefined } },
+            ],
+        });
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+        localStorage.clear();
+    });
+
+    function signInWithDisplayTimezone(displayTimezone: string | null): void {
+        const user = memberOf(ORGANIZATION_A);
+        const general: GeneralPreferences = { display_timezone: displayTimezone, default_timezone: null };
+        TestBed.inject(ProfileService).getCurrentUser().subscribe();
+        TestBed.inject(HttpTestingController)
+            .expectOne('/api/profile/')
+            .flush({ ...user, preferences: { ...user.preferences, general } });
+    }
+
+    it.each([
+        { chosen: 'America/New_York', written: 'America/New_York' },
+        { chosen: null, written: 'Europe/Kyiv' },
+    ])('writes the file in $written while the display timezone is $chosen', ({ chosen, written }) => {
+        signInWithDisplayTimezone(chosen);
+        const { fixture, http } = openPage();
+        http.expectOne(SEARCH_URL).flush({ items: [SESSION_EVENT], next_cursor: null, partial: false });
+        fixture.detectChanges();
+
+        (fixture.nativeElement as HTMLElement)
+            .querySelector<HTMLButtonElement>('app-action-dropdown-button .adb__main')!
+            .click();
+
+        const start = http.expectOne({ method: 'POST', url: EXPORT_URL });
+        expect(start.request.body).toEqual(expect.objectContaining({ format: 'json', time_zone: written }));
     });
 });

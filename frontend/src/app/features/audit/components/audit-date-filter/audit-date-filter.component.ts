@@ -1,8 +1,9 @@
-import { ChangeDetectionStrategy, Component, computed, linkedSignal, model } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, linkedSignal, model } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { DatePickerComponent, TimePickerComponent } from '@shared/components';
 import { DateRangeFilter } from '@shared/models';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { AuditEnumOption } from '../../models/audit-filter.models';
 import {
     AUDIT_DEFAULT_TIME,
@@ -47,6 +48,9 @@ function deriveOperator(range: DateRangeFilter): AuditDateOperator {
 export class AuditDateFilterComponent {
     public range = model.required<DateRangeFilter>();
 
+    // Typed times are read on the display timezone's clock, the one the table shows.
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
+
     // The parent hands over a new object on every filter change; only a changed bound counts.
     private readonly rangeValue = computed(() => this.range(), {
         equal: (previous, next) => previous.after === next.after && previous.before === next.before,
@@ -68,8 +72,8 @@ export class AuditDateFilterComponent {
     });
 
     // The picker text, which may be half typed; reset only when the stored bound itself changes.
-    protected readonly fromParts = linkedSignal(() => splitAuditDateTime(this.afterValue()));
-    protected readonly toParts = linkedSignal(() => splitAuditDateTime(this.beforeValue()));
+    protected readonly fromParts = linkedSignal(() => splitAuditDateTime(this.afterValue(), this.displayZone()));
+    protected readonly toParts = linkedSignal(() => splitAuditDateTime(this.beforeValue(), this.displayZone()));
 
     protected readonly operatorOptions = DATE_OPERATOR_OPTIONS;
     protected readonly calendarMinWidth = CALENDAR_MIN_WIDTH;
@@ -91,7 +95,7 @@ export class AuditDateFilterComponent {
     protected setPart(boundary: AuditDateBoundary, field: keyof AuditDateTimeParts, value: string): void {
         const partsSignal = boundary === 'from' ? this.fromParts : this.toParts;
         const parts = { ...partsSignal(), [field]: value };
-        const combined = combineAuditDateTime(parts, boundary);
+        const combined = combineAuditDateTime(parts, boundary, this.displayZone());
         if (field === 'date' && combined !== undefined) {
             parts.time = combined === null ? '' : parts.time || AUDIT_DEFAULT_TIME[boundary];
         }

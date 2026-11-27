@@ -1,5 +1,4 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { DatePipe } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -20,6 +19,7 @@ import { AppSvgIconComponent, StatusBadgeComponent } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
 import { HasPermissionDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { ActionCode, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 import { Subject, takeUntil } from 'rxjs';
 
 import { FlowSessionsListComponent } from '../../../../features/flows/components/flow-sessions-dialog/flow-sessions-list.component';
@@ -44,7 +44,7 @@ import { SessionFilesButtonComponent } from './session-files-button/session-file
         RouterModule,
         MatButtonModule,
         MatBadgeModule,
-        DatePipe,
+        UserDatePipe,
         AppSvgIconComponent,
         StatusBadgeComponent,
         MemoriesSidebarComponent,

@@ -1,9 +1,9 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { DatePipe } from '@angular/common';
 import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, LoadingSpinnerComponent } from '@shared/components';
+import { UserDatePipe } from '@shared/pipes';
 import { filter, finalize } from 'rxjs';
 
 import { PluginGrant } from '../../models/plugin-admin.model';
@@ -71,7 +71,7 @@ interface SuspendPreviewView {
         MatTooltip,
         AppSvgIconComponent,
         ButtonComponent,
-        DatePipe,
+        UserDatePipe,
         LoadingSpinnerComponent,
         PluginPreviewSectionComponent,
     ],

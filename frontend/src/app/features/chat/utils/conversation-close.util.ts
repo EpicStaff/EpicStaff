@@ -1,5 +1,5 @@
-import { formatDate } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
+import { formatInZone } from '@shared/utils';
 
 import { ChatCloseReason, ChatConversation, ChatConversationStyle, ChatErrorBody } from '../models/chat.model';
 import { operatorName } from './conversation-row.util';
@@ -53,18 +53,19 @@ export function closeReasonLabel(row: ClosedRow, style: ChatConversationStyle | 
 
 /**
  * The closed thread's banner: "Closed · Resolved by Mike · 14:05", "Closed · Ended by the visitor · Oct 5, 9:00 AM",
- * "Closed after inactivity · 14:05", and on an Ongoing desk "Closed by Mike · 14:05". The time follows `locale`: the
- * clock time for a close today, else the date as well.
+ * "Closed after inactivity · 14:05", and on an Ongoing desk "Closed by Mike · 14:05". The time follows `locale` and
+ * the clock of `zone`, the display timezone: the clock time for a close today, else the date as well.
  */
 export function closedSummary(
     row: ClosedRow,
     style: ChatConversationStyle | null,
     myUserId: number | null,
     now: number,
-    locale: string
+    locale: string,
+    zone: string
 ): string {
     const reason = closeReasonLabel(row, style, myUserId);
-    return [reason.startsWith('Closed') ? null : 'Closed', reason, closedTime(row.closed_at, now, locale)]
+    return [reason.startsWith('Closed') ? null : 'Closed', reason, closedTime(row.closed_at, now, locale, zone)]
         .filter(Boolean)
         .join(' · ');
 }
@@ -76,12 +77,14 @@ function closer(row: ClosedRow, myUserId: number | null): string {
     return userId === myUserId ? 'you' : operatorName(userId, row.closed_by_name);
 }
 
-function closedTime(iso: string | null, now: number, locale: string): string {
+function closedTime(iso: string | null, now: number, locale: string, zone: string): string {
     if (!iso) return '';
     const date = new Date(iso);
-    const clock = formatDate(date, 'shortTime', locale);
-    const today = new Date(now);
-    if (date.toDateString() === today.toDateString()) return clock;
-    const day = formatDate(date, date.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, y', locale);
+    const clock = formatInZone(date, 'shortTime', locale, zone);
+    // The day and the year as the zone's calendar has them, compared as text.
+    const dayOf = (moment: Date | number): string => formatInZone(moment, 'y-MM-dd', 'en-US', zone);
+    if (dayOf(date) === dayOf(now)) return clock;
+    const sameYear = dayOf(date).slice(0, 4) === dayOf(now).slice(0, 4);
+    const day = formatInZone(date, sameYear ? 'MMM d' : 'MMM d, y', locale, zone);
     return `${day}, ${clock}`;
 }

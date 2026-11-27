@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import { Component, computed, inject, input, LOCALE_ID, output } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import {
@@ -9,8 +8,10 @@ import {
     PaginationControlsComponent,
     TableRow,
 } from '@shared/components';
+import { UserDatePipe } from '@shared/pipes';
 import { getRelativeTime } from '@shared/utils';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { PluginActivityEvent } from '../../models/plugin-activity.model';
 import {
     PLUGIN_ACTIVITY_ACTION_LABELS,
@@ -66,7 +67,7 @@ const DETAILS_COLUMN: AppTableColumnDef = { key: 'details', label: 'Details', wi
     imports: [
         AppTableCellDirective,
         AppTableComponent,
-        DatePipe,
+        UserDatePipe,
         LoadingSpinnerComponent,
         MatTooltip,
         PaginationControlsComponent,
@@ -100,10 +101,12 @@ export class PluginActivityListComponent {
     ]);
     protected readonly rows = computed<TableRow[]>(() => this.events().map((event) => ({ id: event.id })));
     private readonly entriesById = computed(
-        () => new Map(this.events().map((event) => [event.id, toEntry(event, this.locale)] as const))
+        () =>
+            new Map(this.events().map((event) => [event.id, toEntry(event, this.locale, this.displayZone())] as const))
     );
 
     private readonly locale = inject(LOCALE_ID);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
 
     protected entryOf(row: TableRow): ActivityEntry | undefined {
         return this.entriesById().get(row['id'] as number);
@@ -114,7 +117,7 @@ export class PluginActivityListComponent {
     }
 }
 
-function toEntry(event: PluginActivityEvent, locale: string): ActivityEntry {
+function toEntry(event: PluginActivityEvent, locale: string, zone: string): ActivityEntry {
     return {
         id: event.id,
         createdAt: event.created_at,
@@ -125,7 +128,7 @@ function toEntry(event: PluginActivityEvent, locale: string): ActivityEntry {
         action: PLUGIN_ACTIVITY_ACTION_LABELS[event.action],
         requestLine: pluginActivityRequestLine(event),
         target: pluginActivityTargetText(event),
-        detail: pluginActivityDetailText(event, locale),
+        detail: pluginActivityDetailText(event, locale, zone),
         error: pluginActivityErrorText(event),
         development: pluginActivityIsDevelopment(event),
     };

@@ -1,5 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
+import { knownZone } from '@shared/utils';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { EfTable, EfTableColumn } from '../../models/flow-assistant.model';
 
 @Component({
@@ -48,6 +50,8 @@ export class FlowAssistantTableComponent {
         });
     });
 
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
+
     toggleSort(key: string): void {
         if (this.table().isSortable === false) return;
         if (this.sortField() === key) {
@@ -66,7 +70,9 @@ export class FlowAssistantTableComponent {
             case 'number':
                 return Number(value).toLocaleString();
             case 'date':
-                return new Date(String(value)).toLocaleDateString();
+                return new Date(String(value)).toLocaleDateString(undefined, {
+                    timeZone: knownZone(this.displayZone()),
+                });
             default:
                 return String(value);
         }

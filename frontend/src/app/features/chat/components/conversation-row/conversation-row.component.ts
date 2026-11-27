@@ -3,6 +3,7 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
 
 import { ProfileService } from '../../../../services/auth/profile.service';
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { ChatConversation } from '../../models/chat.model';
 import { ConversationReadMarksService } from '../../services/conversation-read-marks.service';
 import { closeReasonLabel, closeReasonWord, isClosed } from '../../utils/conversation-close.util';
@@ -88,7 +89,9 @@ export class ConversationRowComponent {
         const conversation = this.conversation();
         return this.isTimedByClose() ? conversation.closed_at : conversation.last_message_at;
     });
-    protected readonly time = computed(() => conversationTime(this.shownTime(), this.now(), this.locale));
+    protected readonly time = computed(() =>
+        conversationTime(this.shownTime(), this.now(), this.locale, this.displayZone())
+    );
     /**
      * Waiting for a person (see `isWaitingForPerson`). Never a test's row: the tester writes as the visitor and the
      * operator both, so how long "the visitor" waited says nothing; it shows its last activity as any other row.
@@ -130,9 +133,9 @@ export class ConversationRowComponent {
      */
     protected readonly accessibleName = computed(() => {
         const conversation = this.conversation();
-        const timeLabel = conversationTimeLabel(this.shownTime(), this.now(), this.locale);
+        const timeLabel = conversationTimeLabel(this.shownTime(), this.now(), this.locale, this.displayZone());
         const waitingSince = this.isWaiting()
-            ? conversationTimeLabel(conversation.visitor_waiting_since, this.now(), this.locale)
+            ? conversationTimeLabel(conversation.visitor_waiting_since, this.now(), this.locale, this.displayZone())
             : '';
         const holder = this.holder();
         const closeReason = this.closeReason();
@@ -157,6 +160,7 @@ export class ConversationRowComponent {
     private readonly profileService = inject(ProfileService);
     private readonly readMarks = inject(ConversationReadMarksService);
     private readonly locale = inject(LOCALE_ID);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
 
     focus(options?: FocusOptions): void {
         this.selectButton().nativeElement.focus(options);

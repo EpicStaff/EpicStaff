@@ -31,7 +31,7 @@
                         <div class="backups__text">
                             <span class="text-body-medium">{{ row.title }}</span>
                             <span class="backups__muted text-body-small">
-                                {{ row.facts }} · {{ row.backup.created_at | date: 'medium' }}
+                                {{ row.facts }} · {{ row.backup.created_at | userDate: 'medium' }}
                             </span>
                             @if (row.notRestorable; as reason) {
                                 <span class="backups__muted text-body-small">{{ reason }}</span>

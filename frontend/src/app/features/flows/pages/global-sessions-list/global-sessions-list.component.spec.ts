@@ -1,5 +1,6 @@
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting, TestRequest } from '@angular/common/http/testing';
+import { signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { GraphSessionStatus } from '@shared/models';
@@ -59,6 +60,8 @@ describe('GlobalSessionsListComponent bulk actions', () => {
                     provide: ProfileService,
                     useValue: {
                         reloadCurrentUser: () => throwError(() => new Error('offline')),
+                        // Nobody signed in: dates show in the browser's zone.
+                        currentUserSignal: signal(null),
                     } as unknown as ProfileService,
                 },
             ],

@@ -67,7 +67,7 @@
         >
             @if (jobOf(row); as job) {
                 @if (nextTryOf(job); as nextTry) {
-                    <span class="removals__cell">{{ nextTry | date: 'short' }}</span>
+                    <span class="removals__cell">{{ nextTry | userDate: 'short' }}</span>
                 } @else {
                     <span class="removals__cell removals__muted">—</span>
                 }

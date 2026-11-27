@@ -31,6 +31,7 @@ import { escapeHtml } from '@shared/utils';
 import { filter, finalize, Observable, switchMap, tap } from 'rxjs';
 
 import { TransferExportService } from '../../../../core/services/transfer-export.service';
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { ToastService } from '../../../../services/notifications';
 import { AUDIT_FIELD_CATALOG, AuditLookupOptions } from '../../models/audit-domain.models';
 import {
@@ -200,9 +201,12 @@ export class AuditPresetsComponent implements OnInit {
         if (editor === null) {
             return [];
         }
-        return describeAuditFilter({ ...editor.state, mode: 'builder' }, this.catalog, this.vocabularies()).filter(
-            (chip) => chip.key !== 'matchScope'
-        );
+        return describeAuditFilter(
+            { ...editor.state, mode: 'builder' },
+            this.catalog,
+            this.vocabularies(),
+            this.displayZone()
+        ).filter((chip) => chip.key !== 'matchScope');
     });
 
     protected readonly canSave = computed(() => {
@@ -222,6 +226,7 @@ export class AuditPresetsComponent implements OnInit {
     private readonly presetsStorage = inject(AuditPresetsStorageService);
     private readonly transferExport = inject(TransferExportService);
     private readonly toastService = inject(ToastService);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
     private readonly confirmationDialog = inject(ConfirmationDialogService);
     private readonly destroyRef = inject(DestroyRef);
     private readonly injector = inject(Injector);
@@ -522,7 +527,8 @@ export class AuditPresetsComponent implements OnInit {
 
     private toCard(preset: AuditPreset): AuditPresetCard {
         const state = restorePresetState(preset.filter_body, this.catalog);
-        const chips = state === null ? [] : describeAuditFilter(state, this.catalog, this.vocabularies());
+        const chips =
+            state === null ? [] : describeAuditFilter(state, this.catalog, this.vocabularies(), this.displayZone());
         return {
             preset,
             state,

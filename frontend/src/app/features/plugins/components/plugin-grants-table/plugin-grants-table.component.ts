@@ -1,4 +1,4 @@
-import { DatePipe, DOCUMENT } from '@angular/common';
+import { DOCUMENT } from '@angular/common';
 import { Component, computed, DestroyRef, inject, input, LOCALE_ID, output, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -14,10 +14,12 @@ import {
     Spinner2Component,
     TableRow,
 } from '@shared/components';
+import { UserDatePipe } from '@shared/pipes';
 import { escapeHtml, getRelativeTime } from '@shared/utils';
 import { catchError, EMPTY, expand, filter, finalize, Observable, of, switchMap, take, tap, timer } from 'rxjs';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { ToastService } from '../../../../services/notifications';
 import { PluginGrant, PluginGrantAction, PluginState } from '../../models/plugin-admin.model';
 import { PluginDialogsService } from '../../services/plugin-dialogs.service';
@@ -106,7 +108,7 @@ interface ConfirmedGrantAction {
         AppTableCellDirective,
         AppTableComponent,
         ButtonComponent,
-        DatePipe,
+        UserDatePipe,
         LoadingSpinnerComponent,
         MatTooltip,
         PaginationControlsComponent,
@@ -145,7 +147,7 @@ export class PluginGrantsTableComponent {
         for (const grant of this.grants()) {
             const line =
                 grant.state === 'purging'
-                    ? pluginDataRemovalLine(grant.org_removed_hook, pluginName, this.locale)
+                    ? pluginDataRemovalLine(grant.org_removed_hook, pluginName, this.locale, this.displayZone())
                     : null;
             if (line) lines.set(grant.id, line);
         }
@@ -168,6 +170,7 @@ export class PluginGrantsTableComponent {
     private readonly toast = inject(ToastService);
     private readonly document = inject(DOCUMENT);
     private readonly locale = inject(LOCALE_ID);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
     private readonly destroyRef = inject(DestroyRef);
     /** One handler per action, so a new action does not build until it has one. */
     private readonly actionHandlers: Readonly<Record<PluginGrantAction, (grant: PluginGrant) => void>> = {
@@ -249,7 +252,7 @@ export class PluginGrantsTableComponent {
         if (hook?.state === 'running')
             return hook.attempt > 1 ? `Attempt ${hook.attempt} running` : 'Running its upgrade';
         if (hook?.state !== 'pending') return 'Waiting for the new version to start';
-        return pluginRetryProgress(hook, this.locale) ?? 'Waiting for the plugin to start';
+        return pluginRetryProgress(hook, this.locale, this.displayZone()) ?? 'Waiting for the plugin to start';
     }
 
     /** The error of the attempt that failed while the upgrade hook tries again by itself; else `null`. */

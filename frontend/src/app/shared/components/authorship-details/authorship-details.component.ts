@@ -1,12 +1,13 @@
-import { Component, computed, input } from '@angular/core';
+import { Component, computed, inject, input } from '@angular/core';
 import { UserSummary } from '@shared/models';
 
+import { UserPreferencesService } from '../../../services/auth/user-preferences.service';
 import { UserAvatarComponent } from '../user-avatar/user-avatar.component';
 import { AUTHORSHIP_EMPTY_VALUE, buildAuthorshipColumns } from './authorship-details.util';
 
 /**
  * Two-column "Owner" / "Last editor" block for any authored resource: avatar, name, and the
- * date + time of creation / last edit in the viewer's local time zone. Purely presentational —
+ * date + time of creation / last edit in the viewer's display timezone. Purely presentational —
  * the host decides where the data comes from and which dialog or panel wraps it.
  */
 @Component({
@@ -27,8 +28,11 @@ export class AuthorshipDetailsComponent {
             createdAt: this.createdAt(),
             lastEditor: this.lastEditor(),
             lastEditedAt: this.lastEditedAt(),
+            zone: this.displayZone(),
         })
     );
 
     protected readonly emptyValue = AUTHORSHIP_EMPTY_VALUE;
+
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
 }

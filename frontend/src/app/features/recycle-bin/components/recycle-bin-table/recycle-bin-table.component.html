@@ -187,7 +187,7 @@
                                 <div class="table-cell">
                                     <span
                                         class="bin-muted bin-deleted"
-                                        [matTooltip]="item.deletedAt | date: dateFormat"
+                                        [matTooltip]="item.deletedAt | userDate: dateFormat"
                                         >{{ deletedLabel(item) }}</span
                                     >
                                 </div>
@@ -247,7 +247,7 @@
                                                             <dd class="bin-details__value">
                                                                 @switch (detail.format) {
                                                                     @case ('date') {
-                                                                        {{ detail.value | date: dateFormat }}
+                                                                        {{ detail.value | userDate: dateFormat }}
                                                                     }
                                                                     @case ('size') {
                                                                         {{ detail.value | fileSize: 'auto' }}

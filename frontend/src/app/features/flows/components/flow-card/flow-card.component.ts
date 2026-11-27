@@ -4,7 +4,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, CheckboxComponent } from '@shared/components';
 import { LabelDropDirective, TooltipOnOverflowDirective } from '@shared/directives';
 import { getLabelColorOption, ResourceCode } from '@shared/models';
+import { knownZone } from '@shared/utils';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { GetGraphLightRequest, SubflowLightDto } from '../../models/graph.model';
 import { LabelsStorageService } from '../../services/labels-storage.service';
 import { FlowMenuAction, FlowMenuComponent, FlowMenuSelection } from './flow-menu/flow-menu.component';
@@ -54,6 +56,7 @@ export class FlowCardComponent {
     readonly labelDrop = output<FlowLabelDropEvent>();
 
     private readonly labelsStorage = inject(LabelsStorageService);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
 
     public isMenuOpen = false;
     public isExpanded = signal<boolean>(false);
@@ -95,6 +98,7 @@ export class FlowCardComponent {
                 month: 'short',
                 day: 'numeric',
                 year: 'numeric',
+                timeZone: knownZone(this.displayZone()),
             }) +
             ', ' +
             d.toLocaleTimeString('en-US', {
@@ -102,6 +106,7 @@ export class FlowCardComponent {
                 minute: '2-digit',
                 second: '2-digit',
                 hour12: false,
+                timeZone: knownZone(this.displayZone()),
             })
         );
     }
@@ -113,6 +118,7 @@ export class FlowCardComponent {
             month: 'short',
             day: 'numeric',
             year: 'numeric',
+            timeZone: knownZone(this.displayZone()),
         });
     }
 
@@ -124,6 +130,7 @@ export class FlowCardComponent {
             minute: '2-digit',
             second: '2-digit',
             hour12: false,
+            timeZone: knownZone(this.displayZone()),
         });
     }
 

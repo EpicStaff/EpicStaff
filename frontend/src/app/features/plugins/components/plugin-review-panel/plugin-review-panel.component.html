@@ -288,7 +288,7 @@
             </dd>
             <dt>Uploaded</dt>
             <dd>
-                {{ reviewed.uploaded_at | date: 'medium' }}
+                {{ reviewed.uploaded_at | userDate: 'medium' }}
                 @if (reviewed.uploaded_by; as uploader) {
                     by {{ uploader.email }}
                 }
@@ -296,7 +296,7 @@
             @if (reviewed.approved_at) {
                 <dt>Approved</dt>
                 <dd>
-                    {{ reviewed.approved_at | date: 'medium' }}
+                    {{ reviewed.approved_at | userDate: 'medium' }}
                     @if (reviewed.approved_by; as approver) {
                         by {{ approver.email }}
                     }

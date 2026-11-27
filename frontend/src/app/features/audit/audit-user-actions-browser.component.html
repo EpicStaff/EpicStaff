@@ -114,7 +114,7 @@
                                 <tr>
                                     <td>{{ row.event.number }}</td>
                                     <td class="audit-table__date">
-                                        {{ row.event.event_time | date: 'MMM dd yyyy HH:mm:ss' }}
+                                        {{ row.event.event_time | userDate: 'MMM dd yyyy HH:mm:ss' }}
                                     </td>
                                     <td>
                                         <app-audit-highlight
@@ -241,7 +241,7 @@
 
                 <div class="audit-summary">
                     <span class="audit-summary__key">TIMES IN:</span>
-                    <span>{{ timeZoneLabel }}</span>
+                    <span>{{ timeZoneLabel() }}</span>
                     <span class="audit-summary__key">IN VIEW:</span>
                     <span>{{ rows().length }} actions</span>
                 </div>

@@ -122,12 +122,12 @@
                             />
                             @if (grant.suspended_at) {
                                 <span class="grants__suspended-at grants__muted text-body-small">
-                                    Since {{ grant.suspended_at | date: 'mediumDate' }}
+                                    Since {{ grant.suspended_at | userDate: 'mediumDate' }}
                                 </span>
                             }
                             @if (grant.purge_after) {
                                 <span class="grants__kept-until grants__muted text-body-small">
-                                    Data kept until {{ grant.purge_after | date: 'mediumDate' }}
+                                    Data kept until {{ grant.purge_after | userDate: 'mediumDate' }}
                                 </span>
                             }
                         </div>
@@ -214,10 +214,10 @@
         @if (grantOf(row); as grant) {
             @if (grant.service_account; as account) {
                 <div class="grants__stack text-body-small">
-                    <span class="grants__primary">Created {{ account.created_at | date: 'mediumDate' }}</span>
+                    <span class="grants__primary">Created {{ account.created_at | userDate: 'mediumDate' }}</span>
                     <span
                         class="grants__muted"
-                        [matTooltip]="(account.key_last_used_at | date: 'medium') ?? ''"
+                        [matTooltip]="(account.key_last_used_at | userDate: 'medium') ?? ''"
                         [matTooltipDisabled]="account.key_last_used_at === null"
                         matTooltipPosition="above"
                     >
@@ -250,7 +250,7 @@
         let-row
     >
         @if (grantOf(row); as grant) {
-            <span class="grants__cell">{{ grant.granted_at | date: 'mediumDate' }}</span>
+            <span class="grants__cell">{{ grant.granted_at | userDate: 'mediumDate' }}</span>
         }
     </ng-template>
     <ng-template

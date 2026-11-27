@@ -1,8 +1,8 @@
-import { DatePipe } from '@angular/common';
 import { HttpErrorResponse, HttpStatusCode } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, input, linkedSignal, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
+import { UserDatePipe } from '@shared/pipes';
 import { concat, defer, EMPTY, merge, Observable, of, Subject } from 'rxjs';
 import { catchError, filter, map, pairwise, startWith, switchMap } from 'rxjs/operators';
 
@@ -156,7 +156,7 @@ function isBotKeyRejected(error: HttpErrorResponse): boolean {
  */
 @Component({
     selector: 'app-telegram-webhook-registration',
-    imports: [AppSvgIconComponent, ButtonComponent, DatePipe],
+    imports: [AppSvgIconComponent, ButtonComponent, UserDatePipe],
     templateUrl: './telegram-webhook-registration.component.html',
     styleUrls: ['./telegram-webhook-registration.component.scss'],
 })

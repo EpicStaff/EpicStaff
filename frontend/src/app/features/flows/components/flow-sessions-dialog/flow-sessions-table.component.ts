@@ -24,6 +24,7 @@ import {
 import { DATE_FORMAT, TIME_FORMAT_24H } from '@shared/constants';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, DateRangeFilter, GraphSessionStatus, isTerminalSessionStatus, ResourceCode } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 import { GraphMessagesComponent } from 'src/app/pages/running-graph/components/graph-messages/graph-messages.component';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -52,6 +53,7 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
     selector: 'app-flow-sessions-table',
     imports: [
         CommonModule,
+        UserDatePipe,
         CheckboxComponent,
         AppSvgIconComponent,
         FlowSessionStatusBadgeComponent,
@@ -226,17 +228,17 @@ import { TriggerFilterDropdownComponent } from './trigger-filter-dropdown.compon
                                     </span>
                                 </td>
                                 <td class="col-created cell-date">
-                                    {{ session.created_at | date: DATE_FORMAT }},
+                                    {{ session.created_at | userDate: DATE_FORMAT }},
                                     <span class="cell-date__time">{{
-                                        session.created_at | date: TIME_FORMAT_24H
+                                        session.created_at | userDate: TIME_FORMAT_24H
                                     }}</span>
                                 </td>
                                 @if (!showDurationFilter()) {
                                     <td class="col-finished cell-date">
                                         @if (session.finished_at) {
-                                            {{ session.finished_at | date: DATE_FORMAT }},
+                                            {{ session.finished_at | userDate: DATE_FORMAT }},
                                             <span class="cell-date__time">{{
-                                                session.finished_at | date: TIME_FORMAT_24H
+                                                session.finished_at | userDate: TIME_FORMAT_24H
                                             }}</span>
                                         } @else {
                                             Active

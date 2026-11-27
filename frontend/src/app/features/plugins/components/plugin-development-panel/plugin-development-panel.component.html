@@ -33,7 +33,7 @@
                         <dt>Runtime file</dt>
                         <dd data-fact="runtime-file">
                             @if (current.runtime_file_issued_at; as issuedAt) {
-                                Downloaded {{ issuedAt | date: 'medium' }}
+                                Downloaded {{ issuedAt | userDate: 'medium' }}
                             } @else {
                                 Not downloaded
                             }

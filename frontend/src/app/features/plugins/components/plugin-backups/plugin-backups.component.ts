@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import {
     Component,
     computed,
@@ -14,6 +13,7 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { ButtonComponent, LoadingSpinnerComponent } from '@shared/components';
+import { UserDatePipe } from '@shared/pipes';
 import { formatFileSize } from '@shared/utils';
 import { catchError, filter, finalize, of, switchMap, tap } from 'rxjs';
 
@@ -45,7 +45,7 @@ interface BackupRow {
  */
 @Component({
     selector: 'app-plugin-backups',
-    imports: [ButtonComponent, DatePipe, LoadingSpinnerComponent],
+    imports: [ButtonComponent, UserDatePipe, LoadingSpinnerComponent],
     templateUrl: './plugin-backups.component.html',
     styleUrl: './plugin-backups.component.scss',
 })

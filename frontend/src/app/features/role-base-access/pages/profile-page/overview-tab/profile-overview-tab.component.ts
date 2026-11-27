@@ -1,10 +1,10 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ListComponent, ListRowComponent, SelectComponent, SelectItem } from '@shared/components';
 import { ROLE_LABELS } from '@shared/constants';
 import { FullMembership, Role, UserRole } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 
 import { ProfileService } from '../../../../../services/auth/profile.service';
 import { OrgAvatarComponent } from '../../../components/org-avatar/org-avatar.component';
@@ -24,7 +24,7 @@ import {
         SelectComponent,
         ListComponent,
         ListRowComponent,
-        DatePipe,
+        UserDatePipe,
         MatTooltip,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,

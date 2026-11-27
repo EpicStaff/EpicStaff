@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import { Component, computed, DestroyRef, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import {
@@ -9,6 +8,7 @@ import {
     InputNumberComponent,
     LoadingSpinnerComponent,
 } from '@shared/components';
+import { UserDatePipe } from '@shared/pipes';
 import { downloadBlob, escapeHtml } from '@shared/utils';
 import { catchError, filter, finalize, Observable, of, switchMap, tap } from 'rxjs';
 
@@ -71,7 +71,7 @@ interface PortField {
     imports: [
         ButtonComponent,
         CopyFieldComponent,
-        DatePipe,
+        UserDatePipe,
         FetchErrorStateComponent,
         InputNumberComponent,
         LoadingSpinnerComponent,

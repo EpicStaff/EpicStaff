@@ -1,8 +1,10 @@
 import { CommonModule } from '@angular/common';
-import { ChangeDetectionStrategy, Component, computed, effect, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } from '@angular/core';
 import { AppSvgIconComponent, JsonViewerComponent } from '@shared/components';
+import { knownZone } from '@shared/utils';
 import { MarkdownComponent } from 'ngx-markdown';
 
+import { UserPreferencesService } from '../../../../../../services/auth/user-preferences.service';
 import type { ItemType } from '../../../../libs/openai/client';
 import { ChatsService } from '../../../../services/chats.service';
 import { ConsoleService } from '../../../../services/console.service';
@@ -27,6 +29,7 @@ export class ChatMessagesComponent {
     // Get the conversation items directly from the ConsoleService
     conversationItems = computed(() => this.consoleService.items());
     private previousItemCount = 0;
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
 
     // Track expanded/collapsed state of tool responses
     expandedResponses = signal<Record<string, boolean>>({});
@@ -169,6 +172,7 @@ export class ChatMessagesComponent {
             hour: '2-digit',
             minute: '2-digit',
             hour12: false,
+            timeZone: knownZone(this.displayZone()),
         });
     }
 

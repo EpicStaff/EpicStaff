@@ -1,12 +1,13 @@
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
-import { formatDate } from '@angular/common';
 import { Component, computed, DestroyRef, inject, LOCALE_ID, signal } from '@angular/core';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent } from '@shared/components';
+import { formatInZone } from '@shared/utils';
 import { filter, finalize } from 'rxjs';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { PluginBackup, PluginRestore } from '../../models/plugin-admin.model';
 import { PluginsAdminStorageService } from '../../services/plugins-admin-storage.service';
 import { pluginBackupTitle } from '../../utils/plugin-display.util';
@@ -58,7 +59,12 @@ export class PluginRestoreDialogComponent {
     private readonly typedPhrase = toSignal(this.phraseControl.valueChanges, { initialValue: '' });
 
     constructor() {
-        const takenAt = formatDate(this.data.backup.created_at, 'medium', inject(LOCALE_ID));
+        const takenAt = formatInZone(
+            this.data.backup.created_at,
+            'medium',
+            inject(LOCALE_ID),
+            inject(UserPreferencesService).displayZone()
+        );
         this.question =
             `Replace ${this.data.databaseName} with this backup from ${takenAt}? Changes since then are lost. ` +
             'A backup of the current database is taken first, so you can undo this.';

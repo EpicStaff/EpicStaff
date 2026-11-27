@@ -1,9 +1,12 @@
 import { CommonModule } from '@angular/common';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, GraphSessionStatus, ResourceCode } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { GraphSessionLight, SessionRunType, SessionTrigger } from '../../services/flows-sessions.service';
@@ -46,6 +49,8 @@ describe('FlowSessionsTableComponent type column', () => {
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([]),
+                provideHttpClient(),
+                provideHttpClientTesting(),
                 {
                     provide: PermissionsService,
                     useValue: { can: () => false, canAny: () => false } as unknown as PermissionsService,
@@ -55,7 +60,7 @@ describe('FlowSessionsTableComponent type column', () => {
         // The other dropdowns and the preview pull in their own services; the type column is under test.
         TestBed.overrideComponent(FlowSessionsTableComponent, {
             set: {
-                imports: [CommonModule, HasPermissionDirective, FlowSessionTypeFilterDropdownComponent],
+                imports: [CommonModule, HasPermissionDirective, FlowSessionTypeFilterDropdownComponent, UserDatePipe],
                 schemas: [CUSTOM_ELEMENTS_SCHEMA],
             },
         });
@@ -110,6 +115,8 @@ describe('FlowSessionsTableComponent stop button', () => {
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([]),
+                provideHttpClient(),
+                provideHttpClientTesting(),
                 {
                     provide: PermissionsService,
                     useValue: {
@@ -122,7 +129,7 @@ describe('FlowSessionsTableComponent stop button', () => {
         });
         TestBed.overrideComponent(FlowSessionsTableComponent, {
             set: {
-                imports: [CommonModule, HasPermissionDirective, FlowSessionTypeFilterDropdownComponent],
+                imports: [CommonModule, HasPermissionDirective, FlowSessionTypeFilterDropdownComponent, UserDatePipe],
                 schemas: [CUSTOM_ELEMENTS_SCHEMA],
             },
         });

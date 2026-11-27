@@ -10,7 +10,8 @@ import {
     waitDuration,
 } from './conversation-row.util';
 
-// Local wall-clock times, so the calendar-day rules hold in any time zone the tests run in.
+// Local wall-clock times read in the browser's own zone, so the calendar-day rules hold in any zone the tests run in.
+const LOCAL_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const at = (year: number, month: number, day: number, hours = 0, minutes = 0, seconds = 0): Date =>
     new Date(year, month - 1, day, hours, minutes, seconds);
 // Monday 12 October 2026, 14:30.
@@ -102,7 +103,7 @@ describe('conversationTime', () => {
         ['a week ago or more', at(2026, 10, 5, 10, 0), 'Oct 5'],
         ['an earlier year', at(2025, 12, 31, 10, 0), 'Dec 31, 2025'],
     ])('shows %s as %s', (_case, date, expected) => {
-        expect(plain(conversationTime(iso(date), NOW, LOCALE))).toBe(expected);
+        expect(plain(conversationTime(iso(date), NOW, LOCALE, LOCAL_ZONE))).toBe(expected);
     });
 
     it.each([
@@ -111,24 +112,24 @@ describe('conversationTime', () => {
         ['under an hour ago', at(2026, 10, 12, 13, 31), '59m ago'],
         ['earlier today', at(2026, 10, 12, 9, 5), '9:05 AM'],
     ])("in the thread, shows %s as %s: minutes read 'ago'", (_case, date, expected) => {
-        expect(plain(messageTime(iso(date), NOW, LOCALE))).toBe(expected);
+        expect(plain(messageTime(iso(date), NOW, LOCALE, LOCAL_ZONE))).toBe(expected);
     });
 
     it('counts minutes, not the calendar, within the hour across midnight', () => {
         const justAfterMidnight = at(2026, 10, 13, 0, 10).getTime();
-        expect(conversationTime(iso(at(2026, 10, 12, 23, 50)), justAfterMidnight, LOCALE)).toBe('20m');
-        expect(conversationTime(iso(at(2026, 10, 12, 22, 0)), justAfterMidnight, LOCALE)).toBe('Yesterday');
+        expect(conversationTime(iso(at(2026, 10, 12, 23, 50)), justAfterMidnight, LOCALE, LOCAL_ZONE)).toBe('20m');
+        expect(conversationTime(iso(at(2026, 10, 12, 22, 0)), justAfterMidnight, LOCALE, LOCAL_ZONE)).toBe('Yesterday');
     });
 
     it('follows the locale for the clock and the date', () => {
-        expect(plain(conversationTime(iso(at(2026, 10, 12, 14, 5)), at(2026, 10, 12, 18, 0).getTime(), LOCALE))).toBe(
-            '2:05 PM'
-        );
+        expect(
+            plain(conversationTime(iso(at(2026, 10, 12, 14, 5)), at(2026, 10, 12, 18, 0).getTime(), LOCALE, LOCAL_ZONE))
+        ).toBe('2:05 PM');
     });
 
     it('is empty for a conversation without messages', () => {
-        expect(conversationTime(null, NOW, LOCALE)).toBe('');
-        expect(conversationTimeLabel(null, NOW, LOCALE)).toBe('');
+        expect(conversationTime(null, NOW, LOCALE, LOCAL_ZONE)).toBe('');
+        expect(conversationTimeLabel(null, NOW, LOCALE, LOCAL_ZONE)).toBe('');
     });
 });
 
@@ -141,14 +142,48 @@ describe('conversationTimeLabel', () => {
         [at(2026, 10, 5, 9, 5), 'October 5'],
         [at(2025, 12, 31, 9, 5), 'December 31, 2025'],
     ])('says %s in words', (date, expected) => {
-        expect(plain(conversationTimeLabel(iso(date), NOW, LOCALE))).toBe(expected);
+        expect(plain(conversationTimeLabel(iso(date), NOW, LOCALE, LOCAL_ZONE))).toBe(expected);
     });
 
     it('stays the same as the clock ticks within the day, unlike the relative time', () => {
         const sent = iso(at(2026, 10, 12, 14, 24));
         const later = at(2026, 10, 12, 14, 52).getTime();
-        expect(conversationTimeLabel(sent, later, LOCALE)).toBe(conversationTimeLabel(sent, NOW, LOCALE));
-        expect(conversationTime(sent, later, LOCALE)).not.toBe(conversationTime(sent, NOW, LOCALE));
+        expect(conversationTimeLabel(sent, later, LOCALE, LOCAL_ZONE)).toBe(
+            conversationTimeLabel(sent, NOW, LOCALE, LOCAL_ZONE)
+        );
+        expect(conversationTime(sent, later, LOCALE, LOCAL_ZONE)).not.toBe(
+            conversationTime(sent, NOW, LOCALE, LOCAL_ZONE)
+        );
+    });
+});
+
+describe('times in the display timezone', () => {
+    // 18:00 UTC on Monday 12 October 2026: 03:00 on Tuesday 13 October in Tokyo.
+    const now = Date.parse('2026-10-12T18:00:00Z');
+
+    it.each([
+        // 23:00 on Monday in Tokyo, the evening before.
+        ['2026-10-12T14:00:00Z', 'Asia/Tokyo', 'Yesterday'],
+        ['2026-10-12T14:00:00Z', 'UTC', '2:00 PM'],
+        ['2026-10-12T16:30:00Z', 'Asia/Tokyo', '1:30 AM'],
+    ])('shows %s in %s as %s', (sent, zone, expected) => {
+        expect(plain(conversationTime(sent, now, LOCALE, zone))).toBe(expected);
+    });
+
+    it('says the day in words on the calendar of the zone', () => {
+        expect(plain(conversationTimeLabel('2026-10-12T14:00:00Z', now, LOCALE, 'Asia/Tokyo'))).toBe(
+            'yesterday at 11:00 PM'
+        );
+        expect(plain(conversationTimeLabel('2026-10-12T14:00:00Z', now, LOCALE, 'UTC'))).toBe('today at 2:00 PM');
+    });
+
+    it('shows the year of an older time by the year of the zone', () => {
+        // 23:00 on 31 December 2025 in New York is already 2026 in UTC.
+        const newYear = Date.parse('2026-01-20T12:00:00Z');
+        expect(plain(conversationTime('2026-01-01T04:00:00Z', newYear, LOCALE, 'America/New_York'))).toBe(
+            'Dec 31, 2025'
+        );
+        expect(plain(conversationTime('2026-01-01T04:00:00Z', newYear, LOCALE, 'UTC'))).toBe('Jan 1');
     });
 });
 

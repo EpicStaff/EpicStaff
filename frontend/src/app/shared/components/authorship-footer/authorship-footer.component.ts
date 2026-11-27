@@ -1,6 +1,7 @@
-import { Component, computed, input } from '@angular/core';
+import { Component, computed, inject, input } from '@angular/core';
 import { UserSummary } from '@shared/models';
 
+import { UserPreferencesService } from '../../../services/auth/user-preferences.service';
 import {
     AUTHORSHIP_EMPTY_VALUE,
     formatAuthorshipTimestamp,
@@ -33,13 +34,20 @@ export class AuthorshipFooterComponent {
     readonly lastEditedAt = input.required<string | null>();
 
     protected readonly columns = computed<AuthorshipFooterColumn[]>(() => [
-        buildColumn('Created by', this.createdBy(), this.createdAt()),
-        buildColumn('Edited by', this.lastEditedBy(), this.lastEditedAt()),
+        buildColumn('Created by', this.createdBy(), this.createdAt(), this.displayZone()),
+        buildColumn('Edited by', this.lastEditedBy(), this.lastEditedAt(), this.displayZone()),
     ]);
+
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
 }
 
-function buildColumn(label: string, user: UserSummary | null, moment: string | null): AuthorshipFooterColumn {
-    const timestamp = formatAuthorshipTimestamp(moment);
+function buildColumn(
+    label: string,
+    user: UserSummary | null,
+    moment: string | null,
+    zone: string
+): AuthorshipFooterColumn {
+    const timestamp = formatAuthorshipTimestamp(moment, zone);
     return {
         label,
         userName: user === null ? AUTHORSHIP_EMPTY_VALUE : resolveUserName(user),

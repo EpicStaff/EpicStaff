@@ -1,4 +1,3 @@
-import { DatePipe } from '@angular/common';
 import { Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { FormControl, FormRecord, ReactiveFormsModule } from '@angular/forms';
@@ -10,6 +9,7 @@ import {
     SchemaFieldComponent,
 } from '@shared/components';
 import { JsonSchemaProperty, SchemaWidget } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 import { catchError, finalize, merge, of, switchMap, tap } from 'rxjs';
 
 import { ToastService } from '../../../../services/notifications';
@@ -62,7 +62,7 @@ const SETTING_LOC_PREFIX = 'values.';
     imports: [
         ButtonComponent,
         CustomInputComponent,
-        DatePipe,
+        UserDatePipe,
         FetchErrorStateComponent,
         LoadingSpinnerComponent,
         ReactiveFormsModule,

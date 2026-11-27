@@ -1,7 +1,8 @@
-import { DatePipe, DecimalPipe, DOCUMENT } from '@angular/common';
+import { DecimalPipe, DOCUMENT } from '@angular/common';
 import { Component, computed, DestroyRef, inject, input, output, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { ButtonComponent, ConfirmationDialogService, LoadingSpinnerComponent } from '@shared/components';
+import { UserDatePipe } from '@shared/pipes';
 import { escapeHtml, formatFileSize } from '@shared/utils';
 import { catchError, EMPTY, exhaustMap, filter, finalize, switchMap, timer } from 'rxjs';
 
@@ -47,7 +48,7 @@ const BLOCKED_REASON_MESSAGES: Readonly<Record<PluginBlockedReason, string>> = {
     selector: 'app-plugin-runtime-panel',
     imports: [
         ButtonComponent,
-        DatePipe,
+        UserDatePipe,
         DecimalPipe,
         LoadingSpinnerComponent,
         PluginBackupsComponent,

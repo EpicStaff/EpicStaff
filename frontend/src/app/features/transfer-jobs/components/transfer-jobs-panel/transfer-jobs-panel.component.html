@@ -79,7 +79,7 @@
                         <span
                             class="transfer-jobs-panel__meta text-caption"
                             data-test="transfer-job-available-until"
-                            >Available until {{ row.availableUntil | date: 'MMM d, h:mm a' }}</span
+                            >Available until {{ row.availableUntil | userDate: 'MMM d, h:mm a' }}</span
                         >
                     }
                     @if (row.errorMessage) {

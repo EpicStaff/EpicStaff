@@ -1,11 +1,13 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { DatePipe } from '@angular/common';
+import { provideHttpClient } from '@angular/common/http';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatTooltip } from '@angular/material/tooltip';
 import { provideRouter, RouterLink } from '@angular/router';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, GraphSessionStatus, ResourceCode } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 import { of } from 'rxjs';
 
 import {
@@ -54,6 +56,8 @@ describe('RunningGraphHeaderComponent session type', () => {
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([]),
+                provideHttpClient(),
+                provideHttpClientTesting(),
                 { provide: Dialog, useValue: {} },
                 { provide: MemoryService, useValue: {} },
                 { provide: RunGraphPageService, useValue: { getMemories: () => [] } },
@@ -74,7 +78,7 @@ describe('RunningGraphHeaderComponent session type', () => {
         });
         // The sidebar, files button and switcher bring their own services; only the meta row is under test.
         TestBed.overrideComponent(RunningGraphHeaderComponent, {
-            set: { imports: [DatePipe, RouterLink, MatTooltip], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+            set: { imports: [UserDatePipe, RouterLink, MatTooltip], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
         });
     });
 
@@ -105,6 +109,8 @@ describe('RunningGraphHeaderComponent stop button', () => {
         TestBed.configureTestingModule({
             providers: [
                 provideRouter([]),
+                provideHttpClient(),
+                provideHttpClientTesting(),
                 { provide: Dialog, useValue: {} },
                 { provide: MemoryService, useValue: {} },
                 { provide: RunGraphPageService, useValue: { getMemories: () => [] } },
@@ -120,7 +126,7 @@ describe('RunningGraphHeaderComponent stop button', () => {
         });
         TestBed.overrideComponent(RunningGraphHeaderComponent, {
             set: {
-                imports: [DatePipe, RouterLink, MatTooltip, HasPermissionDirective],
+                imports: [UserDatePipe, RouterLink, MatTooltip, HasPermissionDirective],
                 schemas: [CUSTOM_ELEMENTS_SCHEMA],
             },
         });

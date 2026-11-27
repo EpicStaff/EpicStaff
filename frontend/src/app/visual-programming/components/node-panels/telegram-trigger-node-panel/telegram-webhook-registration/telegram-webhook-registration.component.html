@@ -180,7 +180,7 @@
                         <span class="telegram-registration__muted telegram-registration__last-error">
                             Last delivery error: {{ webhookInfo.last_error_message }}
                             @if (webhookInfo.last_error_date) {
-                                ({{ webhookInfo.last_error_date | date: 'medium' }})
+                                ({{ webhookInfo.last_error_date | userDate: 'medium' }})
                             }
                         </span>
                     }

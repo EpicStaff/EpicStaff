@@ -143,7 +143,7 @@
         appTableCell="created"
         let-row
     >
-        <span class="cell-text">{{ row['created'] | date: 'mediumDate' }}</span>
+        <span class="cell-text">{{ row['created'] | userDate: 'mediumDate' }}</span>
     </ng-template>
 
     <!-- EXPIRES -->

@@ -1,4 +1,4 @@
-import { DatePipe, DOCUMENT } from '@angular/common';
+import { DOCUMENT } from '@angular/common';
 import { Component, computed, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -12,6 +12,7 @@ import {
     PaginationControlsComponent,
     TableRow,
 } from '@shared/components';
+import { UserDatePipe } from '@shared/pipes';
 import { catchError, EMPTY, expand, filter, of, switchMap, take, tap, timer } from 'rxjs';
 
 import { ApiGetRequest } from '../../../../core/models/api-request.model';
@@ -57,7 +58,7 @@ const COLUMNS: AppTableColumnDef[] = [
         AppTableComponent,
         ButtonComponent,
         CheckboxComponent,
-        DatePipe,
+        UserDatePipe,
         LoadingSpinnerComponent,
         MatTooltip,
         PaginationControlsComponent,

@@ -1,5 +1,5 @@
-import { formatDate } from '@angular/common';
 import { UserSummary } from '@shared/models';
+import { formatInZone } from '@shared/utils';
 
 /** Shown in place of a user, date or time that the backend does not know. */
 export const AUTHORSHIP_EMPTY_VALUE = '—';
@@ -10,7 +10,7 @@ const TIMESTAMP_LOCALE = 'en-US';
 const TIMESTAMP_DATE_FORMAT = 'MMM d, y';
 const TIMESTAMP_TIME_FORMAT = 'HH:mm:ss';
 
-/** A moment split into its date and time parts, both in the viewer's local time zone. */
+/** A moment split into its date and time parts, both in the viewer's display timezone. */
 export interface AuthorshipTimestamp {
     /** e.g. `Mar 12, 2026` */
     date: string;
@@ -36,12 +36,14 @@ export interface AuthorshipColumnsSource {
     createdAt: string | null;
     lastEditor: UserSummary | null;
     lastEditedAt: string | null;
+    /** IANA zone the moments are shown in: the display timezone. */
+    zone: string;
 }
 
 export function buildAuthorshipColumns(source: AuthorshipColumnsSource): AuthorshipColumn[] {
     return [
-        buildAuthorshipColumn('Owner', source.owner, source.createdAt),
-        buildAuthorshipColumn('Last editor', source.lastEditor, source.lastEditedAt),
+        buildAuthorshipColumn('Owner', source.owner, source.createdAt, source.zone),
+        buildAuthorshipColumn('Last editor', source.lastEditor, source.lastEditedAt, source.zone),
     ];
 }
 
@@ -56,9 +58,10 @@ export function buildAuthorshipColumns(source: AuthorshipColumnsSource): Authors
 export function buildAuthorshipColumn(
     label: string,
     user: UserSummary | null,
-    moment: string | null
+    moment: string | null,
+    zone: string
 ): AuthorshipColumn {
-    const timestamp = formatAuthorshipTimestamp(moment);
+    const timestamp = formatAuthorshipTimestamp(moment, zone);
     if (user === null) {
         return {
             label,
@@ -84,8 +87,8 @@ export function resolveUserName(user: UserSummary): string {
     return user.display_name?.trim() || AUTHORSHIP_UNNAMED_USER;
 }
 
-/** Splits an ISO 8601 timestamp into local date and time; null for a missing or unparseable value. */
-export function formatAuthorshipTimestamp(value: string | null): AuthorshipTimestamp | null {
+/** Splits an ISO 8601 timestamp into its date and time in `zone`; null for a missing or unparseable value. */
+export function formatAuthorshipTimestamp(value: string | null, zone: string): AuthorshipTimestamp | null {
     if (!value) {
         return null;
     }
@@ -94,7 +97,7 @@ export function formatAuthorshipTimestamp(value: string | null): AuthorshipTimes
         return null;
     }
     return {
-        date: formatDate(moment, TIMESTAMP_DATE_FORMAT, TIMESTAMP_LOCALE),
-        time: formatDate(moment, TIMESTAMP_TIME_FORMAT, TIMESTAMP_LOCALE),
+        date: formatInZone(moment, TIMESTAMP_DATE_FORMAT, TIMESTAMP_LOCALE, zone),
+        time: formatInZone(moment, TIMESTAMP_TIME_FORMAT, TIMESTAMP_LOCALE, zone),
     };
 }

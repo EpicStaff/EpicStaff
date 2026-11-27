@@ -80,4 +80,6 @@ export interface AuditExportRequest {
     filters?: AuditFilterNode;
     query?: string;
     match_scope?: AuditMatchScope;
+    /** IANA zone the file writes its dates in, with their offset; `null` writes them as the auditor stores them. */
+    time_zone?: string | null;
 }

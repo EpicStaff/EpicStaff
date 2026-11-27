@@ -1,10 +1,11 @@
 import { ChatConversation } from '../models/chat.model';
 import { closedSummary, closeReasonLabel, closeReasonWord, isClosed } from './conversation-close.util';
 
-// Local wall-clock times, so "today" holds in any time zone the tests run in. Monday 12 October 2026, 14:30.
-const NOW = new Date(2026, 9, 12, 14, 30).getTime();
-const TODAY_AT_14_05 = new Date(2026, 9, 12, 14, 5).toISOString();
-const OCTOBER_5_AT_9 = new Date(2026, 9, 5, 9, 0).toISOString();
+// Times are read on the clock of ZONE, the display timezone. Monday 12 October 2026, 14:30 there.
+const ZONE = 'America/New_York';
+const NOW = Date.parse('2026-10-12T18:30:00Z');
+const TODAY_AT_14_05 = '2026-10-12T18:05:00Z';
+const OCTOBER_5_AT_9 = '2026-10-05T13:00:00Z';
 // Angular's en-US time format may put a narrow no-break space before AM/PM.
 const plain = (text: string): string => text.replace(/\s+/g, ' ');
 
@@ -58,17 +59,37 @@ describe('closeReasonLabel', () => {
 
 describe('closedSummary', () => {
     it('says Closed, why and when: the clock time today, the date before', () => {
-        expect(plain(closedSummary(closed(), 'support', 3, NOW, 'en-US'))).toBe('Closed · Resolved by Mike · 2:05 PM');
+        expect(plain(closedSummary(closed(), 'support', 3, NOW, 'en-US', ZONE))).toBe(
+            'Closed · Resolved by Mike · 2:05 PM'
+        );
         expect(
             plain(
-                closedSummary(closed({ close_reason: 'ended', closed_at: OCTOBER_5_AT_9 }), 'support', 3, NOW, 'en-US')
+                closedSummary(
+                    closed({ close_reason: 'ended', closed_at: OCTOBER_5_AT_9 }),
+                    'support',
+                    3,
+                    NOW,
+                    'en-US',
+                    ZONE
+                )
             )
         ).toBe('Closed · Ended by the visitor · Oct 5, 9:00 AM');
     });
 
+    it('tells today from an earlier day on the calendar of the display timezone', () => {
+        // 03:00 UTC today is 23:00 yesterday in New York.
+        const lateLastNight = closed({ closed_at: '2026-10-12T03:00:00Z' });
+        expect(plain(closedSummary(lateLastNight, 'support', 3, NOW, 'en-US', ZONE))).toBe(
+            'Closed · Resolved by Mike · Oct 11, 11:00 PM'
+        );
+        expect(plain(closedSummary(lateLastNight, 'support', 3, NOW, 'en-US', 'UTC'))).toBe(
+            'Closed · Resolved by Mike · 3:00 AM'
+        );
+    });
+
     it('does not say Closed twice', () => {
-        expect(plain(closedSummary(closed(), 'ongoing', 3, NOW, 'en-US'))).toBe('Closed by Mike · 2:05 PM');
-        expect(plain(closedSummary(closed({ close_reason: 'inactive' }), 'support', 3, NOW, 'en-US'))).toBe(
+        expect(plain(closedSummary(closed(), 'ongoing', 3, NOW, 'en-US', ZONE))).toBe('Closed by Mike · 2:05 PM');
+        expect(plain(closedSummary(closed({ close_reason: 'inactive' }), 'support', 3, NOW, 'en-US', ZONE))).toBe(
             'Closed after inactivity · 2:05 PM'
         );
     });

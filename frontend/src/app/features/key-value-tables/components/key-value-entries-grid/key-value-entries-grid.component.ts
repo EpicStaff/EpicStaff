@@ -1,4 +1,4 @@
-import { DOCUMENT, formatDate } from '@angular/common';
+import { DOCUMENT } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     afterNextRender,
@@ -30,7 +30,7 @@ import {
 } from '@shared/components';
 import { DATE_TIME_FORMAT_24H } from '@shared/constants';
 import { TooltipOnOverflowDirective } from '@shared/directives';
-import { copyWithFeedback, deepEqual, extractHttpErrorMessage } from '@shared/utils';
+import { copyWithFeedback, deepEqual, extractHttpErrorMessage, formatInZone } from '@shared/utils';
 import { AgGridAngular } from 'ag-grid-angular';
 import {
     AgGridEvent,
@@ -63,6 +63,7 @@ import {
     timer,
 } from 'rxjs';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { ToastService } from '../../../../services/notifications';
 import { copyableValue, editableValue, previewText } from '../../helpers/entry-value-preview';
 import {
@@ -317,7 +318,9 @@ export class KeyValueEntriesGridComponent {
                 width: 190,
                 valueGetter: ({ data }) => data?.entry?.updated_at ?? null,
                 valueFormatter: ({ value }) =>
-                    typeof value === 'string' ? formatDate(value, DATE_TIME_FORMAT_24H, this.locale) : '',
+                    typeof value === 'string'
+                        ? formatInZone(value, DATE_TIME_FORMAT_24H, this.locale, this.displayZone())
+                        : '',
                 cellClass: 'entries-grid__updated',
             },
         ];
@@ -438,6 +441,7 @@ export class KeyValueEntriesGridComponent {
     private readonly destroyRef = inject(DestroyRef);
     private readonly injector = inject(Injector);
     private readonly locale = inject(LOCALE_ID);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
     private readonly router = inject(Router);
     private readonly document = inject(DOCUMENT);
 

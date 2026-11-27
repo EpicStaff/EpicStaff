@@ -7,6 +7,7 @@ import {
     effect,
     ElementRef,
     Inject,
+    inject,
     input,
     NgZone,
     OnDestroy,
@@ -17,7 +18,9 @@ import {
 } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { formatInZone } from '@shared/utils';
 
+import { UserPreferencesService } from '../../../../../services/auth/user-preferences.service';
 import { TerminalLogEntry } from './terminal-log.model';
 
 export type TerminalStatus = 'idle' | 'processing' | 'done' | 'error';
@@ -283,6 +286,7 @@ export class PythonTerminalComponent implements OnDestroy {
     private startHeight = 0;
     private unlistenPointerMove?: () => void;
     private unlistenPointerUp?: () => void;
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
 
     constructor(
         private renderer: Renderer2,
@@ -300,10 +304,7 @@ export class PythonTerminalComponent implements OnDestroy {
     }
 
     formatTime(date: Date): string {
-        const h = String(date.getHours()).padStart(2, '0');
-        const m = String(date.getMinutes()).padStart(2, '0');
-        const s = String(date.getSeconds()).padStart(2, '0');
-        return `[${h}:${m}:${s}]`;
+        return `[${formatInZone(date, 'HH:mm:ss', 'en-US', this.displayZone())}]`;
     }
 
     onResizeStart(event: PointerEvent): void {

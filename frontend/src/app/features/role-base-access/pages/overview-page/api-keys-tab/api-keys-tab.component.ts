@@ -1,6 +1,5 @@
 import { CdkTrapFocus } from '@angular/cdk/a11y';
 import { CdkConnectedOverlay, CdkOverlayOrigin } from '@angular/cdk/overlay';
-import { DatePipe } from '@angular/common';
 import {
     ChangeDetectionStrategy,
     Component,
@@ -31,6 +30,7 @@ import {
     UserAvatarComponent,
 } from '@shared/components';
 import { ActionCode, ApiKeyStatus, GetApiKeyWithOwnerResponse, ResourceCode } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 import { getRelativeTime } from '@shared/utils';
 import { combineLatest, debounceTime, distinctUntilChanged, EMPTY, forkJoin, map, of, switchMap } from 'rxjs';
 import { catchError, finalize } from 'rxjs/operators';
@@ -76,7 +76,7 @@ const STATUS_ITEMS: SelectItem[] = [
         SearchComponent,
         StatusBadgeComponent,
         UserAvatarComponent,
-        DatePipe,
+        UserDatePipe,
         DeleteButtonComponent,
         StopButtonComponent,
         CdkTrapFocus,

@@ -1,5 +1,4 @@
-import { formatDate } from '@angular/common';
-import { formatFileSize } from '@shared/utils';
+import { formatFileSize, formatInZone } from '@shared/utils';
 
 import {
     PluginActivityAction,
@@ -137,16 +136,16 @@ export function pluginActivityErrorText(event: PluginActivityEvent): string | nu
 /**
  * The overrides in force after a limits change (`Overrides: Memory 128 MB, CPU priority Low`), why a deletion began
  * (`Reason: Grace period over`), the versions and backups of an upgrade event (`0.6.0 → 0.7.0 · offline 2 min`), or
- * what a development event changed (`Backend port 8001 · Frontend dev server port 5173`); else `null`. `locale` formats
- * the time of a planned retry.
+ * what a development event changed (`Backend port 8001 · Frontend dev server port 5173`); else `null`. `locale` and
+ * `zone` (the display timezone) format the time of a planned retry.
  */
-export function pluginActivityDetailText(event: PluginActivityEvent, locale: string): string | null {
+export function pluginActivityDetailText(event: PluginActivityEvent, locale: string, zone: string): string | null {
     if (event.action === 'limits_changed') {
         const overrides = Object.entries(event.detail).map(([key, value]) => limitOverrideText(key, value));
         return `Overrides: ${overrides.length > 0 ? overrides.join(', ') : 'none'}`;
     }
     if (ACTIONS_WITH_REASON.has(event.action)) return reasonText(event.detail['reason']);
-    return developmentDetailText(event) ?? upgradeDetailText(event, locale);
+    return developmentDetailText(event) ?? upgradeDetailText(event, locale, zone);
 }
 
 /** A plugin request answered for a development backend, with a development key: marked "Development" in a list. */
@@ -182,7 +181,7 @@ function developmentDetailText(event: PluginActivityEvent): string | null {
 }
 
 /** What an upgrade, backup, restore or upgrade hook event adds to its label; `null` for any other event. */
-function upgradeDetailText(event: PluginActivityEvent, locale: string): string | null {
+function upgradeDetailText(event: PluginActivityEvent, locale: string, zone: string): string | null {
     const detail = event.detail;
     const from = detailText(detail['from_version']);
     const to = detailText(detail['to_version']);
@@ -227,7 +226,9 @@ function upgradeDetailText(event: PluginActivityEvent, locale: string): string |
             return from ? `From ${from}${to ? ` to ${to}` : ''}` : null;
         case 'upgrade_hook_failed': {
             const next = detailText(detail['next_attempt_at']);
-            return next ? `Next try ${formatDate(next, 'shortTime', locale)}` : 'No retries left: Retry it on its row';
+            return next
+                ? `Next try ${formatInZone(next, 'shortTime', locale, zone)}`
+                : 'No retries left: Retry it on its row';
         }
         default:
             return null;

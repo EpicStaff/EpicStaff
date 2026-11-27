@@ -1,6 +1,6 @@
-import { DatePipe } from '@angular/common';
 import { Component, computed, input } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
+import { UserDatePipe } from '@shared/pipes';
 import { getRelativeTime } from '@shared/utils';
 
 import { OrganizationServiceAccount } from '../../models/plugin-activity.model';
@@ -15,7 +15,7 @@ import { PluginIconComponent } from '../plugin-icon/plugin-icon.component';
  */
 @Component({
     selector: 'app-plugin-service-account-card',
-    imports: [DatePipe, MatTooltip, PluginAccessTableComponent, PluginBadgeComponent, PluginIconComponent],
+    imports: [UserDatePipe, MatTooltip, PluginAccessTableComponent, PluginBadgeComponent, PluginIconComponent],
     templateUrl: './plugin-service-account-card.component.html',
     styleUrl: './plugin-service-account-card.component.scss',
 })

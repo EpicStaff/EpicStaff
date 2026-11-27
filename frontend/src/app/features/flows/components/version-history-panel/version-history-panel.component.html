@@ -112,7 +112,7 @@
                             {{ version.description }}
                         </div>
                     }
-                    <div class="version-date">{{ version.created_at | date: 'MMM d, yyyy, HH:mm' }}</div>
+                    <div class="version-date">{{ version.created_at | userDate: 'MMM d, yyyy, HH:mm' }}</div>
                 </div>
                 @if (!selectMode()) {
                     <div

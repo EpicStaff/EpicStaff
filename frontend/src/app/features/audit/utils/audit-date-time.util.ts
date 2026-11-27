@@ -1,5 +1,8 @@
+import { instantFromZonedWallTime, zonedWallTime } from '@shared/utils';
+
 // Joins the date picker (dd.mm.yyyy) and time picker (hh:mm) values into the ISO string the date filter
-// stores, and splits it back for display. Both directions work in the browser's local time zone.
+// stores, and splits it back for display. Both directions read the clock of `zone`, the display timezone the
+// table shows its times in, so a typed 14:30 matches a row shown at 14:30.
 
 // `from` is the inclusive lower bound (gte), `to` the inclusive upper bound (lte).
 export type AuditDateBoundary = 'from' | 'to';
@@ -19,7 +22,8 @@ const TIME_PATTERN = /^(\d{2}):(\d{2})$/;
 // invalid, so the caller keeps the previous value instead of emitting a half-typed one.
 export function combineAuditDateTime(
     parts: AuditDateTimeParts,
-    boundary: AuditDateBoundary
+    boundary: AuditDateBoundary,
+    zone: string
 ): string | null | undefined {
     if (!parts.date) {
         return null;
@@ -43,25 +47,37 @@ export function combineAuditDateTime(
         return undefined;
     }
 
-    // The upper bound includes the whole chosen minute, so "to 23:59" is the end of the day.
-    const date =
-        boundary === 'from'
-            ? new Date(year, month, day, hours, minutes, 0, 0)
-            : new Date(year, month, day, hours, minutes, 59, 999);
-    if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) {
+    // A day the month does not have, such as 31.02, rolls over into the next month.
+    const calendarDay = new Date(Date.UTC(year, month, day));
+    if (
+        calendarDay.getUTCFullYear() !== year ||
+        calendarDay.getUTCMonth() !== month ||
+        calendarDay.getUTCDate() !== day
+    ) {
         return undefined;
     }
-    return date.toISOString();
+    // The upper bound includes the whole chosen minute, so "to 23:59" is the end of the day.
+    const seconds = boundary === 'from' ? 0 : 59;
+    const milliseconds = boundary === 'from' ? 0 : 999;
+    return instantFromZonedWallTime({ year, month, day, hours, minutes, seconds, milliseconds }, zone).toISOString();
 }
 
-export function splitAuditDateTime(iso: string | null): AuditDateTimeParts {
+export function splitAuditDateTime(iso: string | null, zone: string): AuditDateTimeParts {
     const date = iso ? new Date(iso) : null;
     if (!date || Number.isNaN(date.getTime())) {
         return { date: '', time: '' };
     }
+    // A zone this browser does not know falls back to the browser's own clock.
+    const wall = zonedWallTime(date, zone) ?? {
+        year: date.getFullYear(),
+        month: date.getMonth(),
+        day: date.getDate(),
+        hours: date.getHours(),
+        minutes: date.getMinutes(),
+    };
     return {
-        date: `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`,
-        time: `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+        date: `${pad(wall.day)}.${pad(wall.month + 1)}.${wall.year}`,
+        time: `${pad(wall.hours)}:${pad(wall.minutes)}`,
     };
 }
 

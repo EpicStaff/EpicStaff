@@ -1,5 +1,4 @@
-import { formatDate } from '@angular/common';
-import { daysUntil } from '@shared/utils';
+import { daysUntil, formatInZone } from '@shared/utils';
 
 import {
     PluginAction,
@@ -212,7 +211,8 @@ export interface PluginDataRemovalLine {
 export function pluginDataRemovalLine(
     job: PluginOrgRemovedJob | null,
     pluginName: string,
-    locale: string
+    locale: string,
+    zone: string
 ): PluginDataRemovalLine | null {
     if (!job) return null;
     switch (job.state) {
@@ -221,7 +221,7 @@ export function pluginDataRemovalLine(
             return {
                 job,
                 message: `${pluginName} is deleting its data`,
-                progress: pluginRetryProgress(job, locale),
+                progress: pluginRetryProgress(job, locale, zone),
                 lastError: job.error,
                 failed: false,
             };
@@ -245,12 +245,13 @@ export function pluginDataRemovalLine(
  */
 export function pluginRetryProgress(
     job: { state: PluginHookJobState; attempt: number; next_attempt_at: string | null },
-    locale: string
+    locale: string,
+    zone: string
 ): string | null {
     const parts: string[] = [];
     if (job.attempt > 0) parts.push(`Attempt ${job.attempt}`);
     if (job.state === 'pending' && job.next_attempt_at) {
-        parts.push(`next try ${formatDate(job.next_attempt_at, 'shortTime', locale)}`);
+        parts.push(`next try ${formatInZone(job.next_attempt_at, 'shortTime', locale, zone)}`);
     }
     return parts.length > 0 ? parts.join(' · ') : null;
 }

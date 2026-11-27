@@ -2,11 +2,14 @@ import { ChangeDetectionStrategy, Component, computed, inject, output } from '@a
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
+import { knownZone } from '@shared/utils';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { FlowAssistantService } from '../../flow-assistant.service';
 import { SessionSummary } from '../../models/flow-assistant.model';
 
-function formatRelativeDate(isoString: string | null | undefined): string {
+// Recent times count back from now; older ones show their day in `zone`, the display timezone.
+function formatRelativeDate(isoString: string | null | undefined, zone: string): string {
     if (!isoString) return '—';
     const date = new Date(isoString);
     if (Number.isNaN(date.getTime())) return '—';
@@ -21,7 +24,7 @@ function formatRelativeDate(isoString: string | null | undefined): string {
     if (diffHours < 24) return `${diffHours}h ago`;
     if (diffDays === 1) return 'Yesterday';
 
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: knownZone(zone) });
 }
 
 @Component({
@@ -35,12 +38,13 @@ export class FlowAssistantSidebarComponent {
     readonly selected = output<number>();
 
     readonly assistantService = inject(FlowAssistantService);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
 
     readonly sessions = computed(() => this.assistantService.sessions());
     readonly currentConversationId = computed(() => this.assistantService.currentConversationId());
 
     formatDate(isoString: string | null | undefined): string {
-        return formatRelativeDate(isoString);
+        return formatRelativeDate(isoString, this.displayZone());
     }
 
     sessionTitle(session: SessionSummary, index: number): string {
