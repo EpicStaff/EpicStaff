@@ -1,10 +1,8 @@
-import { normalizeIana } from '@shared/components';
+import { zoneOffsetMinutes } from '@shared/utils';
 
-// The browser time zone the audit tables show their times in, e.g. "+02:00 Europe/Kyiv".
-export function buildTimeZoneLabel(): string {
-    // some browsers still report the legacy 'Europe/Kiev' name
-    const zone = normalizeIana(Intl.DateTimeFormat().resolvedOptions().timeZone);
-    const offsetMinutes = -new Date().getTimezoneOffset();
+// The zone the audit tables show their times in, with its offset now, e.g. "+02:00 Europe/Kyiv".
+export function buildTimeZoneLabel(zone: string, now: Date = new Date()): string {
+    const offsetMinutes = zoneOffsetMinutes(now, zone);
     const sign = offsetMinutes < 0 ? '-' : '+';
     const absolute = Math.abs(offsetMinutes);
     const hours = String(Math.floor(absolute / 60)).padStart(2, '0');

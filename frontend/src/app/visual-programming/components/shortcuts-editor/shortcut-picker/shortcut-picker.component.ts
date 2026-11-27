@@ -14,6 +14,9 @@ import {
     viewChildren,
 } from '@angular/core';
 
+/** `popover` sizes the fields for the flow editor's shortcuts popover, `page` for the settings page. */
+export type ShortcutFieldSize = 'popover' | 'page';
+
 export interface PickerOption {
     readonly id: string;
     readonly label: string;
@@ -49,9 +52,11 @@ let nextPickerId = 0;
     selector: 'app-shortcut-picker',
     templateUrl: './shortcut-picker.component.html',
     styleUrl: './shortcut-picker.component.scss',
+    host: { '[class.shortcut-picker--page]': "size() === 'page'" },
 })
 export class ShortcutPickerComponent implements OnInit {
     readonly label = input.required<string>();
+    readonly size = input<ShortcutFieldSize>('popover');
     readonly placeholder = input('');
     readonly listLabel = input.required<string>();
     readonly emptyText = input.required<string>();

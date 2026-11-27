@@ -2,6 +2,7 @@
 
 from typing import Literal
 
+from app.core.time_zone import TimeZoneName
 from app.domains.sessions.docs import (
     FILTERS_FIELD_DESCRIPTION,
     MATCH_SCOPE_FIELD_DESCRIPTION,
@@ -15,6 +16,7 @@ from app.swagger_schemas import (
     CURSOR_FIELD_DESCRIPTION,
     QUERY_FIELD_DESCRIPTION,
     SIZE_FIELD_DESCRIPTION,
+    TIME_ZONE_FIELD_DESCRIPTION,
 )
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -62,6 +64,7 @@ class SessionExportRequest(BaseModel):
     match_scope: MatchScope = Field(
         default_factory=MatchScope, description=MATCH_SCOPE_FIELD_DESCRIPTION
     )
+    time_zone: TimeZoneName | None = Field(default=None, description=TIME_ZONE_FIELD_DESCRIPTION)
 
     @model_validator(mode="after")
     def _filters_xor_query(self):

@@ -21,6 +21,7 @@ import { AppSvgIconComponent, ConfirmationDialogService } from '@shared/componen
 import { copyWithFeedback } from '@shared/utils';
 import { DateRangeFilter } from 'src/app/shared/models';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { ToastService } from '../../../../services/notifications';
 import {
     AUDIT_FIELD_CATALOG,
@@ -160,6 +161,7 @@ export class AuditFiltersPanelComponent implements OnInit {
     public readonly sharedPresetsCount = computed(() => this.presetsStorage.presetsInScope('shared').length);
 
     private readonly toastService = inject(ToastService);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
     private readonly presetsStorage = inject(AuditPresetsStorageService);
     private readonly confirmationDialog = inject(ConfirmationDialogService);
     private readonly destroyRef = inject(DestroyRef);
@@ -275,11 +277,16 @@ export class AuditFiltersPanelComponent implements OnInit {
 
     // Each Builder card shows its applied value, worded like the preset chips.
     private readonly fieldSummaries = computed<Map<string, string>>(() => {
-        const chips = describeAuditFilter({ ...this.filter(), mode: 'builder' }, this.catalog, {
-            ...this.lookupOptions(),
-            agents: this.agentOptions(),
-            tools: this.toolOptions(),
-        });
+        const chips = describeAuditFilter(
+            { ...this.filter(), mode: 'builder' },
+            this.catalog,
+            {
+                ...this.lookupOptions(),
+                agents: this.agentOptions(),
+                tools: this.toolOptions(),
+            },
+            this.displayZone()
+        );
         return new Map(chips.map((chip) => [chip.key, chip.value]));
     });
 

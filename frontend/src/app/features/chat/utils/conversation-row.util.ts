@@ -1,4 +1,4 @@
-import { formatDate } from '@angular/common';
+import { formatInZone, zonedCalendarDaysBetween } from '@shared/utils';
 
 import { ChatBinding, ChatConversation, ChatConversationStyle } from '../models/chat.model';
 import { deskInitials } from './desk-avatar.util';
@@ -80,47 +80,48 @@ export function senderPrefix(row: LastAuthor, myUserId: number | null): string |
 /**
  * A row's time, as chat apps show it: "now" (under a minute), "6m" (under an hour), the clock time earlier today
  * ("2:05 PM" in en-US), "Yesterday", a weekday within the last week, else a short date. Clock, weekday and date follow
- * `locale`, as the thread's times do. Empty without a time; a time ahead of `now` (clock skew) is "now".
+ * `locale`, as the thread's times do, and the clock and calendar of `zone`, the display timezone. Empty without a
+ * time; a time ahead of `now` (clock skew) is "now".
  */
-export function conversationTime(iso: string | null, now: number, locale: string): string {
+export function conversationTime(iso: string | null, now: number, locale: string, zone: string): string {
     if (!iso) return '';
-    const bucket = timeBucket(iso, now);
+    const bucket = timeBucket(iso, now, zone);
     switch (bucket.kind) {
         case 'now':
             return 'now';
         case 'minutes':
             return `${bucket.minutes}m`;
         case 'today':
-            return formatDate(bucket.date, 'shortTime', locale);
+            return formatInZone(bucket.date, 'shortTime', locale, zone);
         case 'yesterday':
             return 'Yesterday';
         case 'week':
-            return formatDate(bucket.date, 'EEE', locale);
+            return formatInZone(bucket.date, 'EEE', locale, zone);
         case 'older':
-            return formatDate(bucket.date, bucket.showYear ? 'MMM d, y' : 'MMM d', locale);
+            return formatInZone(bucket.date, bucket.showYear ? 'MMM d, y' : 'MMM d', locale, zone);
     }
 }
 
 /** A message's time in the thread: as `conversationTime`, but minutes read "6m ago". */
-export function messageTime(iso: string | null, now: number, locale: string): string {
+export function messageTime(iso: string | null, now: number, locale: string, zone: string): string {
     if (!iso) return '';
-    const bucket = timeBucket(iso, now);
-    return bucket.kind === 'minutes' ? `${bucket.minutes}m ago` : conversationTime(iso, now, locale);
+    const bucket = timeBucket(iso, now, zone);
+    return bucket.kind === 'minutes' ? `${bucket.minutes}m ago` : conversationTime(iso, now, locale, zone);
 }
 
 /**
  * The same time in words for a screen reader, absolute so it stays the same while the clock ticks (it changes at
  * midnight only): "today at 2:05 PM", "yesterday at 9:00 AM", "Wednesday at 4:30 PM", "October 5".
  */
-export function conversationTimeLabel(iso: string | null, now: number, locale: string): string {
+export function conversationTimeLabel(iso: string | null, now: number, locale: string, zone: string): string {
     if (!iso) return '';
     const date = new Date(iso);
-    const daysAgo = calendarDaysBetween(date, new Date(now));
-    const clock = formatDate(date, 'shortTime', locale);
+    const daysAgo = zonedCalendarDaysBetween(date, new Date(now), zone);
+    const clock = formatInZone(date, 'shortTime', locale, zone);
     if (daysAgo <= 0) return `today at ${clock}`;
     if (daysAgo === 1) return `yesterday at ${clock}`;
-    if (daysAgo < WEEK_DAYS) return `${formatDate(date, 'EEEE', locale)} at ${clock}`;
-    return formatDate(date, date.getFullYear() === new Date(now).getFullYear() ? 'MMMM d' : 'MMMM d, y', locale);
+    if (daysAgo < WEEK_DAYS) return `${formatInZone(date, 'EEEE', locale, zone)} at ${clock}`;
+    return formatInZone(date, sameYear(date, now, zone) ? 'MMMM d' : 'MMMM d, y', locale, zone);
 }
 
 /**
@@ -141,20 +142,19 @@ export function waitDuration(sinceIso: string | null | undefined, now: number): 
     return `${Math.floor(waited / DAY)}d`;
 }
 
-function timeBucket(iso: string, now: number): TimeBucket {
+function timeBucket(iso: string, now: number, zone: string): TimeBucket {
     const date = new Date(iso);
     const elapsed = now - date.getTime();
     if (elapsed < MINUTE) return { kind: 'now' };
     if (elapsed < HOUR) return { kind: 'minutes', minutes: Math.floor(elapsed / MINUTE) };
-    const daysAgo = calendarDaysBetween(date, new Date(now));
+    const daysAgo = zonedCalendarDaysBetween(date, new Date(now), zone);
     if (daysAgo === 0) return { kind: 'today', date };
     if (daysAgo === 1) return { kind: 'yesterday' };
     if (daysAgo < WEEK_DAYS) return { kind: 'week', date };
-    return { kind: 'older', date, showYear: date.getFullYear() !== new Date(now).getFullYear() };
+    return { kind: 'older', date, showYear: !sameYear(date, now, zone) };
 }
 
-// Local calendar days, so "Yesterday" follows the user's midnight; rounding absorbs a daylight-saving hour.
-function calendarDaysBetween(earlier: Date, later: Date): number {
-    const startOfDay = (date: Date): number => new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-    return Math.round((startOfDay(later) - startOfDay(earlier)) / DAY);
+// Calendar years of `zone`, so New Year's Eve and Day are told apart at the user's midnight.
+function sameYear(date: Date, now: number, zone: string): boolean {
+    return formatInZone(date, 'y', 'en-US', zone) === formatInZone(now, 'y', 'en-US', zone);
 }

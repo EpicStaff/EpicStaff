@@ -10,6 +10,8 @@ from ai_models.models import LLMConfig
 from tables.models.python_models import PythonCode, PythonCodeTool
 from tables.services.secrets import secret_service
 from tests.api_tests.role_grant_clients import FULL_CRUD, client_with_grants
+from tests.helpers import InlineExecutor
+from user_audit import background, recorder
 
 
 @pytest.fixture(params=[False, True], ids=["plain-http", "https"])
@@ -31,6 +33,25 @@ def acme_admin_client(client_as, admin_acme, acme):
     client = client_as(admin_acme)
     client.credentials(HTTP_X_ORGANIZATION_ID=str(acme.id))
     return client
+
+
+@pytest.fixture
+def sent_audit_events(monkeypatch, settings):
+    """The user-action records sent to auditor, captured in a list instead of sent.
+
+    Records go out after commit, so run the request under
+    `django_capture_on_commit_callbacks(execute=True)`.
+    """
+    settings.USER_AUDIT_TRAIL_ENABLED = True
+    events = []
+
+    class _RecordingSender:
+        def send(self, batch):
+            events.extend(batch)
+
+    monkeypatch.setattr(recorder, "get_user_audit_sender", lambda: _RecordingSender())
+    monkeypatch.setattr(background, "executor", InlineExecutor())
+    return events
 
 
 @pytest.fixture

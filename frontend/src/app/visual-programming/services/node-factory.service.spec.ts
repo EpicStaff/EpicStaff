@@ -1,10 +1,51 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { NodeType } from '@shared/models';
+import { GetMeResponse, NodeType } from '@shared/models';
 
+import { ProfileService } from '../../services/auth/profile.service';
+import { API_URL, memberOf, ORGANIZATION_A } from '../../services/auth/testing/current-user-fixtures';
+import { ConfigService } from '../../services/config';
+import { DEFAULT_NODE_DATA } from '../core/constants/default-node-data';
 import { NodeModel, ScheduleTriggerNodeModel } from '../core/models/node.model';
 import { ScheduleTriggerNodeData } from '../core/models/schedule-trigger.model';
 import { FlowService } from './flow.service';
+import { FlowViewOverrideService } from './flow-view-override.service';
 import { NodeFactoryService } from './node-factory.service';
+
+/** Signs in a user whose default timezone for new schedules is `zone`; replaces the profile before anything reads it. */
+function signInWithDefaultTimezone(zone: string): void {
+    const user = memberOf(ORGANIZATION_A);
+    const signedIn: GetMeResponse = {
+        ...user,
+        preferences: { ...user.preferences, general: { ...user.preferences.general, default_timezone: zone } },
+    };
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+        providers: [
+            provideHttpClient(),
+            provideHttpClientTesting(),
+            { provide: ConfigService, useValue: { apiUrl: API_URL } as unknown as ConfigService },
+            { provide: ProfileService, useValue: { currentUserSignal: signal(signedIn) } },
+        ],
+    });
+}
+
+/** Opens flow 5 with the signed-in user's own zone for its new schedule triggers. */
+function openFlowWithScheduleZone(zone: string): void {
+    TestBed.inject(FlowViewOverrideService).load(5);
+    TestBed.inject(HttpTestingController)
+        .expectOne({ method: 'GET', url: '/api/graphs/5/my-view-settings/' })
+        .flush({ settings: { default_timezone: zone } });
+}
+
+function createScheduleTrigger(overrides?: Partial<NodeModel>): ScheduleTriggerNodeModel {
+    return TestBed.inject(NodeFactoryService).createNode(
+        NodeType.SCHEDULE_TRIGGER,
+        overrides
+    ) as ScheduleTriggerNodeModel;
+}
 
 describe('NodeFactoryService', () => {
     let factory: NodeFactoryService;
@@ -70,6 +111,24 @@ describe('NodeFactoryService', () => {
             expect(created.node_name).toBe('Once on 23 Oct 2026 at 13-00');
             expect(created.data.runMode).toBe('once');
             expect(created.data.isActive).toBe(false);
+        });
+
+        it("runs in the flow's own zone, ahead of the account's default", () => {
+            signInWithDefaultTimezone('Asia/Tokyo');
+            openFlowWithScheduleZone('America/New_York');
+
+            expect(createScheduleTrigger().data.timezone).toBe('America/New_York');
+        });
+
+        it("keeps the zone of a trigger it copies, whatever the flow's zone", () => {
+            signInWithDefaultTimezone('Asia/Tokyo');
+            openFlowWithScheduleZone('America/New_York');
+            const copied: ScheduleTriggerNodeData = {
+                ...(DEFAULT_NODE_DATA[NodeType.SCHEDULE_TRIGGER]!() as ScheduleTriggerNodeData),
+                timezone: 'Europe/Kyiv',
+            };
+
+            expect(createScheduleTrigger({ data: copied }).data.timezone).toBe('Europe/Kyiv');
         });
 
         it('keeps the data and name passed in overrides', () => {

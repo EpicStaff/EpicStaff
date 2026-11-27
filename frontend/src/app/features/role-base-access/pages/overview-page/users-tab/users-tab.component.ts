@@ -37,13 +37,14 @@ import {
     OverflowItemsDirective,
 } from '@shared/directives';
 import { ActionCode, FullMembership, ListMembershipsParams, ResourceCode } from '@shared/models';
-import { escapeHtml, getRelativeTime } from '@shared/utils';
+import { escapeHtml, getRelativeTime, knownZone } from '@shared/utils';
 import { combineLatest, concat, debounceTime, EMPTY, Observable, of } from 'rxjs';
 import { catchError, distinctUntilChanged, filter, finalize, map, switchMap, tap, toArray } from 'rxjs/operators';
 
 import { ActiveOrgService } from '../../../../../services/auth/active-org.service';
 import { PermissionsService } from '../../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../../services/auth/profile.service';
+import { UserPreferencesService } from '../../../../../services/auth/user-preferences.service';
 import { ToastService } from '../../../../../services/notifications';
 import {
     CreateMembershipDialogComponent,
@@ -117,6 +118,7 @@ export class UsersTabComponent {
     private toast = inject(ToastService);
     private confirmation = inject(ConfirmationDialogService);
     private hardDeleteFlow = inject(HardDeleteFlowService);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
 
     private aggregatedUsers = signal<AggregatedUser[]>([]);
 
@@ -251,7 +253,12 @@ export class UsersTabComponent {
 
     formatDate(date: unknown): string {
         if (!(date instanceof Date)) return '';
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        return date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            timeZone: knownZone(this.displayZone()),
+        });
     }
 
     statusLabel(status: string): string {

@@ -1,0 +1,9 @@
+// The menu's row geometry, for pages that line their content up with it.
+
+// The height of a menu row, the same as an agents page explorer row (tree-node .row).
+$row-height: 28px;
+// The row's inner left padding: the route tabs' padding, so a menu icon sits under the tab icon above it when the
+// menu starts at the tab row's left edge.
+$row-padding-inline: 8px;
+// The icon's box, as wide as a route tab icon (18px); the glyph is centred in it.
+$icon-box-size: 1.125rem;

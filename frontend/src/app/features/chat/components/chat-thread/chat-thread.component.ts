@@ -1,4 +1,4 @@
-import { DatePipe, DOCUMENT, NgTemplateOutlet } from '@angular/common';
+import { DOCUMENT, NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     afterNextRender,
@@ -19,12 +19,14 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
 import { AppSvgIconComponent, ButtonComponent, JsonEditorComponent, SpinnerComponent } from '@shared/components';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 import { extractHttpErrorMessage } from '@shared/utils';
 import { filter, Subscription } from 'rxjs';
 
 import { PhoneLayoutService } from '../../../../core/services/phone-layout.service';
 import { PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { ToastService } from '../../../../services/notifications';
 import { ChatConversation, ChatOperatorMessage } from '../../models/chat.model';
 import { ChatMarkdownPipe } from '../../pipes/chat-markdown.pipe';
@@ -68,7 +70,7 @@ interface PlacedThreadEvent extends ThreadEvent {
 @Component({
     selector: 'app-chat-thread',
     imports: [
-        DatePipe,
+        UserDatePipe,
         NgTemplateOutlet,
         RouterLink,
         AppSvgIconComponent,
@@ -122,7 +124,14 @@ export class ChatThreadComponent {
         const conversation = this.conversation();
         if (!isClosed(conversation)) return '';
         const myUserId = this.profileService.currentUserSignal()?.id ?? null;
-        return closedSummary(conversation, this.binding()?.style ?? null, myUserId, this.now(), this.locale);
+        return closedSummary(
+            conversation,
+            this.binding()?.style ?? null,
+            myUserId,
+            this.now(),
+            this.locale,
+            this.displayZone()
+        );
     });
     /**
      * What happened to the conversation, as lines in the thread where it happened: the hand-off to the queue, then the
@@ -251,6 +260,7 @@ export class ChatThreadComponent {
     private readonly injector = inject(Injector);
     private readonly document = inject(DOCUMENT);
     private readonly locale = inject(LOCALE_ID);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
     private threadId: string | null = null;
     private hasUserScrolled = false;
     // Bumped whenever the shown messages start over; an older page lands only in the thread it was requested for.
@@ -360,12 +370,12 @@ export class ChatThreadComponent {
 
     /** A message's or the hand-off's time relative to now: "now", "6m ago", "2:05 PM", "Yesterday"… */
     relativeTime(iso: string): string {
-        return messageTime(iso, this.now(), this.locale);
+        return messageTime(iso, this.now(), this.locale, this.displayZone());
     }
 
     /** The same time in words for a screen reader, steady while the clock ticks: "today at 2:05 PM". */
     relativeTimeLabel(iso: string): string {
-        return conversationTimeLabel(iso, this.now(), this.locale);
+        return conversationTimeLabel(iso, this.now(), this.locale, this.displayZone());
     }
 
     /** The message's action payloads as JSON; null when it carries none. */

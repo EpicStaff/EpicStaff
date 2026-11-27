@@ -2,6 +2,7 @@
     <app-shortcut-picker
         #actionPicker
         label="Action"
+        [size]="size()"
         placeholder="Search actions"
         listLabel="Actions"
         emptyText="No matching actions"
@@ -16,6 +17,7 @@
         <app-shortcut-picker
             #flowPicker
             label="Flow"
+            [size]="size()"
             placeholder="Search flows"
             listLabel="Flows"
             emptyText="No matching flows"
@@ -86,13 +88,13 @@
 <div class="shortcut-editor__actions">
     <app-button
         type="secondary"
-        mod="small"
+        [mod]="buttonMod()"
         (click)="closed.emit()"
         >Cancel</app-button
     >
     <app-button
         type="primary"
-        mod="small"
+        [mod]="buttonMod()"
         [disabled]="!canSave()"
         (click)="save()"
         >Save</app-button

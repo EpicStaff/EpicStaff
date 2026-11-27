@@ -2,6 +2,7 @@ import { CommonModule, NgStyle } from '@angular/common';
 import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent } from '@shared/components';
+import { UserDatePipe } from '@shared/pipes';
 
 import {
     EntityMemoryPayload,
@@ -12,13 +13,13 @@ import {
 
 @Component({
     selector: 'app-memory-item',
-    imports: [CommonModule, NgStyle, AppSvgIconComponent, MatTooltip],
+    imports: [CommonModule, UserDatePipe, NgStyle, AppSvgIconComponent, MatTooltip],
     template: `
         <div class="memory-item">
             <div class="memory-header">
                 <span class="memory-type">{{ memory.payload.type }}</span>
                 <div class="memory-header-right">
-                    <span class="memory-date">{{ memory.payload.created_at | date: 'M/d/yy, HH:mm' }}</span>
+                    <span class="memory-date">{{ memory.payload.created_at | userDate: 'M/d/yy, HH:mm' }}</span>
                     <button
                         type="button"
                         class="delete-button"

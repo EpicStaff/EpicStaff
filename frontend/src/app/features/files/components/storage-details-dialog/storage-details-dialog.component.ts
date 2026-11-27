@@ -17,8 +17,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, AuthorshipDetailsComponent, ConfirmationDialogService } from '@shared/components';
 import { HasPermissionDirective } from '@shared/directives';
 import { ActionCode, ResourceCode, UserSummary } from '@shared/models';
-import { isFocusLost } from '@shared/utils';
+import { isFocusLost, knownZone } from '@shared/utils';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import { StorageGraph, StorageItemInfo } from '../../models/storage.models';
 import { StorageApiService } from '../../services/storage-api.service';
@@ -45,6 +46,7 @@ export class StorageDetailsDialogComponent {
     private readonly document = inject(DOCUMENT);
     private readonly confirmationDialogService = inject(ConfirmationDialogService);
     private readonly storageApiService = inject(StorageApiService);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
 
     readonly usedInFlowsSignal = signal<StorageGraph[]>(this.data.usedIn ?? []);
 
@@ -152,7 +154,12 @@ export class StorageDetailsDialogComponent {
         if (Number.isNaN(date.getTime())) {
             return value;
         }
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        return date.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            timeZone: knownZone(this.displayZone()),
+        });
     }
 
     private escapeHtml(value: string): string {

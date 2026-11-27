@@ -26,6 +26,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, ResourceCode } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 import { SidebarWidthOptions, SidebarWidthService } from '@shared/services';
 import { downloadBlob } from '@shared/utils';
 import {
@@ -45,6 +46,7 @@ import {
 import { ExportFormat } from '../../core/services/import-export.service';
 import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { ProfileService } from '../../services/auth/profile.service';
+import { UserPreferencesService } from '../../services/auth/user-preferences.service';
 import { ToastService } from '../../services/notifications';
 import { AgentDefinitionsApiService } from '../agent-definitions/services/agent-definitions-api.service';
 import { FlowsApiService } from '../flows/services/flows-api.service';
@@ -119,6 +121,7 @@ interface ViewedValue {
     standalone: true,
     imports: [
         CommonModule,
+        UserDatePipe,
         AppSvgIconComponent,
         NumberStepperComponent,
         AuditFiltersPanelComponent,
@@ -153,6 +156,7 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private injector = inject(Injector);
     private toastService = inject(ToastService);
     private profileService = inject(ProfileService);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
     // Read once: an org switch remounts this page, so a later org change must not redirect writes.
     private readonly activeOrgId = inject(ActiveOrgService).activeOrgId();
     // Read once too, so the saved filter stays the opener's. Normally loaded by the bootstrap guard; when it is not
@@ -162,8 +166,8 @@ export class AuditSessionsBrowserComponent implements OnInit {
     private readonly draftFilterStorageKey = auditFilterStorageKey(this.activeOrgId, this.openerUserId, 'draft');
     private searchSubscription: Subscription | null = null;
     private searchInput = new Subject<string>();
-    public readonly timeZoneLabel = buildTimeZoneLabel();
 
+    public readonly timeZoneLabel = computed(() => buildTimeZoneLabel(this.displayZone()));
     public isLoading = signal<boolean>(false);
     public loadError = signal<boolean>(false);
     public loadErrorMessage = signal<string | null>(null);
@@ -241,10 +245,15 @@ export class AuditSessionsBrowserComponent implements OnInit {
     });
 
     public appliedChips = computed(() =>
-        describeAuditFilter(this.appliedFilter(), SESSION_FIELD_CATALOG, {
-            agents: this.agentOptions(),
-            tools: this.toolOptions(),
-        })
+        describeAuditFilter(
+            this.appliedFilter(),
+            SESSION_FIELD_CATALOG,
+            {
+                agents: this.agentOptions(),
+                tools: this.toolOptions(),
+            },
+            this.displayZone()
+        )
     );
     public activeFilterCount = computed(() => this.appliedChips().length);
     protected appliedSearchText = computed(() => this.appliedFilter().searchText);
@@ -523,7 +532,14 @@ export class AuditSessionsBrowserComponent implements OnInit {
 
     public exportFiltered(format: ExportFormat): void {
         const { filters, query, matchScope } = compileAuditFilter(this.appliedFilter(), SESSION_FIELD_CATALOG);
-        const request: AuditExportRequest = { format, filters, query, match_scope: matchScope };
+        // The file writes its dates in the display timezone, so it shows the same times as this table.
+        const request: AuditExportRequest = {
+            format,
+            filters,
+            query,
+            match_scope: matchScope,
+            time_zone: this.displayZone(),
+        };
         this.exportingFormat.set(format);
 
         this.auditApiService

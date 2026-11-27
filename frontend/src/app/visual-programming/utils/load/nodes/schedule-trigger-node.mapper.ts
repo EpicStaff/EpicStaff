@@ -1,5 +1,5 @@
 import { NodeType } from '@shared/models';
-import { generateUuid } from '@shared/utils';
+import { browserTimeZone, generateUuid, normalizeIana } from '@shared/utils';
 
 import { ScheduleTriggerNodeModel } from '../../../core/models/node.model';
 import {
@@ -13,8 +13,7 @@ import {
 import { mapNodeDtoMetadataToFlowNodeMetadata } from '../node-dto-metadata-to-flow-metadata.mapper';
 
 function normalizeTimezone(iana: string | null | undefined): string {
-    const raw = iana ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    return raw === 'Europe/Kiev' ? 'Europe/Kyiv' : raw;
+    return iana ? normalizeIana(iana) : browserTimeZone();
 }
 
 /**

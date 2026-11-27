@@ -12,11 +12,11 @@
             <div>
                 <div class="row">
                     <span class="label">Created Date:</span>
-                    <span class="value">{{ user.created_at | date: 'longDate' }}</span>
+                    <span class="value">{{ user.created_at | userDate: 'longDate' }}</span>
                 </div>
                 <div class="row">
                     <span class="label">Last Updated:</span>
-                    <span class="value">{{ user.updated_at | date: 'longDate' }}</span>
+                    <span class="value">{{ user.updated_at | userDate: 'longDate' }}</span>
                 </div>
             </div>
         </div>

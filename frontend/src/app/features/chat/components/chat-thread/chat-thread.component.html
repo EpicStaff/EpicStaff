@@ -73,7 +73,7 @@
                 }
                 @if (message.role === 'system') {
                     <div class="message__time">
-                        {{ message.created_at | date: 'mediumTime' }}
+                        {{ message.created_at | userDate: 'mediumTime' }}
                         @if (message.session_id) {
                             ·
                             @if (sessionLink(message); as link) {

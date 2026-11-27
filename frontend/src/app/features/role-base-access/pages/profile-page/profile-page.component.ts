@@ -43,6 +43,7 @@ export class ProfilePageComponent implements OnInit {
     protected readonly tabs: RouteTab[] = [
         { routerLink: 'overview', icon: 'home', label: 'Overview', isPermitted: () => true },
         { routerLink: 'api-keys', icon: 'key', label: 'API Keys', isPermitted: () => true },
+        { routerLink: 'settings', icon: 'settings', label: 'Settings', isPermitted: () => true },
     ];
 
     ngOnInit(): void {

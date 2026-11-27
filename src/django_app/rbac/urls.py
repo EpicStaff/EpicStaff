@@ -36,6 +36,7 @@ from rbac.views.profile import (
     ProfileTourCompleteView,
     ProfileView,
 )
+from rbac.views.profile_preferences import ProfilePreferenceSectionView
 from rbac.views.roles import RoleAdminViewSet
 from rbac.views.users import UserAdminViewSet
 
@@ -79,6 +80,11 @@ urlpatterns = [
         "api/profile/avatar/",
         ProfileAvatarView.as_view(),
         name="profile_avatar",
+    ),
+    path(
+        "api/profile/preferences/<str:section>/",
+        ProfilePreferenceSectionView.as_view(),
+        name="profile_preferences_section",
     ),
     path(
         "api/profile/tours/<str:tour_key>/complete/",

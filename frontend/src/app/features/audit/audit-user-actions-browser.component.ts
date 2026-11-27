@@ -1,4 +1,4 @@
-import { DatePipe, NgTemplateOutlet } from '@angular/common';
+import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -11,6 +11,7 @@ import {
 } from '@shared/components';
 import { HasPermissionDirective, ResizableSidebarDirective } from '@shared/directives';
 import { ActionCode, AdminMembershipUser, ResourceCode } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 import { SidebarWidthOptions, SidebarWidthService } from '@shared/services';
 import { downloadBlob } from '@shared/utils';
 import { debounceTime, finalize, Subject, Subscription } from 'rxjs';
@@ -18,6 +19,7 @@ import { debounceTime, finalize, Subject, Subscription } from 'rxjs';
 import { ExportFormat } from '../../core/services/import-export.service';
 import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
+import { UserPreferencesService } from '../../services/auth/user-preferences.service';
 import { ConfigService } from '../../services/config';
 import { ToastService } from '../../services/notifications';
 import { FlowsApiService } from '../flows/services/flows-api.service';
@@ -113,7 +115,7 @@ interface UserActionRow {
         AuditFilterChipsComponent,
         AuditFiltersPanelComponent,
         AuditHighlightComponent,
-        DatePipe,
+        UserDatePipe,
         HasPermissionDirective,
         MatTooltip,
         NgTemplateOutlet,
@@ -165,7 +167,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
         }));
     });
     protected readonly appliedChips = computed(() =>
-        describeAuditFilter(this.appliedFilter(), this.catalog, this.lookupOptions())
+        describeAuditFilter(this.appliedFilter(), this.catalog, this.lookupOptions(), this.displayZone())
     );
     protected readonly appliedSearchText = computed(() => this.appliedFilter().searchText);
     protected readonly highlightTerm = computed(() => this.appliedSearchText().trim());
@@ -181,7 +183,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
 
     protected readonly columns = USER_ACTION_COLUMNS;
     protected readonly newTabHint = NEW_TAB_HINT;
-    protected readonly timeZoneLabel = buildTimeZoneLabel();
+    protected readonly timeZoneLabel = computed(() => buildTimeZoneLabel(this.displayZone()));
     protected readonly exportItems: ActionDropdownItem[] = [
         { label: 'Export as JSON', value: 'json' },
         { label: 'Export as CSV', value: 'csv' },
@@ -201,6 +203,7 @@ export class AuditUserActionsBrowserComponent implements OnInit {
     private readonly membershipsService = inject(MembershipsService);
     private readonly activeOrgId = inject(ActiveOrgService).activeOrgId();
     private readonly toastService = inject(ToastService);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
     private readonly permissionsService = inject(PermissionsService);
     private readonly configService = inject(ConfigService);
     private readonly destroyRef = inject(DestroyRef);
@@ -290,8 +293,9 @@ export class AuditUserActionsBrowserComponent implements OnInit {
         const { filters, query } = compileAuditFilter(this.appliedFilter(), this.catalog);
         this.exportingFormat.set(format);
 
+        // The file writes its dates in the display timezone, so it shows the same times as this table.
         this.auditApiService
-            .downloadExport('user_actions', { format, filters, query })
+            .downloadExport('user_actions', { format, filters, query, time_zone: this.displayZone() })
             .pipe(
                 finalize(() => this.exportingFormat.set(null)),
                 takeUntilDestroyed(this.destroyRef)

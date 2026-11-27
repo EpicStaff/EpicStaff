@@ -1,11 +1,13 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActionCode, ResourceCode } from '@shared/models';
+import { ActionCode, GeneralPreferences, ResourceCode } from '@shared/models';
 import { of } from 'rxjs';
 
 import { ActiveOrgService } from '../../services/auth/active-org.service';
 import { PermissionsService } from '../../services/auth/permissions.service';
+import { ProfileService } from '../../services/auth/profile.service';
+import { memberOf, ORGANIZATION_A, PROFILE_URL } from '../../services/auth/testing/current-user-fixtures';
 import { ConfigService } from '../../services/config';
 import { AuditUserActionsBrowserComponent } from './audit-user-actions-browser.component';
 import { AuditUserAction } from './models/audit-user-action.models';
@@ -107,6 +109,7 @@ function setup(canExport = true, deniedResources: ResourceCode[] = []) {
             {
                 provide: PermissionsService,
                 useValue: {
+                    setSuperadmin: () => undefined,
                     can: (resource: ResourceCode, action: ActionCode) =>
                         !deniedResources.includes(resource) &&
                         (canExport || !(resource === ResourceCode.UserAudit && action === ActionCode.Export)),
@@ -199,8 +202,27 @@ class ResizeObserverStub {
     disconnect(): void {}
 }
 
+// The zone the browser reports while the user chose no display timezone; Intl may still name Kyiv by its old name.
+function browserZoneIs(timeZone: string): void {
+    vi.spyOn(Intl.DateTimeFormat.prototype, 'resolvedOptions').mockReturnValue({
+        timeZone,
+    } as Intl.ResolvedDateTimeFormatOptions);
+}
+
+function signInWithDisplayTimezone(displayTimezone: string): void {
+    const user = memberOf(ORGANIZATION_A);
+    const general: GeneralPreferences = { display_timezone: displayTimezone, default_timezone: null };
+    TestBed.inject(ProfileService).getCurrentUser().subscribe();
+    TestBed.inject(HttpTestingController)
+        .expectOne({ method: 'GET', url: PROFILE_URL })
+        .flush({ ...user, preferences: { ...user.preferences, general } });
+}
+
 beforeEach(() => vi.stubGlobal('ResizeObserver', ResizeObserverStub));
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+});
 
 describe('AuditUserActionsBrowserComponent', () => {
     it('shows id, date, user, action, target type, name and id, and parent and its id for each action', async () => {
@@ -548,6 +570,7 @@ describe('AuditUserActionsBrowserComponent', () => {
     });
 
     it('exports the filtered actions as a user actions job, without a match scope', async () => {
+        browserZoneIs('Europe/Kiev');
         const downloads: string[] = [];
         vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:export');
         vi.spyOn(URL, 'revokeObjectURL').mockReturnValue(undefined);
@@ -561,7 +584,7 @@ describe('AuditUserActionsBrowserComponent', () => {
         root.querySelector<HTMLButtonElement>('app-action-dropdown-button .adb__main')!.click();
         const start = http.expectOne('/auditor/api/audit/user_actions/export');
         expect(start.request.method).toBe('POST');
-        expect(start.request.body).toEqual({ format: 'json' });
+        expect(start.request.body).toEqual({ format: 'json', time_zone: 'Europe/Kyiv' });
         start.flush({ job_id: 'job-7' });
         // the first poll fires on timer(0); whenStable would wait for the whole polling interval
         await new Promise((resolve) => setTimeout(resolve));
@@ -569,5 +592,18 @@ describe('AuditUserActionsBrowserComponent', () => {
 
         expect(downloads).toHaveLength(1);
         expect(downloads[0]).toMatch(/^audit_user_actions_export_\d+\.json$/);
+    });
+
+    it('writes the export in the display timezone the user chose', async () => {
+        browserZoneIs('Europe/Kiev');
+        const { fixture, http, root } = setup();
+        signInWithDisplayTimezone('America/New_York');
+        flushSearch(http, [renamedFlow]);
+        await render(fixture);
+
+        root.querySelector<HTMLButtonElement>('app-action-dropdown-button .adb__main')!.click();
+
+        const start = http.expectOne('/auditor/api/audit/user_actions/export');
+        expect(start.request.body.time_zone).toBe('America/New_York');
     });
 });

@@ -23,7 +23,8 @@ import { VersionPreviewNodeAuthorshipStore } from '../../services/version-previe
  *
  * Keep the list complete: a state-holding service left out would resolve to the root
  * instance and leak between the two editors. Stateless HTTP services and user preferences
- * (FlowSettingsService) are deliberately shared.
+ * (FlowSettingsService, with FlowViewOverrideService for the open flow's own) are deliberately
+ * shared: a preview shows a version of the same flow, so it looks the way that flow does.
  *
  * FlowReadOnlyService is listed because it reads FLOW_EDITOR_PREVIEW: the root instance would
  * only ever see the root value (false), and the preview would be editable.

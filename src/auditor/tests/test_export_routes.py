@@ -10,9 +10,10 @@ from httpx import ASGITransport, AsyncClient
 from app.controllers.export_routes import build_export_router
 from app.core import settings
 from app.domains.sessions.domain import SESSIONS
+from app.domains.user_actions.domain import USER_ACTIONS
 from app.services.export_job_service import ExportJobService
 from src.shared.audit.export_jobs import JOB_KEY_PREFIX
-from src.shared.models import SessionAuditEvent
+from src.shared.models import SessionAuditEvent, UserAction, UserActionEvent
 from tests._auth import auth
 from tests._fakes import InMemoryFakeRepository
 
@@ -169,6 +170,57 @@ async def test_conflicting_filters_and_query_is_rejected(service):
     )
 
     assert response.status_code == 422
+
+
+async def test_export_writes_dates_in_the_requested_time_zone(service):
+    service.store([_event(event_time=datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc))])
+
+    job_id = await service.export({"time_zone": "Europe/Kiev"})
+    [row] = json.loads((await service.download(job_id)).content)
+
+    assert row["event_time"] == "2026-07-01T15:00:00+03:00"
+
+
+@pytest.mark.parametrize("time_zone", ["Mars/Base", "europe/kyiv", "../../etc/passwd"])
+async def test_export_rejects_unknown_time_zone(service, time_zone):
+    response = await service.client.post(
+        EXPORT_PATH, json={"format": "csv", "time_zone": time_zone}
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", "time_zone"]
+    assert (await service.client.get(EXPORT_PATH)).json() == []
+
+
+async def test_user_actions_export_writes_dates_in_the_requested_time_zone(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "AUDITOR_EXPORT_DATA_DIR", str(tmp_path))
+    app = FastAPI()
+    app.include_router(build_export_router(USER_ACTIONS))
+    action = UserActionEvent(
+        id="ua-1",
+        org_id=7,
+        event_time=datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc),
+        actor_user_id=42,
+        actor_email="user@example.com",
+        action=UserAction.CREATED,
+    )
+    app.state.repositories = {USER_ACTIONS.name: InMemoryFakeRepository([action])}
+    redis_client = FakeAsyncRedis(decode_responses=True)
+    app.state.export_job_service = ExportJobService(redis_client)
+    export_path = f"/api/audit/{USER_ACTIONS.name}/export"
+    headers = auth(AUDIT=None, USER_AUDIT=["export"])
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=headers
+    ) as client:
+        # Europe/Kiev, the zone's old name, is still accepted on this domain's request model.
+        started = await client.post(export_path, json={"format": "json", "time_zone": "Europe/Kiev"})
+        download = await client.get(f"{export_path}/{started.json()['job_id']}")
+    await redis_client.aclose()
+
+    assert download.status_code == 200
+    [row] = json.loads(download.content)
+    assert row["event_time"] == "2026-07-01T15:00:00+03:00"
 
 
 async def test_job_list_shows_only_the_callers_jobs_and_no_internals(service):

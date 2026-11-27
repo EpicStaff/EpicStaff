@@ -1,5 +1,6 @@
 import { FullMembership } from '../role-based-access';
 import { ActivePermissions } from '../role-based-access';
+import { UserPreferences } from './user-preferences.model';
 
 export interface GetMeResponse {
     id: number;
@@ -16,6 +17,8 @@ export interface GetMeResponse {
     /** Keys of the guided tours the user finished or skipped, sorted. Read-only: saved one at a time by a POST. */
     completed_tours: string[];
     custom_shortcuts: ShortcutSettings;
+    /** Effective personal settings. Changed one section at a time through `UserPreferencesService`. */
+    preferences: UserPreferences;
 }
 
 export interface ShortcutParams {

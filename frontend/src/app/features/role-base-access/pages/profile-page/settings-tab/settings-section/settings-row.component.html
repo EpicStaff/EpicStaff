@@ -1,0 +1,22 @@
+<div class="settings-row__text">
+    <span
+        class="settings-row__label"
+        [id]="labelId"
+        >{{ label() }}</span
+    >
+    @if (hint(); as hint) {
+        <span
+            class="settings-row__hint"
+            [id]="hintId"
+            >{{ hint }}</span
+        >
+    }
+</div>
+<div
+    class="settings-row__control"
+    [attr.role]="groupRole()"
+    [attr.aria-labelledby]="groupLabelledBy()"
+    [attr.aria-describedby]="groupDescribedBy()"
+>
+    <ng-content />
+</div>

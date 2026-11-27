@@ -125,8 +125,12 @@ import {
     FILE_NODES_NEED_FILES_READ_MESSAGE,
     FlowReadOnlyService,
 } from '../../../../visual-programming/services/flow-readonly.service';
+import { FlowSettingsService } from '../../../../visual-programming/services/flow-settings.service';
 import { FlowTestRunRequest, FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
+import { FlowViewOverrideService } from '../../../../visual-programming/services/flow-view-override.service';
+import { FlowViewportMemoryService } from '../../../../visual-programming/services/flow-viewport-memory.service';
 import { KeymapService } from '../../../../visual-programming/services/keymap.service';
+import { LegacyFlowSettingsImportService } from '../../../../visual-programming/services/legacy-flow-settings-import.service';
 import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
 import { NodeSaveErrorsStore } from '../../../../visual-programming/services/node-save-errors.store';
 import { SavedFlowStateService } from '../../../../visual-programming/services/saved-flow-state.service';
@@ -286,6 +290,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     private readonly scheduleTriggerRuntime = inject(ScheduleTriggerRuntimeService);
     private readonly usePermissionRefusal = inject(UsePermissionRefusalService);
     private readonly flowCopyImport = inject(FlowCopyImportFacadeService);
+    private readonly flowSettings = inject(FlowSettingsService);
+    private readonly flowViewOverride = inject(FlowViewOverrideService);
+    private readonly legacyFlowSettingsImport = inject(LegacyFlowSettingsImportService);
+    private readonly viewportMemory = inject(FlowViewportMemoryService);
 
     public readonly flowAssistantService = inject(FlowAssistantService);
     public initialNodeId: string | null = null;
@@ -370,7 +378,10 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         if (connection === 'reconnecting') return 'reconnecting';
         return this.hasUnsavedChangesSignal() ? 'unsaved' : 'saved';
     });
-    /** Live canvas pan/zoom captured on entering a preview, handed back when the live canvas re-mounts. */
+    /**
+     * The pan and zoom the live canvas mounts with: where the user left the flow when they open it with "restore",
+     * or the live canvas's own, captured on entering a preview and handed back when it re-mounts. Null fits the flow.
+     */
     public readonly savedViewport = signal<FlowViewport | null>(null);
     public readonly selectedVersionId = signal<number | null>(null);
     /** True while a restored version loads; the live canvas then re-mounts and fits it. */
@@ -454,8 +465,8 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
             if (!isFinite(graphId)) return;
             if (graphId === this.lastFetchedGraphId) return;
             this.lastFetchedGraphId = graphId;
+            untracked(() => this.openViewSettings(graphId));
             this.previewedVersion.set(null);
-            this.savedViewport.set(null);
             this.selectedVersionId.set(null);
             this.isVersionHistoryOpen.set(false);
             this.isSnakeGameActive.set(false);
@@ -568,6 +579,7 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
 
     public ngOnInit(): void {
         this.unsavedChangesRegistry.register(this);
+        this.legacyFlowSettingsImport.start();
     }
 
     protected closeSnakeGame(): void {
@@ -1710,6 +1722,12 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
         }
     }
 
+    /** Closing or reloading the tab leaves the flow without destroying the page. */
+    @HostListener('window:pagehide')
+    public handlePageHide(): void {
+        this.rememberViewport();
+    }
+
     @HostListener('window:beforeunload', ['$event'])
     public handleBeforeUnload(event: BeforeUnloadEvent): string | void {
         if (this.hasUnsavedChanges()) {
@@ -1818,10 +1836,37 @@ export class FlowVisualProgrammingComponent implements OnInit, OnDestroy, CanCom
     }
 
     public ngOnDestroy(): void {
+        this.rememberViewport();
+        this.flowViewOverride.clear();
         this.unsavedChangesRegistry.unregister(this);
         this.runSessionSSEService.stopStream();
         this.wsService.disconnect();
         this.savedFlowStateService.reset();
+    }
+
+    /**
+     * Opens flow `graphId` with the signed-in user's own view settings for it, where they left it when their
+     * preference is to restore it, else fitted to the screen. Leaving the previous flow keeps where it was left.
+     */
+    private openViewSettings(graphId: number): void {
+        this.rememberViewport();
+        this.flowViewOverride.load(graphId);
+        const viewport = this.flowSettings.onOpen() === 'restore' ? this.viewportMemory.recall(graphId) : null;
+        this.savedViewport.set(viewport);
+        // A canvas still showing the previous flow keeps its viewport unless told otherwise.
+        if (viewport === null) {
+            this.flowGraphComponent?.fitAfterNextFlowChange();
+        } else {
+            this.flowGraphComponent?.restoreAfterNextFlowChange(viewport);
+        }
+    }
+
+    /** Keeps where the user leaves the flow on the canvas: the live canvas's viewport, or its own during a preview. */
+    private rememberViewport(): void {
+        const graphId = this.graphState()?.id;
+        const viewport = this.flowGraphComponent?.captureViewport() ?? this.savedViewport();
+        if (graphId === undefined || viewport === null) return;
+        this.viewportMemory.remember(graphId, viewport);
     }
 
     /** Starts the purely visual snake easter egg over the open flow; ignored while loading or already playing. */

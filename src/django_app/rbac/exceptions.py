@@ -327,6 +327,15 @@ class TourLimitExceededError(CustomAPIExeption):
     default_code = "tour_limit_exceeded"
 
 
+class PreferenceSectionNotFoundError(CustomAPIExeption):
+    """Raised by UserPreferencesService.patch_section for a section name no
+    serializer is registered under in PREFERENCE_SECTIONS."""
+
+    status_code = 404
+    default_detail = "Preference section not found."
+    default_code = "preference_section_not_found"
+
+
 class FirstSetupDisabledError(CustomAPIExeption):
     """Raised by FirstSetupView when settings.FIRST_SETUP_MODE is not
     `open`. The HTTP endpoint is anonymous, so on an internet-exposed

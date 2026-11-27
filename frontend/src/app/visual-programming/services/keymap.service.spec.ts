@@ -4,7 +4,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { Component, createEnvironmentInjector, DestroyRef, EnvironmentInjector, NO_ERRORS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { FFlowModule, FZoomDirective } from '@foblex/flow';
-import { GetMeResponse, NodeType, ShortcutParams, ShortcutSettings } from '@shared/models';
+import { DEFAULT_USER_PREFERENCES, GetMeResponse, NodeType, ShortcutParams, ShortcutSettings } from '@shared/models';
 
 import { PLATFORM_IS_MAC } from '../../core/services/platform-is-mac.token';
 import { ProfileService } from '../../services/auth/profile.service';
@@ -34,6 +34,7 @@ const BASE_USER: GetMeResponse = {
     avatar_url: null,
     completed_tours: ['quick-start'],
     custom_shortcuts: { custom: [], overrides: {} },
+    preferences: DEFAULT_USER_PREFERENCES,
 };
 
 describe('KeymapService', () => {

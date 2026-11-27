@@ -15,28 +15,20 @@ import {
 import { ButtonComponent } from '@shared/components';
 import { ShortcutParams } from '@shared/models';
 
-import { GetGraphLightRequest } from '../../../../../../../features/flows/models/graph.model';
-import { subgraphFlowOptions } from '../../../../../../../visual-programming/core/helpers/subgraph-flows.util';
+import { GetGraphLightRequest } from '../../../../features/flows/models/graph.model';
+import { subgraphFlowOptions } from '../../../core/helpers/subgraph-flows.util';
 import {
     ACTION_PARAMS,
     EDITOR_ACTIONS,
     EditorActionId,
     EditorActionSection,
-} from '../../../../../../../visual-programming/core/keymap/editor-actions';
-import {
-    chordFromEvent,
-    formatChord,
-    KeyChord,
-} from '../../../../../../../visual-programming/core/keymap/key-chord.util';
-import { flowIdOf, flowParams } from '../../../../../../../visual-programming/core/keymap/shortcut-params';
-import {
-    CustomShortcut,
-    ShortcutCheck,
-    ShortcutRejected,
-} from '../../../../../../../visual-programming/core/keymap/shortcut-resolution';
-import { KeymapService } from '../../../../../../../visual-programming/services/keymap.service';
+} from '../../../core/keymap/editor-actions';
+import { chordFromEvent, formatChord, KeyChord } from '../../../core/keymap/key-chord.util';
+import { flowIdOf, flowParams } from '../../../core/keymap/shortcut-params';
+import { CustomShortcut, ShortcutCheck, ShortcutRejected } from '../../../core/keymap/shortcut-resolution';
+import { KeymapService } from '../../../services/keymap.service';
 import { actionLabel, flowLabel, FlowLookup, takenByMessage } from '../shortcut-label.util';
-import { PickerGroup, ShortcutPickerComponent } from '../shortcut-picker/shortcut-picker.component';
+import { PickerGroup, ShortcutFieldSize, ShortcutPickerComponent } from '../shortcut-picker/shortcut-picker.component';
 
 interface Feedback {
     readonly severity: 'error' | 'warning';
@@ -56,13 +48,18 @@ let nextEditorId = 0;
     imports: [ButtonComponent, ShortcutPickerComponent],
     templateUrl: './shortcut-editor.component.html',
     styleUrl: './shortcut-editor.component.scss',
-    host: { '(keydown)': 'onKeydown($event)', '(focusin)': 'onFocusIn($event)' },
+    host: {
+        '[class.shortcut-editor--page]': "size() === 'page'",
+        '(keydown)': 'onKeydown($event)',
+        '(focusin)': 'onFocusIn($event)',
+    },
 })
 export class ShortcutEditorComponent implements OnInit {
     readonly shortcut = input<CustomShortcut | null>(null);
     readonly flows = input<readonly GetGraphLightRequest[]>([]);
     readonly currentFlowId = input<number | null>(null);
     readonly keyAction = input<EditorActionId | null>(null);
+    readonly size = input<ShortcutFieldSize>('popover');
 
     readonly closed = output<void>();
 
@@ -162,6 +159,9 @@ export class ShortcutEditorComponent implements OnInit {
             (!this.needsFlow() || this.params() !== undefined) &&
             (this.chord() === null || this.liveCheck()?.accepted === true)
     );
+
+    // On the page the buttons are as tall as the fields beside them.
+    protected readonly buttonMod = computed(() => (this.size() === 'page' ? 'default' : 'small'));
 
     protected readonly idPrefix = `shortcut-editor-${nextEditorId++}`;
 

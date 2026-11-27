@@ -95,7 +95,7 @@
                 />
             }
             <p class="suspend__kept text-body">
-                Data kept until <strong>{{ preview.dataKeptUntil | date: 'mediumDate' }}</strong
+                Data kept until <strong>{{ preview.dataKeptUntil | userDate: 'mediumDate' }}</strong
                 >. Resuming before then restores everything.
             </p>
         }

@@ -10,7 +10,7 @@
         @if (entryOf(row); as entry) {
             <span
                 class="activity__cell activity__muted"
-                [matTooltip]="(entry.createdAt | date: 'medium') ?? ''"
+                [matTooltip]="(entry.createdAt | userDate: 'medium') ?? ''"
                 matTooltipPosition="above"
             >
                 {{ entry.relativeTime }}

@@ -1,0 +1,14 @@
+<header class="settings-section__header">
+    <div class="settings-section__heading">
+        <h2 class="settings-section__title text-h4">{{ heading() }}</h2>
+        @if (description(); as description) {
+            <p class="settings-section__description text-body-small">{{ description }}</p>
+        }
+    </div>
+    <div class="settings-section__actions">
+        <ng-content select="[settingsSectionActions]" />
+    </div>
+</header>
+<div class="settings-section__body">
+    <ng-content />
+</div>

@@ -12,8 +12,9 @@ import {
 const IVAN: UserSummary = { id: 1, display_name: 'Ivan Bohun', avatar_url: null };
 const UNNAMED: UserSummary = { id: 2, display_name: null, avatar_url: 'https://example.com/avatars/avatar.png' };
 
-// Built from local-time parts so the expectation holds in any time zone the tests run in.
-const LOCAL_MOMENT = new Date(2026, 2, 12, 13, 28, 23).toISOString();
+// 13:28:23 on 12 March 2026 on the clock of ZONE, the display timezone.
+const ZONE = 'America/New_York';
+const LOCAL_MOMENT = '2026-03-12T17:28:23Z';
 
 describe('resolveUserName', () => {
     it('returns the display name', () => {
@@ -27,14 +28,18 @@ describe('resolveUserName', () => {
 });
 
 describe('formatAuthorshipTimestamp', () => {
-    it('splits the moment into a local date and a 24-hour local time', () => {
-        expect(formatAuthorshipTimestamp(LOCAL_MOMENT)).toEqual({ date: 'Mar 12, 2026', time: '13:28:23' });
+    it('splits the moment into a date and a 24-hour time in the display timezone', () => {
+        expect(formatAuthorshipTimestamp(LOCAL_MOMENT, ZONE)).toEqual({ date: 'Mar 12, 2026', time: '13:28:23' });
+        expect(formatAuthorshipTimestamp(LOCAL_MOMENT, 'Asia/Tokyo')).toEqual({
+            date: 'Mar 13, 2026',
+            time: '02:28:23',
+        });
     });
 
     it('is null for a missing or unparseable value', () => {
-        expect(formatAuthorshipTimestamp(null)).toBeNull();
-        expect(formatAuthorshipTimestamp('')).toBeNull();
-        expect(formatAuthorshipTimestamp('not a date')).toBeNull();
+        expect(formatAuthorshipTimestamp(null, ZONE)).toBeNull();
+        expect(formatAuthorshipTimestamp('', ZONE)).toBeNull();
+        expect(formatAuthorshipTimestamp('not a date', ZONE)).toBeNull();
     });
 });
 
@@ -42,7 +47,13 @@ const TIMESTAMP = { date: 'Mar 12, 2026', time: '13:28:23' };
 
 /** Builds both columns with the same user and moment, so every case is checked for Owner and Last editor alike. */
 function columns(user: UserSummary | null, moment: string | null): AuthorshipColumn[] {
-    return buildAuthorshipColumns({ owner: user, createdAt: moment, lastEditor: user, lastEditedAt: moment });
+    return buildAuthorshipColumns({
+        owner: user,
+        createdAt: moment,
+        lastEditor: user,
+        lastEditedAt: moment,
+        zone: ZONE,
+    });
 }
 
 describe('buildAuthorshipColumns', () => {
@@ -52,6 +63,7 @@ describe('buildAuthorshipColumns', () => {
             createdAt: LOCAL_MOMENT,
             lastEditor: UNNAMED,
             lastEditedAt: null,
+            zone: ZONE,
         });
 
         expect(owner.label).toBe('Owner');

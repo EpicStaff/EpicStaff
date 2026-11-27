@@ -1,8 +1,9 @@
-import { Component, computed, input, output } from '@angular/core';
+import { Component, computed, inject, input, output } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, formatAuthorshipTimestamp } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { CustomLibrary } from '../../models/custom-library.model';
 import { VenvStatusBadgeComponent } from '../venv-status-badge/venv-status-badge.component';
 
@@ -32,7 +33,7 @@ export class CustomLibraryCardComponent {
     protected readonly meta = computed<CustomLibraryCardMeta | null>(() => {
         const library = this.library();
         const owner = library.owner ? library.owner.display_name?.trim() || library.owner.email : '';
-        const timestamp = formatAuthorshipTimestamp(library.created_at);
+        const timestamp = formatAuthorshipTimestamp(library.created_at, this.displayZone());
         if (!owner && !timestamp) return null;
         if (!timestamp) return { lead: owner, date: '', trail: '' };
         return {
@@ -41,6 +42,8 @@ export class CustomLibraryCardComponent {
             trail: `, ${timestamp.time}`,
         };
     });
+
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
 
     /** The whole row opens the library, where its versions are. */
     onCardClick(): void {

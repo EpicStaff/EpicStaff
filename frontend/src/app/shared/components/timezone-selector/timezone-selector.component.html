@@ -6,7 +6,7 @@
     [attr.aria-expanded]="open()"
     [disabled]="isDisabled()"
     [class.tz-selector__btn--open]="open()"
-    [class.tz-selector__btn--placeholder]="!selectedValue()"
+    [class.tz-selector__btn--placeholder]="!selectedOption() && !selectedValue()"
     [class.tz-selector__btn--readonly]="readonly()"
     matTooltip="Timezone"
     (click)="toggle()"
@@ -56,17 +56,17 @@
             aria-label="Timezones"
             [id]="listId"
         >
-            @for (tz of filteredOptions(); track tz.iana; let index = $index) {
+            @for (tz of filteredOptions(); track tz.value; let index = $index) {
                 <div
                     class="tz-selector__option"
                     role="option"
                     [id]="optionId(index)"
                     [attr.aria-selected]="index === activeIndex()"
-                    [class.tz-selector__option--selected]="tz.iana === selectedValue()"
+                    [class.tz-selector__option--selected]="tz.value === selectedValue()"
                     [class.tz-selector__option--active]="index === activeIndex()"
                     (click)="onSelect(tz)"
                 >
-                    <span class="tz-selector__iana">{{ tz.iana }}</span>
+                    <span class="tz-selector__iana">{{ tz.label }}</span>
                     <span class="tz-selector__offset">{{ tz.offsetLabel }}</span>
                 </div>
             }

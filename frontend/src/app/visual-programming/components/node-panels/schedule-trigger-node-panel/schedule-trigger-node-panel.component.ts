@@ -25,6 +25,7 @@ import {
     ValidationErrorsComponent,
 } from '@shared/components';
 import { NodeType } from '@shared/models';
+import { browserTimeZone, normalizeIana } from '@shared/utils';
 import { Subject, timer } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
@@ -367,7 +368,7 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
             end_time: [this.parseIsoToTime(data.endDateTime ?? '')],
             max_runs: [data.maxRuns ?? 1],
             is_active: [isNewNode ? false : (data.isActive ?? true)],
-            timezone: [this.resolveTimezone(data.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone)],
+            timezone: [this.resolveTimezone(data.timezone ?? browserTimeZone())],
         });
 
         if (!this.hasStartDateTime()) {
@@ -724,14 +725,9 @@ export class ScheduleTriggerNodePanelComponent extends BaseSidePanel<ScheduleTri
         );
     }
 
-    private normalizeTimezone(iana: string): string {
-        // Europe/Kiev is the pre-2022 IANA alias — normalize to the canonical name.
-        return iana === 'Europe/Kiev' ? 'Europe/Kyiv' : iana;
-    }
-
     private resolveTimezone(raw: string | null | undefined): string | null {
         if (!raw) return null;
-        const normalized = this.normalizeTimezone(raw);
+        const normalized = normalizeIana(raw);
         if (normalized === 'UTC' || normalized === 'Etc/UTC') return null;
         try {
             new Intl.DateTimeFormat('en', { timeZone: normalized });

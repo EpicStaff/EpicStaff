@@ -1,5 +1,5 @@
 import { ConnectedPosition, OverlayModule } from '@angular/cdk/overlay';
-import { Component, computed, ElementRef, input, output, signal, viewChild } from '@angular/core';
+import { Component, computed, ElementRef, inject, input, output, signal, viewChild } from '@angular/core';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { AppSvgIconComponent, formatAuthorshipTimestamp } from '@shared/components';
 import {
@@ -9,6 +9,7 @@ import {
     TooltipOnOverflowDirective,
 } from '@shared/directives';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { Venv, VenvLib, VenvLibUpdate } from '../../models/venv.model';
 import { VenvStatusBadgeComponent } from '../venv-status-badge/venv-status-badge.component';
 
@@ -59,7 +60,7 @@ export class VenvCardComponent {
     protected readonly meta = computed<VenvCardMeta | null>(() => {
         const venv = this.venv();
         const owner = venv.owner ? venv.owner.display_name?.trim() || venv.owner.email : '';
-        const timestamp = formatAuthorshipTimestamp(venv.created_at);
+        const timestamp = formatAuthorshipTimestamp(venv.created_at, this.displayZone());
         if (!owner && !timestamp) return null;
         if (!timestamp) return { lead: owner, date: '', trail: '' };
         return {
@@ -77,6 +78,8 @@ export class VenvCardComponent {
         { originX: 'start', originY: 'top', overlayX: 'start', overlayY: 'bottom', offsetY: -8 },
         { originX: 'start', originY: 'bottom', overlayX: 'start', overlayY: 'top', offsetY: 8 },
     ];
+
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
 
     /** Focuses the name button, which opens the venv; the star where the venv cannot be edited. */
     focus(): void {

@@ -1,5 +1,4 @@
 import { Dialog, DialogRef } from '@angular/cdk/dialog';
-import { DatePipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
     ChangeDetectionStrategy,
@@ -30,6 +29,7 @@ import {
     TableRow,
 } from '@shared/components';
 import { ActionCode, GetOrganizationResponse, ResourceCode } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 import { escapeHtml } from '@shared/utils';
 import { combineLatest, debounceTime, EMPTY, finalize } from 'rxjs';
 import { catchError, distinctUntilChanged, filter, switchMap, tap } from 'rxjs/operators';
@@ -70,7 +70,7 @@ const STATUS_ITEMS: SelectItem[] = [
         EditButtonComponent,
         ActivateButtonComponent,
         DeleteButtonComponent,
-        DatePipe,
+        UserDatePipe,
     ],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })

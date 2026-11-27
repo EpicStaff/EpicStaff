@@ -1,8 +1,8 @@
-import { DatePipe } from '@angular/common';
 import { afterRenderEffect, Component, computed, ElementRef, inject, input, OnInit, viewChildren } from '@angular/core';
 import { MatTooltip } from '@angular/material/tooltip';
 import { AppSvgIconComponent, ButtonComponent, ConfirmationDialogService } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
+import { UserDatePipe } from '@shared/pipes';
 
 import {
     isDownloadableExport,
@@ -62,7 +62,7 @@ interface TransferJobRow {
 /** The user's exports and imports: how each one stands, the archive of a ready export, and a way to clear them. */
 @Component({
     selector: 'app-transfer-jobs-panel',
-    imports: [AppSvgIconComponent, ButtonComponent, DatePipe, MatTooltip, TooltipOnOverflowDirective],
+    imports: [AppSvgIconComponent, ButtonComponent, UserDatePipe, MatTooltip, TooltipOnOverflowDirective],
     templateUrl: './transfer-jobs-panel.component.html',
     styleUrl: './transfer-jobs-panel.component.scss',
     host: {

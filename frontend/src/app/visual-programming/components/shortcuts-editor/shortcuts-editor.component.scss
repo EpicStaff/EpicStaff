@@ -1,0 +1,469 @@
+@use 'src/styles/_breakpoints.scss' as bp;
+@use '../../../../styles/settings-layout' as settings;
+
+// In the popover the scrolling content is a flex item of the popover's frame, so the host adds no box of its own.
+:host {
+    display: contents;
+}
+
+:host(.shortcuts-editor--page) {
+    display: block;
+}
+
+@mixin shortcutsOneColumnLayout() {
+    .shortcuts__flow {
+        columns: auto;
+        height: auto;
+    }
+
+    .shortcuts__card:not(:first-child) .shortcuts__card-title {
+        margin-top: 16px;
+    }
+}
+
+@mixin shortcutsCustomScroll() {
+    .shortcuts__content {
+        overflow-y: auto;
+        overflow-x: hidden;
+        margin-right: -24px;
+        padding-right: 24px;
+    }
+}
+
+.shortcuts__content {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: var(--graphite-750) transparent;
+}
+
+.shortcuts__content::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.shortcuts__content::-webkit-scrollbar-button {
+    display: none !important;
+    width: 0;
+    height: 0;
+}
+
+.shortcuts__content::-webkit-scrollbar-button:single-button {
+    display: none;
+}
+
+.shortcuts__content::-webkit-scrollbar-button:start:decrement,
+.shortcuts__content::-webkit-scrollbar-button:end:increment {
+    display: none;
+}
+
+.shortcuts__content::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.shortcuts__content::-webkit-scrollbar-thumb {
+    background: var(--graphite-750);
+    border-radius: 999px;
+}
+
+.shortcuts__content::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+.shortcuts__content::-webkit-resizer {
+    display: none;
+}
+
+.shortcuts__content--scrolling {
+    overflow-x: hidden;
+    overflow-y: auto;
+
+    .shortcuts__flow {
+        height: auto;
+        column-fill: balance;
+    }
+}
+
+.shortcuts__flow {
+    height: 100%;
+    column-count: 3;
+    column-gap: 40px;
+    column-fill: auto;
+    transition:
+        column-gap 200ms ease,
+        opacity 120ms ease;
+}
+
+.shortcuts__flow--four-columns {
+    column-count: 4;
+}
+
+.shortcuts__flow.shortcuts__flow--reflowing {
+    opacity: 0;
+}
+
+:host(.shortcuts-editor--compact) {
+    @include shortcutsOneColumnLayout();
+    @include shortcutsCustomScroll();
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .shortcuts__flow {
+        transition: none;
+    }
+}
+
+@media (max-width: bp.$breakpoint-shortcuts) {
+    :host(.shortcuts-editor--wide) {
+        @include shortcutsOneColumnLayout();
+        @include shortcutsCustomScroll();
+    }
+}
+
+.shortcuts__card,
+.shortcuts__card-body,
+.shortcuts__card-item {
+    display: contents;
+}
+
+// Firefox ignores break-after: avoid in multi-column layout (Chromium honours it), so a heading left at the
+// bottom of a column would be cut off from its rows. The first item carries the heading inside one unbreakable
+// box; the remaining rows stay separate column items, so a long section still continues into the next column.
+.shortcuts__card-item:first-child {
+    display: block;
+    break-inside: avoid;
+}
+
+.shortcuts__card:not(:first-child) .shortcuts__card-title {
+    margin-top: 30px;
+}
+
+.shortcuts__card-title {
+    font-weight: var(--text-body-medium-weight);
+    font-size: var(--text-body-medium-size);
+    line-height: var(--text-body-medium-line-height);
+    color: var(--fog-200);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 12px;
+}
+
+.shortcuts__row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 32px;
+    padding: 4px;
+    box-sizing: border-box;
+    break-inside: avoid;
+}
+
+.shortcuts__card-item:first-child > .shortcuts__row {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+.shortcuts__card-item:last-child > .shortcuts__row:last-child {
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+.shortcuts__row--alt {
+    background: var(--color-ks-transparent-black-28);
+}
+
+.shortcuts__label {
+    font-weight: var(--text-body-small-weight);
+    font-size: var(--text-body-small-size);
+    line-height: var(--text-body-small-line-height);
+    color: var(--fog-alpha-80);
+    white-space: nowrap;
+}
+
+.shortcuts__label--muted {
+    color: var(--color-ks-transparent-text-60);
+}
+
+.shortcuts__keys {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.shortcuts__or {
+    font-weight: var(--text-caption-weight);
+    font-size: var(--text-caption-size);
+    line-height: var(--text-caption-line-height);
+    color: var(--color-ks-transparent-text-60);
+}
+
+.shortcuts__key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+    height: 24px;
+    padding: 4px 8px;
+    border-radius: 2px;
+    border: 1px solid var(--graphite-700);
+    font-weight: var(--text-body-small-weight);
+    font-size: var(--text-body-small-size);
+    line-height: var(--text-body-small-line-height);
+    color: var(--fog-200);
+}
+
+.shortcuts__arrow-keys {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+}
+
+// A one-character key (a letter, "/", an arrow, a Mac symbol) is a square keycap; words like Ctrl stay wider.
+.shortcuts__key--square,
+.shortcuts__key--arrow {
+    width: 24px;
+    min-width: 0;
+    padding: 0;
+}
+
+.shortcuts__not-set {
+    font-weight: var(--text-body-small-weight);
+    font-size: var(--text-body-small-size);
+    line-height: var(--text-body-small-line-height);
+    color: var(--color-ks-transparent-text-60);
+}
+
+.shortcuts__row--custom {
+    gap: 8px;
+
+    .shortcuts__label {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+.shortcuts__row--editable {
+    gap: 8px;
+
+    .shortcuts__label {
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+}
+
+.shortcuts__row-feedback {
+    padding: 0 4px 4px;
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    color: var(--color-error);
+    break-inside: avoid;
+}
+
+.shortcuts__reset-key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid var(--accent-color);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--accent-color);
+    cursor: pointer;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        color 0.15s ease;
+
+    &:hover,
+    &:focus-visible {
+        background: var(--color-ghost-btn-active);
+        outline: none;
+    }
+}
+
+.shortcuts__row-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+
+    app-edit-button ::ng-deep .edit-btn {
+        border-color: var(--accent-color);
+        color: var(--accent-color);
+        transition:
+            background-color 0.15s ease,
+            border-color 0.15s ease,
+            color 0.15s ease;
+
+        &:hover:not(:disabled),
+        &:focus-visible {
+            background: var(--color-ghost-btn-active);
+            outline: none;
+        }
+    }
+}
+
+.shortcuts__flow > app-shortcut-editor {
+    margin-top: 16px;
+}
+
+.shortcuts__add-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    break-inside: avoid;
+}
+
+.shortcuts__line-button ::ng-deep .btn {
+    min-width: 7.5rem;
+}
+
+.shortcuts__add-button {
+    --shortcuts-add-icon-inset: calc(1.1rem * 4 / 24);
+
+    margin-left: auto;
+
+    ::ng-deep .btn.btn--mod-small {
+        padding-left: calc(0.5rem - var(--shortcuts-add-icon-inset));
+    }
+}
+
+// The settings page: one column of full-width rows in the page's metrics, the same as the other settings sections.
+// Every rule below is scoped to the page, so the popover (`wide`, `compact`) keeps its own look.
+$page-key-size: 28px;
+$page-row-actions-gap: 8px;
+// Two 28px icon buttons and the gap between them: an editable row's reset and edit buttons, an additional row's edit
+// and delete buttons. Every row reserves it, so the keys line up in one column whether a row has buttons or not.
+$page-row-actions-width: 2 * 28px + $page-row-actions-gap;
+// The section header keeps 16px below it; this tops it up so the first group (or a new shortcut's editor) starts 24px
+// under the description.
+$page-top-offset: 8px;
+// Between a new shortcut's editor, open above the list, and the first group.
+$page-new-editor-gap: 24px;
+
+:host(.shortcuts-editor--page) {
+    .shortcuts__content {
+        overflow: visible;
+    }
+
+    .shortcuts__flow {
+        height: auto;
+        padding-top: $page-top-offset;
+        columns: auto;
+    }
+
+    .shortcuts__card,
+    .shortcuts__card-body,
+    .shortcuts__card-item {
+        display: block;
+    }
+
+    .shortcuts__card-item + .shortcuts__card-item {
+        @include settings.row-divider;
+    }
+
+    // A new shortcut's editor can come first on the page, so the first group is found with `~`, not `:first-child`.
+    .shortcuts__card-title,
+    .shortcuts__card:not(:first-child) .shortcuts__card-title {
+        @include settings.group-title;
+        margin: 0 0 settings.$group-title-gap;
+    }
+
+    .shortcuts__card ~ .shortcuts__card .shortcuts__card-title {
+        margin-top: settings.$group-gap;
+    }
+
+    .shortcuts__row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto $page-row-actions-width;
+        align-items: center;
+        column-gap: settings.$row-gap;
+        min-height: 0;
+        padding: settings.$row-padding-block 0;
+        border-radius: 0;
+    }
+
+    .shortcuts__row--alt {
+        background: none;
+    }
+
+    .shortcuts__label {
+        @include settings.row-label;
+        grid-column: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .shortcuts__label--muted {
+        color: var(--color-text-secondary);
+    }
+
+    .shortcuts__keys {
+        grid-column: 2;
+        justify-content: flex-end;
+        gap: 8px;
+    }
+
+    .shortcuts__row-actions {
+        grid-column: 3;
+        gap: $page-row-actions-gap;
+        justify-content: flex-end;
+    }
+
+    .shortcuts__key {
+        min-width: $page-key-size;
+        height: $page-key-size;
+        padding: 0 8px;
+        border-radius: 4px;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        color: var(--color-text-primary);
+    }
+
+    .shortcuts__key--square,
+    .shortcuts__key--arrow {
+        width: $page-key-size;
+        min-width: 0;
+        padding: 0;
+    }
+
+    .shortcuts__or {
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+        color: var(--color-text-secondary);
+    }
+
+    .shortcuts__not-set {
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+        color: var(--color-text-secondary);
+    }
+
+    .shortcuts__row-feedback {
+        padding: 0 0 settings.$row-padding-block;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+    }
+
+    // A new shortcut's editor opens at the top, right under the section header.
+    .shortcuts__flow > app-shortcut-editor {
+        margin: 0 0 $page-new-editor-gap;
+    }
+}

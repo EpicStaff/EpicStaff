@@ -9,6 +9,7 @@ import {
 } from '@shared/components';
 import { EnterSubmitDirective } from '@shared/directives';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { ToastService } from '../../../../services/notifications';
 import { SystemInfoFeatures } from '../../models/system-info.model';
 import { SystemInfoService } from '../../services/system-info.service';
@@ -54,13 +55,13 @@ interface CommitView {
 
 /**
  * The short sha and the commit's day, or null for a commit that is not known. The day is shown as the app's other
- * read-only dates (owner / last editor, venv cards): `MMM d, y` in the viewer's time zone.
+ * read-only dates (owner / last editor, venv cards): `MMM d, y` in the user's display time zone.
  */
-function commitView(sha: string | null, date: string | null): CommitView | null {
+function commitView(sha: string | null, date: string | null, zone: string): CommitView | null {
     if (!sha) {
         return null;
     }
-    return { sha: shortSha(sha), day: formatAuthorshipTimestamp(date)?.date ?? null };
+    return { sha: shortSha(sha), day: formatAuthorshipTimestamp(date, zone)?.date ?? null };
 }
 
 /** The running build: version, commits of both halves, the import/export format and the feature switches. */
@@ -86,11 +87,11 @@ export class AboutDialogComponent {
     protected readonly branch = computed(() => this.systemInfoService.systemInfo()?.git_ref ?? UNKNOWN);
     protected readonly frontendCommit = computed(() => {
         const frontend = this.systemInfoService.frontendBuild();
-        return commitView(frontend.gitSha, frontend.commitDate);
+        return commitView(frontend.gitSha, frontend.commitDate, this.displayZone());
     });
     protected readonly backendCommit = computed(() => {
         const info = this.systemInfoService.systemInfo();
-        return commitView(info?.git_sha ?? null, info?.commit_date ?? null);
+        return commitView(info?.git_sha ?? null, info?.commit_date ?? null, this.displayZone());
     });
     protected readonly importVersion = computed(() => this.systemInfoService.systemInfo()?.import_version ?? UNKNOWN);
     protected readonly isMismatch = computed(() => {
@@ -106,6 +107,7 @@ export class AboutDialogComponent {
     protected readonly unknown = UNKNOWN;
 
     private readonly systemInfoService = inject(SystemInfoService);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
     private readonly dialogRef = inject<DialogRef<void>>(DialogRef);
     private readonly toast = inject(ToastService);
     private readonly document = inject(DOCUMENT);

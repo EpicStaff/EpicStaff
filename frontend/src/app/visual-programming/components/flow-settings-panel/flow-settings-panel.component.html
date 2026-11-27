@@ -24,12 +24,14 @@
     </div>
 
     <div class="dialog-content">
+        <p class="field-hint">These settings apply to this flow, and only you see them.</p>
+
         <div class="form-section form-section--toggle">
             <span class="section-label">Arrow colors</span>
             <app-toggle-switch
                 ariaLabel="Arrow colors"
                 [checked]="flowSettings.arrowColorsEnabled()"
-                (checkedChange)="flowSettings.arrowColorsEnabled.set($event)"
+                (checkedChange)="flowSettings.setForCurrentFlow({ arrow_colors: $event })"
             />
         </div>
 
@@ -38,7 +40,7 @@
             <app-toggle-switch
                 ariaLabel="Show Inputs/Outputs"
                 [checked]="flowSettings.showInputsOutputs()"
-                (checkedChange)="flowSettings.showInputsOutputs.set($event)"
+                (checkedChange)="flowSettings.setForCurrentFlow({ show_inputs_outputs: $event })"
             />
         </div>
 
@@ -47,7 +49,9 @@
             <app-toggle-switch
                 ariaLabel="Curved connections"
                 [checked]="flowSettings.edgeStyle() === 'adaptive-curve'"
-                (checkedChange)="flowSettings.edgeStyle.set($event ? 'adaptive-curve' : 'orthogonal')"
+                (checkedChange)="
+                    flowSettings.setForCurrentFlow({ edge_style: $event ? 'adaptive-curve' : 'orthogonal' })
+                "
             />
         </div>
 
@@ -56,7 +60,7 @@
             <app-toggle-switch
                 ariaLabel="Always show node numbers"
                 [checked]="flowSettings.alwaysShowNodeNumbers()"
-                (checkedChange)="flowSettings.alwaysShowNodeNumbers.set($event)"
+                (checkedChange)="flowSettings.setForCurrentFlow({ always_show_node_numbers: $event })"
             />
         </div>
 
@@ -65,16 +69,30 @@
             <app-toggle-switch
                 ariaLabel="Highlight unused nodes"
                 [checked]="flowSettings.highlightUnusedNodes()"
-                (checkedChange)="flowSettings.highlightUnusedNodes.set($event)"
+                (checkedChange)="flowSettings.setForCurrentFlow({ highlight_unused_nodes: $event })"
             />
         </div>
 
         <div class="form-section">
             <span class="section-label">Timezone</span>
+            <span class="field-hint">Default for new schedule triggers in this flow</span>
             <app-timezone-selector
-                [readonly]="isReadOnly()"
-                [formControl]="timezoneControl"
+                [formControl]="scheduleZoneControl"
+                [offerDefaultZone]="flowSettings.accountScheduleZone()"
             />
         </div>
     </div>
+
+    <!-- Shown only when the flow has settings of its own, like "Reset to defaults" on the Shortcuts settings page. -->
+    @if (flowSettings.hasFlowOverride()) {
+        <div class="dialog-footer">
+            <app-button
+                type="outline-primary"
+                tooltip="Use your account's flow editor settings for this flow again"
+                (click)="flowSettings.resetCurrentFlow()"
+            >
+                Reset to my defaults
+            </app-button>
+        </div>
+    }
 </div>

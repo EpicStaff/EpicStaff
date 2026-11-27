@@ -1,4 +1,5 @@
 import { NODE_COLORS, NodeType } from '@shared/models';
+import { browserTimeZone } from '@shared/utils';
 
 import { AgentNodeData } from '../models/agent-node.model';
 import { KeyValueMode, KeyValueNodeData } from '../models/key-value-node.model';
@@ -119,22 +120,19 @@ export const DEFAULT_NODE_DATA: Partial<Record<NodeType, () => unknown>> = {
         fields: [],
         test_payload: {},
     }),
-    [NodeType.SCHEDULE_TRIGGER]: (): ScheduleTriggerNodeData => {
-        const rawTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        return {
-            isActive: false,
-            runMode: 'once',
-            startDateTime: '',
-            intervalEvery: null,
-            intervalUnit: null,
-            weekdays: [],
-            endType: 'never',
-            endDateTime: null,
-            maxRuns: null,
-            currentRuns: 0,
-            timezone: rawTz === 'Europe/Kiev' ? 'Europe/Kyiv' : rawTz,
-        };
-    },
+    [NodeType.SCHEDULE_TRIGGER]: (): ScheduleTriggerNodeData => ({
+        isActive: false,
+        runMode: 'once',
+        startDateTime: '',
+        intervalEvery: null,
+        intervalUnit: null,
+        weekdays: [],
+        endType: 'never',
+        endDateTime: null,
+        maxRuns: null,
+        currentRuns: 0,
+        timezone: browserTimeZone(),
+    }),
     [NodeType.END]: () => ({
         output_map: { context: 'variables' },
     }),

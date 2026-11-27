@@ -1,3 +1,5 @@
+@use '../../../../../styles/settings-layout' as layout;
+
 :host {
     display: flex;
     flex-direction: column;
@@ -104,4 +106,36 @@
 
 .shortcut-picker__empty {
     color: var(--color-ks-transparent-text-60);
+}
+
+// On the settings page: 14px text in a 40px field, the field name as a row label.
+:host(.shortcut-picker--page) {
+    gap: 8px;
+
+    .shortcut-picker__label {
+        @include layout.row-label;
+    }
+
+    .shortcut-picker__input {
+        height: layout.$control-min-height;
+        padding: 0 12px;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+    }
+
+    .shortcut-picker__group-title {
+        padding: 8px 12px 4px;
+        font-size: var(--text-body-small-size);
+        font-weight: var(--text-body-small-weight);
+        line-height: var(--text-body-small-line-height);
+    }
+
+    .shortcut-picker__option,
+    .shortcut-picker__empty {
+        padding: 8px 12px;
+        font-size: var(--text-body-size);
+        font-weight: var(--text-body-weight);
+        line-height: var(--text-body-line-height);
+    }
 }

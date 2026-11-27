@@ -37,6 +37,7 @@ import {
     BulkDeleteTarget,
     ResourceCode,
 } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 import { BulkDeleteService } from '@shared/services';
 import { Subscription } from 'rxjs';
 import { finalize, tap } from 'rxjs/operators';
@@ -58,6 +59,7 @@ const RENAME_DOUBLE_CLICK_WINDOW_MS = 250;
         CdkTrapFocus,
         IconButtonComponent,
         CommonModule,
+        UserDatePipe,
         FormsModule,
         SpinnerComponent,
         AppSvgIconComponent,

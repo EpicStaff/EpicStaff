@@ -22,7 +22,7 @@
                         />
                     </dd>
                     <dt>Last seen</dt>
-                    <dd>{{ (runtimeNode.last_seen_at | date: 'medium') ?? 'Never' }}</dd>
+                    <dd>{{ (runtimeNode.last_seen_at | userDate: 'medium') ?? 'Never' }}</dd>
                     <dt>Agent version</dt>
                     <dd>{{ runtimeNode.agent_version ?? '—' }}</dd>
                 </dl>
@@ -102,7 +102,7 @@
                         }
                     </dd>
                     <dt>Last report</dt>
-                    <dd>{{ (current.last_report_at | date: 'medium') ?? 'None yet' }}</dd>
+                    <dd>{{ (current.last_report_at | userDate: 'medium') ?? 'None yet' }}</dd>
                 </dl>
 
                 @if (current.last_error; as lastError) {
@@ -180,8 +180,8 @@
                 </dl>
                 @if (pluginDatabase.limits_restored_at; as restoredAt) {
                     <p class="runtime__callout text-body">
-                        Timeout restored at {{ restoredAt | date: 'medium' }}: the plugin changed its own default, and
-                        EpicStaff set it back.
+                        Timeout restored at {{ restoredAt | userDate: 'medium' }}: the plugin changed its own default,
+                        and EpicStaff set it back.
                     </p>
                 }
                 @if (pluginDatabase.last_error; as lastError) {

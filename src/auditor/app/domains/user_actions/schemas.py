@@ -2,6 +2,7 @@
 
 from typing import Literal
 
+from app.core.time_zone import TimeZoneName
 from app.domains.user_actions.docs import (
     FILTERS_FIELD_DESCRIPTION,
     SEARCH_REQUEST_EXAMPLES,
@@ -13,6 +14,7 @@ from app.swagger_schemas import (
     CURSOR_FIELD_DESCRIPTION,
     QUERY_FIELD_DESCRIPTION,
     SIZE_FIELD_DESCRIPTION,
+    TIME_ZONE_FIELD_DESCRIPTION,
 )
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -54,6 +56,7 @@ class UserActionExportRequest(BaseModel):
     format: Literal["json", "csv"] = "json"
     filters: dict | None = Field(default=None, description=FILTERS_FIELD_DESCRIPTION)
     query: str | None = Field(default=None, description=QUERY_FIELD_DESCRIPTION)
+    time_zone: TimeZoneName | None = Field(default=None, description=TIME_ZONE_FIELD_DESCRIPTION)
 
     @model_validator(mode="after")
     def _filters_xor_query(self):

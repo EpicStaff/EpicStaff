@@ -1,4 +1,4 @@
-import { groupThousands } from '@shared/utils';
+import { browserTimeZone, groupThousands } from '@shared/utils';
 
 import { AuditFieldCatalog, AuditLookupOptions, catalogFieldOptions } from '../models/audit-domain.models';
 import {
@@ -201,15 +201,15 @@ function clearCatalogField(state: AuditFilterState, field: string): AuditFilterS
     return { ...state, selections, textConditions, idFilters };
 }
 
-function describeDate(from: string | null, to: string | null): string | null {
+function describeDate(from: string | null, to: string | null, zone: string): string | null {
     if (from && to) {
-        return `${formatAuditDay(from)} - ${formatAuditDay(to)}`;
+        return `${formatAuditDay(from, zone)} - ${formatAuditDay(to, zone)}`;
     }
     if (from) {
-        return `from ${formatAuditDay(from)}`;
+        return `from ${formatAuditDay(from, zone)}`;
     }
     if (to) {
-        return `until ${formatAuditDay(to)}`;
+        return `until ${formatAuditDay(to, zone)}`;
     }
     return null;
 }
@@ -242,10 +242,12 @@ export interface AuditFilterVocabularies extends AuditLookupOptions {
     tools?: AuditEnumOption[];
 }
 
+// `zone` is the one the date chip names its days in: the display timezone, like the table.
 export function describeAuditFilter(
     state: AuditFilterState,
     catalog: AuditFieldCatalog,
-    vocabularies: AuditFilterVocabularies = {}
+    vocabularies: AuditFilterVocabularies = {},
+    zone: string = browserTimeZone()
 ): AuditFilterChip[] {
     const chips: AuditFilterChip[] = [];
     const isSessions = catalog.domain === 'sessions';
@@ -268,7 +270,7 @@ export function describeAuditFilter(
         return chips;
     }
 
-    const dateValue = describeDate(state.dateFrom, state.dateTo);
+    const dateValue = describeDate(state.dateFrom, state.dateTo, zone);
     const dateChip: AuditFilterChip[] = dateValue === null ? [] : [{ key: 'date', label: 'Date', value: dateValue }];
 
     if (!isSessions) {

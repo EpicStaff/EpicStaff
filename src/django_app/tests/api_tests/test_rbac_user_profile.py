@@ -346,6 +346,23 @@ def test_patch_without_custom_shortcuts_keeps_them(member_acme):
 
 
 @pytest.mark.django_db
+def test_patch_does_not_change_preferences(member_acme):
+    member_acme.preferences = {"general": {"display_timezone": "UTC"}}
+    member_acme.save(update_fields=["preferences"])
+
+    response = client_for(member_acme).patch(
+        PROFILE_URL,
+        {"display_name": "Renamed", "preferences": {"general": {"display_timezone": "Europe/Kyiv"}}},
+        format="json",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["preferences"]["general"]["display_timezone"] == "UTC"
+    member_acme.refresh_from_db()
+    assert member_acme.preferences == {"general": {"display_timezone": "UTC"}}
+
+
+@pytest.mark.django_db
 @pytest.mark.parametrize(
     "payload",
     [

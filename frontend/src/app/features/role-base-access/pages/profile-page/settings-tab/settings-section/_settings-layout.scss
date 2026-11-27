@@ -1,0 +1,6 @@
+// The settings page metrics (shared with the editors other modules show on it), plus the menu row this tab lines its
+// section titles up with.
+@forward '../../../../../../../styles/settings-layout';
+@use '../../../../../../shared/components/side-section-nav/side-section-nav-metrics' as menu;
+
+$menu-row-height: menu.$row-height;

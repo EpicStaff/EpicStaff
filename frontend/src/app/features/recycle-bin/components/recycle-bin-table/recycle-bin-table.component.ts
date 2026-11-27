@@ -1,4 +1,4 @@
-import { DatePipe, formatDate, NgTemplateOutlet } from '@angular/common';
+import { NgTemplateOutlet } from '@angular/common';
 import {
     afterNextRender,
     Component,
@@ -35,8 +35,10 @@ import {
 } from '@shared/components';
 import { TooltipOnOverflowDirective } from '@shared/directives';
 import { UserSummary } from '@shared/models';
-import { getRelativeTime } from '@shared/utils';
+import { UserDatePipe } from '@shared/pipes';
+import { formatInZone, getRelativeTime } from '@shared/utils';
 
+import { UserPreferencesService } from '../../../../services/auth/user-preferences.service';
 import { FileSizePipe } from '../../../../shared/pipes/file-size.pipe';
 import {
     RECYCLE_BIN_CONTENT_LABELS,
@@ -81,7 +83,7 @@ const UNKNOWN_USER = 'Unknown';
 @Component({
     selector: 'app-recycle-bin-table',
     imports: [
-        DatePipe,
+        UserDatePipe,
         NgTemplateOutlet,
         ActivateButtonComponent,
         AppSvgIconComponent,
@@ -273,6 +275,7 @@ export class RecycleBinTableComponent {
     protected readonly unknownUser = UNKNOWN_USER;
 
     private readonly locale = inject(LOCALE_ID);
+    private readonly displayZone = inject(UserPreferencesService).displayZone;
     private readonly injector = inject(Injector);
 
     /**
@@ -403,6 +406,11 @@ export class RecycleBinTableComponent {
     protected purgeTitle(item: RecycleBinItem): string {
         const retentionDays = this.retentionDays();
         if (retentionDays === null) return '';
-        return `Deleted for good on ${formatDate(purgeDate(item.deletedAt, retentionDays), this.dateFormat, this.locale)}`;
+        return `Deleted for good on ${formatInZone(
+            purgeDate(item.deletedAt, retentionDays),
+            this.dateFormat,
+            this.locale,
+            this.displayZone()
+        )}`;
     }
 }

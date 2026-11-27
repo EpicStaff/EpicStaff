@@ -6,6 +6,8 @@ from tables.models.user import (
     SHORTCUTS_MAX_TEXT_LENGTH,
 )
 
+from rbac.profile.preferences.sections import PREFERENCE_SECTIONS
+from rbac.profile.preferences.service import UserPreferencesService
 from rbac.serializers.users import (
     MembershipNestedSerializer,
     UserResponseSerializer,
@@ -50,13 +52,21 @@ class CustomShortcutsSerializer(serializers.Serializer):
     )
 
 
+# Schema only: one object per registered section, so a new section documents itself.
+ProfilePreferencesSerializer = type(
+    "ProfilePreferencesSerializer",
+    (serializers.Serializer,),
+    {section: serializer_class() for section, serializer_class in PREFERENCE_SECTIONS.items()},
+)
+
+
 class ProfileResponseSerializer(UserResponseSerializer):
     """GET / PATCH / POST-avatar / POST-tour-complete response for /api/profile/.
 
     Strict superset of UserResponseSerializer: same fields, plus
-    `active_organization_id`, `active_permissions`, `completed_tours` and
-    `custom_shortcuts` (the user's own preferences, so they stay off the
-    admin user directory's UserResponseSerializer). The
+    `active_organization_id`, `active_permissions`, `completed_tours`,
+    `custom_shortcuts` and `preferences` (the user's own preferences, so they
+    stay off the admin user directory's UserResponseSerializer). The
     `memberships` list is computed in UserProfileService.get_profile — a
     normal user's real active memberships, or (for a superadmin) every active
     organization with the built-in Superadmin role — so the response shape is
@@ -79,6 +89,12 @@ class ProfileResponseSerializer(UserResponseSerializer):
         help_text="Keys of the guided tours the user finished or skipped, sorted."
     )
     custom_shortcuts = serializers.SerializerMethodField()
+    preferences = serializers.SerializerMethodField(
+        help_text=(
+            "Every preference section, the stored values over the defaults. "
+            "Change a section with PATCH /api/profile/preferences/<section>/."
+        )
+    )
 
     class Meta(UserResponseSerializer.Meta):
         fields = [
@@ -88,6 +104,7 @@ class ProfileResponseSerializer(UserResponseSerializer):
             "active_permissions",
             "completed_tours",
             "custom_shortcuts",
+            "preferences",
         ]
         read_only_fields = fields
 
@@ -98,6 +115,10 @@ class ProfileResponseSerializer(UserResponseSerializer):
     @extend_schema_field(CustomShortcutsSerializer)
     def get_custom_shortcuts(self, user):
         return user.custom_shortcuts
+
+    @extend_schema_field(ProfilePreferencesSerializer)
+    def get_preferences(self, user) -> dict[str, dict]:
+        return UserPreferencesService().effective(user)
 
 
 # ---- request serializers (schema-only; validation in UserValidationService) ----

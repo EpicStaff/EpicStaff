@@ -1,7 +1,7 @@
-import { DatePipe } from '@angular/common';
 import { Component, computed, DestroyRef, inject, input, linkedSignal, output, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { ButtonComponent, CheckboxComponent, ConfirmationDialogService } from '@shared/components';
+import { UserDatePipe } from '@shared/pipes';
 import { escapeHtml, formatFileSize } from '@shared/utils';
 import { switchMap } from 'rxjs';
 
@@ -68,7 +68,7 @@ const ICON_DATA_URL_PREFIXES = ['data:image/svg+xml;base64,', 'data:image/png;ba
     imports: [
         ButtonComponent,
         CheckboxComponent,
-        DatePipe,
+        UserDatePipe,
         PluginAccessTableComponent,
         PluginBadgeComponent,
         PluginIconComponent,

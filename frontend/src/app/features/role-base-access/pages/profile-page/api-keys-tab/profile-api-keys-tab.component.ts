@@ -1,5 +1,4 @@
 import { Dialog } from '@angular/cdk/dialog';
-import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject, OnInit, viewChild } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatTooltip } from '@angular/material/tooltip';
@@ -15,6 +14,7 @@ import {
     TableRow,
 } from '@shared/components';
 import { ApiKeyStatus } from '@shared/models';
+import { UserDatePipe } from '@shared/pipes';
 import { getRelativeTime } from '@shared/utils';
 import { EMPTY, switchMap } from 'rxjs';
 import { finalize } from 'rxjs/operators';
@@ -43,7 +43,7 @@ import {
         AppTableComponent,
         AppTableCellDirective,
         ButtonComponent,
-        DatePipe,
+        UserDatePipe,
         MatTooltip,
         StatusBadgeComponent,
         AppSvgIconComponent,

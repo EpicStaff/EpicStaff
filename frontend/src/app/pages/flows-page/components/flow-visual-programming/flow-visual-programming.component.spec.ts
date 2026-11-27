@@ -13,7 +13,16 @@ import {
     SpinnerComponent,
     UnsavedChangesDialogService,
 } from '@shared/components';
-import { ActionCode, BulkDeleteResponse, GraphSessionStatus, NodeType, ResourceCode } from '@shared/models';
+import {
+    ActionCode,
+    BulkDeleteResponse,
+    DEFAULT_USER_PREFERENCES,
+    FlowEditorPreferences,
+    GetMeResponse,
+    GraphSessionStatus,
+    NodeType,
+    ResourceCode,
+} from '@shared/models';
 import { LlmConfigStorageService } from '@shared/services';
 import { BehaviorSubject, Observable, of, Subject, throwError } from 'rxjs';
 
@@ -34,6 +43,7 @@ import { GraphMessagesComponent } from '../../../../pages/running-graph/componen
 import { RunSessionSSEService } from '../../../../pages/running-graph/services/graph-session-sse.service';
 import { PermissionRequirement, PermissionsService } from '../../../../services/auth/permissions.service';
 import { ProfileService } from '../../../../services/auth/profile.service';
+import { memberOf, ORGANIZATION_A, PROFILE_URL } from '../../../../services/auth/testing/current-user-fixtures';
 import { ConfigService } from '../../../../services/config';
 import { ToastService } from '../../../../services/notifications';
 import {
@@ -67,7 +77,9 @@ import { FlowGraphComponent } from '../../../../visual-programming/flow-graph/fl
 import { CdtExplanationStoreService } from '../../../../visual-programming/services/cdt-explanation-store.service';
 import { CdtExplanationsApiService } from '../../../../visual-programming/services/cdt-explanations-api.service';
 import { FlowService } from '../../../../visual-programming/services/flow.service';
+import { FlowSettingsService } from '../../../../visual-programming/services/flow-settings.service';
 import { FlowTestRunService } from '../../../../visual-programming/services/flow-test-run.service';
+import { LEGACY_FLOW_SETTINGS_KEY } from '../../../../visual-programming/services/legacy-flow-settings-import.service';
 import { NodeAuthorshipStore } from '../../../../visual-programming/services/node-authorship.store';
 import { NodeSaveErrorsStore } from '../../../../visual-programming/services/node-save-errors.store';
 import { ScheduleTriggerRuntimeService } from '../../../../visual-programming/services/schedule-trigger-runtime.service';
@@ -99,6 +111,8 @@ const SECRETS_REFUSAL_MESSAGE =
 /** Past the page's private 1.5 s explanation-save debounce. */
 const NODE_AUTOSAVE_WAIT_MS = 2000;
 const CAPTURED_VIEWPORT: FlowViewport = { position: { x: 120, y: -40 }, scale: 0.75 };
+/** The id of the user `memberOf` signs in. */
+const USER_ID = 7;
 const VERSION_A: GraphVersionDto = { id: 11, graph_id: 1, name: 'Version A', description: '', created_at: '' };
 const VERSION_B: GraphVersionDto = { id: 12, graph_id: 1, name: 'Version B', description: '', created_at: '' };
 /** The authorship the backend renders on a node nobody has edited since it was created. */
@@ -153,6 +167,8 @@ class FlowGraphStubComponent {
 
     commitSidePanelToFlow = vi.fn((): boolean => true);
     captureViewport = vi.fn((): FlowViewport | null => CAPTURED_VIEWPORT);
+    fitAfterNextFlowChange = vi.fn();
+    restoreAfterNextFlowChange = vi.fn();
     emitSave = vi.fn();
     closeNodesSearch = vi.fn();
     openNodePanel = vi.fn();
@@ -360,6 +376,8 @@ describe('FlowVisualProgrammingComponent', () => {
                                 action === ActionCode.Use ? canRunFlows() : canUpdateFlows()
                             ),
                         canEditSecrets: () => false,
+                        // The real ProfileService reports the signed-in user's superadmin flag here.
+                        setSuperadmin: () => undefined,
                     },
                 },
                 { provide: LlmConfigStorageService, useValue: { getAllConfigs: () => of([]) } },
@@ -373,13 +391,6 @@ describe('FlowVisualProgrammingComponent', () => {
                         graphSaved$: new Subject(),
                         connect: vi.fn(),
                         disconnect: vi.fn(),
-                    },
-                },
-                {
-                    provide: ProfileService,
-                    useValue: {
-                        currentUserSignal: signal(null),
-                        shortcutSettings: signal({ custom: [] }),
                     },
                 },
                 { provide: FlowAssistantService, useValue: { isOpen: signal(false), toggle: vi.fn() } },
@@ -437,6 +448,12 @@ describe('FlowVisualProgrammingComponent', () => {
         return FlowGraphStubComponent.instances.reduce((count, canvas) => count + canvas.emitSave.mock.calls.length, 0);
     }
 
+    /** Signs `user` in the way the app does: the profile request is answered with them. */
+    function signInAs(user: GetMeResponse): void {
+        TestBed.inject(ProfileService).getCurrentUser().subscribe();
+        TestBed.inject(HttpTestingController).expectOne({ method: 'GET', url: PROFILE_URL }).flush(user);
+    }
+
     function makeLiveFlowDirty(): void {
         const flow = flowService.getFlowState();
         flowService.setFlow({
@@ -473,6 +490,94 @@ describe('FlowVisualProgrammingComponent', () => {
                 expect(saveStatusShown()).toBeNull();
             }
         );
+    });
+
+    describe('the view of the flow for the signed-in user', () => {
+        const LEFT_VIEWPORT: FlowViewport = { position: { x: -500, y: 260 }, scale: 0.3 };
+
+        function signIn(flowEditor: Partial<FlowEditorPreferences>): void {
+            const user = memberOf(ORGANIZATION_A);
+            signInAs({
+                ...user,
+                preferences: { ...user.preferences, flow_editor: { ...user.preferences.flow_editor, ...flowEditor } },
+            });
+        }
+
+        function openFlow(graphId: number): void {
+            flowsApi['getGraphById'].mockReturnValue(of(graphDto({ id: graphId })));
+            paramMap$.next(convertToParamMap({ id: String(graphId) }));
+            fixture.detectChanges();
+        }
+
+        beforeEach(() => localStorage.clear());
+
+        it('restores the saved viewport when on_open is restore', () => {
+            signIn({ on_open: 'restore' });
+            localStorage.setItem(`flow-viewport:${USER_ID}:2`, JSON.stringify(LEFT_VIEWPORT));
+            const canvas = liveCanvas()!;
+
+            openFlow(2);
+
+            expect(canvas.restoreAfterNextFlowChange).toHaveBeenCalledWith(LEFT_VIEWPORT);
+            expect(canvas.fitAfterNextFlowChange).not.toHaveBeenCalled();
+            expect(liveCanvas()!.initialViewport()).toEqual(LEFT_VIEWPORT);
+        });
+
+        it('fits the flow when on_open is fit, even where the user left it before', () => {
+            signIn({ on_open: 'fit' });
+            localStorage.setItem(`flow-viewport:${USER_ID}:2`, JSON.stringify(LEFT_VIEWPORT));
+            const canvas = liveCanvas()!;
+
+            openFlow(2);
+
+            expect(canvas.fitAfterNextFlowChange).toHaveBeenCalled();
+            expect(canvas.restoreAfterNextFlowChange).not.toHaveBeenCalled();
+            expect(liveCanvas()!.initialViewport()).toBeNull();
+        });
+
+        it.each([
+            ['opening another flow', () => openFlow(2)],
+            ['leaving the page', () => fixture.destroy()],
+        ])('remembers where the user left the flow when %s', (_case, leave) => {
+            signIn({});
+
+            leave();
+
+            expect(JSON.parse(localStorage.getItem(`flow-viewport:${USER_ID}:1`)!)).toEqual(CAPTURED_VIEWPORT);
+        });
+
+        it('clears the override when the flow is left', () => {
+            const settings = TestBed.inject(FlowSettingsService);
+            TestBed.inject(HttpTestingController)
+                .expectOne({ method: 'GET', url: '/api/graphs/1/my-view-settings/' })
+                .flush({ settings: { show_minimap: false } });
+            expect(settings.showMinimap()).toBe(false);
+
+            fixture.destroy();
+
+            expect(settings.showMinimap()).toBe(true);
+        });
+    });
+
+    describe('flow settings an older version kept in this browser', () => {
+        beforeEach(() => localStorage.clear());
+        afterEach(() => localStorage.clear());
+
+        it('are moved to the account once when the flow editor opens', () => {
+            localStorage.setItem(LEGACY_FLOW_SETTINGS_KEY, JSON.stringify({ arrowColors: false }));
+            const http = TestBed.inject(HttpTestingController);
+
+            signInAs(memberOf(ORGANIZATION_A));
+            TestBed.tick();
+            paramMap$.next(convertToParamMap({ id: '2' }));
+            fixture.detectChanges();
+
+            const move = http.expectOne({ method: 'PATCH', url: '/api/profile/preferences/flow_editor/' });
+            expect(move.request.body).toEqual({ arrow_colors: false });
+            move.flush({ ...DEFAULT_USER_PREFERENCES.flow_editor, arrow_colors: false });
+            expect(localStorage.getItem(LEGACY_FLOW_SETTINGS_KEY)).toBeNull();
+            http.expectNone({ method: 'PATCH', url: '/api/profile/preferences/flow_editor/' });
+        });
     });
 
     describe('version preview', () => {

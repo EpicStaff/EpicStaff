@@ -1,0 +1,56 @@
+// The metrics of a settings page: the profile's Settings tab and every editor shown on it (the flow editor's
+// shortcuts editor in its `page` layout), so a section built by another module reads the same as the tab's own rows.
+
+// One column for every settings section, the same cap as a plugin's settings form.
+$column-max-width: 720px;
+// The width of every control on the right of a row: the timezone pickers and the segmented choice line up, and the
+// segmented choice has room for "Restore where I left it" in each half.
+$control-width: 360px;
+// Room for a 40px control (a picker, the segmented choice), so a toggle row is as tall as a picker row.
+$control-min-height: 40px;
+$row-padding-block: 12px;
+// Between a row's text and its control.
+$row-gap: 24px;
+// Between a row's label and its hint.
+$row-text-gap: 4px;
+// Between two groups of rows inside one section.
+$group-gap: 40px;
+// Between a group's title and its first row.
+$group-title-gap: 8px;
+
+// A row: its text on the left, its control on the right.
+@mixin row {
+    display: flex;
+    align-items: center;
+    gap: $row-gap;
+    padding: $row-padding-block 0;
+}
+
+// The hairline between two rows.
+@mixin row-divider {
+    border-top: 1px solid var(--color-divider-subtle);
+}
+
+@mixin row-label {
+    font-size: var(--text-body-medium-size);
+    font-weight: var(--text-body-medium-weight);
+    line-height: var(--text-body-medium-line-height);
+    color: var(--color-text-primary);
+}
+
+@mixin row-hint {
+    font-size: var(--text-body-small-size);
+    font-weight: var(--text-body-small-weight);
+    line-height: var(--text-body-small-line-height);
+    color: var(--color-text-secondary);
+}
+
+// The title of a group of rows inside a section: the type scale's uppercase heading style (body-large), so it reads
+// as a heading without competing with the section's h4 title or looking like a 14px row label.
+@mixin group-title {
+    font-size: var(--text-body-large-size);
+    font-weight: var(--text-body-large-weight);
+    line-height: var(--text-body-large-line-height);
+    text-transform: var(--text-body-large-transform);
+    color: var(--color-text-secondary);
+}

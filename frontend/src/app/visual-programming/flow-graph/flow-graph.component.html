@@ -258,7 +258,9 @@
         </f-canvas>
 
         <f-selection-area [fTrigger]="selectionManager.selectionAreaTrigger"></f-selection-area>
-        <f-minimap [fMinSize]="1000"></f-minimap>
+        @if (flowSettings.showMinimap()) {
+            <f-minimap [fMinSize]="1000"></f-minimap>
+        }
     </f-flow>
 
     <div
