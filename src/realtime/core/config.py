@@ -34,6 +34,15 @@ PENDING_CONNECTION_SWEEP_INTERVAL_SECONDS = humanize.to_time("1m")
 STREAM_TOKEN_TTL_SECONDS = humanize.to_time("2m")
 MAX_CALL_DURATION_SECONDS = humanize.to_time("30m")
 
+# The largest recording file django_app accepts. Read from the variable django_app reads, so the
+# two services cannot disagree: django_app refuses a larger file, and the recording is lost whole.
+MAX_VOICE_RECORDING_SIZE = env.byte_size("MAX_VOICE_RECORDING_SIZE")
+# The canonical header `_build_ulaw_wav` writes before the audio. Not imported from there:
+# core must not depend on the application layer.
+_WAV_HEADER_BYTES = 44
+# Raw audio one call direction may buffer, so that its WAV file is at most MAX_VOICE_RECORDING_SIZE.
+MAX_RECORDING_AUDIO_BYTES = MAX_VOICE_RECORDING_SIZE - _WAV_HEADER_BYTES
+
 # Off by default: `realtime_session_item` has no retention and is readable with the org's
 # voice permission, and turning this on writes one row per audio frame.
 PERSIST_RAW_AUDIO = env.bool("REALTIME_PERSIST_RAW_AUDIO", False)

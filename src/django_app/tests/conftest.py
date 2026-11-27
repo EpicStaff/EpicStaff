@@ -100,6 +100,17 @@ def tmp_path():
 
 
 @pytest.fixture
+def media_root(settings, tmp_path_factory):
+    """A fresh MEDIA_ROOT: a test transaction's rollback does not remove a stored file.
+
+    Not tmp_path above, which is one directory every test shares.
+    """
+    media_root = tmp_path_factory.mktemp("media")
+    settings.MEDIA_ROOT = str(media_root)
+    return media_root
+
+
+@pytest.fixture
 def api_client() -> APIClient:
     return APIClient()
 

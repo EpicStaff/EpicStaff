@@ -39,7 +39,6 @@ from rbac.authorship import (
     authorship_prefetches,
     resolve_author,
 )
-from rbac.models import ApiKey
 from rbac.models.enums import Permission, ResourceType
 from rbac.scoping.fields import resolve_active_org_id
 from rbac.scoping.mixins import (
@@ -1916,19 +1915,13 @@ class ConversationRecordingViewSet(
     (mirrors RealtimeAgentChatViewSet's scoping). Recordings whose chat has no
     rt_agent (orphaned) are not visible — same accepted trade-off as chat history.
 
-    `create` is reachable two ways:
-    - An authenticated org member (JWT) or a self-issued USER API key, sending
-      `X-Organization-Id` as usual — org-scoping is enforced via
-      `_assert_parent_in_active_org` exactly like any other child resource.
-    - The `realtime` service (`voice_call_service._post_recording`),
-      authenticated with a `key_type=SYSTEM` API key, once a call ends. That
-      caller has no logged-in user/org context and can never supply
-      `X-Organization-Id`, and identifies its target purely by the opaque
-      `connection_key` — same trust model as `RealtimeAgentChatViewSet.end`.
-      For that caller only, `_assert_parent_in_active_org` is skipped (the
-      SYSTEM key itself is the authorization check); a self-issued USER key
-      still goes through the normal org check, so it cannot attach a
-      recording to another org's chat by guessing a `connection_key`.
+    `create` is reserved for the `realtime` service
+    (`voice_call_service._post_recording`), authenticated with a `key_type=SYSTEM`
+    API key, once a call ends; any other caller gets 403. That caller has no
+    `X-Organization-Id` and identifies its target purely by the opaque
+    `connection_key`, so the SYSTEM key itself is the authorization check — same
+    trust model as `RealtimeAgentChatViewSet.end`. The serializer resolves the
+    chat and checks the file.
     """
 
     queryset = ConversationRecording.objects.all()
@@ -1941,46 +1934,17 @@ class ConversationRecordingViewSet(
 
     permission_classes = [IsAuthenticated, HasOrgPermission]
 
-    def _is_system_api_key_request(self) -> bool:
-        return (
-            isinstance(self.request.auth, ApiKey)
-            and self.request.auth.key_type == ApiKey.KeyType.SYSTEM
-        )
+    def get_permissions(self):
+        # Alone, as IsSystemApiKeyAuthenticated requires: HasOrgPermission needs an
+        # active org the realtime service never sends.
+        if self.action == "create":
+            return [IsSystemApiKeyAuthenticated()]
+        return super().get_permissions()
 
     def perform_create(self, serializer):
-        file = self.request.FILES.get("file")
-        file_size = file.size if file else None
-        audio_format = "wav"
-
-        # Allow creating by connection_key (used by the realtime service)
-        connection_key = self.request.data.get("connection_key")
-        rt_agent_chat = None
-        if connection_key:
-            try:
-                rt_agent_chat = RealtimeAgentChat.objects.get(connection_key=connection_key)
-            except RealtimeAgentChat.DoesNotExist as e:
-                from rest_framework.exceptions import (
-                    ValidationError as DRFValidationError,
-                )
-
-                raise DRFValidationError(
-                    {"connection_key": "No matching RealtimeAgentChat found"}
-                ) from e
-            serializer.validated_data["rt_agent_chat"] = rt_agent_chat
-
-        # A trusted SYSTEM API key (the realtime service) has no
-        # X-Organization-Id to check against — skip the org assertion for it,
-        # same trust boundary as RealtimeAgentChatViewSet.end. Any other
-        # caller (JWT session or a self-issued USER key) still goes through
-        # the normal parent-org check.
-        if not self._is_system_api_key_request():
-            self._assert_parent_in_active_org(serializer)
-
-        serializer.save(
-            file_size=file_size,
-            audio_format=audio_format,
-            **({"rt_agent_chat": rt_agent_chat} if rt_agent_chat is not None else {}),
-        )
+        # Skips the mixin's parent-org check: the SYSTEM key has no active org.
+        file = serializer.validated_data["file"]
+        serializer.save(file_size=file.size, audio_format="wav")
 
 
 def _load_realtime_voices() -> dict:
