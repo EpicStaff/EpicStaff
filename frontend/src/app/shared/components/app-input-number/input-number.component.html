@@ -37,31 +37,22 @@
 
     <input
         #nativeInput
-        type="number"
+        type="text"
+        autocomplete="off"
+        [attr.inputmode]="allowDecimal() ? 'decimal' : 'numeric'"
         class="input"
         [ngClass]="'input--mod-' + mod()"
-        [class.input--grouped]="groups()"
         [placeholder]="placeholder()"
         [attr.aria-label]="ariaLabel() || null"
         [matTooltip]="fieldName()"
-        [ngModel]="value()"
-        [ngModelOptions]="{ standalone: true }"
-        (ngModelChange)="onInputChange($event)"
+        [value]="text()"
+        (input)="onInput($event)"
         (blur)="onInputBlur()"
         (keydown)="onKeyDown($event)"
         [disabled]="isDisabled()"
         [attr.aria-invalid]="isInvalid()"
         [attr.aria-describedby]="describedBy()"
     />
-
-    @if (groups(); as grouped) {
-        <span
-            class="input__grouped"
-            [ngClass]="'input__grouped--mod-' + mod()"
-            aria-hidden="true"
-            >{{ grouped }}</span
-        >
-    }
 
     @if (stepsShown()) {
         <button
