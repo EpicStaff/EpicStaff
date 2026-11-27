@@ -54,40 +54,13 @@ from common.utils import make_key
 from domain.enums import GraphOutputTableEnum, GraphTableSearchScope, RAGStrategy
 from domain.errors import NotRunningOperationError
 from foundation.cryptographer import AbstractCryptographer
-from infrastructure.graphrag.availability import is_graphrag_available
 from litestar import Controller, Request, Response, delete, get, post, put, status_codes
-from litestar.connection import ASGIConnection
 from litestar.datastructures import CacheControlHeader
-from litestar.exceptions import HTTPException, ValidationException
-from litestar.handlers.base import BaseRouteHandler
+from litestar.exceptions import ValidationException
 from litestar.params import Parameter
 from litestar.response import Stream
 from presentation.rest import schemas
 from presentation.rest.disconnect import HTTP_499_CLIENT_CLOSED_REQUEST, run_until_disconnect
-
-
-def require_graphrag_available(connection: ASGIConnection, _: BaseRouteHandler) -> None:
-    """Reject GRAPH requests with 503 when graphrag cannot run on this host."""
-    is_graph = connection.path_params.get("strategy") == RAGStrategy.GRAPH.value
-    if is_graph and not is_graphrag_available():
-        raise HTTPException(
-            status_code=status_codes.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="GraphRAG is unavailable on this server: the CPU does not support AVX2.",
-        )
-
-
-def require_graphrag_available_unconditionally(
-    connection: ASGIConnection, _: BaseRouteHandler
-) -> None:
-    """Reject requests with 503 when graphrag cannot run on this host.
-
-    Used on routes with a literal `graph` prefix (no `strategy` path param to check).
-    """
-    if not is_graphrag_available():
-        raise HTTPException(
-            status_code=status_codes.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="GraphRAG is unavailable on this server: the CPU does not support AVX2.",
-        )
 
 
 class GraphRagReadController(Controller):
@@ -99,7 +72,6 @@ class GraphRagReadController(Controller):
 
     path = "rags/graph/"
     tags = ("RAG",)
-    guards = [require_graphrag_available_unconditionally]
 
     @get(
         path="table-link-pairs/",
@@ -120,7 +92,6 @@ class GraphRagReadController(Controller):
 class RagController(Controller):
     path = "rags/{strategy:str}/"
     tags = ("RAG",)
-    guards = [require_graphrag_available]
 
     @post(
         path="{rag_id:int}/index/",

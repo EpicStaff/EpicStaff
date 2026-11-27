@@ -1,0 +1,86 @@
+/* Left-hand endpoint list built by swagger_sidebar.js; colours follow the Swagger UI palettes. */
+#endpoint-sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 340px;
+  overflow-y: auto;
+  padding: 12px;
+  background: #fff;
+  border-right: 1px solid #d8dde7;
+  color: #3b4151;
+  font: 13px/1.4 sans-serif;
+}
+
+#swagger-ui {
+  margin-left: 340px;
+}
+
+#endpoint-sidebar [hidden] {
+  display: none;
+}
+
+#endpoint-sidebar input {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border: 1px solid #d8dde7;
+  border-radius: 4px;
+  background: inherit;
+  color: inherit;
+}
+
+#endpoint-sidebar summary {
+  padding: 6px 4px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+#endpoint-sidebar a {
+  display: block;
+  padding: 3px 4px 3px 16px;
+  border-radius: 4px;
+  color: inherit;
+  font-family: monospace;
+  font-size: 12px;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+#endpoint-sidebar a:hover,
+#endpoint-sidebar a[aria-current] {
+  background: rgba(97, 175, 254, 0.2);
+}
+
+#endpoint-sidebar .method {
+  display: inline-block;
+  min-width: 46px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+#endpoint-sidebar .method-get { color: #2f7fd1; }
+#endpoint-sidebar .method-post { color: #2f9e6e; }
+#endpoint-sidebar .method-put { color: #c7802a; }
+#endpoint-sidebar .method-patch { color: #2a9c88; }
+#endpoint-sidebar .method-delete { color: #d93c3c; }
+
+html.dark-mode #endpoint-sidebar {
+  background: #1c2022;
+  border-color: #6b757a;
+  color: #e4e6e6;
+}
+
+html.dark-mode #endpoint-sidebar input {
+  border-color: #6b757a;
+}
+
+/* Too narrow for two panes: keep the plain Swagger page. */
+@media (max-width: 900px) {
+  #endpoint-sidebar {
+    display: none;
+  }
+
+  #swagger-ui {
+    margin-left: 0;
+  }
+}

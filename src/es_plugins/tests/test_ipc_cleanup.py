@@ -73,8 +73,8 @@ def _remove_all_of(uid: int) -> None:
 
 @pytest.mark.root
 def test_the_plugins_objects_are_removed_as_the_plugin_and_another_uids_stay():
-    assert run_as_user(PLUGIN_UID, _create_one_of_each)
-    assert run_as_user(OTHER_UID, _create_one_of_each)
+    assert run_as_user(PLUGIN_UID, _create_one_of_each, timeout_seconds=60)
+    assert run_as_user(OTHER_UID, _create_one_of_each, timeout_seconds=60)
     try:
         assert sorted(item.kind for item in ipc_objects_of(PLUGIN_UID)) == ["msg", "sem", "shm"]
 
@@ -84,8 +84,8 @@ def test_the_plugins_objects_are_removed_as_the_plugin_and_another_uids_stay():
         assert sorted(item.kind for item in ipc_objects_of(OTHER_UID)) == ["msg", "sem", "shm"]
         assert remove_ipc_objects_of(PLUGIN_UID) == 0
     finally:
-        run_as_user(OTHER_UID, lambda: _remove_all_of(OTHER_UID))
-        run_as_user(PLUGIN_UID, lambda: _remove_all_of(PLUGIN_UID))
+        run_as_user(OTHER_UID, lambda: _remove_all_of(OTHER_UID), timeout_seconds=60)
+        run_as_user(PLUGIN_UID, lambda: _remove_all_of(PLUGIN_UID), timeout_seconds=60)
 
 
 IPC_SET = 1

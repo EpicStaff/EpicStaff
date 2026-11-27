@@ -1,12 +1,9 @@
 from collections import defaultdict
 from collections.abc import Callable
 from importlib import import_module
+from importlib.metadata import distributions
 from typing import Literal
 
-from infrastructure.graphrag.availability import (
-    detect_graphrag_availability,
-    is_graphrag_available,
-)
 from infrastructure.naive.chunkers.strategies.token_chunker import load_token_encoding
 from infrastructure.processing_run import (
     create_process_pool,
@@ -18,8 +15,8 @@ from loguru import logger
 
 __all__ = ["get_lifespans"]
 
-# Imported lazily by the factories so a CPU without AVX2 never loads graphrag; on a
-# capable CPU they are imported at startup instead of during the first request.
+# The factories import these lazily; importing them at startup moves the cost off the
+# first request.
 _GRAPHRAG_MODULES = (
     "infrastructure.database.repositories.graph",
     "application.orchestrators.indexing.strategies.graph_indexer",
@@ -63,12 +60,23 @@ def close_process_pool():
 
 
 @on_startup
-def check_graphrag_availability():
-    if not detect_graphrag_availability():
-        logger.warning(
-            "AVX2 not detected on this CPU: GraphRAG is unavailable. "
-            "GraphRAG endpoints return HTTP 503."
+def log_lancedb_build():
+    """Name the LanceDB wheel this process runs, for support tickets from old hosts.
+
+    `lancedb-compat` runs on any x86_64 CPU; plain `lancedb` needs AVX2 on x86_64.
+    Which one is installed is decided per platform in pyproject.toml and asserted in
+    the Dockerfile; this line shows it in the log of a running deployment.
+    """
+    # Diagnostic only: a failed lookup must not abort boot.
+    try:
+        builds = sorted(
+            f"{distribution.metadata['Name']} {distribution.version}"
+            for distribution in distributions()
+            if distribution.metadata["Name"].startswith("lancedb")
         )
+        logger.info("LanceDB build: {}", ", ".join(builds) or "none")
+    except Exception as error:
+        logger.warning("LanceDB build lookup failed: {}", error)
 
 
 # The warm-up hooks below only move first-request latency to startup. The catch is
@@ -79,8 +87,6 @@ def check_graphrag_availability():
 @on_startup
 def preload_graphrag_modules():
     """Move first-request latency to startup by importing the graphrag modules."""
-    if not is_graphrag_available():
-        return
     try:
         for module_name in _GRAPHRAG_MODULES:
             import_module(module_name)

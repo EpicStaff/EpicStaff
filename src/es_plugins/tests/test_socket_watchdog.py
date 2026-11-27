@@ -7,6 +7,7 @@ import os
 
 import pytest
 from loguru import logger
+from src.shared.models.plugin_nodes import NODE_PORT_RANGE
 
 from es_plugins.health.health_checker import HealthChecker
 from es_plugins.logs.log_collector import LogCollector, RotatingLogFile
@@ -27,6 +28,7 @@ from tests.test_supervisor_backoff import wait_until
 # The port the watched plugins serve on in the table tests, 20001, as a table spells it.
 SERVED_PORT = 20001
 SERVED = f"{SERVED_PORT:04X}"
+NODE_PORTS = range(NODE_PORT_RANGE[0], NODE_PORT_RANGE[1] + 1)
 TCP_ESTABLISHED = 0x01
 HEADER = "  sl  local_address rem_address   st tx_queue rx_queue tr tm->when retrnsmt   uid  timeout inode\n"
 IPV6_ANY = "0" * 32
@@ -76,7 +78,7 @@ def test_each_uids_sockets_are_counted_across_the_four_tables_and_its_listening_
         udp6=[row(0, f"{IPV6_ANY}:6100", 0x07, 20012)],
     )
 
-    use = SocketTables(root).use_of({20011: SERVED_PORT, 20012: SERVED_PORT, 20013: SERVED_PORT})
+    use = SocketTables(root).use_of({20011: SERVED_PORT, 20012: SERVED_PORT, 20013: SERVED_PORT}, NODE_PORTS)
 
     assert use.listening == {20011: 49101}
     assert dict(use.sockets) == {20011: 1, 20012: 6, 20013: 1}
@@ -105,7 +107,7 @@ def test_connections_a_plugin_accepted_on_its_own_port_are_not_counted(tmp_path)
         udp=[row(0, f"0100007F:{SERVED}", 0x07, 20012)],
     )
 
-    use = SocketTables(root).use_of({20012: SERVED_PORT, 20013: 20002})
+    use = SocketTables(root).use_of({20012: SERVED_PORT, 20013: 20002}, NODE_PORTS)
 
     assert use.listening == {}
     assert use.sockets[20012] == 1
@@ -115,10 +117,54 @@ def test_a_uid_listening_on_its_own_port_is_still_seen(tmp_path):
     root = tmp_path / "net"
     write_tables(root, tcp=[row(0, f"0100007F:{SERVED}", 0x0A, 20012), *accepted(3, 20012, first=1)])
 
-    use = SocketTables(root).use_of({20012: SERVED_PORT})
+    use = SocketTables(root).use_of({20012: SERVED_PORT}, NODE_PORTS)
 
     assert use.listening == {20012: SERVED_PORT}
     assert use.sockets[20012] == 1
+
+
+def test_a_connection_on_a_node_port_that_is_not_its_own_is_found(tmp_path):
+    root = tmp_path / "net"
+    write_tables(
+        root,
+        tcp=[
+            *accepted(2, 20012),
+            # Accepted from a copy of another placement's socket.
+            *accepted(1, 20012, f"{20002:04X}", first=2),
+            # One it opened to that placement's port: its own end has an ephemeral port.
+            row(3, "0100007F:5208", TCP_ESTABLISHED, 20012, "0100007F:4E22"),
+            *accepted(2, 20013, f"{20003:04X}", first=4),
+        ],
+        tcp6=[row(0, f"{IPV6_ANY}:{20999:04X}", TCP_ESTABLISHED, 20014, f"{IPV6_ANY}:9001")],
+    )
+
+    use = SocketTables(root).use_of({20012: SERVED_PORT, 20013: 20003, 20014: 20004}, NODE_PORTS)
+
+    assert use.foreign_ports == {20012: 20002, 20014: 20999}
+    assert use.listening == {}
+
+
+# FIN_WAIT1, FIN_WAIT2, CLOSING and LAST_ACK: a connection the kernel keeps closing after its
+# process was killed keeps that process's UID and port, e.g. a placement now restarted on another
+# port, or a removed plugin whose UID a new one got.
+@pytest.mark.parametrize("state", [0x04, 0x05, 0x0B, 0x09])
+def test_a_connection_still_closing_on_a_node_port_is_not_taken_for_a_stolen_one(tmp_path, state):
+    root = tmp_path / "net"
+    write_tables(root, tcp=[row(0, f"0100007F:{20002:04X}", state, 20012, "0A000002:9001")])
+
+    use = SocketTables(root).use_of({20012: SERVED_PORT}, NODE_PORTS)
+
+    assert use.foreign_ports == {}
+
+
+@pytest.mark.parametrize("state", [TCP_ESTABLISHED, 0x08])
+def test_an_open_connection_on_a_node_port_not_its_own_is_found_until_it_is_closed(tmp_path, state):
+    root = tmp_path / "net"
+    write_tables(root, tcp=[row(0, f"0100007F:{20002:04X}", state, 20012, "0A000002:9001")])
+
+    use = SocketTables(root).use_of({20012: SERVED_PORT}, NODE_PORTS)
+
+    assert use.foreign_ports == {20012: 20002}
 
 
 def test_a_table_is_read_no_further_than_its_bound(tmp_path, monkeypatch):
@@ -126,7 +172,7 @@ def test_a_table_is_read_no_further_than_its_bound(tmp_path, monkeypatch):
     root = tmp_path / "net"
     write_tables(root, udp=[row(index, f"0100007F:{0x6000 + index:04X}", 0x01, 20012) for index in range(10)])
 
-    assert SocketTables(root).use_of({20012: SERVED_PORT}).sockets[20012] == 3
+    assert SocketTables(root).use_of({20012: SERVED_PORT}, NODE_PORTS).sockets[20012] == 3
 
 
 def test_a_table_that_cannot_be_read_is_logged_once_and_left_out(tmp_path):
@@ -136,8 +182,8 @@ def test_a_table_that_cannot_be_read_is_logged_once_and_left_out(tmp_path):
     lines = []
     sink = logger.add(lines.append, format="{message}", level="WARNING")
     try:
-        first = tables.use_of({20013: SERVED_PORT})
-        second = tables.use_of({20013: SERVED_PORT})
+        first = tables.use_of({20013: SERVED_PORT}, NODE_PORTS)
+        second = tables.use_of({20013: SERVED_PORT}, NODE_PORTS)
     finally:
         logger.remove(sink)
 
@@ -197,13 +243,19 @@ async def _running(supervisor, port):
             {"udp": [row(index, "0100007F:6000", 0x01, os.getuid(), "0A000002:0035") for index in range(MAX_INET_SOCKETS + 1)]},
             f"it held {MAX_INET_SOCKETS + 1} network sockets, more than the {MAX_INET_SOCKETS} a plugin may",
         ),
+        (
+            {"tcp": [row(0, "0100007F:4E22", TCP_ESTABLISHED, os.getuid(), "0A000002:9001")]},
+            "it held a TCP connection on the node's port 20002, which is not its own",
+        ),
     ],
 )
 async def test_a_breach_kills_the_uid_and_leaves_the_plugin_failed_without_a_restart(watched, tmp_path, tables, reason):
     supervisor, launcher, port = watched
     await _running(supervisor, port)
     write_tables(tmp_path / "net", **tables)
-    watchdog = SocketWatchdog(lambda: [supervisor], tables=SocketTables(tmp_path / "net"))
+    watchdog = SocketWatchdog(
+        lambda: [supervisor], tables=SocketTables(tmp_path / "net"), reserved_ports=NODE_PORTS
+    )
 
     stopped = await watchdog.check_once()
     await wait_until(lambda: supervisor.status().observed_state == "failed")
@@ -227,7 +279,9 @@ async def test_a_busy_plugin_holding_more_accepted_connections_than_the_cap_keep
         tcp=accepted(MAX_INET_SOCKETS + 600, os.getuid(), served),
         tcp6=[row(0, f"{IPV6_ANY}:{served}", TCP_ESTABLISHED, os.getuid(), f"{IPV6_ANY}:9001")],
     )
-    watchdog = SocketWatchdog(lambda: [supervisor], tables=SocketTables(tmp_path / "net"))
+    watchdog = SocketWatchdog(
+        lambda: [supervisor], tables=SocketTables(tmp_path / "net"), reserved_ports=NODE_PORTS
+    )
 
     assert await watchdog.check_once() == []
 
@@ -244,7 +298,9 @@ async def test_a_plugin_within_the_rules_keeps_running(watched, tmp_path):
         tcp=[row(0, "0100007F:4E21", 0x0A, 10000), row(1, "0100007F:9C40", 0x01, os.getuid(), "0A000002:1F90")],
         udp=[row(index, "0100007F:6000", 0x01, os.getuid()) for index in range(MAX_INET_SOCKETS - 1)],
     )
-    watchdog = SocketWatchdog(lambda: [supervisor], tables=SocketTables(tmp_path / "net"))
+    watchdog = SocketWatchdog(
+        lambda: [supervisor], tables=SocketTables(tmp_path / "net"), reserved_ports=NODE_PORTS
+    )
 
     assert await watchdog.check_once() == []
 
@@ -263,11 +319,13 @@ async def test_a_check_that_fails_does_not_end_the_watchdog():
     class Failing(SocketTables):
         calls = 0
 
-        def use_of(self, ports):
+        def use_of(self, ports, reserved_ports):
             Failing.calls += 1
             raise RuntimeError("unexpected")
 
-    watchdog = SocketWatchdog(lambda: [Running()], tables=Failing(), interval=0.01)
+    watchdog = SocketWatchdog(
+        lambda: [Running()], tables=Failing(), reserved_ports=NODE_PORTS, interval=0.01
+    )
     task = asyncio.create_task(watchdog.run())
     try:
         await wait_until(lambda: Failing.calls >= 3)

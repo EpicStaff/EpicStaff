@@ -1,0 +1,36 @@
+@if (shortLabel(); as shortLabel) {
+    @if (compact()) {
+        <button
+            type="button"
+            class="version-label version-label--compact text-body-small"
+            [attr.aria-label]="ariaLabel()"
+            [matTooltip]="tooltip()"
+            matTooltipClass="multiline-tooltip"
+            matTooltipPosition="right"
+            (click)="openAbout()"
+        >
+            {{ shortLabel }}
+        </button>
+    } @else {
+        <!-- The branch is dropped whole when it does not fit; the tooltip then names it. -->
+        <button
+            type="button"
+            class="version-label text-body-small"
+            [attr.aria-label]="ariaLabel()"
+            [matTooltip]="tooltip()"
+            matTooltipClass="multiline-tooltip"
+            [appCollapseOnOverflow]="branch() !== null"
+            collapseOnOverflowTarget=".version-label__branch"
+            collapseOnOverflowClass="version-label--without-branch"
+            appTooltipWhenCollapsed
+            (collapseOnOverflowChange)="branchDropped.set($event)"
+            (click)="openAbout()"
+        >
+            <span class="version-label__product">EpicStaff</span>
+            @if (branch(); as branch) {
+                <span class="version-label__branch">{{ branch }} ·</span>
+            }
+            <span class="version-label__build">{{ shortLabel }}</span>
+        </button>
+    }
+}

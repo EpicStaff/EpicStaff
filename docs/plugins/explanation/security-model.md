@@ -42,8 +42,8 @@ package](../how-to/sign-and-package.md#keep-secrets-out-of-a-package)).
   ([Runtime](../reference/runtime.md#other-plugins-on-the-same-node),
   [Gateway context](../reference/gateway-context.md#verification)).
 - **Shared ports, watched.** The plugins share the node's ports. A plugin cannot bind one, its connections are capped,
-  and the node stops a plugin that has a TCP socket listening on any port or holds more than 1,280 network sockets, within a
-  second, until a SuperAdmin restarts it ([Runtime](../reference/runtime.md#how-the-backend-is-started),
+  and the node stops a plugin that has a TCP socket listening on any port, holds a TCP connection on another plugin's
+  port, or holds more than 1,280 network sockets, within a second, until a SuperAdmin restarts it ([Runtime](../reference/runtime.md#how-the-backend-is-started),
   [Accepted risks](accepted-risks.md#what-co-located-plugins-can-see-of-each-other)).
 - **The separation is the operating system's.** Every backend of a node runs in one container, separated by process
   and user permissions only: a plugin that gets past its own user's permissions reaches the others on that node

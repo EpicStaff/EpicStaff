@@ -184,17 +184,20 @@ class DirectorySetup:
             os.close(descriptor)
         return removed
 
-    def purge_plugin_data(self, plugin: str, uid: int) -> None:
+    def purge_plugin_data(self, plugin: str, uid: int, *, timeout_seconds: float) -> None:
         """Delete the plugin's HOME. The caller kills the UID's processes first.
 
         Raises:
-            DirectorySetupError: The helper running as the plugin's UID could not empty it.
+            DirectorySetupError: The helper running as the plugin's UID could not empty it
+                within `timeout_seconds`.
         """
         home = self._layout.plugin_home(plugin)
         with self._open_trusted(home.parent) as data_root:
             if not _exists(data_root, home.name):
                 return
-            if not run_as_user(uid, lambda: _remove_contents(home)):
+            if not run_as_user(
+                uid, lambda: _remove_contents(home), timeout_seconds=timeout_seconds
+            ):
                 raise DirectorySetupError(f"{home} could not be emptied as UID {uid}")
             os.rmdir(home.name, dir_fd=data_root)
 

@@ -238,6 +238,7 @@ services:
       SANDBOX_PORT: ${SANDBOX_PORT:?}
       SANDBOX_CLIENT_TIMEOUT: ${SANDBOX_CLIENT_TIMEOUT:?}
 
+      SESSION_AUDIT_TRAIL_ENABLED: ${SESSION_AUDIT_TRAIL_ENABLED:?}
       USER_AUDIT_TRAIL_ENABLED: ${USER_AUDIT_TRAIL_ENABLED:?}
       AUDITOR_URL: ${AUDITOR_URL:?}
       AUDITOR_INGEST_API_KEY: ${AUDITOR_INGEST_API_KEY:?}
@@ -1223,6 +1224,8 @@ services:
     container_name: ${INSTANCE_PREFIX?}es_plugins
     hostname: es_plugins
     profiles: ["plugins"]
+    # Above the launcher's AGENT_STOP_TIMEOUT_SECONDS (15 s): each plugin gets its graceful stop.
+    stop_grace_period: 20s
     user: root
     read_only: true
     tmpfs:
@@ -1321,7 +1324,10 @@ services:
     # (see docs/plugins/operator/enable-plugins.md). temp_file_limit: the temporary
     # files one server process may write, so one plugin's sorts cannot fill the volume; it counts
     # per process (each connection and each parallel worker), and only a superuser can raise it.
-    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf", "-c", "max_connections=${PLUGINS_DB_MAX_CONNECTIONS:?}", "-c", "reserved_connections=5", "-c", "password_encryption=scram-sha-256", "-c", "authentication_timeout=10s", "-c", "temp_file_limit=1GB"]
+    # client_connection_check_interval: a statement whose client is gone (a plugin process the node
+    # killed) ends within 5 s instead of running on. A session may turn it off for itself, so the
+    # node also ends a killed plugin's sessions; this is the backstop.
+    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf", "-c", "max_connections=${PLUGINS_DB_MAX_CONNECTIONS:?}", "-c", "reserved_connections=5", "-c", "password_encryption=scram-sha-256", "-c", "authentication_timeout=10s", "-c", "temp_file_limit=1GB", "-c", "client_connection_check_interval=5s"]
     environment:
       POSTGRES_PASSWORD: ${PLUGINS_DB_SUPERUSER_PASSWORD:?}
       PLUGINS_DB_ADMIN_PASSWORD: ${PLUGINS_DB_ADMIN_PASSWORD:?}

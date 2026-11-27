@@ -35,8 +35,7 @@ class _FileStorageUow(AbstractUnitOfWork):
     async def rollback(self): ...
 
 
-def _client_for(monkeypatch, repo: FakeGraphRagRepo):
-    monkeypatch.setattr(rag_controller, "is_graphrag_available", lambda: True)
+def _client_for(repo: FakeGraphRagRepo):
     app = Litestar(
         route_handlers=[RagController, GraphRagReadController],
         signature_types=[AbstractUnitOfWork],
@@ -47,8 +46,8 @@ def _client_for(monkeypatch, repo: FakeGraphRagRepo):
 
 
 @pytest.fixture
-def client(monkeypatch, tmp_path):
-    with _client_for(monkeypatch, FakeGraphRagRepo(tmp_path)) as test_client:
+def client(tmp_path):
+    with _client_for(FakeGraphRagRepo(tmp_path)) as test_client:
         yield test_client
 
 
@@ -199,8 +198,8 @@ def test_entity_id_with_an_encoded_slash_does_not_match_the_route(client, tmp_pa
     assert response.status_code == 404
 
 
-def test_unknown_rag_answers_404(monkeypatch):
-    with _client_for(monkeypatch, FakeGraphRagRepo(output_directory=None)) as test_client:
+def test_unknown_rag_answers_404():
+    with _client_for(FakeGraphRagRepo(output_directory=None)) as test_client:
         response = test_client.get("/rags/graph/7/table-summary/")
 
     assert response.status_code == 404

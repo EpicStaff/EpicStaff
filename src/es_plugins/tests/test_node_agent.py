@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 from src.shared.envtools import Env
-from src.shared.models.plugin_nodes import RemovalReport
+from src.shared.models.plugin_nodes import PlacementReport, RemovalReport
 
 from es_plugins import AGENT_VERSION
 from es_plugins.agent.django_client import DjangoNodeClient
@@ -201,6 +201,26 @@ async def test_the_report_carries_the_removals(agent):
     assert fake.reports[0]["removals"] == [
         {"placement_id": 7, "generation": 2, "state": "failed", "last_error": "conflict"}
     ]
+
+
+async def test_a_placement_whose_text_has_nul_or_surrogates_is_reported_with_it_cleaned(agent):
+    _, reporter, fake, reconciler = agent
+    reconciler.placement_reports = [
+        PlacementReport(
+            placement_id=3,
+            observed_state="failed",
+            health="failing",
+            restarts=2,
+            last_error="its disk use cannot be measured: \udcff cannot be read",
+            log_tail=["a\x00b"],
+        )
+    ]
+
+    await reporter.send_once()
+
+    [placement_report] = fake.reports[0]["placements"]
+    assert placement_report["last_error"] == "its disk use cannot be measured: \ufffd cannot be read"
+    assert placement_report["log_tail"] == ["ab"]
 
 
 @pytest.fixture

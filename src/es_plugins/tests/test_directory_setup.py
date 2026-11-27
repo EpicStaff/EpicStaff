@@ -271,7 +271,7 @@ def test_purging_empties_the_home_as_the_plugin_and_removes_it(layout):
         os.chown(path, PLUGIN_UID, PLUGIN_UID)
     os.chmod(nested, 0o500)
 
-    setup.purge_plugin_data(PLUGIN, PLUGIN_UID)
+    setup.purge_plugin_data(PLUGIN, PLUGIN_UID, timeout_seconds=60)
 
     assert not layout.plugin_home(PLUGIN).exists()
 
@@ -350,6 +350,7 @@ def test_root_removes_everything_of_a_plugin_with_its_processes_and_ipc_objects(
     from es_plugins.launcher.privileged_launcher import LauncherOperations
     from es_plugins.process_table import ProcessTable
     from es_plugins.uid_range import UidRange
+    from tests.helpers import PLUGIN_MAX_FILE_BYTES
 
     setup = DirectorySetup(layout)
     setup.prepare_tree()
@@ -368,11 +369,11 @@ def test_root_removes_everything_of_a_plugin_with_its_processes_and_ipc_objects(
         if ctypes.CDLL(None).shmget(0, 4096, 0o1000 | 0o600) < 0:
             raise OSError("shmget failed")
 
-    assert run_as_user(PLUGIN_UID, create_a_shared_memory_segment)
+    assert run_as_user(PLUGIN_UID, create_a_shared_memory_segment, timeout_seconds=60)
     sleeper = subprocess.Popen(
         ["/bin/sleep", "300"], user=PLUGIN_UID, group=PLUGIN_UID, extra_groups=[], start_new_session=True
     )
-    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable())
+    operations = LauncherOperations(layout, UidRange(PLUGIN_UID, PLUGIN_UID + 9), setup, ProcessTable(), max_file_bytes=PLUGIN_MAX_FILE_BYTES)
 
     def remove() -> dict:
         _, [result_pipe] = operations.handle(protocol.RemovePlugin(plugin=PLUGIN, uid=PLUGIN_UID), [])
@@ -502,8 +503,8 @@ def test_purging_removes_a_home_whose_paths_are_longer_than_path_max(layout):
     def make_tree():
         nested_tree(home, 300, "d" * 20)
 
-    assert directory_setup.run_as_user(PLUGIN_UID, make_tree)
+    assert directory_setup.run_as_user(PLUGIN_UID, make_tree, timeout_seconds=60)
 
-    setup.purge_plugin_data(PLUGIN, PLUGIN_UID)
+    setup.purge_plugin_data(PLUGIN, PLUGIN_UID, timeout_seconds=60)
 
     assert not home.exists()

@@ -25,7 +25,15 @@ POST /v1/embeddings
     `input` is a string or a list. Every input gets the same non-zero vector of
     `EMBEDDING_DIMENSION` floats, so any query matches any chunk with cosine similarity 1.0.
     `encoding_format: "base64"` is honoured (little-endian float32), as the openai SDK asks
-    for it by default.
+    for it by default. The reply first waits the current embeddings delay (0 by default).
+
+GET /__embeddings_delay
+    `{"seconds": <current embeddings delay>}`.
+
+PUT /__embeddings_delay?seconds=<0..30>
+    Set the embeddings delay; answers `{"seconds": ...}`. A test that must catch a run while
+    it is going (a live SSE subscription) slows the run's first embedding step this way and
+    sets it back to 0 afterwards. Neither route is recorded in the call log.
 
 GET /__calls
     Every request received so far (except `/health` and `/__calls`): method, path (without the
@@ -53,12 +61,14 @@ import time
 import uuid
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 EMBEDDING_DIMENSION = 8
 EMBEDDING_VECTOR = [1.0 / EMBEDDING_DIMENSION**0.5] * EMBEDDING_DIMENSION
 SEARCH_TOOL_PREFIX = "search_"
 DEFAULT_PORT = 8080
+EMBEDDINGS_DELAY_PATH = "/__embeddings_delay"
+MAX_EMBEDDINGS_DELAY_SECONDS = 30.0
 
 
 class CallLog:
@@ -85,6 +95,27 @@ class CallLog:
 
 
 CALL_LOG = CallLog()
+
+
+class EmbeddingsDelay:
+    """Seconds every embeddings reply waits; shared by the handler threads."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._seconds = 0.0
+
+    @property
+    def seconds(self) -> float:
+        with self._lock:
+            return self._seconds
+
+    @seconds.setter
+    def seconds(self, value: float) -> None:
+        with self._lock:
+            self._seconds = value
+
+
+EMBEDDINGS_DELAY = EmbeddingsDelay()
 
 
 class RequestBodyError(Exception):
@@ -302,6 +333,8 @@ class MockLLMHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.OK, {"status": "ok"})
         elif self.route == "/__calls":
             self._send_json(HTTPStatus.OK, CALL_LOG.snapshot())
+        elif self.route == EMBEDDINGS_DELAY_PATH:
+            self._send_json(HTTPStatus.OK, {"seconds": EMBEDDINGS_DELAY.seconds})
         else:
             CALL_LOG.record("GET", self.route, None)
             self._send_error(HTTPStatus.NOT_FOUND, f"Unknown path: {self.route}")
@@ -325,9 +358,33 @@ class MockLLMHandler(BaseHTTPRequestHandler):
         if self.route == "/v1/chat/completions":
             self._handle_chat_completion(request)
         elif self.route == "/v1/embeddings":
+            time.sleep(EMBEDDINGS_DELAY.seconds)
             self._send_json(HTTPStatus.OK, build_embeddings(request))
         else:
             self._send_error(HTTPStatus.NOT_FOUND, f"Unknown path: {self.route}")
+
+    def do_PUT(self) -> None:
+        # The setting comes in the query string, so no body is read: close the connection in
+        # case a client sent one anyway.
+        self.close_connection = True
+        if self.route != EMBEDDINGS_DELAY_PATH:
+            CALL_LOG.record("PUT", self.route, None)
+            self._send_error(HTTPStatus.NOT_FOUND, f"Unknown path: {self.route}")
+            return
+        raw_seconds = parse_qs(urlsplit(self.path).query).get("seconds", [""])[-1]
+        try:
+            seconds = float(raw_seconds)
+            if not 0 <= seconds <= MAX_EMBEDDINGS_DELAY_SECONDS:
+                raise ValueError
+        except ValueError:
+            self._send_error(
+                HTTPStatus.BAD_REQUEST,
+                f"seconds must be a number from 0 to {MAX_EMBEDDINGS_DELAY_SECONDS:g}, "
+                f"got {raw_seconds!r}",
+            )
+            return
+        EMBEDDINGS_DELAY.seconds = seconds
+        self._send_json(HTTPStatus.OK, {"seconds": seconds})
 
     def _read_json_object(self) -> dict:
         """Read and record the POST body; it must be a `Content-Length` JSON object."""

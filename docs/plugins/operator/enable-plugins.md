@@ -511,19 +511,20 @@ Nothing needs configuring for it, but EpicStaff's login cookie changed with it, 
 
 The node container runs with a read-only root file system and `no-new-privileges`. Its launcher
 process has the `SETUID`, `SETGID` and `CHOWN` capabilities and no other. The container also has
-`NET_ADMIN`, `BPF` and `SETPCAP` for its entrypoint only: before the launcher starts, the
-entrypoint installs the per-plugin connection limits below in the container's network namespace
-and the refusal of `bind()` in its cgroup, then starts the launcher with nothing but those three
-capabilities left in any capability set, so nothing on the node can change them afterwards. A
-shell you open in the container with `docker exec` gets the container's capabilities, `NET_ADMIN`
-and `BPF` included; no plugin process does. Each plugin backend runs as its own user id from
-`PLUGINS_NODE_UID_RANGE`, without any capability, with at most 64 processes and 256 open files
-each, no POSIX message queues, no System V IPC objects, no `io_uring`, no `unshare`, `setns`,
-`keyctl`, `add_key`, `request_key`, `bpf`, `perf_event_open` or `userfaultfd`, and no `clone` with
-a namespace flag (a seccomp filter makes those system calls answer `EPERM`; `clone3` answers
-`ENOSYS`, and glibc falls back to `clone`), in its own session. Its secret settings reach it only in a file that only its own user
-id can read; its database URL and its proxy URL, credentials included, are in its environment,
-which only its own user id can read too.
+`NET_ADMIN`, `BPF` and `SETPCAP` for its entrypoint only: before the launcher starts, the entrypoint
+installs the per-plugin connection limits below in the container's network namespace and the refusal
+of `bind()` in its cgroup, then starts the launcher with nothing but those three capabilities left
+in any capability set, so nothing on the node can change them afterwards. A shell you open in the
+container with `docker exec` gets the container's capabilities, `NET_ADMIN` and `BPF` included; no
+plugin process does. Each plugin backend runs as its own user id from `PLUGINS_NODE_UID_RANGE`,
+without any capability, with at most 64 processes and 256 open files each, no file larger than
+`ES_PLUGINS_DISK_MB_PER_PLUGIN`, no POSIX message queues, no System V IPC objects, no `io_uring`, no
+`unshare`, `setns`, `keyctl`, `add_key`, `request_key`, `bpf`, `perf_event_open` or `userfaultfd`,
+and no `clone` with a namespace flag (a seccomp filter makes those system calls answer `EPERM`;
+`clone3` answers `ENOSYS`, and glibc falls back to `clone`; `memfd_create` and `memfd_secret` answer
+`ENOSYS` too, so a plugin keeps such data in a file), in its own session. Its secret settings reach
+it only in a file that only its own user id can read; its database URL and its proxy URL,
+credentials included, are in its environment, which only its own user id can read too.
 
 A plugin **cannot** read another plugin's settings, environment, code, data or Python
 environment, signal or trace its processes, or reach the node's launcher. A plugin **can** see
@@ -548,8 +549,8 @@ connection over a limit is refused at once. The node's own connections are never
 
 A socket can still take a local port without `bind()`: a `listen()` on an unbound TCP socket, or a
 UDP socket that is connected and never sends. So the node checks every plugin's sockets once a
-second, and stops a plugin whose user has a TCP socket in LISTEN on any port, or holds more than
-1,280 network sockets in all (TCP connections it accepted on its own port do not count). Such a plugin stays stopped, with the reason on its Runtime tab, until a SuperAdmin
+second, and stops a plugin whose user has a TCP socket in LISTEN on any port, a TCP connection
+on another port of the node's range, or more than 1,280 network sockets in all (TCP connections it accepted on its own port do not count). Such a plugin stays stopped, with the reason on its Runtime tab, until a SuperAdmin
 restarts it (see [When a plugin does not run](#when-a-plugin-does-not-run)). Between two checks a
 plugin can still take ports for up to a second. UNIX sockets in the abstract namespace remain
 shared: every process in the container can reach one.
@@ -615,6 +616,10 @@ own `postgres` and `template1`. What a plugin sees of its database is in
   each server process are capped at 1 GB (`temp_file_limit`), so one plugin's large sorts cannot
   fill it alone. The Runtime tab shows each plugin's database size; watch the `plugins_pgdata`
   volume, and put it on a file system of its own for a hard limit.
+- **Stopped plugins' statements end.** PostgreSQL would run a statement on after the plugin
+  process that sent it was killed. Whenever the node kills a plugin's processes (a stop, a restart,
+  a cap it went over) it ends that plugin's sessions on `plugins_db`, and the server checks every
+  5 s whether a running statement's client is still there (`client_connection_check_interval`).
 - **No statement text in the log.** Failing statements are never logged with their text:
   `plugins_admin` runs with `log_min_error_statement=panic`.
 
@@ -964,8 +969,10 @@ Every plugin backend writes its own files to its HOME and TMPDIR on the `es_plug
 next to the node's copies of the plugins' code and Python environments. A Docker volume has no
 size limit of its own: on a default install it is a directory on the host's file system, the one
 EpicStaff's database and Docker's own data live on, so a plugin that filled it would stop them
-too. The node caps each plugin and keeps a floor of free space, but for a hard boundary give the
-volume a file system of its own.
+too. The node caps each plugin and keeps a floor of free space, but it measures use after the
+fact, and a plugin can hide files from the measurement
+([Soft limits](../explanation/accepted-risks.md#soft-limits)). Unless you trust every plugin you
+install, give the volume a file system of its own.
 
 **Give `es_plugins_data` its own file system.** Mount a dedicated disk, partition or file system
 image on the host, for example at `/srv/es-plugins`, and bind the volume to it in a
@@ -993,17 +1000,21 @@ backups taken before upgrades: up to three per plugin with a database, each abou
 size or less (see [Backups](#backups)). During an upgrade a plugin's old and new versions are on
 the volume together; the old one goes when the upgrade is done.
 
-**The cap per plugin.** Every 30 s the node measures each running plugin's HOME (TMPDIR is inside
+**The cap per plugin.** Every 30 s, and at once when the volume's free space falls by 256 MiB or
+10,000 inodes or below the floor, the node measures each running plugin's HOME (TMPDIR is inside
 it): the blocks its files take, so a sparse file counts what it really uses, and its files,
 directories and links, each one inode. Deleted files that the plugin's processes still hold open
 count too. Symlinks are counted as links and never followed. A plugin above
 `ES_PLUGINS_DISK_MB_PER_PLUGIN` or `ES_PLUGINS_FILES_PER_PLUGIN` is stopped at once and marked
-failed, without the restarts a crash gets: it would only fill its HOME again. A plugin whose use
-the node cannot measure completely (it made a directory unreadable to itself, nested directories
-more than 128 deep, or stopped the node from seeing a process's open files) is treated the same,
-and so is one whose measurement brings no result two times in a row (the node was refused or ran
-out of time): "its disk use could not be measured 2 times in a row".
-Between two measurements a plugin can write past its cap, by its write rate × 30 s.
+failed, without the restarts a crash gets: it would only fill its HOME again. A plugin whose use the
+node cannot measure completely (it made a directory unreadable to itself, nested directories more
+than 128 deep, stopped the node from seeing a process's open files, or kept a deleted file mapped
+with no descriptor open on it, so its size cannot be seen) is treated the same, and so is one whose
+measurement brings no result two times in a row (the node was refused or ran out of time): "its disk
+use could not be measured 2 times in a row". No single file of a plugin can grow past
+`ES_PLUGINS_DISK_MB_PER_PLUGIN`. Between two measurements a plugin can write past its cap by about
+256 MiB plus a second of writing, or by its write rate × 30 s while other plugins free space at the
+same time.
 
 **The floor for the whole volume.** Below 2 GiB or 100,000 free inodes the node starts no
 download and builds no Python environment: a plugin that needs one fails with the free space in
@@ -1038,9 +1049,11 @@ memory, the last error and, for a failed plugin, the end of its log.
 | `<project> <version> has no wheel for this node (its wheels are built for …)` | The package has no wheel of that project for this host's architecture. The publisher packs again for it (`epicstaff-plugin pack --download-wheels`, which by default packs for both `x86_64` and `aarch64`). |
 | `failed` after repeated restarts | The backend kept stopping: it was restarted ten times in a row without once staying healthy for a minute in between (the node waits 1 s before the first restart, doubling up to 5 minutes, so this takes at least 13.5 minutes). Read the log on the Runtime tab, fix the cause (often a setting), then press Restart. |
 | `it listened on TCP port … of its own; …` | The backend opened a server socket of its own. A plugin serves only on the socket the node hands it, so the node stopped it. The publisher must fix the backend; then press Restart. |
+| `it held a TCP connection on the node's port …, which is not its own; …` | The backend accepted a connection from another plugin's listening socket, which that plugin passed to it. The node stopped it; review both plugins before you press Restart. |
 | `it held … network sockets, more than the 1280 a plugin may; …` | The backend kept too many sockets open, often connections it never closes, so the node stopped it. Ask the publisher to reuse connections; press Restart to start it again. |
 | The backend exits at once with `Operation not permitted` or `Address already in use` in its log | It opens a server socket itself instead of serving on the socket the node hands it (`EPICSTAFF_PLUGIN_LISTEN_FD`, which `epicstaff-plugin` uses); no plugin may bind a socket, and every port of the node's range is the node's. The publisher must fix the backend. |
 | `port … is still in use by placement …` | The plugin got a port another plugin on the node is just giving up (EpicStaff moved them). The node tries again every 30 s; it passes once the other is stopped. |
+| `port … cannot listen: another socket listens on it, …` or `port … could not be bound again: …` | The plugin that had this port before passed its listening socket to another plugin on the node, which listens on it now. Nothing is routed to the port meanwhile, and the node stops a plugin that accepts a connection on it. The node tries again every 30 s. If it stays, restart the node (`docker compose restart es_plugins`): that ends every plugin process, and the copy with them. Review the plugin that had the port before: only its own process could pass the socket on. |
 | `port … is not one of this node's ports` | The node and django_app disagree about the port range: they are of different versions. Run the same version of both. |
 | `installing the plugin's requirements failed (exit 1):` followed by pip's last lines | The lock does not pin a requirement of one of the package's wheels, and the last lines name the package. The node installs a backend with pip's dependency resolution on. The publisher must add the requirement to the lock's source and pack again (`pack` checks this). |
 | `Backup … could not be reported to EpicStaff (…), so the node set it aside as ….unreportable; EpicStaff no longer lists it.` | The node could not describe one backup to EpicStaff, so it renamed the backup's files. See [Backups](#backups). |

@@ -17,6 +17,7 @@ reaps it like any other child.
 """
 
 import json
+import math
 import os
 import signal
 import time
@@ -57,7 +58,8 @@ def start_removal(directory_setup: DirectorySetup, plugin: str, uid: int) -> tup
 def _remove(directory_setup: DirectorySetup, plugin: str, uid: int) -> dict:
     started = time.monotonic()
     try:
-        directory_setup.purge_plugin_data(plugin, uid)
+        # No deadline of its own: this helper's alarm bounds it, so a slow purge is retried.
+        directory_setup.purge_plugin_data(plugin, uid, timeout_seconds=math.inf)
         directory_setup.remove_plugin_trees(plugin)
         ipc_objects = remove_ipc_objects_of(uid)
     except (DirectorySetupError, IpcCleanupError, OSError) as error:

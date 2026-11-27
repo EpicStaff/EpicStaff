@@ -370,9 +370,9 @@ class FlowAssistantService:
         # Accumulates raw JSON tokens emitted by the model when response_format
         # is active.  Only populated during the final (non-tool-calling) turn.
         json_buffer: str = ""
-        # Tracks how many characters of the `message` field we have already
-        # forwarded as TokenEvents so we can emit only the delta each time.
-        last_emitted_message_len: int = 0
+        # Decodes the `message` field incrementally so each token is forwarded
+        # as a TokenEvent carrying only its own part of the message.
+        message_stream = _partial_json.MessageFieldStream()
 
         # Defensive: clear any stale cancel flag left from a previous turn.
         await _clear_cancel_flag(conversation.pk)
@@ -474,11 +474,9 @@ class FlowAssistantService:
                         current_content.append(event.content)
                         if is_final_turn:
                             json_buffer += event.content
-                            current_message = _partial_json.extract_message_field(json_buffer)
-                            if len(current_message) > last_emitted_message_len:
-                                delta = current_message[last_emitted_message_len:]
-                                last_emitted_message_len = len(current_message)
-                                yield event.__class__(content=delta)
+                            message_delta = message_stream.feed(event.content)
+                            if message_delta:
+                                yield event.__class__(content=message_delta)
                         else:
                             # During tool-calling turns the model emits plain text
                             # (its "thinking" content, if any) — forward as-is.
@@ -520,7 +518,7 @@ class FlowAssistantService:
                 # Reset per-turn json state for the next iteration (tool call turns
                 # don't produce the final JSON so the buffer is irrelevant there).
                 json_buffer = ""
-                last_emitted_message_len = 0
+                message_stream = _partial_json.MessageFieldStream()
 
                 # Record the assistant turn with tool calls in the local working list
                 tool_calls_block = [

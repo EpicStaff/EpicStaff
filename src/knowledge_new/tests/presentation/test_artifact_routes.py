@@ -86,8 +86,7 @@ def upload_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def client(monkeypatch, repo, store, upload_dir):
-    monkeypatch.setattr(rag_controller, "is_graphrag_available", lambda: True)
+def client(repo, store, upload_dir):
     app = Litestar(
         route_handlers=[RagController],
         dependencies={
@@ -245,15 +244,3 @@ def test_naive_rags_have_no_artifacts_to_transfer(
     assert response.json()["code"] == "unsupported"
     assert store.objects == {}
     assert list(upload_dir.iterdir()) == []
-
-
-@pytest.mark.parametrize(("method", "path", "request_kwargs"), ROUTES)
-def test_graph_routes_are_unavailable_on_a_cpu_without_avx2(
-    client, monkeypatch, store, method, path, request_kwargs
-):
-    monkeypatch.setattr(rag_controller, "is_graphrag_available", lambda: False)
-
-    response = getattr(client, method)(f"/rags/graph/9/{path}", **request_kwargs)
-
-    assert response.status_code == 503
-    assert store.objects == {}
