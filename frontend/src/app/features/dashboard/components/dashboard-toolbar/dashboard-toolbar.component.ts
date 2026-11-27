@@ -1,7 +1,14 @@
 import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
-import { IconButtonComponent, NumberStepperComponent, SelectComponent, SelectItem } from '@shared/components';
+import {
+    ButtonComponent,
+    IconButtonComponent,
+    NumberStepperComponent,
+    SelectComponent,
+    SelectItem,
+} from '@shared/components';
 
 import { DashboardPeriodUnit } from '../../models/dashboard-filters.model';
+import { DashboardExportService } from '../../services/dashboard-export.service';
 import { DashboardFiltersService } from '../../services/dashboard-filters.service';
 
 const UNIT_ITEMS: SelectItem<DashboardPeriodUnit>[] = [
@@ -12,13 +19,14 @@ const UNIT_ITEMS: SelectItem<DashboardPeriodUnit>[] = [
 
 @Component({
     selector: 'app-dashboard-toolbar',
-    imports: [IconButtonComponent, NumberStepperComponent, SelectComponent],
+    imports: [ButtonComponent, IconButtonComponent, NumberStepperComponent, SelectComponent],
     templateUrl: './dashboard-toolbar.component.html',
     styleUrls: ['./dashboard-toolbar.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class DashboardToolbarComponent {
     protected readonly filtersService = inject(DashboardFiltersService);
+    protected readonly exportService = inject(DashboardExportService);
 
     protected readonly unitItems = UNIT_ITEMS;
     protected readonly filters = this.filtersService.filters;

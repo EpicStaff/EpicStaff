@@ -34,3 +34,16 @@
         (changed)="onUnitChange($event)"
     />
 </div>
+
+<span
+    class="dashboard-toolbar__divider"
+    aria-hidden="true"
+></span>
+<app-button
+    type="outline-primary"
+    leftIcon="download"
+    [disabled]="!exportService.canExport()"
+    (click)="exportService.export()"
+>
+    Export
+</app-button>

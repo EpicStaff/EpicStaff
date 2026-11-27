@@ -5,6 +5,7 @@ import { RouteTab, RouteTabsComponent } from '@shared/components';
 import { DashboardToolbarComponent } from './components/dashboard-toolbar/dashboard-toolbar.component';
 import { UpdatedAtComponent } from './components/updated-at/updated-at.component';
 import { DashboardTab } from './constants/dashboard-tabs';
+import { DashboardExportService } from './services/dashboard-export.service';
 import { DashboardFiltersService } from './services/dashboard-filters.service';
 import { DashboardReportService } from './services/dashboard-report.service';
 import { DashboardStatsService } from './services/dashboard-stats.service';
@@ -12,7 +13,7 @@ import { DashboardStatsService } from './services/dashboard-stats.service';
 @Component({
     selector: 'app-dashboard-page',
     imports: [RouterOutlet, RouteTabsComponent, DashboardToolbarComponent, UpdatedAtComponent],
-    providers: [DashboardFiltersService, DashboardReportService, DashboardStatsService],
+    providers: [DashboardFiltersService, DashboardReportService, DashboardStatsService, DashboardExportService],
     templateUrl: './dashboard-page.component.html',
     styleUrls: ['./dashboard-page.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush,

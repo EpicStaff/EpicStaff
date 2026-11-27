@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, DestroyRef, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { FetchErrorStateComponent, LoadingSpinnerComponent } from '@shared/components';
 import { GraphSessionStatus } from '@shared/models';
@@ -10,11 +10,15 @@ import { KpiCardComponent } from '../../components/kpi-card/kpi-card.component';
 import { KpiDeltaComponent } from '../../components/kpi-delta/kpi-delta.component';
 import { ResourceCardComponent } from '../../components/resource-card/resource-card.component';
 import { SessionsByStatusCardComponent } from '../../components/sessions-by-status-card/sessions-by-status-card.component';
+import { DashboardTab } from '../../constants/dashboard-tabs';
 import { DashboardResourceCard } from '../../models/dashboard-card.model';
 import { DashboardTotals } from '../../models/dashboard-report.model';
+import { DashboardExportService } from '../../services/dashboard-export.service';
 import { DashboardFiltersService } from '../../services/dashboard-filters.service';
 import { DashboardReportService } from '../../services/dashboard-report.service';
 import { DashboardStatsService } from '../../services/dashboard-stats.service';
+import { toOverviewCsv } from '../../utils/dashboard-overview-csv.util';
+import { toRange } from '../../utils/dashboard-range.util';
 import { sumStats } from '../../utils/dashboard-stats.util';
 
 @Component({
@@ -77,6 +81,24 @@ export class DashboardOverviewTabComponent {
         const { period, unit } = this.filters();
         return `vs previous ${period} ${unit}${period === 1 ? '' : 's'}`;
     });
+
+    private readonly csvSections = computed(() => {
+        const report = this.report();
+        if (!report) return [];
+        return toOverviewCsv({
+            report,
+            stats: this.stats.hasValue() ? this.stats.value().current : null,
+            range: toRange(this.filters()),
+            resourceCards: this.resourceCards(),
+        });
+    });
+
+    constructor() {
+        inject(DashboardExportService).register(
+            { name: DashboardTab.Overview, sections: this.csvSections },
+            inject(DestroyRef)
+        );
+    }
 }
 
 function toResourceCards(totals: DashboardTotals): DashboardResourceCard[] {
