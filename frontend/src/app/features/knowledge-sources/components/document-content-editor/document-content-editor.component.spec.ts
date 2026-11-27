@@ -2,7 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { DebugElement, NO_ERRORS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
-import { ConfirmationDialogService } from '@shared/components';
+import { ConfirmationDialogService, ConfirmationResultWithOptions } from '@shared/components';
 import { firstValueFrom, Observable, of, Subject, throwError } from 'rxjs';
 
 import { PermissionsService } from '../../../../services/auth/permissions.service';
@@ -40,6 +40,7 @@ interface Setup {
     getText?: () => Observable<DocumentText>;
     update?: () => Observable<DocumentDetail>;
     confirmResult?: boolean | 'close';
+    scopeResult?: ConfirmationResultWithOptions | 'close';
     sharedWith?: string[];
 }
 
@@ -67,11 +68,14 @@ async function render(document: DisplayedListDocument, bytes: BlobPart, setup: S
     };
     const toast = { success: vi.fn(), error: vi.fn() };
     const confirm = vi.fn<ConfirmationDialogService['confirm']>(() => of(setup.confirmResult ?? true));
+    const confirmWithOptions = vi.fn<ConfirmationDialogService['confirmWithOptions']>(() =>
+        of(setup.scopeResult ?? { confirmed: true, checked: false })
+    );
     TestBed.configureTestingModule({
         providers: [
             { provide: DocumentsApiService, useValue: api },
             { provide: ToastService, useValue: toast },
-            { provide: ConfirmationDialogService, useValue: { confirm } },
+            { provide: ConfirmationDialogService, useValue: { confirm, confirmWithOptions } },
             { provide: PermissionsService, useValue: { can: () => setup.canUpdate ?? true } },
         ],
     });
@@ -99,7 +103,7 @@ async function render(document: DisplayedListDocument, bytes: BlobPart, setup: S
     };
     const text = (): string => fixture.nativeElement.textContent;
 
-    return { fixture, api, toast, confirm, button, click, monaco, type, text };
+    return { fixture, api, toast, confirm, confirmWithOptions, button, click, monaco, type, text };
 }
 
 describe('DocumentContentEditorComponent', () => {
@@ -135,6 +139,12 @@ describe('DocumentContentEditorComponent', () => {
             const { button } = await render(TEXT_DOCUMENT, 'old text', { canUpdate: false });
 
             expect(button('Edit')).toBeUndefined();
+        });
+
+        it('does not explain the encoding to a user who may not edit anyway', async () => {
+            const { text } = await render(TEXT_DOCUMENT, new Uint8Array([0xc3, 0x28]), { canUpdate: false });
+
+            expect(text()).not.toContain('not UTF-8');
         });
 
         it('ignores a decoded file once the preview moved on', async () => {
@@ -228,16 +238,6 @@ describe('DocumentContentEditorComponent', () => {
             expect(toast.error).toHaveBeenCalled();
         });
 
-        it('saves nothing when the server sent no hash to check against', async () => {
-            const { click, type, api } = await render(TEXT_DOCUMENT, 'old text', { opened: { content_hash: null } });
-
-            click('Edit');
-            type('new text');
-            click('Save');
-
-            expect(api.updateDocumentContent).not.toHaveBeenCalled();
-        });
-
         it('keeps the draft and offers the current version when someone else saved first', async () => {
             const conflict = new HttpErrorResponse({ status: 409, error: { code: 'content_hash_conflict' } });
             const { fixture, click, type, monaco, toast, button } = await render(TEXT_DOCUMENT, 'old text', {
@@ -293,34 +293,47 @@ describe('DocumentContentEditorComponent', () => {
 
     describe('choosing where the change goes', () => {
         it('saves for this collection without asking when no other collection uses the file', async () => {
-            const { click, type, api, confirm } = await render(TEXT_DOCUMENT, 'old text');
+            const { click, type, api, confirmWithOptions } = await render(TEXT_DOCUMENT, 'old text');
 
             click('Edit');
             type('new text');
             click('Save');
 
-            expect(confirm).not.toHaveBeenCalled();
+            expect(confirmWithOptions).not.toHaveBeenCalled();
             expect(api.updateDocumentContent.mock.calls[0][3]).toBe('this_collection');
         });
 
-        it('changes the file everywhere when the user picks everywhere', async () => {
-            const { click, type, api, confirm } = await render(TEXT_DOCUMENT, 'old text', {
+        it('offers to change the other collections too, unchecked by default', async () => {
+            const { click, type, confirmWithOptions } = await render(TEXT_DOCUMENT, 'old text', {
                 sharedWith: ['Copies'],
-                confirmResult: true,
             });
 
             click('Edit');
             type('new text');
             click('Save');
 
-            expect(confirm).toHaveBeenCalled();
+            const options = confirmWithOptions.mock.calls[0]?.[0];
+            expect(options?.checkbox?.label).toBeTruthy();
+            expect(options?.checkbox?.checked).toBeFalsy();
+        });
+
+        it('changes the file everywhere when the user checks the other collections', async () => {
+            const { click, type, api } = await render(TEXT_DOCUMENT, 'old text', {
+                sharedWith: ['Copies'],
+                scopeResult: { confirmed: true, checked: true },
+            });
+
+            click('Edit');
+            type('new text');
+            click('Save');
+
             expect(api.updateDocumentContent.mock.calls[0][3]).toBe('all_collections');
         });
 
-        it('changes the file only here when the user picks this collection', async () => {
+        it('changes the file only here when the user saves without checking', async () => {
             const { click, type, api } = await render(TEXT_DOCUMENT, 'old text', {
                 sharedWith: ['Copies'],
-                confirmResult: false,
+                scopeResult: { confirmed: true, checked: false },
             });
 
             click('Edit');
@@ -330,10 +343,13 @@ describe('DocumentContentEditorComponent', () => {
             expect(api.updateDocumentContent.mock.calls[0][3]).toBe('this_collection');
         });
 
-        it('saves nothing and stays editable when the scope dialog is closed', async () => {
+        it.each<[string, ConfirmationResultWithOptions | 'close']>([
+            ['cancelled', { confirmed: false, checked: true }],
+            ['closed', 'close'],
+        ])('saves nothing and stays editable when the dialog is %s', async (_, scopeResult) => {
             const { click, type, api, monaco, button } = await render(TEXT_DOCUMENT, 'old text', {
                 sharedWith: ['Copies'],
-                confirmResult: 'close',
+                scopeResult,
             });
 
             click('Edit');
@@ -345,17 +361,17 @@ describe('DocumentContentEditorComponent', () => {
             expect(button('Save')?.properties['disabled']).toBe(false);
         });
 
-        it('escapes collection names in the scope dialog', async () => {
-            const { click, type, confirm } = await render(TEXT_DOCUMENT, 'old text', {
+        it('escapes collection names in the dialog', async () => {
+            const { click, type, confirmWithOptions } = await render(TEXT_DOCUMENT, 'old text', {
                 sharedWith: ['<b>Copies</b>'],
-                confirmResult: 'close',
+                scopeResult: 'close',
             });
 
             click('Edit');
             type('new text');
             click('Save');
 
-            const message = confirm.mock.calls[0]?.[0].message;
+            const message = confirmWithOptions.mock.calls[0]?.[0].message;
             expect(message).toContain('&lt;b&gt;Copies&lt;/b&gt;');
             expect(message).not.toContain('<b>Copies</b>');
         });

@@ -83,6 +83,8 @@ export interface DocumentDetail extends CollectionDocument {
 
 /** A text document with its current text; `content_hash` is the hash of exactly this text. */
 export interface DocumentText extends DocumentDetail {
+    /** Always set: a document without content cannot be read for editing. */
+    content_hash: string;
     text: string;
 }
 

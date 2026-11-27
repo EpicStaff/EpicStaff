@@ -11,6 +11,7 @@ import {
     input,
     output,
     signal,
+    untracked,
     viewChild,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -32,12 +33,13 @@ type EditorMode = 'preview' | 'edit';
 
 const MONACO_LANGUAGES: Record<string, string> = { md: 'markdown', json: 'json', html: 'html' };
 
-/** The file's text, or null when its bytes are not UTF-8: guessing an encoding would corrupt it on save. */
-async function decodeUtf8(blob: Blob): Promise<string | null> {
+/** Whether the file's bytes are UTF-8; any other encoding would be corrupted on save. */
+async function isUtf8Text(blob: Blob): Promise<boolean> {
     try {
-        return new TextDecoder('utf-8', { fatal: true }).decode(await blob.arrayBuffer());
+        new TextDecoder('utf-8', { fatal: true }).decode(await blob.arrayBuffer());
+        return true;
     } catch {
-        return null;
+        return false;
     }
 }
 
@@ -61,23 +63,17 @@ export class DocumentContentEditorComponent {
     protected readonly draft = signal<string>('');
     protected readonly conflict = signal(false);
     protected readonly isSaving = signal(false);
-    /** The previewed file's text; null while it loads and for bytes that are not UTF-8. */
-    private readonly previewText = signal<string | null>(null);
-    private readonly isDecoded = signal(false);
+    /** Whether the previewed text file is UTF-8; null while it is checked and for other file types. */
+    private readonly isUtf8 = signal<boolean | null>(null);
     /** What the editor opened: the text and its hash, read together. */
     private readonly opened = signal<DocumentText | null>(null);
 
     private readonly isEditableType = computed(() => EDITABLE_FILE_TYPES.includes(this.document()?.file_type ?? ''));
+    private readonly canUpdate = computed(() => this.permissions.can(ResourceCode.KnowledgeSources, ActionCode.Update));
     protected readonly canEdit = computed(
-        () =>
-            !!this.document()?.document_id &&
-            this.isEditableType() &&
-            this.previewText() !== null &&
-            this.permissions.can(ResourceCode.KnowledgeSources, ActionCode.Update)
+        () => !!this.document()?.document_id && this.isUtf8() === true && this.canUpdate()
     );
-    protected readonly isNotUtf8 = computed(
-        () => this.isEditableType() && this.isDecoded() && this.previewText() === null
-    );
+    protected readonly isNotUtf8 = computed(() => this.isUtf8() === false && this.canUpdate());
     private readonly isDirty = computed(() => this.draft() !== this.opened()?.text);
     /** An edit the user has not saved; the parent asks before dropping it. */
     readonly hasUnsavedEdit = computed(() => this.mode() === 'edit' && this.isDirty());
@@ -98,18 +94,16 @@ export class DocumentContentEditorComponent {
     private readonly injector = inject(Injector);
 
     constructor() {
-        // A new file (another document, or this one reloaded) leaves edit mode and is decoded afresh.
+        // A new file (another document, or this one reloaded) leaves edit mode and is checked afresh.
         effect(() => {
             const blob = this.blob();
             this.mode.set('preview');
             this.conflict.set(false);
-            this.previewText.set(null);
-            this.isDecoded.set(false);
-            if (!blob) return;
-            void decodeUtf8(blob).then((text) => {
-                if (this.blob() !== blob) return;
-                this.previewText.set(text);
-                this.isDecoded.set(true);
+            this.isUtf8.set(null);
+            // Only text types can be edited; a PDF or DOCX is never decoded.
+            if (!blob || !untracked(this.isEditableType)) return;
+            void isUtf8Text(blob).then((isUtf8) => {
+                if (this.blob() === blob) this.isUtf8.set(isUtf8);
             });
         });
     }
@@ -162,7 +156,7 @@ export class DocumentContentEditorComponent {
     protected save(): void {
         const opened = this.opened();
         const documentId = this.document()?.document_id;
-        if (!opened?.content_hash || !documentId || this.isSaving()) return;
+        if (!opened || !documentId || this.isSaving()) return;
         if (new TextEncoder().encode(this.draft()).length > MAX_DOCUMENT_SIZE) {
             this.toast.error(`The text is larger than ${MAX_DOCUMENT_SIZE / (1024 * 1024)} MB`);
             return;
@@ -218,18 +212,19 @@ export class DocumentContentEditorComponent {
             .map((collection) => `<strong>${escapeHtml(collection.collection_name)}</strong>`)
             .join(', ');
         return this.confirmation
-            .confirm({
-                title: 'Change the file everywhere?',
-                message: `This file is also used in ${names}. Change it there too, or only in this collection?`,
-                confirmText: 'Everywhere',
-                cancelText: 'Only this collection',
-                // Danger, so Enter on the dialog body does not pick the broadest option.
-                type: 'danger',
+            .confirmWithOptions({
+                title: 'Save a shared file',
+                message: `This file is also used in ${names}.`,
+                // Unchecked, so a plain Save changes only this collection.
+                checkbox: { label: 'Change it in those collections too' },
+                confirmText: 'Save',
+                cancelText: 'Cancel',
+                type: 'warning',
             })
             .pipe(
                 map((result): DocumentContentScope | undefined => {
-                    if (result === 'close') return undefined;
-                    return result ? 'all_collections' : 'this_collection';
+                    if (result === 'close' || !result.confirmed) return undefined;
+                    return result.checked ? 'all_collections' : 'this_collection';
                 })
             );
     }
