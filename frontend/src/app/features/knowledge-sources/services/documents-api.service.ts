@@ -61,10 +61,6 @@ export class DocumentsApiService {
         });
     }
 
-    getDocument(id: number): Observable<DocumentDetail> {
-        return this.http.get<DocumentDetail>(`${this.apiUrl}/${id}/`);
-    }
-
     /** The document's text for editing, with the hash of that same text. */
     getDocumentText(id: number): Observable<DocumentText> {
         return this.http.get<DocumentText>(`${this.apiUrl}/${id}/content/`);

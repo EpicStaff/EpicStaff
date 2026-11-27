@@ -72,17 +72,6 @@ describe('DocumentsApiService document content', () => {
 
     afterEach(() => httpMock.verify());
 
-    it('GETs the document detail', () => {
-        let received: DocumentDetail | undefined;
-
-        service.getDocument(5).subscribe((body) => (received = body));
-
-        const request = httpMock.expectOne('http://api.test/api/documents/5/');
-        expect(request.request.method).toBe('GET');
-        request.flush(detail);
-        expect(received).toEqual(detail);
-    });
-
     it('GETs the document text for editing', () => {
         service.getDocumentText(5).subscribe();
 
